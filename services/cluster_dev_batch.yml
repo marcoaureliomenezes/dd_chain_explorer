@@ -1,0 +1,162 @@
+version: '3'
+
+x-common-log-config: &default_log_config
+  logging:
+    driver: "json-file"
+    options:
+      max-file: "5"
+      max-size: "10m"
+
+x-common-healthcheck-default: &default_healthcheck
+  timeout: 45s
+  interval: 10s
+  retries: 10
+
+x-common-hadoop-datanode: &default_hadoop_datanode
+  build: ../docker/infra/hadoop/hadoop-datanode
+  restart: always
+  environment:
+    - SERVICE_PRECONDITION=namenode:9870
+  <<: *default_log_config
+  depends_on:
+    - namenode
+
+#################################################################
+################    DEFINIÇÃO DOS SERVIÇOS    ###################
+#################################################################
+
+services:
+  namenode:
+    build: ../docker/infra/hadoop/hadoop-namenode
+    restart: always
+    container_name: hadoop-namenode
+    networks:
+      - fast_layer
+    # volumes:
+    #   - ../mnt/hadoop/namenode:/hadoop/hdfs/name
+    <<: *default_log_config
+    ports:
+      - "32763:9870"
+    environment:
+      - CLUSTER_NAME=hadoop_cluster
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "namenode", "9870" ]
+      <<: *default_healthcheck
+
+  datanode-1:
+    <<: *default_hadoop_datanode
+    container_name: datanode-1
+    networks:
+      - fast_layer
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "datanode-1", "9864" ]
+      <<: *default_healthcheck
+
+  # datanode-2:
+  #   <<: *default_hadoop_datanode
+  #   container_name: datanode-2
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "datanode-2", "9864" ]
+  #     <<: *default_healthcheck
+
+  # postgres:
+  #   build: '../docker/postgres'
+  #   restart: always
+  #   container_name: postgres
+  #   <<: *default_log_config
+  #   volumes:
+  #     - ../mnt/postgres:/var/lib/postgresql/data/pgdata
+  #   env_file:
+  #     - .env_batch
+  #   environment:
+  #     - PGDATA=/var/lib/postgresql/data/pgdata
+  #   healthcheck:
+  #     test:
+  #       ["CMD", "pg_isready", "-q", "-d", "airflow_db", "-U", "airflow"]
+  #     <<: *default_healthcheck
+
+  # hive-metastore:
+  #   build: ../docker/hive/hive-metastore
+  #   restart: always
+  #   container_name: hive-metastore
+  #   <<: *default_log_config
+  #   environment:
+  #     - SERVICE_PRECONDITION=namenode:9870 datanode-1:9864 datanode-2:9864 postgres:5432
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "hive-metastore", "9083" ]
+  #     <<: *default_healthcheck
+  #   depends_on:
+  #     - namenode
+  #     - datanode-1
+  #     - datanode-2
+  #     - postgres
+
+  # hive-server:
+  #   build: ../docker/hive/hive-server
+  #   restart: always
+  #   container_name: hive-server
+  #   <<: *default_log_config
+  #   environment:
+  #     - SERVICE_PRECONDITION=hive-metastore:9083
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "hive-server", "10002" ]
+  #     <<: *default_healthcheck
+  #   depends_on:
+  #     - hive-metastore
+
+  # hue:
+  #   build: ../docker/hue
+  #   restart: always
+  #   container_name: hadoop-hue
+  #   <<: *default_log_config
+  #   ports:
+  #     - "32762:8888"
+  #   volumes:
+  #     - ../mnt/hue/hue.ini:/usr/share/hue/desktop/conf/z-hue.ini
+  #   environment:
+  #     - SERVICE_PRECONDITION=hive-server:10000 postgres:5432
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "hue", "8888" ]
+  #     <<: *default_healthcheck
+  #   depends_on:
+  #     - hive-server
+  #     - postgres
+
+  # spark-master:
+  #   build: ../docker/spark/spark-master
+  #   restart: always
+  #   container_name: spark-master
+  #   <<: *default_log_config
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "spark-master", "8082" ]
+  #     <<: *default_healthcheck
+
+  # spark-worker:
+  #   build: ../docker/spark/spark-worker
+  #   container_name: spark-worker
+  #   <<: *default_log_config
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "spark-worker", "8081" ]
+  #     <<: *default_healthcheck
+  #   depends_on:
+  #     - spark-master
+
+  # airflow:
+  #   build: ../docker/airflow
+  #   restart: always
+  #   container_name: airflow
+  #   volumes:
+  #     - ../mnt/airflow/airflow.cfg:/opt/airflow/airflow.cfg
+  #     - ../mnt/airflow/dags:/opt/airflow/dags
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   ports:
+  #     - 8080:8080
+  #   healthcheck:
+  #     test: [ "CMD", "nc", "-z", "airflow", "8080" ]
+  #     <<: *default_healthcheck
+  #   depends_on:
+  #     - postgres
+
+networks:
+  fast_layer:
+    name: fast_layer
