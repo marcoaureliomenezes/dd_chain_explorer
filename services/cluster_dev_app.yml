@@ -1,0 +1,70 @@
+version: '3'
+
+x-common-config-default: &conf_default
+  networks:
+    - fast_layer
+  image: marcoaureliomenezes/onchain-stream-txs
+  build: ../docker/apps/onchain-stream-txs/
+  volumes:
+    - ../docker/apps/onchain-stream-txs/src:/app
+  env_file:
+    - .secrets.conf
+
+
+#################################################################
+################    DEFINIÇÃO DOS SERVIÇOS    ###################
+#################################################################
+
+services:
+
+  # topics_creator:
+  #   <<: *conf_default
+  #   container_name: topics_creator
+  #   restart: on-failure
+  #   entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
+
+  block_clock:
+    <<: *conf_default
+    container_name: block_clock
+    restart: always
+    entrypoint: "python -u 1_block_clock.py configs/producers.ini"
+    environment:
+      KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
+
+  tx_processor:
+    <<: *conf_default
+    container_name: tx_processor
+    restart: always
+    environment:
+      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-8'
+    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
+
+  tx_classifier:
+    <<: *conf_default
+    restart: always
+    container_name: tx_classifier
+    entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
+
+  api_keys_log_processor:
+    image: marcoaureliomenezes/spark-streaming-jobs
+    build: ../docker/apps/spark-streaming-jobs/
+    container_name: api_keys_log_processor
+    restart: always
+    volumes:
+      - ../docker/apps/spark-streaming-jobs/src:/app
+    entrypoint: "sh /app/shell/api_key_monitor.sh"
+    networks:
+      - fast_layer
+
+  # tx_input_decoder:
+  #   <<: *conf_default
+  #   container_name: tx_input_decoder
+  #   entrypoint: "python -u 4_transaction_converters.py"
+  #   environment:
+  #     KEY_VAULT_NODE_SECRET: 'infura-api-key-16'
+  #     KEY_VAULT_SCAN_SECRET: 'etherscan-api-key-4'
+
+
+networks:
+  fast_layer:
+    name: fast_layer
