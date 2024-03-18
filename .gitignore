@@ -22,3 +22,17 @@ src/.infura_auth.txt
 venv*
 
 .git
+
+
+
+
+scripts/pre_deploy_airflow.sh
+scripts/initialize_prod_environment.sh
+docker/apps/onchain-watchers/
+docker/apps/onchain-monitor/
+docker/apps/onchain-actors/
+docker/apps/onchain-stream-txs/
+docker/airflow/
+dadaia-tools/
+TODOs.md
+dm_doc/
