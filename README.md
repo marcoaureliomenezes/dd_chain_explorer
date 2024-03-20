@@ -137,15 +137,15 @@ Porém, esse fator, ao invés de limitar a solução, agrega valor a mesma, vist
 | Infura   | 10                                | 100.000                       |
 | Alchemy  | 5                                 | 1.000.00                      |
 
-A rede etherem possui uma média de 1 Bloco a cada 8 segundos e 250 transações por bloco, o que resulta em média de 31,25 transações por segundo ou 2.700.000 transações por dia. Portanto, para se ler as transações em tempo real é necessário:
+A rede etherem possui uma média de 1 Bloco a cada 8 segundos e 250 transações por bloco, o que resulta em média de 31,25 transações por segundo ou 2.700.000 transações por dia. Portanto, para atender aos objetivos desse trabalho foram necessários os seguintes recursos:
 
-- Mais de uma API Key de provedores de Node-as-a-Service;
-- Um mecanismo para capturar essas transações que minimiza o número de requisições e também a latência entre a mineração da transação na rede blockchain e a ingestão para este sistema.
+- Mobilização de amigos e familiares para que eles pudessem se cadastrar com o e-mail nos sites dos provedores e cederem as APIs Keys. Foram obtidas nesse processo **22 API Keys**, visto que cada pessoa poderia criar 1 conta em cada provedor.
+
+- Construção de mecanismo para capturar essas transações que minimiza o número de requisições e também que compartilhe o uso das APIs Keys para que não haja problemas de limites de requisições e as aplicações funcionem de forma distribuída compartilhando o uso das APIs Keys.
 
 #### 3.1.3 - Acesso a dados de blockchain por meio de APIs
 
-
-Uma das APIs, oferecidas pela comunidade na linguagem Python, é a [Web3.py](https://web3py.readthedocs.io/en/stable/). Ela é uma biblioteca que permite a interação com nós da rede blockchain do tipo EVM. A seguir está um exemplo de código que utiliza a biblioteca Web3.py para acessar dados de uma rede Ethereum:
+Como comentado, os dados dentro de um nó se tornam acessiveis através do uso de APIs. Uma delas, oferecidas pela comunidade na linguagem Python, é a [Web3.py](https://web3py.readthedocs.io/en/stable/). Ela é uma biblioteca que permite a interação com nós da rede blockchain do tipo EVM. A seguir está um exemplo de código que utiliza a biblioteca **Web3.py** para acessar dados do último bloco minerado **get_block(latest)** e de uma transação com o método **get_transaction('0xTRANSACTION_HASH_ID')**:
 
 ```python
 from web3 import Web3
@@ -158,7 +158,7 @@ block = w3.eth.get_block('latest')
 print(block)
 
 # Acessando dados de uma transação
-tx = w3.eth.get_transaction('0xTRANSACTION_HASH')
+tx = w3.eth.get_transaction('0xTRANSACTION_HASH_ID')
 print(tx)
 
 ```
