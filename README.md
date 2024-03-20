@@ -1,31 +1,271 @@
 # dm_v3_chain_explorer System
 
-Nesse repositório estão implementadas e documentadas as rotinas de ingestão e processamento de dados de blockchains em tempo real desenvolvidas para o case de Data Master.
+O `dm_v3_chain_explorer` é um repositório no qual estão implementadas e documentadas as rotinas de extração, ingestão, processamento, armazenamento e uso de dados com origem em protocolos P2P do tipo blockchain. Esse trabalho foi desenvolvido para o case do programa Data Master.
 
-- **Badge Atual**: Data Advanced em engenharia de dados.
-- **Objetivo**: Conquista da badge de Data Expert em engenharia de dados.
+## Sumário
 
-## 1 - Requisitos do Case
+1. [Objetivo do Case](#1---objetivo-do-case)
+2. [Arquitetura de solução e Arquitetura Técnica](#2---arquitetura-de-solução-e-arquitetura-técnica)
+3. [Explicação sobre o case desenvolvido](#3---explicação-sobre-o-case-desenvolvido)
+4. [Melhorias e considerações finais](#4---melhorias-e-considerações-finais)
+5. [Reprodução da arquitetura](#5---reprodução-da-arquitetura)
+6. [Appendice](#6---appendice)
 
-### 1.1 - Objetivo da Apresentação do Case
+## 1 - Objetivo do Case
 
+Esse case tem por objetivo final a sua submissão para o programa Data Master e posterior apresentação do mesmo a uma banca onde possam ser avaliados conceitos e técnicas de engenharia de dados, aplicados na construção prática deste sistema. Para alcançar esse objetivo, foram definidos os seguintes objetivos específicos:
 
+- Realizar a ingestão de dados em tempo real do protocolo Ethereum de forma a minimizar a latência entre a transação e a ingestão.
+- Construir um sistema genérico que funciona para qualquer rede de blockchain do tipo EVM.
+- Armazenar dados pertinentes a analises em banco de dados analítico.
+- Construir uma arquitetura de solução que permita a escalabilidade do sistema.
+- Explorar possibilidade de um sistema similar a esse ser utilizado para resolver problemas reais, com possíveis aplicações práticas e retornos financeiros.
 
-## 2 - Introdução ao case escolhido
+## 2 - Arquitetura de solução e Arquitetura Técnica
 
 O `dm_v3_chain_explorer` é um sistema de ingestão e processamento de dados de blockchains em tempo real. O sistema é composto por 3 camadas:
 
 - **Camada Fast**: Camada de ingestão de dados em tempo real.
 - **Camada Batch**: Camada de processamento de dados em batch.
-- **Camada de Aplicação**: Camada com aplicações que interagem com blockchain e ferramentas de Big Data para ingestar, processar e persistir dados.
+- **Camada de Aplicação**: Camada com aplicações que interagem com blockchain.
 
-**OBS**: Nas camadas Fast e Batch, são utilizadas ferramentas de Big Data para ingestão, processamento e armazenamento de dados que estão descritos na seção 3.1. Como esse trabalho propõe a ingestão, processamento, armazenamento e uso de dados de blockchains, vale a pena fazer uma breve introdução sobre o que é um blockchain e como ele funciona.
+**OBS**: Nas camadas Fast e Batch, são utilizadas ferramentas de Big Data para ingestão, processamento e armazenamento de dados que estão descritos nesta seção. Já na camada de aplicação, estão definidos os serviços que interagem com a rede de blockchain para capturar os dados e com as ferramentas de Big Data para ingestar, processar e armazenar.
+
+### 2.1 - Arquitetura de Solução
+
+Desenho de arquitetura:
+
+![Arquitetura de streaming-transactions](./img/arquitetura_DM.drawio.png)
+
+### 2.2 - Arquitetura Técnica
+
+A arquitetura técnica deste sistema é composta de 2 ambientes, um para desenvolvimento e outro para produção. Essa decisão foi tomada para que fosse possível desenvolver e testar o sistema em um ambiente controlado e depois subir o sistema em um ambiente realmente distribuído.
+
+Para ambos os ambientes a ferramenta básica foi o Docker, que foi utilizada para criar containers que simulam clusters de serviços. A escolha do Docker se deu pelos seguintes motivos:
+
+- **Portabilidade**: Com o docker, é possível criar containers que podem ser executados em qualquer ambiente, independente do sistema operacional ou da infraestrutura.
+- **Isolamento**: Cada container é isolado do restante do sistema, o que permite que diferentes serviços sejam executados em um mesmo ambiente sem que haja conflitos.
+- **Reprodutibilidade**: Conforme um dos requisitos do case, é necessário que a solução proposta seja reproduzível. Com o docker, é possível criar imagens que podem ser compartilhadas e instanciadas como containers em qualquer ambiente, desde que o docker esteja instalado e requisitos mínimos de hardware sejam atendidos.
+
+Para orquestrar a execução dos containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`, para os ambientes de "Desenvolvimento" e "Produção", respectivamente.
+
+#### 2.2.1 Ambiente de "Desenvolvimento"
+
+O ambiente de desenvolvimento é composto por um clusters de serviços que executam em um único nó. A escolha de um único nó para o ambiente de desenvolvimento se deu por questões de custo e praticidade. A seguir estão listados os clusters de serviços que compõem o ambiente de desenvolvimento:
+
+#### 2.2.2 - Recursos computacionais usados em cluster de "Desenvolvimento"
+
+| Node          | IP            | Hostname                  | Usuário  | OS Version         | CPUs | Arquitetura | Model                                     | Memória RAM | Memória SWAP |
+|---------------|---------------|---------------------------|----------|--------------------|------|-------------|-------------------------------------------|--------------|-------------|
+| Node Master   | 192.168.15.101| `dadaia@dadaia-desktop`   | dadaia   | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-2600 CPU @ 3.40GHz   | 15866,8 MB   | 2048,0 MB   |
+
+#### 2.2.3 Ambiente de "Produção"
+
+O ambiente de produção é composto por 4 clusters de serviços que executam em 4 nós diferentes. Para isso foram utilizados 4 nós de uma rede local, compostos por computadores com recursos listados no tópico a seguir. A decisão de criação deste ambiente se fez pelos seguintes motivos:
+
+- A quantidade de serviços orquestrados para exibir a funcionalidade completa do sistema é grande. E quando junto de uma apresentação compartilhando a tela, a execução de todos os serviços em um único nó pode ser inviável.
+
+- Neste trabalho estão sendo utilizadas ferramentas de Big Data, como Apache Kafka e ScyllaDB, Apache Spark, entre outras. Por esse motivo, agrega valor a construção de um ambiente distribuído, onde seja possível deployar serviços como o Kafka, Spark e o ScyllaDB em clusters e também se deparar com desafios desses ambientes, como por exemplo o workflow de deploy de serviços no cluster.
+
+- A construção de um ambiente distribuído é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros.
+
+#### 2.2.4 Recursos computacionais usados em cluster de "Produção
+
+| Node          | IP            | Hostname                  | Usuário  | OS Version         | CPUs | Arquitetura | Model                                     | Memória RAM | Memória SWAP |
+|---------------|---------------|---------------------------|----------|--------------------|------|-------------|-------------------------------------------|--------------|-------------|
+| Node Master   | 192.168.15.101| `dadaia@dadaia-desktop`   | dadaia   | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-2600 CPU @ 3.40GHz   | 15866,8 MB   | 2048,0 MB   |
+| Node Marcinho | 192.168.15.88 | `dadaia-HP-ZBook-15-G2`   | dadaia   | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-4810MQ CPU @ 2.80GHz | 15899,1 MB   | 2048,0 MB   |
+| Node Ana      | 192.168.15.8  | `dadaia3-Lenovo-Y50-70`   | dadaia-3 | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-4720HQ CPU @ 2.60GHz | 11864,0 MB   | 0           |
+| Node Arthur   | 192.168.15.83 | `dadaia2-ThinkPad-E560`   | dadaia2  | Ubuntu 22.04.4 LTS | 4    | x86_64      | Intel(R) Core(TM) i5-6200U CPU @ 2.30GHz  | 3790,3 MB    | 2048,0 MB   |
+
+
+## 3 - Explicação sobre o case desenvolvido
+
+### 3.1 - Obtenção de dados da Origem
+
+Nesse case foram utilizados dados de origem em redes de blockchain públicas do tipo EVM. Neste tipo de rede a seguinte variedade de dados pode ser obtida:
+
+- Dados de blocos minerados e suas respectivas transações;
+- Dados de variáveis de estado em contratos inteligentes deployados na rede.
+
+### 3.1.1 - Dados de blocos e transações
+
+Em redes Blockchain do tipo EVM, a cada intervalo de tempo, um novo bloco é minerado contendo transações. É possível visualizar esse processo em websites como [Etherscan](https://etherscan.io/) para a rede Ethereum ou [Polyscan](https://polygonscan.com/) para a Polygon. As transações efetuadas podem ser dos seguintes tipos:
+
+- Transações de transferência de tokens entre endereços;
+- Transações de com chamadas para execução de contratos inteligentes;
+- Transações de deploy de novos contratos inteligentes;
+
+Como pode ser visto com mais profundidade na seção de apendice deste documento, redes de blockchain públicas possuem as seguintes características:
+
+- São denominadas públicas por serem redes P2P que permitem que qualquer pessoa possa se tornar um nó da rede.
+- A estrutura dedados blockchain é por natureza distribuída. Todos os nós da rede P2P possuem uma cópia do ledger (estrutura de dados que contém todos os blocos) e são sincronizados entre si, para que possam validar transações e minerar novos blocos.
+
+Então para se ter acesso a dados de uma rede blockchain pública, é necessário que se tenha acesso a um nó da rede. A interação com um nó da rede é feita por meio de APIs oferecidas pela comunidade de desenvolvedores de cada protocolo para diferentes linguagens de programação.
+
+### 3.1.2 - Nós de Blockchain e Provedores Node-as-a-Service
+
+Dada a conclusão acima, é preciso acessar um nó da rede para se ter acesso aos dados. Para isso, existem 2 possibilidades
+
+#### Deploy de um nó na rede
+
+É possível fazer o deploy de um nó em ambiente on-premises ou em cloud. Isso pode ser feito por meio de um provedor de cloud, como AWS, Azure, Google Cloud, entre outros. E então, por meio de APIs, é possível acessar os dados da rede.
+
+- **Vantagem**: Número de requisições não é limitado por um provedor.
+- **Desvantagem**: Requisitos de hardware e de software necessários para deploy de um nó on-premises ou em cloud.
+
+#### Utilização de provedores de Node-as-a-Service
+
+Existem no mercado provedores de Node-as-a-Service, que oferecem acesso a nós de redes de blockchain públicas por meio de APIs. Esses provedores oferecem planos de acesso que variam de acordo com o número de requisições e o tipo de requisição. Alguns exemplos de provedores são:
+
+- [Infura](https://infura.io/)
+- [Alchemy](https://www.alchemy.com/)
+
+A utilização de provedores de Node-as-a-Service é uma opção interessante para esse case, em período de prototipação.
+
+- **Vantagem**: Número de requisições é limitado por um provedor.
+- **Desvantagem**: Requisitos de hardware e de software necessários para deploy de um nó on-premises ou em cloud.
+
+#### Conclusão
+
+Para esse case, foi utilizada a opção de provedores de Node-as-a-Service, devido aos seguintes motivos:
+
+- Facilidade de uso . Os provedores escolhidos foram infura e alchemy, que oferece planos de acesso gratuitos e pagos.
+- O número de requisições é limitado por um provedor torna necessária a implementação de mecanismos para minimizar o mesmo.
+
+#### 3.1.3 - Acesso a dados de blockchain por meio de APIs
+
+Uma das APIs, oferecidas pela comunidade na linguagem Python, é a [Web3.py](https://web3py.readthedocs.io/en/stable/). Ela é uma biblioteca que permite a interação com nós da rede blockchain do tipo EVM. A seguir está um exemplo de código que utiliza a biblioteca Web3.py para acessar dados de uma rede Ethereum:
+
+```python
+from web3 import Web3
+
+# Conexão com um nó da rede Ethereum
+w3 = Web3(Web3.HTTPProvider('https://mainnet.infura.io/v3/API_KEY_INFURA'))
+
+# Acessando dados de um bloco
+block = w3.eth.get_block('latest')
+print(block)
+
+# Acessando dados de uma transação
+tx = w3.eth.get_transaction('0xTRANSACTION_HASH')
+print(tx)
+
+```
+
+
+
+- **Dados de contratos inteligentes**: Em protocolos EVM, contratos inteligentes são programas de computadores que são deployados em um bloco da rede com endereço próprio. Após deployados esses contratos passam a estar disponíveis para interação. Isso permite que aplicações descentralizadas (dApps) sejam criadas dentro do protocolo.
+
+### 3.1 - Ferramentas utilizadas
+
+#### 3.1.1 Docker
+
+
+
+#### 3.1.2 Orquestração de containers
+
+
+
+#### Docker Compose e ambiente local
+
+Devido a quantidade de serviços a serem orquestrados, foi utilizado o `Docker Compose` para orquestração de containers no localhost.
+
+Vantagens desse ambiente de DEV:
+
+- **Facilidade de uso**: Com o `Docker Compose`, é possível orquestrar a execução de vários containers com um único comando.
+- **Desenvolvimento Integrado**: É possivel desenvolver as rotinas de ingestão e processamento de dados de maneira integrada aos serviços também deployados (Kafka, Hadoop e outros). Isso se dá concretamente da seguinte forma:
+  - Usando volumes monta-se diretórios locais aos diretórios de trabalho dos containers.
+  - O container é deployado no docker-compose com o entrypoint de loop infinito, para que o container não finalize sua execução.
+  - O container é acessado via `docker exec -it {container_id} bash`.
+  - Dentro do container a rotina em desenvolvimento é executada por linha de comando.
+  - O resultado é observado em tempo real no diretório local montado como volume.
+
+### 1.2.2 Inicialização do ambiente de Desenvolvimento
+
+No shell script `start_dm_dev_cluster.sh` é possível observar a inicialização do ambiente de desenvolvimento. O script é responsável por:
+
+- Inicializar os containers referentes a serviços da camada fast, definidos em `cluster_dev_fast.yml`.
+- Inicializar os containers referentes a serviços da camada de aplicação web, definidos em `cluster_dev_app.yml`.
+- Inicializar os containers referentes a serviços da camada batch, definidos em `cluster_dev_batch.yml`.
+
+**OBS**: Na primeira execução as imagens serão baixadas do Docker Hub, o que pode levar um tempo considerável. Nas execuções seguintes, as imagens já estarão disponíveis localmente.
+
+É possível monitorar os containers e pará-los com os scripts `monitor_dm_dev_cluster.sh` e `stop_dm_dev_cluster.sh`, respectivamente.
+
+
+
+## 3 - Explicação sobre o case desenvolvido
+
+
+
+## 5 Reprodução do Case
+
+Como foi visto na seção de arquitetura Técnica, esse trabalho foi desenvolvido com vistas a 2 ambientes diferentes. Um primeiro denominado "Desenvolvimento" e um segundo denominado "Produção".
+
+
+
+### 1.3 Inicialização de ambiente de Produção
+
+Utilizando o `Docker Swarm` para subir os containers em um ambiente distribuído, foram desenvolvidos os serviços de persistência de dados e os serviços de visualização de dados.
+
+
+
+1. **Inicialização do cluster Swarm**: Dado que os nós do cluster estão disponíveis, então o cluster pode ser inicializado com o comando:
+2. **Listagem de nós do cluster Swarm**: Lista os nós do cluster Swarm e verifica status e disponibilidade dos mesmos.
+3. **Deploy de stack de serviços no cluster Swarm**: O comando abaixo pode ser executado com os arquivos. Nesse projetos as stacks definidas estão são os arquivos `cluster_prod_fast.yml`, `cluster_prod_app.yml`e `cluster_prod_batch.yml`.
+4. **Deleção de um stack de serviços**:
+5. **Listagem de serviços deployados no cluster Swarm**:
+
+```bash
+./start_cluster.sh
+docker node ls
+docker stack deploy -c {stack_file_name.yml} {stack_name}
+docker stack rm {stack_name}
+docker service ls
+```
+
+
+## 2 - Arquitetura do projeto
+
+
+Desenho de arquitetura:
+
+![Arquitetura de streaming-transactions](./img/arquitetura_streaming_txs.png)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+## 6 - appendice
+
+
 
 ### 2.1 - O que é um blockchain?
 
 Abaixo estão enumerados alguns conceitos da tecnologia blockchain compilados a partir de estudos durante alguns anos. Essa breve introdução busca resumidamente descrever conceitos, fundamentos dessa tecnologia, abordando alguns aspectos da estrutura de dados Blockchain e das redes P2P.
 
-É importante salientar que para um engenheiro de dados, o combo sistemas com tecnologia distribuída e descentralizada mais estrutura de dados é um prato cheio para aplicar conhecimentos de engenharia de dados e ainda explorar novos horizontes.
+É importante salientar que para um engenheiro de dados, o combo "sistemas com tecnologia distribuída e descentralizada" mais "estrutura de dados disruptiva" é um prato cheio para aplicar conhecimentos de engenharia de dados e ainda explorar novos horizontes.
 
 #### 2.1.1. Blockhchain como estrutura de dados
 
@@ -54,13 +294,15 @@ Blockchains públicas são redes de blockchain onde qualquer pessoa pode ser um 
 
 #### 2.1.4. Principais protocolos de blockchain Públicos
 
-O principal protocolo de blockchain é o **Bitcoin**, criado por Satoshi Nakamoto em 2008. Ele básicamente consiste de uma cadeia de blocos que armazena transações de sua moeda (Bitcoin). Então cada bloco contém um conjunto de transações (pessoas trocando bitcoins) e um hash que aponta para o bloco anterior. Para que 1 bloco seja minerado a rede entra em consenso sobre o minerador do bloco após esse resolver 1 problema matemático P e os outros nós validarem a prova da solução. Esse minerador é recompensado com uma quantidade de bitcoins e as transações contidas no bloco são validadas e adicionadas ao ledger. O problema P é resolvido por meio de um processo de tentativa e erro, que é chamado de proof-of-work (PoW).
+O principal protocolo de blockchain é o **Bitcoin**, criado por Satoshi Nakamoto em 2008. Ele básicamente consiste de uma cadeia de blocos que armazena transações de sua moeda (Bitcoin) entre endereços da rede. Então cada bloco contém um conjunto de transações (endereços trocando bitcoins) e um hash que aponta para o bloco anterior. Para que 1 bloco seja minerado a rede entra em consenso sobre o minerador do bloco após esse resolver 1 problema matemático P e os outros nós validarem a prova da solução. Esse minerador é recompensado com uma quantidade de bitcoins e as transações contidas no bloco são validadas e adicionadas ao ledger. O problema P é resolvido por meio de um processo de tentativa e erro, que é chamado de proof-of-work (PoW).
 
 O segundo protocolo de blockchain mais conhecido é o **Ethereum**, criado por Vitalik Buterin em 2015. A rede Ethereum possui as funcionalidades citadas acima, na qual 2 [endereços](https://etherscan.io/address/0x95222290DD7278Aa3Ddd389Cc1E1d165CC4BAfe5) podem trocar o token nativo do protocolo, e também a capacidade de hospedar contratos inteligentes. Os [contratos inteligentes](https://www.infomoney.com.br/guias/smart-contracts/) consistem de programas de computadores, muito similares a classes, mas que ao invés de serem instanciados, são deployados em um bloco da rede com endereço próprio. Após deployados esses contratos passam a estar disponíveis para interação. Isso permite que aplicações descentralizadas (dApps) sejam criadas dentro do protocolo.
 
 <img src="./img/bitcoin-e-ethereum.jpg" alt="Figura 3: Bitcoin e Ethereum" width="300" height="200">
 
 Após a Ethereum surgiram inúmeros outros protocolos de blockchain baseados na máquina virtual Ethereum, como Binance Smart Chain, Polygon, Avalanche, entre outros, herdando características e funcionalidades do Ethereum. Esse tópico tem relevância para o case proposto, pois a rede Ethereum é a rede que será utilizada para a ingestão e processamento de dados em tempo real. Porém como será demonstrado mais adiante, a arquitetura de solução proposta é genérica e pode ser aplicada a qualquer rede de blockchain EVM.
+
+
 
 ### 2.2 - Por que escolher blockchains para esse trabalho?
 
@@ -90,110 +332,3 @@ Usuários da uniswap também podem executar uma funcionalidade chamada [Flash Sw
 Esses fatores citados acima são só alguns dos que embasam a escolha de blockchains para esse trabalho. Ingestar, analisar e processar dados de blockchain pode ser uma tarefa desafiadora, mas também pode ser uma oportunidade de aprendizado e de desenvolvimento de soluções para problemas reais.
 
 A seguir será descrita a arquitetura de solução proposta para o sistema de ingestão e processamento de dados de blockchains em tempo real.
-
-
-## 3 - Arquitetura de Solução do projeto
-
-Desenho de arquitetura:
-
-![Arquitetura de streaming-transactions](./img/arquitetura_streaming_txs.png)
-
-
-## 4 - Ferramentas utilizadas
-
-### 4.1 Docker
-
-Na composição de serviços desse projeto, foi utilizada a ferramenta docker para criação de containers. Essa escolha se deu pelos seguintes motivos:
-
-- **Portabilidade**: Com o docker, é possível criar containers que podem ser executados em qualquer ambiente, independente do sistema operacional ou da infraestrutura.
-
-- **Isolamento**: Cada container é isolado do restante do sistema, o que permite que diferentes serviços sejam executados em um mesmo ambiente sem que haja conflitos.
-
-- **Natureza do projeto**: Na apresentação do case, se faz necessário o uso de ferramentas que são por natureza distrubuídas, como o Apache Kafka e o Apache Cassandra. O docker permite que essas ferramentas sejam executadas em containers, simulando um ambiente distribuído.
-
-## 1.2 Orquestração de containers
-
-Para orquestrar a execução dos containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`.
-
-### 1.2.1 Docker Compose e ambiente local
-
-Devido a quantidade de serviços a serem orquestrados, foi utilizado o `Docker Compose` para orquestração de containers no localhost.
-
-Vantagens desse ambiente de DEV:
-
-- **Facilidade de uso**: Com o `Docker Compose`, é possível orquestrar a execução de vários containers com um único comando.
-- **Desenvolvimento Integrado**: É possivel desenvolver as rotinas de ingestão e processamento de dados de maneira integrada aos serviços também deployados (Kafka, Hadoop e outros). Isso se dá concretamente da seguinte forma:
-  - Usando volumes monta-se diretórios locais aos diretórios de trabalho dos containers.
-  - O container é deployado no docker-compose com o entrypoint de loop infinito, para que o container não finalize sua execução.
-  - O container é acessado via `docker exec -it {container_id} bash`.
-  - Dentro do container a rotina em desenvolvimento é executada por linha de comando.
-  - O resultado é observado em tempo real no diretório local montado como volume.
-
-### 1.2.2 Inicialização do ambiente de Desenvolvimento
-
-No shell script `start_dm_dev_cluster.sh` é possível observar a inicialização do ambiente de desenvolvimento. O script é responsável por:
-
-- Inicializar os containers referentes a serviços da camada fast, definidos em `cluster_dev_fast.yml`.
-- Inicializar os containers referentes a serviços da camada de aplicação web, definidos em `cluster_dev_app.yml`.
-- Inicializar os containers referentes a serviços da camada batch, definidos em `cluster_dev_batch.yml`.
-
-**OBS**: Na primeira execução as imagens serão baixadas do Docker Hub, o que pode levar um tempo considerável. Nas execuções seguintes, as imagens já estarão disponíveis localmente.
-
-É possível monitorar os containers e pará-los com os scripts `monitor_dm_dev_cluster.sh` e `stop_dm_dev_cluster.sh`, respectivamente.
-
-### 1.3 Inicialização de ambiente de Produção
-
-Utilizando o `Docker Swarm` para subir os containers em um ambiente distribuído, foram desenvolvidos os serviços de persistência de dados e os serviços de visualização de dados.
-
-### 1.4 Recursos computacionais usados em cluster
-
-| Node          | IP            | Hostname                  | Usuário  | OS Version         | CPUs | Arquitetura | Model                                     | Memória RAM | Memória SWAP |
-|---------------|---------------|---------------------------|----------|--------------------|------|-------------|-------------------------------------------|--------------|-------------|
-| Node Master   | 192.168.15.101| `dadaia@dadaia-desktop`   | dadaia   | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-2600 CPU @ 3.40GHz   | 15866,8 MB   | 2048,0 MB   |
-| Node Marcinho | 192.168.15.88 | `dadaia-HP-ZBook-15-G2`   | dadaia   | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-4810MQ CPU @ 2.80GHz | 15899,1 MB   | 2048,0 MB   |
-| Node Ana      | 192.168.15.8  | `dadaia3-Lenovo-Y50-70`   | dadaia-3 | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-4720HQ CPU @ 2.60GHz | 11864,0 MB   | 0           |
-| Node Arthur   | 192.168.15.83 | `dadaia2-ThinkPad-E560`   | dadaia2  | Ubuntu 22.04.4 LTS | 4    | x86_64      | Intel(R) Core(TM) i5-6200U CPU @ 2.30GHz  | 3790,3 MB    | 2048,0 MB   |
-
-As máquinas listadas acima estão conectadas por 1 rede local.
-
-### 1.5 Comandos Docker Swarm para gerenciar o cluster
-
-**1. Inicialização do cluster Swarm**: Dado que os nós do cluster estão disponíveis, então o cluster pode ser inicializado com o comando:
-
-```bash
-./start_cluster.sh
-```
-
-**2. Listagem de nós do cluster Swarm**: Com o comando abaixo é possível listar os nós do cluster Swarm e verificar status e disponibilidade dos nós:
-
-```bash
-docker node ls
-```
-
-**3. Deploy de stack de serviços no cluster Swarm**: O comando abaixo pode ser executado com os arquivos 
-
-```bash
-docker stack deploy -c {stack_file_name.yml} {stack_name}
-```
-
-**OBS**: Nesse projetos as stacks definidas estão são os arquivos `cluster_prod_fast.yml`, `cluster_prod_app.yml`e `cluster_prod_batch.yml`:
-
-**4. Deleção de um stack de serviços**:
-
-```bash
-docker stack rm {stack_name}
-```
-
-**5. Listagem de serviços deployados no cluster Swarm**:
-
-```bash
-docker service ls
-```
-
-
-## 2 - Arquitetura do projeto
-
-
-Desenho de arquitetura:
-
-![Arquitetura de streaming-transactions](./img/arquitetura_streaming_txs.png)
