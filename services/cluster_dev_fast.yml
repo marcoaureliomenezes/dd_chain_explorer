@@ -137,7 +137,7 @@ services:
       SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
 
   connect:
-    build: ../docker/infra/kafka-connect
+    image: dm_data_lake/kafka-connect:1.0.0
     container_name: connect
     hostname: connect
     restart: always
@@ -191,9 +191,8 @@ services:
       - broker-3
       - zookeeper
 
-
   scylladb:
-    image: scylladb/scylla:${SCYLLA_VERSION}
+    image: dm_data_lake/scylladb:1.0.0
     container_name: scylladb
     restart: always
     <<: *common-network
@@ -202,29 +201,6 @@ services:
       - "9042:9042"
     volumes:
       - '../mnt/scylladb:/var/lib/scylla'
-
-  spark-master:
-    build: ../docker/infra/spark/spark-master
-    restart: always
-    container_name: spark-master
-    networks:
-      - fast_layer
-    <<: *default_log_config
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "spark-master", "8082" ]
-      <<: *default_healthcheck
-
-  spark-worker:
-    build: ../docker/infra/spark/spark-worker
-    container_name: spark-worker
-    networks:
-      - fast_layer
-    <<: *default_log_config
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "spark-worker", "8081" ]
-      <<: *default_healthcheck
-    depends_on:
-      - spark-master
 
 
 volumes:

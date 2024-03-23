@@ -1,12 +1,11 @@
 version: '3'
 
 x-common-config-default: &conf_default
+  restart: always
   networks:
     - fast_layer
-  image: marcoaureliomenezes/onchain-stream-txs
-  build: ../docker/apps/onchain-stream-txs/
   volumes:
-    - ../docker/apps/onchain-stream-txs/src:/app
+    - ../docker/app_layer/onchain-stream-txs/src:/app
   env_file:
     - .secrets.conf
 
@@ -18,40 +17,39 @@ x-common-config-default: &conf_default
 services:
 
   # topics_creator:
+  #   image: dm_data_lake/onchain-stream-txs:1.0.0
   #   <<: *conf_default
   #   container_name: topics_creator
   #   restart: on-failure
   #   entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
 
   block_clock:
+    image: dm_data_lake/onchain-stream-txs:1.0.0
     <<: *conf_default
     container_name: block_clock
-    restart: always
     entrypoint: "python -u 1_block_clock.py configs/producers.ini"
     environment:
       KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
 
   tx_processor:
+    image: dm_data_lake/onchain-stream-txs:1.0.0
     <<: *conf_default
     container_name: tx_processor
-    restart: always
     environment:
       KEY_VAULT_NODE_SECRET: 'infura-api-key-1-8'
     entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
 
   tx_classifier:
+    image: dm_data_lake/onchain-stream-txs:1.0.0
     <<: *conf_default
-    restart: always
     container_name: tx_classifier
     entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
 
   api_keys_log_processor:
-    image: marcoaureliomenezes/spark-streaming-jobs
-    build: ../docker/apps/spark-streaming-jobs/
+    image: dm_data_lake/spark-streaming-jobs:1.0.0
     container_name: api_keys_log_processor
-    restart: always
     volumes:
-      - ../docker/apps/spark-streaming-jobs/src:/app
+      - ../docker/app_layer/spark-streaming-jobs/src:/app
     entrypoint: "sh /app/shell/api_key_monitor.sh"
     networks:
       - fast_layer

@@ -145,7 +145,7 @@ A rede etherem possui uma média de 1 Bloco a cada 8 segundos e 250 transações
 
 #### 3.1.3 - Acesso a dados de blockchain por meio de APIs
 
-Como comentado, os dados dentro de um nó se tornam acessiveis através do uso de APIs. Uma delas, oferecidas pela comunidade na linguagem Python, é a [Web3.py](https://web3py.readthedocs.io/en/stable/). Ela é uma biblioteca que permite a interação com nós da rede blockchain do tipo EVM. A seguir está um exemplo de código que utiliza a biblioteca **Web3.py** para acessar dados do último bloco minerado **get_block(latest)** e de uma transação com o método **get_transaction('0xTRANSACTION_HASH_ID')**:
+Como comentado, os dados dentro de um nó se tornam acessiveis através do uso de APIs. Uma delas, oferecidas pela comunidade na linguagem Python, é a [Web3.py](https://web3py.readthedocs.io/en/stable/). Ela é uma biblioteca que permite a interação com nós da rede blockchain do tipo EVM. A seguir está um exemplo de código que utiliza a biblioteca **Web3.py** para acessar dados do último bloco minerado **get_block(latest)** e de uma transação com o método **get_transaction('0xTX_HASH_ID')**.
 
 ```python
 from web3 import Web3
@@ -158,7 +158,7 @@ block = w3.eth.get_block('latest')
 print(block)
 
 # Acessando dados de uma transação
-tx = w3.eth.get_transaction('0xTRANSACTION_HASH_ID')
+tx = w3.eth.get_transaction('0xTX_HASH_ID')
 print(tx)
 
 ```
