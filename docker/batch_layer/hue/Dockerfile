@@ -13,8 +13,6 @@ RUN mv /etc/apt/sources.list.d/nodesource.list.disabled /etc/apt/sources.list.d/
 
 COPY ./entrypoint.sh .
 
-COPY ./hue.ini /usr/share/hue/desktop/conf/z-hue.ini
-
 RUN chmod +x ./entrypoint.sh
 
 ENTRYPOINT [ "./entrypoint.sh" ]

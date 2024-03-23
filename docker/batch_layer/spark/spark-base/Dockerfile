@@ -1,7 +1,6 @@
-FROM hive-base:latest
+FROM dm_data_lake/spark-hive-base:1.0.0
 
 # Defining useful environment variables
-#ENV SPARK_VERSION=2.4.5
 ENV SPARK_VERSION=3.5.0
 ENV HADOOP_VERSION=3
 ENV SCALA_VERSION=2.12.4

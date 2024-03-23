@@ -1,8 +1,9 @@
 version: '3'
 
-x-common-log-config: &default_log_config
+x-common-log-config: &default_config
+  restart: always
   networks:
-    - fast-layer
+    - hadoop
   logging:
     driver: "json-file"
     options:
@@ -13,15 +14,7 @@ x-common-healthcheck-default: &default_healthcheck
   timeout: 45s
   interval: 10s
   retries: 10
-
-x-common-hadoop-datanode: &default_hadoop_datanode
-  build: ../docker/infra/hadoop/hadoop-datanode
-  restart: always
-  environment:
-    - SERVICE_PRECONDITION=namenode:9870
-  <<: *default_log_config
-  depends_on:
-    - namenode
+  start_period: 10s
 
 #################################################################
 ################    DEFINIÇÃO DOS SERVIÇOS    ###################
@@ -29,137 +22,153 @@ x-common-hadoop-datanode: &default_hadoop_datanode
 
 services:
 
-  node-manager:
-    build: ../docker/infra/hadoop/hadoop-nodemanager
-    restart: always
-    container_name: node-manager
-    <<: *default_log_config
-    environment:
-      - SERVICE_PRECONDITION=namenode:9870 datanode-1:9864 datanode-2:9864
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "node-manager", "8042" ]
-      <<: *default_healthcheck
-    depends_on:
-      - namenode
-      - datanode-1
-      - datanode-2
-
-
+  # APACHE HADOOP SERVICES
   namenode:
-    build: ../docker/infra/hadoop/hadoop-namenode
-    restart: always
-    container_name: hadoop-namenode
-    # volumes:
-    #   - ../mnt/hadoop/namenode:/hadoop/hdfs/name
-    <<: *default_log_config
+    image: dm_data_lake/hadoop-namenode:1.0.0
+    container_name: namenode
+    <<: *default_config
     ports:
-      - "32763:9870"
-    environment:
-      - CLUSTER_NAME=hadoop_cluster
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "namenode", "9870" ]
-      <<: *default_healthcheck
-
-  datanode-1:
-    <<: *default_hadoop_datanode
-    container_name: datanode-1
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "datanode-1", "9864" ]
-      <<: *default_healthcheck
-
-  datanode-2:
-    <<: *default_hadoop_datanode
-    container_name: datanode-2
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "datanode-2", "9864" ]
-      <<: *default_healthcheck
-
-
-  postgres:
-    build: '../docker/infra/postgres'
-    restart: always
-    container_name: postgres
-    <<: *default_log_config
+      - 9870:9870
+      - 9000:9000
     volumes:
-      - ../mnt/postgres:/var/lib/postgresql/data/pgdata
+      - hadoop_namenode:/hadoop/dfs/name
     environment:
-      - PGDATA=/var/lib/postgresql/data/pgdata
-      - POSTGRES_USER=airflow
-      - POSTGRES_PASSWORD=airflow
-      - POSTGRES_DB=airflow_db
-    healthcheck:
-      test:
-        ["CMD", "pg_isready", "-q", "-d", "airflow_db", "-U", "airflow"]
-      <<: *default_healthcheck
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+
+  datanode:
+    image: dm_data_lake/hadoop-datanode:1.0.0
+    container_name: datanode
+    <<: *default_config
+    ports:
+      - 9864:9864
+    volumes:
+      - hadoop_datanode:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+
+  resourcemanager:
+    image: dm_data_lake/hadoop-resourcemanager:1.0.0
+    container_name: resourcemanager
+    <<: *default_config
+    ports:
+      - 18088:8088
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - ./hadoop.env
+
+  nodemanager:
+    image: dm_data_lake/hadoop-nodemanager:1.0.0
+    container_name: nodemanager
+    <<: *default_config
+    ports:
+      - 18042:8042
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+
+  historyserver:
+    image: dm_data_lake/hadoop-historyserver:1.0.0
+    container_name: historyserver
+    <<: *default_config
+    ports:
+      - 19888:8188
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    volumes:
+      - hadoop_historyserver:/hadoop/yarn/timeline
+    env_file:
+      - ./hadoop.env
 
 
+  # APACHE HIVE SERVICES AND HUE
   hive-metastore:
-    build: ../docker/infra/hive/hive-metastore
-    restart: always
+    image: dm_data_lake/hive-base:1.0.0
     container_name: hive-metastore
-    <<: *default_log_config
+    <<: *default_config
+    command: /opt/hive/bin/hive --service metastore
     environment:
-      - SERVICE_PRECONDITION=namenode:9870 datanode-1:9864 datanode-2:9864 postgres:5432
+      SERVICE_PRECONDITION: "namenode:9870 datanode:9864 postgres:5432"
+    ports:
+      - "9083:9083"
     healthcheck:
       test: [ "CMD", "nc", "-z", "hive-metastore", "9083" ]
       <<: *default_healthcheck
-
+    env_file:
+      - ./hadoop-hive.env
 
   hive-server:
-    build: ../docker/infra/hive/hive-server
-    restart: always
+    image: dm_data_lake/hive-base:1.0.0
     container_name: hive-server
-    <<: *default_log_config
+    <<: *default_config
     environment:
-      - SERVICE_PRECONDITION=hive-metastore:9083
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://postgres:5432/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
     healthcheck:
-      test: [ "CMD", "nc", "-z", "hive-server", "10002" ]
+      test: [ "CMD", "nc", "-z", "hive-metastore", "9083" ]
       <<: *default_healthcheck
-    depends_on:
-      - hive-metastore
+    env_file:
+      - ./hadoop-hive.env
 
-  hue:
-    build: ../docker/infra/hue
-    restart: always
-    container_name: hadoop-hue
-    <<: *default_log_config
+  presto-coordinator:
+    image: shawnzhu/prestodb:0.181
+    container_name: presto-coordinator
+    <<: *default_config
+
+  postgres:
+    image: dm_data_lake/postgres:1.0.0
+    container_name: postgres
+    <<: *default_config
+    volumes:
+      - postgres_hive_hue:/var/lib/postgresql/data
+
+  hue-webui:
+    image: dm_data_lake/hue-webui:1.0.0
+    container_name: hue-webui
+    <<: *default_config
     ports:
       - "32762:8888"
     volumes:
       - ../mnt/hue/hue.ini:/usr/share/hue/desktop/conf/z-hue.ini
     environment:
-      - SERVICE_PRECONDITION=hive-server:10000 postgres:5432
+      SERVICE_PRECONDITION: "hive-server:10000 postgres:5432"
     healthcheck:
-      test: [ "CMD", "nc", "-z", "hue", "8888" ]
+      test: [ "CMD", "nc", "-z", "hue-webui", "8888" ]
       <<: *default_healthcheck
-    depends_on:
-      - hive-server
-      - postgres
 
+
+  # APACHE SPARK SERVICES
   spark-master:
-    build: ../docker/infra/spark/spark-master
-    restart: always
+    image: dm_data_lake/spark-master:1.0.0
+    <<: *default_config
     container_name: spark-master
-    <<: *default_log_config
+    ports:
+      - "18080:8082"
     healthcheck:
       test: [ "CMD", "nc", "-z", "spark-master", "8082" ]
       <<: *default_healthcheck
 
   spark-worker:
-    build: ../docker/infra/spark/spark-worker
+    image: dm_data_lake/spark-worker:1.0.0
     container_name: spark-worker
-    <<: *default_log_config
+    <<: *default_config
+    depends_on:
+      - spark-master
     healthcheck:
       test: [ "CMD", "nc", "-z", "spark-worker", "8081" ]
       <<: *default_healthcheck
-    depends_on:
-      - spark-master
 
+
+  # APACHE AIRFLOW SERVICES
   airflow:
-    build: ../docker/infra/airflow
-    restart: always
+    image: dm_data_lake/airflow:1.0.0
     container_name: airflow
-    <<: *default_log_config
+    <<: *default_config
     volumes:
       - ../mnt/airflow/airflow.cfg:/opt/airflow/airflow.cfg
       - ../mnt/airflow/dags:/opt/airflow/dags
@@ -172,6 +181,30 @@ services:
     depends_on:
       - postgres
 
+  postgres_airflow:
+    image: postgres:11.4-alpine
+    container_name: postgres_airflow
+    <<: *default_config
+    volumes:
+      - postgres_airflow:/var/lib/postgresql/data/pgdata
+    environment:
+      - POSTGRES_USER=airflow
+      - POSTGRES_PASSWORD=airflow
+      - POSTGRES_DB=airflow_db
+      - PGDATA=/var/lib/postgresql/data/pgdata
+    healthcheck:
+      test:
+        ["CMD", "pg_isready", "-q", "-d", "airflow_db", "-U", "airflow"]
+      <<: *default_healthcheck
+
+volumes:
+  hadoop_namenode:
+  hadoop_datanode:
+  hadoop_historyserver:
+  postgres_hive_hue:
+  postgres_airflow:
+
+
 networks:
-  fast-layer:
-    name: fast-layer
+  hadoop:
+    name: hadoop

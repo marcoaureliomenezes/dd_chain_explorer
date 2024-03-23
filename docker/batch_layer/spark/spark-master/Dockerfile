@@ -1,4 +1,4 @@
-FROM spark-base:latest
+FROM dm_data_lake/spark-base:1.0.0
 
 ENV SPARK_MASTER_PORT=7077
 ENV SPARK_MASTER_UI_PORT=8082

@@ -1,4 +1,4 @@
-FROM spark-base:latest
+FROM dm_data_lake/spark-base:1.0.0
 
 ENV SPARK_WORKER_UI_PORT=8081
 ENV SPARK_WORKER_LOG_DIR=/var/logs/spark
