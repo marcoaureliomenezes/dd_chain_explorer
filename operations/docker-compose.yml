@@ -1,0 +1,87 @@
+version: '3'
+
+
+services:
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - 9090:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    networks:
+      - dm-operations-dev
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    restart: unless-stopped
+
+
+  grafana:
+    image: grafana/grafana
+    restart: unless-stopped
+    container_name: grafana
+    ports:
+      - 3000:3000
+    networks:
+      - dm-operations-dev
+    volumes:
+      - grafana-data:/var/lib/grafana
+
+  node_exporter:
+    image: quay.io/prometheus/node-exporter:latest
+    container_name: node_exporter
+    ports:
+      - 9100:9100
+    networks:
+      - dm-operations-dev
+    command:
+      - '--path.rootfs=/host'
+    pid: host
+    restart: unless-stopped
+    volumes:
+      - '/:/host:ro,rslave'
+
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - 8080:8080
+    networks:
+      - dm-operations-dev
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    restart: unless-stopped
+
+  # visualizer:
+  #   image: dockersamples/visualizer:stable
+  #   ports:
+  #     - "8081:8080"
+  #   stop_grace_period: 1m30s
+  #   networks:
+  #     - dm-operations-dev
+  #   volumes:
+  #     - "/var/run/docker.sock:/var/run/docker.sock"
+
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "80:80"
+  #   deploy:
+  #     mode: global
+  #     placement:
+  #       constraints:
+  #         - node.role == worker
+
+  
+volumes:
+  prometheus_data:
+  grafana-data:
+
+networks:
+  dm-operations-dev:
+    driver: bridge

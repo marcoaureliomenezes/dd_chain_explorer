@@ -14,6 +14,8 @@ build:
 	# HIVE RELATED BUILD
 	docker build -t dm_data_lake/postgres:$(current_branch) ./docker/batch_layer/postgres
 	docker build -t dm_data_lake/hive-base:$(current_branch) ./docker/batch_layer/hive
+	docker build -t dm_data_lake/hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
+	docker build -t dm_data_lake/hive-server:$(current_branch) ./docker/batch_layer/hive/server
 	docker build -t dm_data_lake/hue-webui:$(current_branch) ./docker/batch_layer/hue
 	
 	# SPARK CLUSTER RELATED BUILD
