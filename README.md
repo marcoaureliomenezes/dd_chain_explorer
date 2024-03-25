@@ -14,17 +14,27 @@ O **dm_v3_chain_explorer** é um repositório no qual estão implementadas e doc
 
 ## 1 - Objetivo do Case
 
-O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo a uma banca. Nessa apresetação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**.
+O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo a uma banca. Nessa apresentação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**.
 
-Para alcançar tal objetivo final e, dados os requisitos do case, especificados estes pela organização do programa, neste sistema foram definidos objetivos específicos categorizados em objetivos de negócio e objetivos técnicos.
+Para alcançar tal objetivo final e, dados os requisitos do case, especificados estes pela organização do programa, para a construção desse sistema foram definidos objetivos específicos, categorizados em objetivos de negócio e objetivos técnicos.
 
 ### 1.1 - Objetivos de negócio
 
 Nesse trabalho o objetivo de negócio é prover uma solução capaz de analisar e obter insights de dados com origem em **redes P2P do tipo blockchain**. Dois fatores que embasam tal escolha e que são de conhecimento geral:
 
-- **Dados públicos**: Blockchains são redes P2P que armazenam transações e contratos inteligentes de forma pública. Isso significa que qualquer pessoa pode acessar esses dados e utilizá-los para análises, dashboards, bots, entre outras aplicações. Obviamente desde que possua os requisitos necessários para acessar um nó da rede P2P em questão e também os meios de interagir com esse nó e processar os dados obtidos a partir dele.
+- **Dados públicos**: Blockchains são redes ponto-a-ponto que armazenam transações e contratos inteligentes em blocos. Blockchains públicas permitem que qualquer nó possa ingressar na rede. Isso significa que é possível acessar esses dados e utilizá-los para análises, dashboards, bots, entre outras aplicações. Obviamente desde que os requisitos necessários para acessar um nó da rede em questão e também os meios de interagir com esse nó e processar os dados obtidos a partir dele sejam satisfeitos.
 
 - **Oportunidades reais**: Atualmente existem inúmeras redes blockchain que hospedam aplicações descentralizadas (dApps), na forma de contratos inteligentes, para as mais diversas finalidades. Existe um tipo específico de dApps denominado DeFi (Decentralized Finance) que são aplicações financeiras descentralizadas que permitem empréstimos, trocas de tokens, entre outras funcionalidades. Em [Defi Llama](https://defillama.com/) é possível ver uma lista de aplicações DeFi e o volume de capital bloqueado em cada uma delas.
+
+#### Observação sobre o tema escolhido
+
+Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi. Porém, na seção **Appendice** desse documento, estão descritos alguns conceitos básicos de blockchain e também uma breve descrição de 2 aplicações DeFi, Aave e Uniswap. É entendido pelo autor desse trabalho que, apesar de não ser um requisito especificado no case, inúmeros conceitos usados nesse trabalho e intríscecos à tecnologia blockchain exploram com profundidade:
+
+- Estruturas de dados complexas (o próprio blockchain);
+- Arquiteturas de sistemas distribuídos e descentralizados;
+- Até mesmo conceitos ralacionados a finanças.
+
+Portanto, a escolha de blockchains para esse case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros. Caso o leitor deseje se aprofundar mais nesse tema, a seção **Appendice** desse documento é um ´ótimo ponto de partida.
 
 ### 1.2 - Objetivos técnicos
 
