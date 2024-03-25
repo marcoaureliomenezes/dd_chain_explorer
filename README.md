@@ -28,13 +28,13 @@ Nesse trabalho o objetivo de negócio é prover uma solução capaz de analisar 
 
 #### Observação sobre o tema escolhido
 
-Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi. Porém, na seção **Appendice** desse documento, estão descritos alguns conceitos básicos de blockchain e também uma breve descrição de 2 aplicações DeFi, Aave e Uniswap. É entendido pelo autor desse trabalho que, apesar de não ser um requisito especificado no case, inúmeros conceitos usados nesse trabalho e intríscecos à tecnologia blockchain exploram com profundidade:
+Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi. Porém, é entendido pelo autor desse trabalho que, apesar de não ser um requisito especificado no case, inúmeros conceitos usados nesse trabalho e intríscecos à tecnologia blockchain exploram com profundidade campos como:
 
 - Estruturas de dados complexas (o próprio blockchain);
 - Arquiteturas de sistemas distribuídos e descentralizados;
-- Até mesmo conceitos ralacionados a finanças.
+- Conceitos ralacionados a finanças.
 
-Portanto, a escolha de blockchains para esse case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros. Caso o leitor deseje se aprofundar mais nesse tema, a seção **Appendice** desse documento é um ´ótimo ponto de partida.
+**Portanto**, a escolha de blockchains para esse case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros. Caso o leitor deseje se aprofundar mais nesse tema, a seção `Appendice` desse documento é um ótimo ponto de partida.
 
 ### 1.2 - Objetivos técnicos
 
