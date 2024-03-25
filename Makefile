@@ -37,8 +37,19 @@ build:
 	# docker build -t dm_data_lake/spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
 
 
+start_prod_cluster:
+	sh scripts/start_prod_cluster.sh
+
 create_topics:
 	docker-compose -f services/cluster_dev_app.yml start topics_creator
+
+
+
+deploy_dev_operations:
+	docker-compose -f operations/docker-compose.dev.yml up -d
+
+stop_dev_operations:
+	docker-compose -f operations/docker-compose.dev.yml down
 
 deploy_dev_fast:
 	docker-compose -f services/cluster_dev_fast.yml up -d
@@ -46,6 +57,8 @@ deploy_dev_fast:
 
 deploy_dev_batch:
 	docker-compose -f services/cluster_dev_batch.yml up -d
+
+
 
 stop_dev_fast:
 	docker-compose -f services/cluster_dev_fast.yml down
@@ -59,15 +72,25 @@ watch_dev_batch_services:
 	watch docker-compose -f services/cluster_dev_batch.yml ps
 
 
+#########################  COMANDOS EM PRODUÇÃO   ###########################
+
+deploy_prod_operations:
+	docker stack deploy -c operations/docker-compose.prod.yml layer_operations
+
+stop_prod_operations:
+	docker stack rm layer_operations
+
 deploy_prod_fast:
 	docker stack deploy -c services/cluster_prod_fast.yml layer_fast
 	docker stack deploy -c services/cluster_prod_app.yml layer_app
 
 deploy_prod_batch:
 	docker stack deploy -c services/cluster_prod_batch.yml layer_batch
-	
 
 
+
+
+#########################	COMANDOS DE LIMPEZA   ###########################
 watch_prod_services:
 	watch docker service ls
 

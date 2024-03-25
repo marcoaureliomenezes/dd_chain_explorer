@@ -27,7 +27,7 @@ venv*
 
 
 scripts/pre_deploy_airflow.sh
-scripts/initialize_prod_environment.sh
+scripts/start_prod_cluster.sh
 docker/apps/onchain-watchers/
 docker/apps/onchain-monitor/
 docker/apps/onchain-actors/
