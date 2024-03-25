@@ -1,25 +1,41 @@
 # dm_v3_chain_explorer System
 
-O `dm_v3_chain_explorer` é um repositório no qual estão implementadas e documentadas as rotinas de extração, ingestão, processamento, armazenamento e uso de dados com origem em protocolos P2P do tipo blockchain. Esse trabalho foi desenvolvido para o case do programa Data Master.
+O **dm_v3_chain_explorer** é um repositório no qual estão implementadas e documentadas as rotinas de extração, ingestão, processamento, armazenamento e uso de dados com origem em protocolos P2P do tipo blockchain. Esse trabalho foi desenvolvido para o case do programa Data Master.
 
 ## Sumário
 
 1. [Objetivo do Case](#1---objetivo-do-case)
 2. [Arquitetura de solução e Arquitetura Técnica](#2---arquitetura-de-solução-e-arquitetura-técnica)
 3. [Explicação sobre o case desenvolvido](#3---explicação-sobre-o-case-desenvolvido)
-4. [Melhorias e considerações finais](#4---melhorias-e-considerações-finais)
-5. [Reprodução da arquitetura](#5---reprodução-da-arquitetura)
-6. [Appendice](#6---appendice)
+4. [Aspectos técnicos desse trabalho](#4---aspectos-técnicos)
+5. [Melhorias e considerações finais](#4---melhorias-e-considerações-finais)
+6. [Reprodução da arquitetura](#5---reprodução-da-arquitetura)
+7. [Appendice](#6---appendice)
 
 ## 1 - Objetivo do Case
 
-Esse case tem por objetivo final a sua submissão para o programa Data Master e posterior apresentação do mesmo a uma banca onde possam ser avaliados conceitos e técnicas de engenharia de dados, aplicados na construção prática deste sistema. Para alcançar esse objetivo, foram definidos os seguintes objetivos específicos:
+O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo a uma banca. Nessa apresetação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**.
 
-- Realizar a ingestão de dados em tempo real do protocolo Ethereum de forma a minimizar a latência entre a transação e a ingestão.
-- Construir um sistema genérico que funciona para qualquer rede de blockchain do tipo EVM.
-- Armazenar dados pertinentes a analises em banco de dados analítico.
-- Construir uma arquitetura de solução que permita a escalabilidade do sistema.
-- Explorar possibilidade de um sistema similar a esse ser utilizado para resolver problemas reais, com possíveis aplicações práticas e retornos financeiros.
+Para alcançar tal objetivo final e, dados os requisitos do case, especificados estes pela organização do programa, neste sistema foram definidos objetivos específicos categorizados em objetivos de negócio e objetivos técnicos.
+
+### 1.1 - Objetivos de negócio
+
+Nesse trabalho o objetivo de negócio é prover uma solução capaz de analisar e obter insights de dados com origem em **redes P2P do tipo blockchain**. Dois fatores que embasam tal escolha e que são de conhecimento geral:
+
+- **Dados públicos**: Blockchains são redes P2P que armazenam transações e contratos inteligentes de forma pública. Isso significa que qualquer pessoa pode acessar esses dados e utilizá-los para análises, dashboards, bots, entre outras aplicações. Obviamente desde que possua os requisitos necessários para acessar um nó da rede P2P em questão e também os meios de interagir com esse nó e processar os dados obtidos a partir dele.
+
+- **Oportunidades reais**: Atualmente existem inúmeras redes blockchain que hospedam aplicações descentralizadas (dApps), na forma de contratos inteligentes, para as mais diversas finalidades. Existe um tipo específico de dApps denominado DeFi (Decentralized Finance) que são aplicações financeiras descentralizadas que permitem empréstimos, trocas de tokens, entre outras funcionalidades. Em [Defi Llama](https://defillama.com/) é possível ver uma lista de aplicações DeFi e o volume de capital bloqueado em cada uma delas.
+
+### 1.2 - Objetivos técnicos
+
+Para alcançar os objetivos de negócio, é preciso implementar um sistema capaz de capturar, ingestar, processar, persistir e utilizar dados da origem mencionada. Para isso, foram definidos os seguintes objetivos técnicos:
+
+- Criar sistema de captura de dados de redes de blockchain públicas.
+- Criar um sistema de captura agnóstico à rede de blockchain, desde que a rede seja do tipo EVM (Ethereum Virtual Machine).
+- Criar uma arquitetura de solução que permita a ingestão e processamento de dados em tempo real com a menor latência possível.
+- Criar um ambiente reproduzível e escalável com serviços de Big Data para ingestão, processamento e armazenamento de dados.
+- Armazenar dados pertinentes a análises em banco de dados analítico e a uso por aplicações em banco de dados transacional.
+- Construir uma arquitetura que permita a escalabilidade do sistema e maximize a disponibilidade do mesmo.
 
 ## 2 - Arquitetura de solução e Arquitetura Técnica
 
