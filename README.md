@@ -34,7 +34,7 @@ Dado que a tecnologia blockchain não é assunto trivial e também não é um re
 - Arquiteturas de sistemas distribuídos e descentralizados;
 - Conceitos ralacionados a finanças.
 
-**Portanto**, a escolha de blockchains para esse case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros. Caso o leitor deseje se aprofundar mais nesse tema, a seção `Appendice` desse documento é um ótimo ponto de partida.
+Portanto, a escolha de blockchains para esse case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros. Caso o leitor deseje se aprofundar mais nesse tema, a **seção Appendice** desse documento é um ótimo ponto de partida.
 
 ### 1.2 - Objetivos técnicos
 
@@ -42,10 +42,11 @@ Para alcançar os objetivos de negócio, é preciso implementar um sistema capaz
 
 - Criar sistema de captura de dados de redes de blockchain públicas.
 - Criar um sistema de captura agnóstico à rede de blockchain, desde que a rede seja do tipo EVM (Ethereum Virtual Machine).
-- Criar uma arquitetura de solução que permita a ingestão e processamento de dados em tempo real com a menor latência possível.
-- Criar um ambiente reproduzível e escalável com serviços de Big Data para ingestão, processamento e armazenamento de dados.
-- Armazenar dados pertinentes a análises em banco de dados analítico e a uso por aplicações em banco de dados transacional.
-- Construir uma arquitetura que permita a escalabilidade do sistema e maximize a disponibilidade do mesmo.
+- Criar uma arquitetura de solução que permita a ingestão e processamento de dados em tempo real.
+- Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema.
+- Criar um ambiente reproduzível e escalável com serviços necessários à execução de papeis necessários ao sistema.
+- Armazenar e consumir dados pertinentes a operação e análises em bancos analíticos e transacionais.
+- Implementar formas de monitorar o sistema (dados de infraestrutura, logs, etc).
 
 ## 2 - Arquitetura de solução e Arquitetura Técnica
 
@@ -54,8 +55,19 @@ O `dm_v3_chain_explorer` é um sistema de ingestão e processamento de dados de 
 - **Camada Fast**: Camada de ingestão de dados em tempo real.
 - **Camada Batch**: Camada de processamento de dados em batch.
 - **Camada de Aplicação**: Camada com aplicações que interagem com blockchain.
+- **Camada de Operação**: Camada com serviços necessários ao monitoramento do sistema.
 
-**OBS**: Nas camadas Fast e Batch, são utilizadas ferramentas de Big Data para ingestão, processamento e armazenamento de dados que estão descritos nesta seção. Já na camada de aplicação, estão definidos os serviços que interagem com a rede de blockchain para capturar os dados e com as ferramentas de Big Data para ingestar, processar e armazenar.
+Foi optado nesse trabalho pela construção de um ambiente híbrido para desenvolvimento e teste do sistema.
+
+**Observações**:
+
+- Na camada `Batch` estão definidos serviços relacionados a um Cluster Hadoop, junto a ferramentas que trabalham com tal cluster de forma conjunta, tais como o Apache Spark, Apache Airflow, entre outros.
+
+- Na camada `Fast` estão definidos serviços relacionados a um cluster Kafka e ferramentas de seu ecossistema, tais como Kafka Connect, Zookeeper, Schema Registry, entre outros.
+
+- Na camada de `Operação`, estão definidos serviços que monitoram a infraestrutura do sistema, como Prometheus, Grafana e exporters de métricas necessários para monitoramento.
+
+- Na camada de `Aplicação`, estão definidas rotinas que interagem com a rede de blockchain para capturar os dados e com as ferramentas de Big Data para ingestar, processar e armazenar estes mesmo dados.
 
 ### 2.1 - Arquitetura de Solução
 
