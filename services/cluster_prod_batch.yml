@@ -1,0 +1,195 @@
+version: '3'
+
+
+x-common-log-config: &default_config
+  networks:
+    - layer-batch-prod
+  logging:
+    driver: "json-file"
+    options:
+      max-file: "5"
+      max-size: "10m"
+
+x-common-restart-default: &common_restart_policy
+  restart_policy:
+    condition: on-failure
+
+x-common-deploy-master: &common_deploy_master
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints:
+        - node.hostname == dadaia-desktop
+
+x-common-deploy-worker-1: &common_deploy_worker_1
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints:
+        - node.hostname == dadaia-HP-ZBook-15-G2
+
+x-common-deploy-worker-2: &common_deploy_worker_2
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints:
+        - node.hostname == dadaia-server
+
+x-common-deploy-worker-3: &common_deploy_worker_3
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints:
+        - node.hostname == dadaia-server-2
+
+# ==============================================================
+# =================  DEFINIÇÃO DOS SERVIÇOS  ===================
+# ==============================================================
+services:
+
+  namenode:
+  # APACHE HADOOP SERVICES
+  namenode:
+    image: marcoaureliomenezes/dm-hadoop-namenode:1.0.0
+    container_name: namenode
+    <<: *default_config
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode_prod:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=datalake
+    <<: *common_deploy_master
+
+  datanode:
+    image: marcoaureliomenezes/dm-hadoop-datanode:1.0.0
+    container_name: datanode
+    <<: *default_config
+    ports:
+      - 9864:9864
+    volumes:
+      - hadoop_datanode_prod_1:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    <<: *common_deploy_master
+
+
+  # postgres:
+  #   image: marcoaureliomenezes/dm-postgres:1.0.0
+  #   <<: *default_log_config
+  #   ports:
+  #     - "32769:5432"
+  #   volumes:
+  #     - /mnt/:/var/lib/postgresql/data/pgdata
+  #   environment:
+  #     - POSTGRES_USER=airflow
+  #     - POSTGRES_PASSWORD=airflow
+  #     - POSTGRES_DB=airflow_db
+  #     - PGDATA=/var/lib/postgresql/data/pgdata
+  #   <<: *default_deploy_node_1
+
+  # hive-metastore:
+  #   image: marcoaureliomenezes/dm_structure_hive-metastore:1.0.0
+  #   depends_on:
+  #     - postgres
+  #     - datanode
+  #   <<: *default_log_config
+  #   environment:
+  #     - SERVICE_PRECONDITION=namenode:9870 datanode:9864 postgres:5432
+  #   ports:
+  #     - "32761:9083"
+  #   <<: *default_deploy_node_2
+
+  # hive-server:
+  #   image: marcoaureliomenezes/dm_structure_hive-server:1.0.0
+  #   depends_on:
+  #     - hive-metastore
+  #   <<: *default_log_config
+  #   environment:
+  #     - SERVICE_PRECONDITION=hive-metastore:9083
+  #   ports:
+  #     - "32760:10000"
+  #     - "32759:10002"
+  #   <<: *default_deploy_node_2
+
+  # spark-master:
+  #   image: marcoaureliomenezes/dm_structure_spark-master:1.0.0
+  #   <<: *default_log_config
+  #   ports:
+  #     - "32766:8082"
+  #     - "32765:7077"
+  #   <<: *default_deploy_node_3
+
+  # spark-worker:
+  #   image: marcoaureliomenezes/dm_structure_spark-worker:1.0.0
+  #   <<: *default_log_config
+  #   ports:
+  #     - "32764:8081"
+  #   <<: *default_deploy_node_3
+    
+  # airflow:
+  #   image: marcoaureliomenezes/dm_structure_apache_airflow:1695343311
+  #   networks:
+  #     - hadoop-network
+  #   ports:
+  #     - 8080:8080
+  #   depends_on:
+  #     - postgres
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   secrets:
+  #     - azure_client_id
+  #     - azure_tenant_id
+  #     - azure_client_secret
+  #   <<: *default_deploy_node_4
+
+  # hue:
+  #   image: marcoaureliomenezes/dm_structure_hue:1.0.0
+  #   restart: always
+  #   <<: *default_log_config
+  #   ports:
+  #     - "32762:8888"
+  #   environment:
+  #     - SERVICE_PRECONDITION=hive-server:10000 postgres:5432
+  #   <<: *default_deploy_node_4
+
+  # visualizer:
+  #   image: dockersamples/visualizer:stable
+  #   ports:
+  #     - "8081:8080"
+  #   stop_grace_period: 1m30s
+  #   networks:
+  #     - hadoop-network
+  #   volumes:
+  #     - "/var/run/docker.sock:/var/run/docker.sock"
+  #   <<: *default_deploy_node_4
+
+  # redis:
+  #   image: redis:latest
+  #   ports:
+  #     - "6379:6379"
+  #   networks:
+  #     - hadoop-network
+  #   <<: *default_deploy_node_4
+
+
+  # redis-commander:
+  #   image: rediscommander/redis-commander:latest
+  #   environment:
+  #     - REDIS_HOSTS=local:redis:6379
+  #   ports:
+  #     - "8082:8081"
+  #   depends_on:
+  #     - redis
+  #   networks:
+  #     - hadoop-network
+  #   <<: *default_deploy_node_4
+
+networks:
+  layer-batch-prod:
+    driver: overlay
+
+volumes:
+  hadoop_namenode_prod:
+  hadoop_datanode_prod_1:
