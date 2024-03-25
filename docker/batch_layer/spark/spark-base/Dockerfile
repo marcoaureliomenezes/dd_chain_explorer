@@ -1,4 +1,4 @@
-FROM dm_data_lake/spark-hive-base:1.0.0
+FROM marcoaureliomenezes/dm-spark-hive-base:1.0.0
 
 # Defining useful environment variables
 ENV SPARK_VERSION=3.5.0

@@ -5,32 +5,32 @@ current_branch = 1.0.0
 build:
 
 	# HADOOP CLUSTER RELATED BUILD
-	docker build -t dm_data_lake/hadoop-namenode:$(current_branch) ./docker/batch_layer/hadoop/namenode
-	docker build -t dm_data_lake/hadoop-datanode:$(current_branch) ./docker/batch_layer/hadoop/datanode
-	docker build -t dm_data_lake/hadoop-resourcemanager:$(current_branch) ./docker/batch_layer/hadoop/resourcemanager
-	docker build -t dm_data_lake/hadoop-nodemanager:$(current_branch) ./docker/batch_layer/hadoop/nodemanager
-	docker build -t dm_data_lake/hadoop-historyserver:$(current_branch) ./docker/batch_layer/hadoop/historyserver
+	docker build -t marcoaureliomenezes/dm-hadoop-namenode:$(current_branch) ./docker/batch_layer/hadoop/namenode
+	docker build -t marcoaureliomenezes/dm-hadoop-datanode:$(current_branch) ./docker/batch_layer/hadoop/datanode
+	docker build -t marcoaureliomenezes/dm-hadoop-resourcemanager:$(current_branch) ./docker/batch_layer/hadoop/resourcemanager
+	docker build -t marcoaureliomenezes/dm-hadoop-nodemanager:$(current_branch) ./docker/batch_layer/hadoop/nodemanager
+	docker build -t marcoaureliomenezes/dm-hadoop-historyserver:$(current_branch) ./docker/batch_layer/hadoop/historyserver
 
 	# HIVE RELATED BUILD
-	docker build -t dm_data_lake/postgres:$(current_branch) ./docker/batch_layer/postgres
-	docker build -t dm_data_lake/hive-base:$(current_branch) ./docker/batch_layer/hive
-	docker build -t dm_data_lake/hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
-	docker build -t dm_data_lake/hive-server:$(current_branch) ./docker/batch_layer/hive/server
-	docker build -t dm_data_lake/hue-webui:$(current_branch) ./docker/batch_layer/hue
+	docker build -t marcoaureliomenezes/dm-postgres:$(current_branch) ./docker/batch_layer/postgres
+	docker build -t marcoaureliomenezes/dm-hive-base:$(current_branch) ./docker/batch_layer/hive/base
+	docker build -t marcoaureliomenezes/dm-hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
+	docker build -t marcoaureliomenezes/dm-hive-server:$(current_branch) ./docker/batch_layer/hive/server
+	docker build -t marcoaureliomenezes/dm-hue-webui:$(current_branch) ./docker/batch_layer/hue
 	
 	# SPARK CLUSTER RELATED BUILD
-	docker build -t dm_data_lake/spark-hadoop-base:$(current_branch) ./docker/batch_layer/spark/hadoop-base
-	docker build -t dm_data_lake/spark-hive-base:$(current_branch) ./docker/batch_layer/spark/hive-base
-	docker build -t dm_data_lake/spark-base:$(current_branch) ./docker/batch_layer/spark/spark-base
-	docker build -t dm_data_lake/spark-master:$(current_branch) ./docker/batch_layer/spark/spark-master
-	docker build -t dm_data_lake/spark-worker:$(current_branch) ./docker/batch_layer/spark/spark-worker
+	docker build -t marcoaureliomenezes/dm-spark-hadoop-base:$(current_branch) ./docker/batch_layer/spark/hadoop-base
+	docker build -t marcoaureliomenezes/dm-spark-hive-base:$(current_branch) ./docker/batch_layer/spark/hive-base
+	docker build -t marcoaureliomenezes/dm-spark-base:$(current_branch) ./docker/batch_layer/spark/spark-base
+	docker build -t marcoaureliomenezes/dm-spark-master:$(current_branch) ./docker/batch_layer/spark/spark-master
+	docker build -t marcoaureliomenezes/dm-spark-worker:$(current_branch) ./docker/batch_layer/spark/spark-worker
 
 	# AIRFLOW RELATED BUILD
-	docker build -t dm_data_lake/airflow:$(current_branch) ./docker/batch_layer/airflow/
+	docker build -t marcoaureliomenezes/dm-apache-airflow:$(current_branch) ./docker/batch_layer/airflow/
 
 	# BUILD FAST LAYER IMAGES
-	# docker build -t dm_data_lake/scylladb:$(current_branch) ./docker/fast_layer/scylladb
-	# docker build -t dm_data_lake/kafka-connect:$(current_branch) ./docker/fast_layer/kafka-connect
+	# docker build -t marcoaureliomenezes/scylladb:$(current_branch) ./docker/fast_layer/scylladb
+	# docker build -t marcoaureliomenezes/kafka-connect:$(current_branch) ./docker/fast_layer/kafka-connect
 
 	# BUILD APP LAYER IMAGES
 	# docker build -t dm_data_lake/onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
@@ -87,7 +87,8 @@ deploy_prod_fast:
 deploy_prod_batch:
 	docker stack deploy -c services/cluster_prod_batch.yml layer_batch
 
-
+stop_prod_batch:
+	docker stack rm layer_batch
 
 
 #########################	COMANDOS DE LIMPEZA   ###########################
@@ -101,3 +102,22 @@ delete_volumes:
 delete_images:
 	# docker image prune
 	sh scripts/delete_images.sh
+
+
+publish_images:
+	docker push marcoaureliomenezes/dm-hadoop-namenode:$(current_branch)
+	docker push marcoaureliomenezes/dm-hadoop-datanode:$(current_branch)
+	docker push marcoaureliomenezes/dm-hadoop-resourcemanager:$(current_branch)
+	docker push marcoaureliomenezes/dm-hadoop-nodemanager:$(current_branch)
+	docker push marcoaureliomenezes/dm-hadoop-historyserver:$(current_branch)
+	docker push marcoaureliomenezes/dm-postgres:$(current_branch)
+	docker push marcoaureliomenezes/dm-hive-metastore:$(current_branch)
+	docker push marcoaureliomenezes/dm-hive-server:$(current_branch)
+	docker push marcoaureliomenezes/dm-hue-webui:$(current_branch)
+	docker push marcoaureliomenezes/dm-spark-master:$(current_branch)
+	docker push marcoaureliomenezes/dm-spark-worker:$(current_branch)
+	docker push marcoaureliomenezes/dm-apache-airflow:$(current_branch)
+	# # docker push dm_data_lake/scylladb:$(current_branch)
+	# # docker push dm_data_lake/kafka-connect:$(current_branch)
+	# # docker push dm_data_lake/onchain-stream-txs:$(current_branch)
+	# # docker push dm_data_lake/spark-streaming-jobs:$(current_branch)

@@ -172,6 +172,20 @@ print(tx)
 #### 3.1.1 Docker
 
 
+Servidor NFS
+
+sudo ssh dadaia-server@192.168.15.83
+
+#### Serviços e portas abertas
+
+- **Namenode**: 9870 - Link: `http://localhost:9870/dfshealth.html#tab-overview`
+- **Datanode**: 9864 - Link: `http://localhost:9864/datanode.html#tab-overview`
+- **Resource Manager**: 18088 - Link: `http://localhost:18088/cluster`
+- **Node Manager**: 18042 - Link: `http://localhost:18042/node/allApplications`
+- **History Server**: 19888 - Link: `http://localhost:19888/applicationhistory`
+- **Hue Web UI**: 8888 - Link: `http://localhost:32762/hue/home`
+- **Apache Airflow**: 8080 - Link: `http://localhost:8080`
+
 
 #### 3.1.2 Orquestração de containers
 

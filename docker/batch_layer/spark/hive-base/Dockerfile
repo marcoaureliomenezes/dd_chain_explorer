@@ -1,4 +1,4 @@
-FROM dm_data_lake/spark-hadoop-base:1.0.0
+FROM marcoaureliomenezes/dm-spark-hadoop-base:1.0.0
 
 ARG HIVE_VERSION
 ENV HIVE_VERSION=${HIVE_VERSION:-3.1.2}

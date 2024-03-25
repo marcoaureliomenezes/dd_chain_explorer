@@ -3,7 +3,7 @@ version: '3'
 x-common-log-config: &default_config
   restart: always
   networks:
-    - hadoop
+    - layer-batch-dev
   logging:
     driver: "json-file"
     options:
@@ -25,7 +25,7 @@ services:
 
   # APACHE HADOOP SERVICES
   namenode:
-    image: dm_data_lake/hadoop-namenode:1.0.0
+    image: marcoaureliomenezes/hadoop-namenode:1.0.0
     container_name: namenode
     <<: *default_config
     ports:
@@ -39,7 +39,7 @@ services:
       - ./hadoop.env
 
   datanode:
-    image: dm_data_lake/hadoop-datanode:1.0.0
+    image: marcoaureliomenezes/hadoop-datanode:1.0.0
     container_name: datanode
     <<: *default_config
     ports:
@@ -52,7 +52,7 @@ services:
       - ./hadoop.env
 
   resourcemanager:
-    image: dm_data_lake/hadoop-resourcemanager:1.0.0
+    image: marcoaureliomenezes/hadoop-resourcemanager:1.0.0
     container_name: resourcemanager
     <<: *default_config
     ports:
@@ -63,7 +63,7 @@ services:
       - ./hadoop.env
 
   nodemanager:
-    image: dm_data_lake/hadoop-nodemanager:1.0.0
+    image: marcoaureliomenezes/hadoop-nodemanager:1.0.0
     container_name: nodemanager
     <<: *default_config
     ports:
@@ -74,7 +74,7 @@ services:
       - ./hadoop.env
 
   historyserver:
-    image: dm_data_lake/hadoop-historyserver:1.0.0
+    image: marcoaureliomenezes/hadoop-historyserver:1.0.0
     container_name: historyserver
     <<: *default_config
     ports:
@@ -89,7 +89,7 @@ services:
 
   # APACHE HIVE SERVICES AND HUE
   hive-metastore:
-    image: dm_data_lake/hive-base:1.0.0
+    image: marcoaureliomenezes/hive-base:1.0.0
     container_name: hive-metastore
     <<: *default_config
     command: /opt/hive/bin/hive --service metastore
@@ -104,7 +104,7 @@ services:
       - ./hadoop-hive.env
 
   hive-server:
-    image: dm_data_lake/hive-base:1.0.0
+    image: marcoaureliomenezes/hive-base:1.0.0
     container_name: hive-server
     <<: *default_config
     environment:
@@ -122,14 +122,14 @@ services:
     <<: *default_config
 
   postgres:
-    image: dm_data_lake/postgres:1.0.0
+    image: marcoaureliomenezes/postgres:1.0.0
     container_name: postgres
     <<: *default_config
     volumes:
       - postgres_hive_hue:/var/lib/postgresql/data
 
   hue-webui:
-    image: dm_data_lake/hue-webui:1.0.0
+    image: marcoaureliomenezes/hue-webui:1.0.0
     container_name: hue-webui
     <<: *default_config
     ports:
@@ -145,7 +145,7 @@ services:
 
   # APACHE SPARK SERVICES
   spark-master:
-    image: dm_data_lake/spark-master:1.0.0
+    image: marcoaureliomenezes/spark-master:1.0.0
     <<: *default_config
     container_name: spark-master
     ports:
@@ -155,7 +155,7 @@ services:
       <<: *default_healthcheck
 
   spark-worker:
-    image: dm_data_lake/spark-worker:1.0.0
+    image: marcoaureliomenezes/spark-worker:1.0.0
     container_name: spark-worker
     <<: *default_config
     depends_on:
@@ -167,7 +167,7 @@ services:
 
   # APACHE AIRFLOW SERVICES
   airflow:
-    image: dm_data_lake/airflow:1.0.0
+    image: marcoaureliomenezes/airflow:1.0.0
     container_name: airflow
     <<: *default_config
     volumes:
@@ -207,5 +207,5 @@ volumes:
 
 
 networks:
-  hadoop:
-    name: hadoop
+  layer-batch-dev:
+    name: layer-batch-dev
