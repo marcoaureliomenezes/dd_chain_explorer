@@ -296,8 +296,11 @@ No shell script `start_dm_dev_cluster.sh` é possível observar a inicializaçã
 ## 3 - Explicação sobre o case desenvolvido
 
 
+## 5 - Reprodução do Case
 
-## 5 Reprodução do Case
+Um dos requisitos do case é que a solução proposta seja reproduzível. Para que tal objetivo seja alcançado as seguintes escolhas foram tomadas em relação a ferramentas.
+
+### 5.1 - Docker
 
 Como foi visto nas seções anteriores, esse trabalho foi construído utilizando a ferramenta docker. A definição de imagens docker torna possível que essas imagens sejam instanciadas como containers em qualquer ambiente, desde que o docker esteja instalado e requisitos mínimos de hardware sejam atendidos.
 
@@ -305,7 +308,18 @@ A orquestração de containers foi feita com as ferramentas Docker Compose e Doc
 
 Dessa forma o case aqui implementado pode ser reproduzido (desde que requisitos de hardware sejam atendidos) em qualquer ambiente que possua o docker instalado. Para isso, basta executar alguns comandos no terminal.
 
-Para automatizar esse processo foi definido um **Makefile** na raíz desse projeto que contém os comandos necessários para inicializar e parar os serviços do sistema e mais alguns shell scripts localizados no diretório `scripts/`. A seguir estão listados os comandos disponíveis no Makefile.
+### 5.2 - Makefile
+
+Para automatizar esse processo de execução de diferentes e inúmeros comandos no terminal, foi definido um **Makefile** na raíz desse projeto. Nesse arquivo estão definidos comandos necessários para interagir com o docker e mais alguns shell scripts localizados no diretório `scripts/`. A seguir estão listados os comandos disponíveis no Makefile.
+
+#### Comandos disponíveis no Makefile
+
+```bash
+
+make build # Realiza o build das imagens docker definidas no diretório docker/
+
+
+```
 
 ### 1.3 Inicialização de ambiente de Produção
 

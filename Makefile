@@ -37,14 +37,7 @@ build:
 	# docker build -t dm_data_lake/spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
 
 
-start_prod_cluster:
-	sh scripts/start_prod_cluster.sh
-
-create_topics:
-	docker-compose -f services/cluster_dev_app.yml start topics_creator
-
-
-
+# COMANDOS PARA DEPLOY DE CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO (DOCKER COMPOSE)
 deploy_dev_operations:
 	docker-compose -f operations/docker-compose.dev.yml up -d
 
@@ -58,8 +51,6 @@ deploy_dev_fast:
 deploy_dev_batch:
 	docker-compose -f services/cluster_dev_batch.yml up -d
 
-
-
 stop_dev_fast:
 	docker-compose -f services/cluster_dev_fast.yml down
 	docker-compose -f services/cluster_dev_app.yml down
@@ -68,33 +59,67 @@ stop_dev_fast:
 stop_dev_batch:
 	docker-compose -f services/cluster_dev_batch.yml down
 
+
+#########################  COMANDOS DE MONITORAMENTO    ###########################
 watch_dev_batch_services:
 	watch docker-compose -f services/cluster_dev_batch.yml ps
 
 
+create_topics:
+	docker-compose -f services/cluster_dev_app.yml start topics_creator
+
+
 #########################  COMANDOS EM PRODUÇÃO   ###########################
 
+# COMANDO DE INICIALIZAÇÃO DO CLUSTER SWARM
+start_prod_cluster:
+	sh scripts/start_prod_cluster.sh
+
+
+
+# DEPLOY DE STACK DE CAMADA DE MONITORAMENTO
 deploy_prod_operations:
 	docker stack deploy -c operations/docker-compose.prod.yml layer_operations
 
+# STOP DE STACK DE CAMADA OPERATIONS
 stop_prod_operations:
 	docker stack rm layer_operations
 
+
+# DEPLOY DE STACK DE CAMADA FAST
 deploy_prod_fast:
 	docker stack deploy -c services/cluster_prod_fast.yml layer_fast
-	docker stack deploy -c services/cluster_prod_app.yml layer_app
 
+# STOP DE STACK DE CAMADA FAST
+stop_prod_fast:
+	docker stack rm layer_fast
+
+
+# DEPLOY DE STACK DE CAMADA BATCH
 deploy_prod_batch:
 	docker stack deploy -c services/cluster_prod_batch.yml layer_batch
 
+# STOP DE STACK DE CAMADA BATCH
 stop_prod_batch:
 	docker stack rm layer_batch
 
 
-#########################	COMANDOS DE LIMPEZA   ###########################
+# DEPLOY DE STACK DE CAMADA APP
+deploy_prod_app:
+	docker stack deploy -c services/cluster_prod_app.yml layer_app
+
+# STOP DE STACK DE CAMADA APP
+stop_prod_app:
+	docker stack rm layer_app
+
+
+# COMANDO DE MONITORAMENTO DE SERVIÇOS EM PRODUÇÃO
 watch_prod_services:
 	watch docker service ls
 
+#########################	COMANDOS DE LIMPEZA   ###########################
+
+# COMANDO DE LIMPEZA DE VOLUMES, IMAGENS E REDES DO DOCKER
 delete_volumes:
 	# docker volume prune
 	docker volume rm $(docker volume ls -q) >> /dev/null
@@ -103,6 +128,11 @@ delete_images:
 	# docker image prune
 	sh scripts/delete_images.sh
 
+delete_networks:
+	docker network rm $(docker network ls -q) >> /dev/null
+
+
+#########################	COMANDOS DE PUBLICAÇÃO DE IMAGENS   ###########################
 
 publish_images:
 	docker push marcoaureliomenezes/dm-hadoop-namenode:$(current_branch)
