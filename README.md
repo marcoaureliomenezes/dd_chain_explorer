@@ -50,7 +50,7 @@ Para alcançar os objetivos de negócio, é preciso implementar um sistema capaz
 
 ## 2 - Arquitetura de solução e Arquitetura Técnica
 
-O `dm_v3_chain_explorer` é um sistema de ingestão e processamento de dados de blockchains em tempo real. O sistema é composto por 3 camadas:
+O **dm_v3_chain_explorer** é um sistema de ingestão, processamento e armazenamento de dados de blockchains ambos lote e em tempo real. Arquitetura desse tipo são chamadas **Ingestão Lambda**. Para implementar essa arquitetura, foram definidas camadas de serviços que interagem entre si. As camadas definidas são:
 
 - **Camada Fast**: Camada de ingestão de dados em tempo real.
 - **Camada Batch**: Camada de processamento de dados em batch.
@@ -85,11 +85,25 @@ Esse desenho acima traz um panorama geral dos serviços que compõem o sistema. 
 
 ### 2.1 - Arquitetura de Solução
 
-Os dados nesse sistema são ingestados e processados, parte em tempo real e parte em batch. A arquitetura de solução proposta é a seguinte:
+A arquitetura de solução desse trabalho é composta por 2 camadas principais, a camada de ingestão e processamento de dados em tempo real e a camada de ingestão e processamento de dados em batch. Devido a características intriscecamente diferentes entre esses dois tipos de processamento, se faz necessário a separação de camadas.
 
 ### 2.1.1 - Ingestão e processamento de dados em tempo real
 
+Na camada de ingestão e processamento de dados em tempo real, é preciso considerar alguns fatores que influenciaram a escolha de ferramentas e composição de jobs colaborativos entre si. A seguir estão listados os fatores considerados:
+
+1. Redes de blockchain operam minerando blocos com certa frequência.
+2. Um bloco minerado quer dizer o bloco e suas respectivas transações foram validadas e persistidos no ledger.
+3. Para capturar dados de blocos minerados é necessário fazer 1 requisição a um nó da rede P2P.
+4. Para capturar dados de uma transação é necessário fazer 1 requisição a um nó da rede P2P.
+5. Requisições a nós de redes P2P são limitadas por provedores de Node-as-a-Service.
+
+Dados os fatores enumerados acima e também os objetivos desse trabalho, de capturar dados de transações, ingestá-los e processá-los em tempo real minimizando a latência, a necessidade do desenho de solução a seguir se apresenta:
+
 ![Arquitetura de streaming-transactions](./img/arquitetura_DM.drawio.png)
+
+Diferentes jobs colaboram entre si para capturar os dados e colocá-los em um tópico do Kafka. Cada um desses Jobs faz uso de uma API Key para efetuar requisições a um provedor de Node-as-a-Service para capturar os dados. 
+
+Na arquitetura de solução acima diferentes API Keys são compartilhadas entre os Jobs de forma a minimizar o número de requisições e maximizar a disponibilidade do sistema. Na seção 3 será examina com mais detalhes a implementação dessa arquitetura, assim como uma demonstração de como a mesma funciona.
 
 ### 2.1.2 - Ingestão e processamento de dados em batch
 
