@@ -299,9 +299,13 @@ No shell script `start_dm_dev_cluster.sh` é possível observar a inicializaçã
 
 ## 5 Reprodução do Case
 
-Esse case foi construído sob a premissa de que é possível ser reproduzido em qualquer ambiente que possua os recursos mínimos necessários. Consequentemente, a escolha de Docker, Docker Compose e Docker Swarm como engine e ferramentas de orquestração de containers, respecitivamente, foi feita para facilitar a reprodução do case.
+Como foi visto nas seções anteriores, esse trabalho foi construído utilizando a ferramenta docker. A definição de imagens docker torna possível que essas imagens sejam instanciadas como containers em qualquer ambiente, desde que o docker esteja instalado e requisitos mínimos de hardware sejam atendidos.
 
+A orquestração de containers foi feita com as ferramentas Docker Compose e Docker Swarm e as definições presentes nos arquivos yml presentes no diretório `services/`.
 
+Dessa forma o case aqui implementado pode ser reproduzido (desde que requisitos de hardware sejam atendidos) em qualquer ambiente que possua o docker instalado. Para isso, basta executar alguns comandos no terminal.
+
+Para automatizar esse processo foi definido um **Makefile** na raíz desse projeto que contém os comandos necessários para inicializar e parar os serviços do sistema e mais alguns shell scripts localizados no diretório `scripts/`. A seguir estão listados os comandos disponíveis no Makefile.
 
 ### 1.3 Inicialização de ambiente de Produção
 
