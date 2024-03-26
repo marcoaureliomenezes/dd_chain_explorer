@@ -62,9 +62,9 @@ Foi optado nesse trabalho pela construção de um ambiente híbrido, ou seja, us
 - **Ambiente DEV**: 1 computador local do autor desse trabalho com docker e docker-compose instalados.
 - **Ambiente PROD**: 1 cluster de computadores locais do autor desse trabalho como ambiente de produção usando docker swarm como orquestrador.
 
-Para esse trabalho fo escolhida a ferramenta **docker**. Com ela é possível definir imagens que podem ser instanciadas como containers, que se assemelham, nas devidas proporções, a computadores isolados, tornando a ferramenta ideal para simular um ambiente distribuído, além de outros benefícios que serão vistos mais adiante.
+Para esse trabalho fo escolhida a ferramenta **docker**. Com ela é possível definir imagens que podem ser instanciadas como containers, que se assemelham, nas devidas proporções, a computadores isolados, tornando a ferramenta ideal para simular um ambiente distribuído, além de outros benefícios que serão vistos mais adiante. As definições de imagens para esse trabalho se encontram no diretório **docker/**.
 
-Para orquestração de containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`, para os ambientes de "Desenvolvimento" e "Produção", respectivamente.
+Para orquestração de containers, foram utilizadas as ferramentas **Docker Compose** e **Docker Swarm**, para os ambientes de "Desenvolvimento" e "Produção", respectivamente.
 
 ### Camadas do sistema
 
