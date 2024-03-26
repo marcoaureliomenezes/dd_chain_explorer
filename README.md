@@ -60,11 +60,13 @@ O **dm_v3_chain_explorer** é um sistema de ingestão, processamento e armazenam
 Foi optado nesse trabalho pela construção de um ambiente híbrido, ou seja, usando recursos de cloud e on-premises. Nos recursos de infraestrutura on-premises, que aqui nesse trabalho nada mais são do que:
 
 - **Ambiente DEV**: 1 computador local do autor desse trabalho com docker e docker-compose instalados.
-- 1 cluster de computadores locais do autor desse trabalho como ambiente de produção usando docker swarm como orquestrador.
+- **Ambiente PROD**: 1 cluster de computadores locais do autor desse trabalho como ambiente de produção usando docker swarm como orquestrador.
 
-computador do autor desse trabalho mais alguns computadores antigos foi instalada a ferramenta docker. Dessa forma, foi possível criar clusters de serviços que simulam ambientes distribuídos no computador pessoal e também simular um cluster realmente distribuído no ambiente local através de um cluster Docker Swarm.
+Para esse trabalho fo escolhida a ferramenta **docker**. Com ela é possível definir imagens que podem ser instanciadas como containers, que se assemelham, nas devidas proporções, a computadores isolados, tornando a ferramenta ideal para simular um ambiente distribuído, além de outros benefícios que serão vistos mais adiante.
 
-**Observações**:
+Para orquestração de containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`, para os ambientes de "Desenvolvimento" e "Produção", respectivamente.
+
+### Camadas do sistema
 
 - Na **camada Batch** estão definidos serviços relacionados a um Cluster Hadoop, junto a ferramentas que trabalham com tal cluster de forma conjunta, tais como o Apache Spark, Apache Airflow, entre outros.
 
