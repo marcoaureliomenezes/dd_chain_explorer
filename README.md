@@ -1,6 +1,6 @@
 # dm_v3_chain_explorer System
 
-O **dm_v3_chain_explorer** é um repositório no qual estão implementadas e documentadas as rotinas de extração, ingestão, processamento, armazenamento e uso de dados com origem em protocolos P2P do tipo blockchain. Esse trabalho foi desenvolvido para o case do programa Data Master.
+Neste repositório estão implementadas e documentadas as rotinas de extração, ingestão, processamento, armazenamento e uso de dados com origem em protocolos P2P do tipo blockchain. Esse trabalho foi desenvolvido para o case do programa Data Master.
 
 ## Sumário
 
@@ -8,13 +8,13 @@ O **dm_v3_chain_explorer** é um repositório no qual estão implementadas e doc
 2. [Arquitetura de solução e Arquitetura Técnica](#2---arquitetura-de-solução-e-arquitetura-técnica)
 3. [Explicação sobre o case desenvolvido](#3---explicação-sobre-o-case-desenvolvido)
 4. [Aspectos técnicos desse trabalho](#4---aspectos-técnicos)
-5. [Melhorias e considerações finais](#4---melhorias-e-considerações-finais)
-6. [Reprodução da arquitetura](#5---reprodução-da-arquitetura)
-7. [Appendice](#6---appendice)
+5. [Melhorias e considerações finais](#5---melhorias-e-considerações-finais)
+6. [Reprodução da arquitetura](#6---reprodução-da-arquitetura)
+7. [Appendice](#7---appendice)
 
 ## 1 - Objetivo do Case
 
-O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo a uma banca. Nessa apresentação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**.
+O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo à banca de Data Experts. Nessa apresentação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**.
 
 Para alcançar tal objetivo final e, dados os requisitos do case, especificados estes pela organização do programa, para a construção desse sistema foram definidos objetivos específicos, categorizados em objetivos de negócio e objetivos técnicos.
 
@@ -22,13 +22,13 @@ Para alcançar tal objetivo final e, dados os requisitos do case, especificados 
 
 Nesse trabalho o objetivo de negócio é prover uma solução capaz de analisar e obter insights de dados com origem em **redes P2P do tipo blockchain**. Dois fatores que embasam tal escolha e que são de conhecimento geral:
 
-- **Dados públicos**: Blockchains são redes ponto-a-ponto que armazenam transações e contratos inteligentes em blocos. Blockchains públicas permitem que qualquer nó possa ingressar na rede. Isso significa que é possível acessar esses dados e utilizá-los para análises, dashboards, bots, entre outras aplicações. Obviamente desde que os requisitos necessários para acessar um nó da rede em questão e também os meios de interagir com esse nó e processar os dados obtidos a partir dele sejam satisfeitos.
+- **Dados públicos**: Blockchains são redes ponto-a-ponto que armazenam transações e, em alguns tipos específicos, contratos inteligentes, em blocos. Blockchains públicas permitem que qualquer nó possa ingressar na rede. Isso significa que é possível acessar esses dados e utilizá-los para análises, dashboards, bots, entre outras aplicações. Obviamente, desde que (1) os requisitos necessários para acessar um nó da rede P2P em questão e (2) os meios de interagir com esse nó e processar os dados obtidos a partir dele sejam satisfeitos.
 
-- **Oportunidades reais**: Atualmente existem inúmeras redes blockchain que hospedam aplicações descentralizadas (dApps), na forma de contratos inteligentes, para as mais diversas finalidades. Existe um tipo específico de dApps denominado DeFi (Decentralized Finance) que são aplicações financeiras descentralizadas que permitem empréstimos, trocas de tokens, entre outras funcionalidades. Em [Defi Llama](https://defillama.com/) é possível ver uma lista de aplicações DeFi e o volume de capital bloqueado em cada uma delas.
+- **Oportunidades reais**: Atualmente existem inúmeras redes blockchain que hospedam aplicações descentralizadas (dApps), na forma de contratos inteligentes, para as mais diversas finalidades. Existe um tipo específico de dApps denominado DeFi (Decentralized Finance) que são aplicações financeiras descentralizadas que permitem empréstimos, trocas de tokens, entre outras funcionalidades. Em [Defi Llama](https://defillama.com/) é possível ver uma lista de aplicações DeFi e o volume de capital aplicado em cada uma delas.
 
 #### Observação sobre o tema escolhido
 
-Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi. Porém, é entendido pelo autor desse trabalho que, apesar de não ser um requisito especificado no case, inúmeros conceitos usados nesse trabalho e intríscecos à tecnologia blockchain exploram com profundidade campos como:
+Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi. Porém, é entendido pelo autor desse trabalho que, apesar de não ser um requisito especificado no case, inúmeros conceitos aqui e intríscecos à tecnologia blockchain exploram com profundidade campos como:
 
 - Estruturas de dados complexas (o próprio blockchain);
 - Arquiteturas de sistemas distribuídos e descentralizados;
@@ -38,49 +38,62 @@ Portanto, a escolha de blockchains para esse case é uma oportunidade de aprendi
 
 ### 1.2 - Objetivos técnicos
 
-Para alcançar os objetivos de negócio, é preciso implementar um sistema capaz de capturar, ingestar, processar, persistir e utilizar dados da origem mencionada. Para isso, foram definidos os seguintes objetivos técnicos:
+Para alcançar os objetivos de negócio propostos é preciso implementar um sistema capaz de capturar, ingestar, processar, persistir e utilizar dados da origem mencionada. Para isso, foram definidos os seguintes objetivos técnicos:
 
-- Criar sistema de captura de dados de redes de blockchain públicas.
-- Criar um sistema de captura agnóstico à rede de blockchain, desde que a rede seja do tipo EVM (Ethereum Virtual Machine).
-- Criar uma arquitetura de solução que permita a ingestão e processamento de dados em tempo real.
+- Criar sistema de captura de dados brutos de redes de blockchain públicas.
+- Criar um sistema de captura de dados de estado de contratos inteligentes.
+- Criar um sistema de captura agnóstico à rede de blockchain, prém restrito a redes do tipo EVM (Ethereum Virtual Machine).
+- Criar uma arquitetura de solução que permita a ingestão e processamento de dados em tempo real e em batch.
 - Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema.
 - Criar um ambiente reproduzível e escalável com serviços necessários à execução de papeis necessários ao sistema.
 - Armazenar e consumir dados pertinentes a operação e análises em bancos analíticos e transacionais.
-- Implementar formas de monitorar o sistema (dados de infraestrutura, logs, etc).
+- Implementar ferramentas monitorar o sistema (dados de infraestrutura, logs, etc).
 
 ## 2 - Arquitetura de solução e Arquitetura Técnica
 
-O **dm_v3_chain_explorer** é um sistema de ingestão, processamento e armazenamento de dados de blockchains ambos lote e em tempo real. Arquitetura desse tipo são chamadas **Ingestão Lambda**. Para implementar essa arquitetura, foram definidas camadas de serviços que interagem entre si. As camadas definidas são:
+O **dm_v3_chain_explorer** é um sistema de ingestão, processamento e armazenamento de dados de blockchains ambos lote e em tempo real. Dados os objetivos técnicos citados, para alcança-los se faz necessário para além das aplicações que interagem com a rede de blockchain, a construção de um ambiente distribuído que permita a execução de serviços necessários ao sistema. Dessa forma, a arquitetura de solução desse trabalho é composta por 4 camadas principais:
 
 - **Camada Fast**: Camada de ingestão de dados em tempo real.
 - **Camada Batch**: Camada de processamento de dados em batch.
 - **Camada de Aplicação**: Camada com aplicações que interagem com blockchain.
 - **Camada de Operação**: Camada com serviços necessários ao monitoramento do sistema.
 
-Foi optado nesse trabalho pela construção de um ambiente híbrido, ou seja, usando recursos de cloud e on-premises. Nos recursos de infraestrutura on-premises, que aqui nesse trabalho nada mais são do que:
+Foi optado nesse trabalho pela construção de um ambiente híbrido, ou seja, usando recursos de cloud e on-premises mas com foco no on-premises. Nesta versão os serviços de cloud utilizados se restringem ao Key Vault e ao Azure Tables, ambos serviços da Azure e de um Service Principal para autenticação.
 
-- **Ambiente DEV**: 1 computador local do autor desse trabalho com docker e docker-compose instalados.
-- **Ambiente PROD**: 1 cluster de computadores locais do autor desse trabalho como ambiente de produção usando docker swarm como orquestrador.
+Apesar da opção de construir um projeto full cloud se apresentar, a escolha pela construção de algo local usando docker permite que futuramente as mesmas imagens sejam usadas para deploy em ambientes cloud e/ou, possíveis alterações de serviços aqui deployados no Docker, tais como o Kafka ou o próprio HDFS do Hadoop sejam substituídos por análogos de algum provedor Cloud.
 
-Para esse trabalho fo escolhida a ferramenta **docker**. Com ela é possível definir imagens que podem ser instanciadas como containers, que se assemelham, nas devidas proporções, a computadores isolados, tornando a ferramenta ideal para simular um ambiente distribuído, além de outros benefícios que serão vistos mais adiante. As definições de imagens para esse trabalho se encontram no diretório `docker/`.
+Os recursos de infraestrutura on-premises usados aqui se dividem em 2 ambientes da seguinte forma:
+
+- **Ambiente DEV**: 1 computador local com docker instalado e **Docker Compose** como orquestrador de containers.
+- **Ambiente PROD**: 1 cluster de computadores na rede local com docker instalado e usando o **Docker Swarm** como orquestrador.
+
+O uso de docker possibilita que imagens possam ser instanciadas em containers, que se assemelham, nas devidas proporções, a computadores isolados, tornando a ferramenta ideal para simular um ambiente distribuído. Os containers encapsulam todo software necessário para execução de um serviço ou aplicação definidos da imagem, o que o torna portável para execução no computador do leitor ou em outros ambientes com a engine do docker instalada. As definições de imagens para esse trabalho se encontram no diretório `docker/`.
 
 Para orquestração de containers, foram utilizadas as ferramentas **Docker Compose** e **Docker Swarm**, para os ambientes de "Desenvolvimento" e "Produção", respectivamente. As definições de serviços para essas ferramentas se encontram no diretório `services/`.
 
 ### Camadas do sistema
 
+Segue abaixo uma breve descrição sobre os serviços que compõem cada camada do sistema:
+
 - Na **camada Batch** estão definidos serviços relacionados a um Cluster Hadoop, junto a ferramentas que trabalham com tal cluster de forma conjunta, tais como o Apache Spark, Apache Airflow, entre outros.
 
-- Na **camada Fast** estão definidos serviços relacionados a um cluster Kafka e ferramentas de seu ecossistema, tais como Kafka Connect, Zookeeper, Schema Registry, entre outros.
+- Na **camada Fast** estão definidos serviços relacionados a um cluster Kafka e ferramentas de seu ecossistema, tais como Kafka Connect, Zookeeper, Schema Registry, o ScyllaDB, entre outros.
 
 - Na **camada de Operação** estão definidos serviços que monitoram a infraestrutura do sistema, como Prometheus, Grafana e exporters de métricas necessários para monitoramento.
 
 - Na **camada de Aplicação** estão definidas rotinas que interagem com a rede de blockchain para capturar os dados, ingestá-los, processa-los e armazena-los no serviços dos layers Batch e Fast.
 
-Tal arquitetura, onde diferentes camadas de serviço e aplicação interagem, é ilustrada no diagrama a baixo.
+Uma visão geral dos diferentes serviços dispostos em layer que compões esse sistema está ilustrada no diagrama a baixo.
 
 ![Serviços do sistema](./img/batch_layer.drawio.png)
 
-Esse desenho acima traz um panorama geral dos serviços que compõem o sistema. A seguir, no tópico de **Arquitetura de Solução** é explorado com mais detalhes:
+Esse desenho acima traz um panorama geral. Os serviços das camadas Batch, Fast e Aplicação se encontram definidas em arquivos .yml na pasta `services/` onde:
+
+**Layer Batch**: `services/cluster_dev_batch.yml` para DEV e `services/cluster_prod_batch.yml` para PROD.
+**Layer Fast**: `services/cluster_dev_fast.yml` para DEV e `services/cluster_prod_fast.yml` para PROD.
+**Layer Aplicação**: `services/cluster_dev_app.yml` para DEV e `services/cluster_prod_app.yml` para PROD.
+
+Já os serviços da camada de Operação estão definidos nos arquivos .yml na pasta `services/operation/`. A seguir, no tópico de **Arquitetura de Solução** é explorado com mais detalhes:
 
 1. Como as aplicações streaming interagem entre si, usando serviços do layer fast.
 2. Como pipelines de Jobs em batch são orquestrados e executados interagindo com serviços do layer batch.
@@ -109,9 +122,10 @@ Na arquitetura de solução acima diferentes API Keys são compartilhadas entre 
 
 ### 2.1.2 - Ingestão e processamento de dados em batch
 
-
+ESCREVER
 
 ### 2.2 - Arquitetura Técnica
+
 
 A arquitetura técnica deste sistema é composta de 2 ambientes, um para desenvolvimento e outro para produção. Essa decisão foi tomada para que fosse possível desenvolver e testar o sistema em um ambiente controlado e depois subir o sistema em um ambiente realmente distribuído.
 
@@ -151,7 +165,6 @@ O ambiente de produção é composto por 4 clusters de serviços que executam em
 | Node Marcinho | 192.168.15.88 | `dadaia-HP-ZBook-15-G2`   | dadaia   | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-4810MQ CPU @ 2.80GHz | 15899,1 MB   | 2048,0 MB   |
 | Node Ana      | 192.168.15.8  | `dadaia3-Lenovo-Y50-70`   | dadaia-3 | Ubuntu 22.04.4 LTS | 8    | x86_64      | Intel(R) Core(TM) i7-4720HQ CPU @ 2.60GHz | 11864,0 MB   | 0           |
 | Node Arthur   | 192.168.15.83 | `dadaia2-ThinkPad-E560`   | dadaia2  | Ubuntu 22.04.4 LTS | 4    | x86_64      | Intel(R) Core(TM) i5-6200U CPU @ 2.30GHz  | 3790,3 MB    | 2048,0 MB   |
-
 
 ## 3 - Explicação sobre o case desenvolvido
 
@@ -237,8 +250,6 @@ print(tx)
 
 ```
 
-
-
 - **Dados de contratos inteligentes**: Em protocolos EVM, contratos inteligentes são programas de computadores que são deployados em um bloco da rede com endereço próprio. Após deployados esses contratos passam a estar disponíveis para interação. Isso permite que aplicações descentralizadas (dApps) sejam criadas dentro do protocolo.
 
 ### 3.1 - Ferramentas utilizadas
@@ -246,19 +257,9 @@ print(tx)
 #### 3.1.1 Docker
 
 
-Servidor NFS
-
-sudo ssh dadaia-server@192.168.15.83
 
 #### Serviços e portas abertas
 
-- **Namenode**: 9870 - Link: `http://localhost:9870/dfshealth.html#tab-overview`
-- **Datanode**: 9864 - Link: `http://localhost:9864/datanode.html#tab-overview`
-- **Resource Manager**: 18088 - Link: `http://localhost:18088/cluster`
-- **Node Manager**: 18042 - Link: `http://localhost:18042/node/allApplications`
-- **History Server**: 19888 - Link: `http://localhost:19888/applicationhistory`
-- **Hue Web UI**: 8888 - Link: `http://localhost:32762/hue/home`
-- **Apache Airflow**: 8080 - Link: `http://localhost:8080`
 
 
 #### 3.1.2 Orquestração de containers

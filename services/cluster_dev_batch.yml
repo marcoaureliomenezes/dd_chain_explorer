@@ -25,34 +25,34 @@ services:
 
   # APACHE HADOOP SERVICES
   namenode:
-    image: marcoaureliomenezes/hadoop-namenode:1.0.0
+    image: marcoaureliomenezes/dm-hadoop-namenode:1.0.0
     container_name: namenode
     <<: *default_config
     ports:
       - 9870:9870
       - 9000:9000
     volumes:
-      - hadoop_namenode:/hadoop/dfs/name
+      - hadoop_namenode_dev:/hadoop/dfs/name
     environment:
       - CLUSTER_NAME=test
     env_file:
       - ./hadoop.env
 
   datanode:
-    image: marcoaureliomenezes/hadoop-datanode:1.0.0
+    image: marcoaureliomenezes/dm-hadoop-datanode:1.0.0
     container_name: datanode
     <<: *default_config
     ports:
       - 9864:9864
     volumes:
-      - hadoop_datanode:/hadoop/dfs/data
+      - hadoop_datanode_dev:/hadoop/dfs/data
     environment:
       SERVICE_PRECONDITION: "namenode:9870"
     env_file:
       - ./hadoop.env
 
   resourcemanager:
-    image: marcoaureliomenezes/hadoop-resourcemanager:1.0.0
+    image: marcoaureliomenezes/dm-hadoop-resourcemanager:1.0.0
     container_name: resourcemanager
     <<: *default_config
     ports:
@@ -63,7 +63,7 @@ services:
       - ./hadoop.env
 
   nodemanager:
-    image: marcoaureliomenezes/hadoop-nodemanager:1.0.0
+    image: marcoaureliomenezes/dm-hadoop-nodemanager:1.0.0
     container_name: nodemanager
     <<: *default_config
     ports:
@@ -74,7 +74,7 @@ services:
       - ./hadoop.env
 
   historyserver:
-    image: marcoaureliomenezes/hadoop-historyserver:1.0.0
+    image: marcoaureliomenezes/dm-hadoop-historyserver:1.0.0
     container_name: historyserver
     <<: *default_config
     ports:
@@ -82,14 +82,14 @@ services:
     environment:
       SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
     volumes:
-      - hadoop_historyserver:/hadoop/yarn/timeline
+      - hadoop_historyserver_dev:/hadoop/yarn/timeline
     env_file:
       - ./hadoop.env
 
 
   # APACHE HIVE SERVICES AND HUE
   hive-metastore:
-    image: marcoaureliomenezes/hive-base:1.0.0
+    image: marcoaureliomenezes/dm-hive-base:1.0.0
     container_name: hive-metastore
     <<: *default_config
     command: /opt/hive/bin/hive --service metastore
@@ -104,7 +104,7 @@ services:
       - ./hadoop-hive.env
 
   hive-server:
-    image: marcoaureliomenezes/hive-base:1.0.0
+    image: marcoaureliomenezes/dm-hive-base:1.0.0
     container_name: hive-server
     <<: *default_config
     environment:
@@ -122,14 +122,14 @@ services:
     <<: *default_config
 
   postgres:
-    image: marcoaureliomenezes/postgres:1.0.0
+    image: marcoaureliomenezes/dm-postgres:1.0.0
     container_name: postgres
     <<: *default_config
     volumes:
-      - postgres_hive_hue:/var/lib/postgresql/data
+      - postgres_hive_hue_dev:/var/lib/postgresql/data
 
   hue-webui:
-    image: marcoaureliomenezes/hue-webui:1.0.0
+    image: marcoaureliomenezes/dm-hue-webui:1.0.0
     container_name: hue-webui
     <<: *default_config
     ports:
@@ -145,7 +145,7 @@ services:
 
   # APACHE SPARK SERVICES
   spark-master:
-    image: marcoaureliomenezes/spark-master:1.0.0
+    image: marcoaureliomenezes/dm-spark-master:1.0.0
     <<: *default_config
     container_name: spark-master
     ports:
@@ -155,7 +155,7 @@ services:
       <<: *default_healthcheck
 
   spark-worker:
-    image: marcoaureliomenezes/spark-worker:1.0.0
+    image: marcoaureliomenezes/dm-spark-worker:1.0.0
     container_name: spark-worker
     <<: *default_config
     depends_on:
@@ -165,9 +165,9 @@ services:
       <<: *default_healthcheck
 
 
-  # APACHE AIRFLOW SERVICES
+  # # APACHE AIRFLOW SERVICES
   airflow:
-    image: marcoaureliomenezes/airflow:1.0.0
+    image: marcoaureliomenezes/dm-apache-airflow:1.0.0
     container_name: airflow
     <<: *default_config
     volumes:
@@ -187,7 +187,7 @@ services:
     container_name: postgres_airflow
     <<: *default_config
     volumes:
-      - postgres_airflow:/var/lib/postgresql/data/pgdata
+      - postgres_airflow_dev:/var/lib/postgresql/data/pgdata
     environment:
       - POSTGRES_USER=airflow
       - POSTGRES_PASSWORD=airflow
@@ -199,11 +199,11 @@ services:
       <<: *default_healthcheck
 
 volumes:
-  hadoop_namenode:
-  hadoop_datanode:
-  hadoop_historyserver:
-  postgres_hive_hue:
-  postgres_airflow:
+  hadoop_namenode_dev:
+  hadoop_datanode_dev:
+  hadoop_historyserver_dev:
+  postgres_hive_hue_dev:
+  postgres_airflow_dev:
 
 
 networks:
