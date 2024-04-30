@@ -48,3 +48,5 @@ ENV MAPRED_CONF_mapreduce_reduce_env=HADOOP_MAPRED_HOME=/opt/hadoop-3.2.1/
 
 
 COPY entrypoint.sh /entrypoint.sh
+
+RUN chmod a+x /entrypoint.sh

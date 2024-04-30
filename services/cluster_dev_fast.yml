@@ -14,7 +14,7 @@ x-common-healthcheck-default: &default_healthcheck
 
 x-common-network: &common-network
   networks:
-    - fast_layer
+    - dm_cluster_dev-fast
 
 #################################################################
 ################    DEFINIÇÃO DOS SERVIÇOS    ###################
@@ -34,13 +34,13 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     volumes:
     - type: volume
-      source: dm_cluster-zookeeper-data
+      source: dm_cluster_dev-zookeeper-data
       target: /var/lib/zookeeper/data
     - type: volume
-      source: dm_cluster-zookeeper-log
+      source: dm_cluster_dev-zookeeper-log
       target: /var/lib/zookeeper/log
     - type: volume
-      source: dm_cluster-zookeeper-secrets
+      source: dm_cluster_dev-zookeeper-secrets
       target: /etc/zookeeper/secrets
 
 
@@ -62,10 +62,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-1:29092,PLAINTEXT_HOST://localhost:9092
     volumes:
     - type: volume
-      source: dm_cluster-broker-1-data
+      source: dm_cluster_dev-broker-1-data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster-broker-1-secrets
+      source: dm_cluster_dev-broker-1-secrets
       target: /etc/kafka/secrets
 
   
@@ -87,10 +87,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-2:29093,PLAINTEXT_HOST://localhost:9093
     volumes:
     - type: volume
-      source: dm_cluster-broker-2-data
+      source: dm_cluster_dev-broker-2-data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster-broker-2-secrets
+      source: dm_cluster_dev-broker-2-secrets
       target: /etc/kafka/secrets
 
   broker-3:
@@ -111,57 +111,57 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-3:29094,PLAINTEXT_HOST://localhost:9094
     volumes:
     - type: volume
-      source: dm_cluster-broker-3-data
+      source: dm_cluster_dev-broker-3-data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster-broker-3-secrets
+      source: dm_cluster_dev-broker-3-secrets
       target: /etc/kafka/secrets
 
 
-  schema-registry:
-    image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION}
-    hostname: schema-registry
-    container_name: schema-registry
-    restart: always
-    <<: *common-network
-    depends_on:
-      - broker-1
-      - broker-2
-      - broker-3
-    ports:
-      - "8081:8081"
-    environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
-      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
+  # schema-registry:
+  #   image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION}
+  #   hostname: schema-registry
+  #   container_name: schema-registry
+  #   restart: always
+  #   <<: *common-network
+  #   depends_on:
+  #     - broker-1
+  #     - broker-2
+  #     - broker-3
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
+  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  #     SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
 
-  connect:
-    image: dm_data_lake/kafka-connect:1.0.0
-    container_name: connect
-    hostname: connect
-    restart: always
-    <<: *common-network
-    depends_on:
-      - broker-1
-      - broker-2
-      - broker-3
-      - schema-registry
-    ports:
-      - "8083:8083"
-    environment:
-      CONNECT_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
-      CONNECT_REST_PORT: 8083
-      CONNECT_GROUP_ID: connect
-      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
-      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
-      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
-      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
-      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
-      CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
-      CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
-      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars
+  # connect:
+  #   image: marcoaureliomenezes/dm-kafka-connect:1.0.0
+  #   container_name: connect
+  #   hostname: connect
+  #   restart: always
+  #   <<: *common-network
+  #   depends_on:
+  #     - broker-1
+  #     - broker-2
+  #     - broker-3
+  #     - schema-registry
+  #   ports:
+  #     - "8083:8083"
+  #   environment:
+  #     CONNECT_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+  #     CONNECT_REST_PORT: 8083
+  #     CONNECT_GROUP_ID: connect
+  #     CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+  #     CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+  #     CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+  #     CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+  #     CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+  #     CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+  #     CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
+  #     CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
+  #     CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars
 
 
   control-center:
@@ -192,29 +192,45 @@ services:
       - zookeeper
 
   scylladb:
-    image: dm_data_lake/scylladb:1.0.0
+    image: marcoaureliomenezes/dm-scylladb:1.0.0
     container_name: scylladb
     restart: always
     <<: *common-network
     ports:
-      - "7000:7000"
       - "9042:9042"
     volumes:
       - '../mnt/scylladb:/var/lib/scylla'
 
 
+  redis: 
+    image: redis:latest 
+    container_name: redis
+    <<: *common-network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    <<: *common-network
+    ports:
+      - "18081:8081"
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+
 volumes:
-  dm_cluster-broker-1-data:
-  dm_cluster-broker-1-secrets:
-  dm_cluster-broker-2-data:
-  dm_cluster-broker-2-secrets:
-  dm_cluster-broker-3-data:
-  dm_cluster-broker-3-secrets:
-  dm_cluster-zookeeper-data:
-  dm_cluster-zookeeper-log:
-  dm_cluster-zookeeper-secrets:
+  dm_cluster_dev-broker-1-data:
+  dm_cluster_dev-broker-1-secrets:
+  dm_cluster_dev-broker-2-data:
+  dm_cluster_dev-broker-2-secrets:
+  dm_cluster_dev-broker-3-data:
+  dm_cluster_dev-broker-3-secrets:
+  dm_cluster_dev-zookeeper-data:
+  dm_cluster_dev-zookeeper-log:
+  dm_cluster_dev-zookeeper-secrets:
 
 
 networks:
-  fast_layer:
-    name: fast_layer
+  dm_cluster_dev-fast:
+    name: dm_cluster_dev-fast
+
+  dm_cluster_dev-batch:
+    name: dm_cluster_dev-batch

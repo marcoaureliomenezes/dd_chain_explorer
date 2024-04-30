@@ -3,18 +3,20 @@ version: '3'
 
 x-common-exporters-default: &node_exporter_commons
   image: quay.io/prometheus/node-exporter:latest
-  networks:
-    - dm-operations-prod
   command:
     - '--path.rootfs=/host'
   pid: host
   volumes:
     - '/:/host:ro,rslave'
+  networks:
+    - dm_cluster_prod-fast
+
+
     
 x-common-cadvisor-default: &cadvisor_commons
   image: gcr.io/cadvisor/cadvisor:v0.44.1-test
   networks:
-    - dm-operations-prod
+    - dm_cluster_prod-fast
   volumes:
     - /:/rootfs:ro
     - /var/run:/var/run:rw
@@ -31,29 +33,25 @@ x-common-deploy-master: &common_deploy_master
   deploy:
     <<: *common_restart_policy
     placement:
-      constraints:
-        - node.hostname == dadaia-desktop
+      constraints: [node.hostname == dadaia-desktop]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
   deploy:
     <<: *common_restart_policy
     placement:
-      constraints:
-        - node.hostname == dadaia-HP-ZBook-15-G2
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
 x-common-deploy-worker-2: &common_deploy_worker_2
   deploy:
     <<: *common_restart_policy
     placement:
-      constraints:
-        - node.hostname == dadaia-server
+      constraints: [node.hostname == dadaia-server-2]
 
 x-common-deploy-worker-3: &common_deploy_worker_3
   deploy:
     <<: *common_restart_policy
     placement:
-      constraints:
-        - node.hostname == dadaia-server-2
+      constraints: [node.hostname == dadaia-server]
 
 services:
 
@@ -67,10 +65,14 @@ services:
       - ./prometheus.prod.yml:/etc/prometheus/prometheus.yml
       - prometheus-prod-data:/prometheus
     networks:
-      - dm-operations-prod
+      - dm_cluster_prod-fast
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-    <<: *common_deploy_master
+    deploy:
+      <<: *common_restart_policy
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
+        
 
   # VISUALIZATION
   grafana:
@@ -79,7 +81,7 @@ services:
     ports:
       - 3000:3000
     networks:
-      - dm-operations-prod
+      - dm_cluster_prod-fast
     volumes:
       - grafana-prod-data:/var/lib/grafana
     <<: *common_deploy_master
@@ -113,52 +115,43 @@ services:
       - 28083:8080
     <<: *common_deploy_worker_3
 
-  # REDIS SERVICE TO AUX CADVISOR
-  redis: 
-    image: redis:latest 
-    container_name: redis 
-    ports: 
-      - 6379:6379 
-    networks: 
-      - dm-operations-prod
+
  
 
   # MONITORING SERVERS
+
+  node_exporter_0:
+    <<: *node_exporter_commons
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
+
   node_exporter_1:
     <<: *node_exporter_commons
     deploy:
-      <<: *common_restart_policy
+      restart_policy:
+        condition: on-failure
       placement:
-        constraints:
-          - node.hostname == dadaia-HP-ZBook-15-G2
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
   node_exporter_2:
     <<: *node_exporter_commons
     deploy:
-      <<: *common_restart_policy
+      restart_policy:
+        condition: on-failure
       placement:
-        constraints:
-          - node.hostname == dadaia-server
+        constraints: [node.hostname == dadaia-server]
 
   node_exporter_3:
     <<: *node_exporter_commons
     deploy:
-      <<: *common_restart_policy
+      restart_policy:
+        condition: on-failure
       placement:
-        constraints:
-          - node.hostname == dadaia-server-2
+        constraints: [node.hostname == dadaia-server-2]
 
-
-  visualizer:
-    image: dockersamples/visualizer:stable
-    stop_grace_period: 1m30s
-    ports:
-      - "18080:8080"
-    networks:
-      - dm-operations-prod
-    volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock"
-    <<: *common_deploy_worker_2
 
 
 volumes:
@@ -166,5 +159,5 @@ volumes:
   grafana-prod-data:
 
 networks:
-  dm-operations-prod:
+  dm_cluster_prod-fast:
     driver: overlay

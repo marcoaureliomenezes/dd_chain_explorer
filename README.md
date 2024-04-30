@@ -137,6 +137,16 @@ Para ambos os ambientes a ferramenta básica foi o Docker, que foi utilizada par
 
 Para orquestrar a execução dos containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`, para os ambientes de "Desenvolvimento" e "Produção", respectivamente.
 
+#### Apache Kafka
+
+#### ScyllaDB
+
+```bash
+
+docker exec -it scylladb cqlsh -e "select * from operations.api_keys_node_providers ;"
+
+```
+
 #### 2.2.1 Ambiente de "Desenvolvimento"
 
 O ambiente de desenvolvimento é composto por um clusters de serviços que executam em um único nó. A escolha de um único nó para o ambiente de desenvolvimento se deu por questões de custo e praticidade. A seguir estão listados os clusters de serviços que compõem o ambiente de desenvolvimento:

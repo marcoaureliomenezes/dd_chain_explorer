@@ -3,7 +3,7 @@ version: '3'
 x-common-config-default: &conf_default
   restart: always
   networks:
-    - fast_layer
+    - layer-fast-dev
   volumes:
     - ../docker/app_layer/onchain-stream-txs/src:/app
   env_file:
@@ -27,42 +27,62 @@ services:
     image: dm_data_lake/onchain-stream-txs:1.0.0
     <<: *conf_default
     container_name: block_clock
-    entrypoint: "python -u 1_block_clock.py configs/producers.ini"
+    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 100"
     environment:
       KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
 
   tx_processor:
-    image: dm_data_lake/onchain-stream-txs:1.0.0
+    build: ../docker/app_layer/onchain-stream-txs
+    #container_name: tx_processor
     <<: *conf_default
-    container_name: tx_processor
     environment:
-      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-8'
+      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-12' 
     entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
+    scale: 2
 
   tx_classifier:
-    image: dm_data_lake/onchain-stream-txs:1.0.0
+    build: ../docker/app_layer/onchain-stream-txs
     <<: *conf_default
     container_name: tx_classifier
     entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
 
+  tx_input_decoder:
+    build: ../docker/app_layer/onchain-stream-txs
+    <<: *conf_default
+    container_name: tx_input_decoder
+    entrypoint: "python -u 4_transaction_converters.py configs/producers.ini configs/consumers.ini"
+    environment:
+      KEY_VAULT_NODE_SECRET: 'infura-api-key-16'
+      KEY_VAULT_SCAN_SECRET: 'etherscan-api-key-4'
+
+
   api_keys_log_processor:
     image: dm_data_lake/spark-streaming-jobs:1.0.0
     container_name: api_keys_log_processor
+    restart: on-failure
     volumes:
       - ../docker/app_layer/spark-streaming-jobs/src:/app
     entrypoint: "sh /app/shell/api_key_monitor.sh"
     networks:
-      - fast_layer
+      - layer-fast-dev
+      - layer-batch-dev
+      
 
-  # tx_input_decoder:
+
+  # onchain_watcher:
+  #   build: ./docker/app_layer/onchain-watchers
   #   <<: *conf_default
-  #   container_name: tx_input_decoder
-  #   entrypoint: "python -u 4_transaction_converters.py"
-  #   environment:
-  #     KEY_VAULT_NODE_SECRET: 'infura-api-key-16'
-  #     KEY_VAULT_SCAN_SECRET: 'etherscan-api-key-4'
+  #   container_name: onchain_watcher
+  #   volumes:
+  #     - ../docker/app_layer/onchain-watchers/src:/app
+  #   entrypoint: "brownie run scripts/1_batch_aave_erc20_tokens.py main 2 --network mainnet"
+  #   entrypoint: "brownie run scripts/2_batch_aave_utility_tokens.py main 2 --network mainnet"
+  #   entrypoint: "brownie run scripts/4_batch_uniswap_pair_pools.py main 2 --network mainnet"
+
 
 
 networks:
-  fast_layer:
-    name: fast_layer
+  layer-fast-dev:
+    name: layer-fast-dev
+  layer-batch-dev:
+    name: layer-batch-dev

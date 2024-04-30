@@ -1,0 +1,380 @@
+version: "3"
+
+
+x-common-kafka-broker-env-vars: &kafka_commons_env_vars
+  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+  KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+  KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,OUTSIDE:PLAINTEXT
+  KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
+
+    
+services:
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    hostname: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 3000
+    volumes:
+    - type: volume
+      source: dm_cluster_prod-zookeeper-data
+      target: /var/lib/zookeeper/data
+    - type: volume
+      source: dm_cluster_prod-zookeeper-log
+      target: /var/lib/zookeeper/log
+    - type: volume
+      source: dm_cluster_prod-zookeeper-secrets
+      target: /etc/zookeeper/secrets
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+  broker-1:
+    image: confluentinc/cp-server:7.6.0
+    environment:
+      KAFKA_BROKER_ID: 1
+      <<: *kafka_commons_env_vars
+      KAFKA_LISTENERS: INTERNAL://:29092,OUTSIDE://:9092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-1:29092,OUTSIDE://host.docker.internal:9092
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-1:29092  
+    volumes:
+    - type: volume
+      source: dm_cluster_prod-kafka-1-data
+      target: /var/lib/kafka/data
+    - type: volume
+      source: dm_cluster_prod-kafka-1-secrets
+      target: /etc/kafka/secrets
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+  broker-2:
+    image: confluentinc/cp-server:7.6.0
+    environment:
+      KAFKA_BROKER_ID: 2
+      <<: *kafka_commons_env_vars
+      KAFKA_LISTENERS: INTERNAL://:29093,OUTSIDE://:9093
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-2:29093,OUTSIDE://host.docker.internal:9093
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-2:29093
+    volumes:
+    - type: volume
+      source: dm_cluster_prod-kafka-2-data
+      target: /var/lib/kafka/data
+    - type: volume
+      source: dm_cluster_prod-kafka-2-secrets
+      target: /etc/kafka/secrets
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+  broker-3:
+    image: confluentinc/cp-server:7.6.0
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      <<: *kafka_commons_env_vars
+      KAFKA_LISTENERS: INTERNAL://:29094,OUTSIDE://:9094
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://broker-3:29094,OUTSIDE://host.docker.internal:9094
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-3:29094  
+    volumes:
+    - type: volume
+      source: dm_cluster_prod-kafka-3-data
+      target: /var/lib/kafka/data
+    - type: volume
+      source: dm_cluster_prod-kafka-3-secrets
+      target: /etc/kafka/secrets
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:7.6.0
+    hostname: control-center
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      CONTROL_CENTER_CONNECT_CLUSTER: 'kafka-connect:8083'
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      PORT: 9021
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.6.0
+    hostname: schema-registry
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: "broker-1:29092,broker-2:29093,broker-3:29094"
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+  kafka-connect:
+    image: confluentinc/cp-kafka-connect-base:7.6.0
+    hostname: kafka-connect
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: kafka-connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_REST_ADVERTISED_HOST_NAME: "kafka-connect"
+      CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+
+
+  scylladb:
+    image: marcoaureliomenezes/dm-scylladb:1.0.0
+    restart: always
+    ports:
+      - "9042:9042"
+    volumes:
+      - 'dm_cluster_prod-scylladb-data:/var/lib/scylla'
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+
+  redis:
+    image: redis:latest
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8082:8081"
+    depends_on:
+      - redis
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+
+  visualizer:
+    image: dockersamples/visualizer:stable
+    ports:
+      - "8081:8080"
+    stop_grace_period: 1m30s
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.role == manager]
+
+  # APACHE HADOOP SERVICES
+  namenode:
+    image: marcoaureliomenezes/dm-hadoop-namenode:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode_prod:/hadoop/dfs/name
+    env_file:
+      - ./hadoop.env
+    environment:
+      - CLUSTER_NAME=datalake
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+  datanode:
+    image: marcoaureliomenezes/dm-hadoop-datanode:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    ports:
+      - 9864:9864
+    volumes:
+      - hadoop_datanode_prod_1:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./hadoop.env
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+
+  # APACHE SPARK SERVICES
+  spark-master:
+    image: marcoaureliomenezes/dm-spark-master:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    ports:
+      - "8080:8082"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+  spark-worker:
+    image: marcoaureliomenezes/dm-spark-worker:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    depends_on:
+      - spark-master
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-server-2]
+
+
+  # topics_creator:
+  #   image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+  #   networks:
+  #   - dm_cluster_prod-fast
+  #   env_file:
+  #     - .secrets.conf
+  #   restart: on-failure
+  #   entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
+
+
+  block_clock:
+    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    env_file:
+      - .secrets.conf
+    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 100"
+    environment:
+      KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
+
+  tx_processor:
+    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    env_file:
+      - .secrets.conf
+    environment:
+      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-12' 
+    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
+    deploy:
+      replicas: 5
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
+  
+
+  tx_classifier:
+    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+    networks:
+      - dm_cluster_prod-fast
+    env_file:
+      - .secrets.conf
+    container_name: tx_classifier
+    entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
+
+
+  api_keys_log_processor:
+    image: marcoaureliomenezes/dm-spark-streaming-jobs:1.0.0
+    #entrypoint: "sh /app/shell/api_key_monitor.sh"
+    networks:
+      - dm_cluster_prod-fast
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
+
+
+volumes:
+  dm_cluster_prod-zookeeper-data:
+  dm_cluster_prod-zookeeper-log:
+  dm_cluster_prod-zookeeper-secrets:
+  dm_cluster_prod-kafka-1-data:
+  dm_cluster_prod-kafka-1-secrets:
+  dm_cluster_prod-kafka-2-data:
+  dm_cluster_prod-kafka-2-secrets:
+  dm_cluster_prod-kafka-3-data:
+  dm_cluster_prod-kafka-3-secrets:
+  dm_cluster_prod-scylladb-data:
+  hadoop_namenode_prod:
+  hadoop_historyserver_prod:
+  hadoop_datanode_prod_1:
+
+networks:
+  dm_cluster_prod-fast:
+    driver: overlay
