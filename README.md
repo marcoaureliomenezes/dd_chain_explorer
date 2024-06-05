@@ -94,7 +94,7 @@ O requisito inicial do sistema é capturar e ingestar os dados brutos de transa�
 
 Dados os pontos o desenho de solução para ingestão de dadoss da Ethereum em tempo real está ilustrado a seguir.
 
-![Arquitetur Solução Captura e Ingestão Kafka](./img/arquitetura_solucao_ingestao_fast.png)
+![Arquitetura de Solução Captura e Ingestão Kafka](./img/arquitetura_solucao_ingestao_fast.png)
 
 NAs seções seguintes é demonstrado como os diferentes serviços colaboram entre si para capturar os dados e colocá-los em tópicos do Kafka.
 
