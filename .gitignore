@@ -22,21 +22,30 @@ venv*
 
 .git
 
+z_conf
 
+docker/batch_layer/airflow
+
+
+.~lock.**
 readme1.md
 readme2.md
 readme3.md
 readme4.md
 readme5.md
 readme6.md
+z_appendice.md
+**.odt
+docker/app_layer/onchain-actors/
 
+chain_explorer/
 scripts/pre_deploy_airflow.sh
 scripts/start_prod_cluster.sh
-docker/apps/onchain-watchers/
-docker/apps/onchain-monitor/
-docker/apps/onchain-actors/
-docker/apps/onchain-stream-txs/
-docker/airflow/
+docker/app_layer/onchain-watchers/
+docker/app_layer/onchain-monitor/
+docker/app_layer/onchain-actors/
+docker/app_layer/onchain-stream-txs/
+docker/batch_layer/airflow
 dadaia-tools/
 TODOs.md
 dm_doc/
