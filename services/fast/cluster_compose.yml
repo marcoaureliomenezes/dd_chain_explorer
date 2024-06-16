@@ -1,0 +1,236 @@
+version: '3'
+
+x-common-log-config: &default_log_config
+  logging:
+    driver: "json-file"
+    options:
+      max-file: "5"
+      max-size: "10m"
+
+x-common-healthcheck-default: &default_healthcheck
+  timeout: 45s
+  interval: 10s
+  retries: 10
+
+x-common-network: &common-network
+  networks:
+    - dm_cluster_dev-fast
+
+#################################################################
+################    DEFINIÇÃO DOS SERVIÇOS    ###################
+#################################################################
+
+services:
+
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:${ZOOKEEPER_VERSION}
+    hostname: zookeeper
+    container_name: zookeeper
+    restart: always
+    <<: *common-network
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+    - type: volume
+      source: dm_cluster_dev-zookeeper-data
+      target: /var/lib/zookeeper/data
+    - type: volume
+      source: dm_cluster_dev-zookeeper-log
+      target: /var/lib/zookeeper/log
+    - type: volume
+      source: dm_cluster_dev-zookeeper-secrets
+      target: /etc/zookeeper/secrets
+
+
+  broker-1:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION}
+    hostname: broker-1
+    container_name: broker-1
+    restart: always
+    <<: *common-network
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-1:29092,PLAINTEXT_HOST://localhost:9092
+    volumes:
+    - type: volume
+      source: dm_cluster_dev-broker-1-data
+      target: /var/lib/kafka/data
+    - type: volume
+      source: dm_cluster_dev-broker-1-secrets
+      target: /etc/kafka/secrets
+
+  
+  broker-2:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION}
+    hostname: broker-2
+    container_name: broker-2
+    restart: always
+    <<: *common-network
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 2
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-2:29093,PLAINTEXT_HOST://localhost:9093
+    volumes:
+    - type: volume
+      source: dm_cluster_dev-broker-2-data
+      target: /var/lib/kafka/data
+    - type: volume
+      source: dm_cluster_dev-broker-2-secrets
+      target: /etc/kafka/secrets
+
+  broker-3:
+    image: confluentinc/cp-kafka:${KAFKA_VERSION}
+    hostname: broker-3
+    container_name: broker-3
+    restart: always
+    <<: *common-network
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 3
+      KAFKA_MIN_INSYNC_REPLICAS: 2
+      KAFKA_DEFAULT_REPLICATION_FACTOR: 3
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-3:29094,PLAINTEXT_HOST://localhost:9094
+    volumes:
+    - type: volume
+      source: dm_cluster_dev-broker-3-data
+      target: /var/lib/kafka/data
+    - type: volume
+      source: dm_cluster_dev-broker-3-secrets
+      target: /etc/kafka/secrets
+
+
+  # schema-registry:
+  #   image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION}
+  #   hostname: schema-registry
+  #   container_name: schema-registry
+  #   restart: always
+  #   <<: *common-network
+  #   depends_on:
+  #     - broker-1
+  #     - broker-2
+  #     - broker-3
+  #   ports:
+  #     - "8081:8081"
+  #   environment:
+  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
+  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+  #     SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
+
+  # connect:
+  #   image: marcoaureliomenezes/dm-kafka-connect:1.0.0
+  #   container_name: connect
+  #   hostname: connect
+  #   restart: always
+  #   <<: *common-network
+  #   depends_on:
+  #     - broker-1
+  #     - broker-2
+  #     - broker-3
+  #     - schema-registry
+  #   ports:
+  #     - "8083:8083"
+  #   environment:
+  #     CONNECT_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+  #     CONNECT_REST_PORT: 8083
+  #     CONNECT_GROUP_ID: connect
+  #     CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+  #     CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+  #     CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+  #     CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+  #     CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+  #     CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+  #     CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
+  #     CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
+  #     CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars
+
+
+  control-center:
+    image: confluentinc/cp-enterprise-control-center:${CONTROL_CENTER_VERSION}
+    container_name: control-center
+    hostname: control-center
+    restart: always
+    <<: *common-network
+    ports:
+      - "9021:9021"
+    environment:
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+      CONTROL_CENTER_ZOOKEEPER_CONNECT: "zookeeper:2181"
+      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: "http://connect:8083"
+      CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
+      CONTROL_CENTER_REPLICATION_FACTOR: 1
+      CONTROL_CENTER_CONNECT_HEALTHCHECK_ENDPOINT: '/connectors'
+      PORT: 9021
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "control-center", "9021" ]
+      timeout: 45s
+      interval: 10s
+      retries: 10
+    depends_on:
+      - broker-1
+      - broker-2
+      - broker-3
+      - zookeeper
+
+  scylladb:
+    image: marcoaureliomenezes/dm-scylladb:1.0.0
+    container_name: scylladb
+    restart: always
+    <<: *common-network
+    ports:
+      - "9042:9042"
+    volumes:
+      - '../mnt/scylladb:/var/lib/scylla'
+
+
+  redis: 
+    image: redis:latest 
+    container_name: redis
+    <<: *common-network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: redis-commander
+    <<: *common-network
+    ports:
+      - "18081:8081"
+    environment:
+      REDIS_HOSTS: "local:redis:6379"
+
+volumes:
+  dm_cluster_dev-broker-1-data:
+  dm_cluster_dev-broker-1-secrets:
+  dm_cluster_dev-broker-2-data:
+  dm_cluster_dev-broker-2-secrets:
+  dm_cluster_dev-broker-3-data:
+  dm_cluster_dev-broker-3-secrets:
+  dm_cluster_dev-zookeeper-data:
+  dm_cluster_dev-zookeeper-log:
+  dm_cluster_dev-zookeeper-secrets:
+
+
+networks:
+  dm_cluster_dev-fast:
+    name: dm_cluster_dev-fast
+
+  dm_cluster_dev-batch:
+    name: dm_cluster_dev-batch
