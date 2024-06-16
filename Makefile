@@ -66,7 +66,7 @@ publish:
 
 
 deploy_dev_fast:
-	docker-compose -f services/fast/cluster_compose.yml up -d
+	docker-compose -f services/fast/cluster_compose.yml up -d --build
 
 deploy_dev_app:
 	docker-compose -f services/app/cluster_compose.yml up -d --build

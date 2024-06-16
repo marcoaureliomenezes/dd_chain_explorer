@@ -27,7 +27,7 @@ services:
     build: ../../docker/app_layer/onchain-stream-txs
     <<: *conf_default
     container_name: block_clock
-    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 100"
+    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 8"
     environment:
       KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
 
@@ -56,7 +56,7 @@ services:
 
 
   api_keys_log_processor:
-    image: dm_data_lake/spark-streaming-jobs:1.0.0
+    build: ../../docker/app_layer/spark-streaming-jobs
     container_name: api_keys_log_processor
     restart: on-failure
     volumes:

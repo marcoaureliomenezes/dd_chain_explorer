@@ -192,14 +192,14 @@ services:
       - zookeeper
 
   scylladb:
-    image: marcoaureliomenezes/dm-scylladb:1.0.0
+    build: ../../docker/fast_layer/scylladb
     container_name: scylladb
     restart: always
     <<: *common-network
     ports:
       - "9042:9042"
     volumes:
-      - '../mnt/scylladb:/var/lib/scylla'
+      - 'dm_cluster_dev-scylladb-data:/var/lib/scylla'
 
 
   redis: 
@@ -226,6 +226,7 @@ volumes:
   dm_cluster_dev-zookeeper-data:
   dm_cluster_dev-zookeeper-log:
   dm_cluster_dev-zookeeper-secrets:
+  dm_cluster_dev-scylladb-data:
 
 
 networks:
