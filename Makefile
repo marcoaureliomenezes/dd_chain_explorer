@@ -2,6 +2,9 @@ DOCKER_NETWORK = docker-hadoop_default
 ENV_FILE = hadoop.env
 current_branch = 1.0.0
 
+create_dm_v3_chain_explorer_structure:
+	sh scripts/0_create_dm_v3_chain_explorer_structure.sh
+
 build:
 
 	# HADOOP CLUSTER RELATED BUILD
@@ -60,33 +63,47 @@ publish:
 
 
 # COMANDOS PARA DEPLOY DE CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO (DOCKER COMPOSE)
-deploy_dev_operations:
-	docker-compose -f operations/docker-compose.dev.yml up -d
 
-stop_dev_operations:
-	docker-compose -f operations/docker-compose.dev.yml down
 
 deploy_dev_fast:
-	docker-compose -f services/cluster_dev_fast.yml up -d
+	docker-compose -f services/fast/cluster_compose.yml up -d
 
 deploy_dev_app:
-	docker-compose -f services/cluster_dev_app.yml up -d --build
-
-stop_dev_fast:
-	docker-compose -f services/cluster_dev_fast.yml down
+	docker-compose -f services/app/cluster_compose.yml up -d --build
 
 deploy_dev_batch:
-	docker-compose -f services/cluster_dev_batch.yml up -d
+	docker-compose -f services/batch/cluster_compose.yml up -d
 
+deploy_dev_ops:
+	docker-compose -f services/ops/cluster_compose.yml up -d
 
-stop_dev_app:
-	docker-compose -f services/cluster_dev_app.yml down
+#######################  STOP SERVICES   #######################################
+
+stop_dev_fast:
+	docker-compose -f services/fast/cluster_compose.yml down
 
 stop_dev_batch:
-	docker-compose -f services/cluster_dev_batch.yml down
+	docker-compose -f services/batch/cluster_compose.yml down
+
+stop_dev_app:
+	docker-compose -f services/app/cluster_compose.yml down
+
+stop_dev_ops:
+	docker-compose -f services/ops/cluster_compose.yml down
+
+#######################  WATCH SERVICES   ######################################
+
+watch_dev_batch:
+	watch docker-compose -f services/batch/cluster_compose.yml ps
 
 watch_dev_fast:
-	watch docker-compose -f services/cluster_dev_fast.yml ps
+	watch docker-compose -f services/fast/cluster_compose.yml ps
+
+watch_dev_app:
+	watch docker-compose -f services/app/cluster_compose.yml ps
+
+watch_dev_ops:
+	watch docker-compose -f services/ops/cluster_compose.yml ps
 
 #########################  COMANDOS DE MONITORAMENTO    ###########################
 watch_dev_batch_services:
@@ -146,6 +163,5 @@ watch_prod_services:
 	watch docker service ls
 
 #########################	COMANDOS DE LIMPEZA   ###########################
-
 
 
