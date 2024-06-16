@@ -11,7 +11,6 @@ mnt/
 
 
 __pycache__
-**.env
 src/.infura_auth.txt
 .history
 .gitignore
@@ -24,7 +23,12 @@ venv*
 .git
 
 
-
+readme1.md
+readme2.md
+readme3.md
+readme4.md
+readme5.md
+readme6.md
 
 scripts/pre_deploy_airflow.sh
 scripts/start_prod_cluster.sh
@@ -36,3 +40,4 @@ docker/airflow/
 dadaia-tools/
 TODOs.md
 dm_doc/
+.secrets.conf
