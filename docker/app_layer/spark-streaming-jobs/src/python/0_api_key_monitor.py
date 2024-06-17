@@ -4,6 +4,19 @@ from pyspark.sql.functions import col, split, count, window, max
 from pyspark.sql.types import StructType, StringType, IntegerType
 from datetime import datetime, timedelta
 
+spark_url = "spark://spark-master:7077"
+spark_app = "Handle_Simple_Transactions"
+kafka_brokers = "broker-1:29092,broker-2:29093,broker-3:29094"
+topic_subscribe = "mainnet.application.logs"
+starting_offsets = "earliest"
+group_id = "api_key_consumer_1"
+max_offsets_per_trigger = "1000"
+
+kassandra_host = "scylladb"
+kassandra_port = "9042"
+kassandra_keyspace = "operations"
+kassandra_table = "api_keys_node_providers"
+
 spark = (
   SparkSession \
     .builder \
@@ -14,6 +27,20 @@ spark = (
 
 spark.sparkContext.setLogLevel("ERROR")
 
+kafka_options = {
+    "kafka.bootstrap.servers": kafka_brokers,
+    "subscribe": topic_subscribe,
+    "startingOffsets": starting_offsets,
+    "group.id": group_id,
+    "maxOffsetsPerTrigger": max_offsets_per_trigger
+}
+
+scylla_options = {
+    "spark.cassandra.connection.host": kassandra_host,
+    "spark.cassandra.connection.port": kassandra_port,
+    "keyspace": kassandra_keyspace,
+    "table": kassandra_table
+}
 
 kafka_options = {
     "kafka.bootstrap.servers": "broker-1:29092,broker-2:29093,broker-3:29094",
@@ -76,18 +103,3 @@ _ = (
         .awaitTermination()
 )
 
-# query = df_windowed_counts \
-#     .writeStream \
-#     .outputMode("complete") \
-#     .format("console") \
-#     .start() \
-#     .awaitTermination()
-
-
-# Suponha que eu tenho 2 colunas em 1 dataframe em spark streaming:
-# timestamp e value. a coluna value, quando quebrada por ; tem em seu segundo campo 1 valor. Gostaria de fazer uma window function de 1 dia e contar quantas vezes esse valor aparece, usando o timestamp. Como posso fazer isso no pyspark?
-
-# Exemplo de como fazer isso:
-
-
-# query.awaitTermination()
