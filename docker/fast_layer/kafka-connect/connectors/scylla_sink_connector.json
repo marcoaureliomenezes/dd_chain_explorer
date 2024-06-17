@@ -1,0 +1,11 @@
+{
+  "name" : "cassandraSinkConnector",
+  "config" : {
+    "connector.class" : "io.confluent.connect.cassandra.CassandraSinkConnector",
+    "tasks.max" : "1",
+    "topics" : "mainnet.mined.block.metadata",
+    "cassandra.contact.points" : "scylladb:9042",
+    "cassandra.keyspace" : "mainnet",
+    "cassandra.write.mode" : "Update"
+  }
+}

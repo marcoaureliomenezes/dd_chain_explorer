@@ -118,50 +118,50 @@ services:
       target: /etc/kafka/secrets
 
 
-  # schema-registry:
-  #   image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION}
-  #   hostname: schema-registry
-  #   container_name: schema-registry
-  #   restart: always
-  #   <<: *common-network
-  #   depends_on:
-  #     - broker-1
-  #     - broker-2
-  #     - broker-3
-  #   ports:
-  #     - "8081:8081"
-  #   environment:
-  #     SCHEMA_REGISTRY_HOST_NAME: schema-registry
-  #     SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
-  #     SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
-  #     SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
+  schema-registry:
+    image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION}
+    hostname: schema-registry
+    container_name: schema-registry
+    restart: always
+    <<: *common-network
+    depends_on:
+      - broker-1
+      - broker-2
+      - broker-3
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
 
-  # connect:
-  #   image: marcoaureliomenezes/dm-kafka-connect:1.0.0
-  #   container_name: connect
-  #   hostname: connect
-  #   restart: always
-  #   <<: *common-network
-  #   depends_on:
-  #     - broker-1
-  #     - broker-2
-  #     - broker-3
-  #     - schema-registry
-  #   ports:
-  #     - "8083:8083"
-  #   environment:
-  #     CONNECT_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
-  #     CONNECT_REST_PORT: 8083
-  #     CONNECT_GROUP_ID: connect
-  #     CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
-  #     CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
-  #     CONNECT_STATUS_STORAGE_TOPIC: _connect-status
-  #     CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
-  #     CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
-  #     CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
-  #     CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
-  #     CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
-  #     CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars
+  connect:
+    build: ../../docker/fast_layer/kafka-connect
+    container_name: connect
+    hostname: connect
+    restart: always
+    <<: *common-network
+    depends_on:
+      - broker-1
+      - broker-2
+      - broker-3
+      - schema-registry
+    ports:
+      - "8083:8083"
+    environment:
+      CONNECT_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS}
+      CONNECT_REST_PORT: 8083
+      CONNECT_GROUP_ID: connect
+      CONNECT_CONFIG_STORAGE_TOPIC: _connect-configs
+      CONNECT_OFFSET_STORAGE_TOPIC: _connect-offsets
+      CONNECT_STATUS_STORAGE_TOPIC: _connect-status
+      CONNECT_KEY_CONVERTER: org.apache.kafka.connect.storage.StringConverter
+      CONNECT_VALUE_CONVERTER: io.confluent.connect.avro.AvroConverter
+      CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+      CONNECT_REST_ADVERTISED_HOST_NAME: "connect"
+      CONNECT_LOG4J_APPENDER_STDOUT_LAYOUT_CONVERSIONPATTERN: "[%d] %p %X{connector.context}%m (%c:%L)%n"
+      CONNECT_PLUGIN_PATH: /usr/share/java,/usr/share/confluent-hub-components,/data/connect-jars
 
 
   control-center:
@@ -190,6 +190,36 @@ services:
       - broker-2
       - broker-3
       - zookeeper
+
+  spark-master:
+    image: docker.io/bitnami/spark:3.5
+    container_name: spark-master
+    <<: *common-network
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    ports:
+      - '8080:8080'
+
+
+  spark-worker:
+    image: docker.io/bitnami/spark:3.5
+    <<: *common-network
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=4
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
 
   scylladb:
     build: ../../docker/fast_layer/scylladb

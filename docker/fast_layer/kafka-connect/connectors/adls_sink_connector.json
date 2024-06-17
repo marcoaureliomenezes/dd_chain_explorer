@@ -1,0 +1,18 @@
+{
+  "name": "adls-gen2-sink",
+  "config": {
+    "name":"adls-gen2-sink",
+    "connector.class":"io.confluent.connect.azure.datalake.gen2.AzureDataLakeGen2SinkConnector",
+    "tasks.max":"1",
+    "topics":"datalake_topic",
+    "flush.size":"3",
+    "azure.datalake.gen2.client.id":"<your client id>",
+    "azure.datalake.gen2.client.key":"<your client key>",
+    "azure.datalake.gen2.account.name":"<your account name>",
+    "azure.datalake.gen2.token.endpoint":"https://login.microsoftonline.com/<tenant-id>/oauth2/token",
+    "format.class":"io.confluent.connect.azure.storage.format.avro.AvroFormat",
+    "confluent.topic.bootstrap.servers":"localhost:9092",
+    "confluent.topic.replication.factor":"1"
+  },
+  "tasks": []
+}
