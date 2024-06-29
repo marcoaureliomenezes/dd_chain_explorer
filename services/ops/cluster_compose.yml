@@ -1,5 +1,8 @@
 version: '3'
 
+##########################################################################################
+################################    SERVICES CONFIG    ###################################
+
 services:
 
   prometheus:
@@ -25,7 +28,8 @@ services:
     volumes:
       - grafana-dev-data:/var/lib/grafana
 
-  # MONITORING DOCKER
+  ########################################################################################
+  ####################    MONITORING DOCKER SWARM CLUSTER    #############################
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.44.1-test
     container_name: cadvisor
@@ -42,13 +46,9 @@ services:
       - '--enable_metrics=advtcp,app,cpu,cpuLoad,cpu_topology,disk,diskIO,memory,memory_numa,network'
     restart: unless-stopped
 
-  # redis: 
-  #   image: redis:latest 
-  #   container_name: redis
-  #   networks: 
-  #     - dm-operations-dev
- 
-  # MONITORING SERVERS
+  ########################################################################################
+  #######################    MONITORING LOCAL SERVER    ##################################
+
   node_exporter:
     image: quay.io/prometheus/node-exporter:latest
     container_name: node_exporter
@@ -59,6 +59,9 @@ services:
     pid: host
     volumes:
       - '/:/host:ro,rslave'
+
+############################    END OF SERVICES CONFIG    ################################
+##########################################################################################
 
 volumes:
   prometheus-dev-data:

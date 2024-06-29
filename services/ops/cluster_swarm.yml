@@ -1,5 +1,7 @@
 version: '3'
 
+##########################################################################################
+################    DEFAULT CONFIG FOR NODE EXPORTER AND CADVISOR    #####################
 
 x-common-exporters-default: &node_exporter_commons
   image: quay.io/prometheus/node-exporter:latest
@@ -9,14 +11,10 @@ x-common-exporters-default: &node_exporter_commons
   volumes:
     - '/:/host:ro,rslave'
   networks:
-    - dm_cluster_prod-fast
+    - dm_cluster_prod_ops
 
-
-    
 x-common-cadvisor-default: &cadvisor_commons
   image: gcr.io/cadvisor/cadvisor:v0.44.1-test
-  networks:
-    - dm_cluster_prod-fast
   volumes:
     - /:/rootfs:ro
     - /var/run:/var/run:rw
@@ -24,6 +22,9 @@ x-common-cadvisor-default: &cadvisor_commons
     - /var/lib/docker/:/var/lib/docker:ro
   command:
     - '--enable_metrics=advtcp,app,cpu,cpuLoad,cpu_topology,disk,diskIO,memory,memory_numa,network'
+
+##########################################################################################
+#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
 x-common-restart-default: &common_restart_policy
   restart_policy:
@@ -53,111 +54,99 @@ x-common-deploy-worker-3: &common_deploy_worker_3
     placement:
       constraints: [node.hostname == dadaia-server]
 
+##########################################################################################
+################################    SERVICES CONFIG    ###################################
+
 services:
 
-  # MONITORING
+  # PROMETHEUS UI -> http://192.168.15.101:9090
   prometheus:
-    image: prom/prometheus:latest
-    container_name: prometheus
+    image: marcoaureliomenezes/dm-prometheus:1.0.0
     ports:
       - 9090:9090
     volumes:
-      - ./prometheus.prod.yml:/etc/prometheus/prometheus.yml
-      - prometheus-prod-data:/prometheus
+      - prometheus_prod_data:/prometheus
     networks:
-      - dm_cluster_prod-fast
+      - dm_cluster_prod_ops
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-    deploy:
-      <<: *common_restart_policy
-      placement:
-        constraints: [node.hostname == dadaia-desktop]
+    <<: *common_deploy_master
         
-
-  # VISUALIZATION
+  # GRAFANA UI -> http://192.168.15.101:13000
   grafana:
     image: grafana/grafana
-    container_name: grafana
     ports:
-      - 3000:3000
+      - 13000:3000
     networks:
-      - dm_cluster_prod-fast
+      - dm_cluster_prod_ops
     volumes:
-      - grafana-prod-data:/var/lib/grafana
+      - grafana_prod_data:/var/lib/grafana
     <<: *common_deploy_master
 
+  ########################################################################################
+  #####################    MONITORING DOCKER SWARM CLUSTER    ############################
 
-  # MONITORING DOCKER SWARM CLUSTER ---> MASTER
-  cadvisor_0:
+  cadvisor_master:
     <<: *cadvisor_commons
     ports:
-      - 28080:8080
+      - 38080:8080
     <<: *common_deploy_master
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 1
-  cadvisor_1:
+  cadvisor_worker_1:
     <<: *cadvisor_commons
     ports:
-      - 28081:8080
+      - 38081:8080
     <<: *common_deploy_worker_1
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 2
-  cadvisor_2:
+  cadvisor_worker_2:
     <<: *cadvisor_commons
     ports:
-      - 28082:8080
+      - 38082:8080
     <<: *common_deploy_worker_2
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 3
-  cadvisor_3:
+  cadvisor_worker_3:
     <<: *cadvisor_commons
     ports:
-      - 28083:8080
+      - 38083:8080
     <<: *common_deploy_worker_3
 
+  ########################################################################################
+  #####################    MONITORING SERVERS SWARM CLUSTER    ###########################
 
- 
-
-  # MONITORING SERVERS
-
-  node_exporter_0:
+  node_exporter_master:
     <<: *node_exporter_commons
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-desktop]
+    networks:
+      - dm_cluster_prod_ops
+    <<: *common_deploy_master
 
-  node_exporter_1:
+  node_exporter_worker_1:
     <<: *node_exporter_commons
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+    networks:
+      - dm_cluster_prod_ops
+    <<: *common_deploy_worker_1
 
-  node_exporter_2:
+  node_exporter_worker_2:
     <<: *node_exporter_commons
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-server]
+    networks:
+      - dm_cluster_prod_ops
+    <<: *common_deploy_worker_2
 
-  node_exporter_3:
+  node_exporter_worker_3:
     <<: *node_exporter_commons
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-server-2]
+    networks:
+      - dm_cluster_prod_ops
+    <<: *common_deploy_worker_3
 
-
+############################    END OF SERVICES CONFIG    ################################
+##########################################################################################
 
 volumes:
-  prometheus-prod-data:
-  grafana-prod-data:
+  prometheus_prod_data:
+  grafana_prod_data:
 
 networks:
-  dm_cluster_prod-fast:
+  dm_cluster_prod_ops:
     driver: overlay

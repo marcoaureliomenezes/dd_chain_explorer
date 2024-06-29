@@ -10,3 +10,4 @@ RUN confluent-hub install --no-prompt confluentinc/kafka-connect-s3:latest
 # Instal scylla sink connector
 
 RUN confluent-hub install --no-prompt confluentinc/kafka-connect-cassandra:latest
+RUN confluent-hub install --no-prompt confluentinc/kafka-connect-hdfs3:latest
