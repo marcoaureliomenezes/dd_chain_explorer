@@ -1,25 +1,87 @@
 version: '3'
 
+##########################################################################################
 x-common-config-default: &conf_default
   networks:
-    - dm_cluster_prod-fast
+    - layer_fast_prod
   env_file:
     - .secrets.conf
 
+
+x-common-restart-default: &common_restart_policy
+  restart_policy:
+    condition: on-failure
+
+##########################################################################################
+#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
+
+x-common-deploy-master: &common_deploy_master
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-desktop]
+
+x-common-deploy-worker-1: &common_deploy_worker_1
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 services:
 
-  topics_creator:
+  # topics_creator:
+  #   image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+  #   <<: *conf_default
+  #   restart: on-failure
+  #   entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
+  #   deploy:
+  #     restart_policy:
+  #       condition: on-failure
+  #     placement:
+  #       constraints: [node.hostname == dadaia-desktop]
+
+  block_clock:
     image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
-    networks:
-    - dm_cluster_prod-fast
-    env_file:
-      - .secrets.conf
     <<: *conf_default
-    restart: on-failure
-    entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
+    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 100"
+    environment:
+      KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
+
+  tx_processor:
+    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+    <<: *conf_default
+    environment:
+      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-12' 
+    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
+  
+
+  tx_classifier:
+    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+    <<: *conf_default
+    entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
 
 
+  api_keys_log_processor:
+    image: marcoaureliomenezes/dm-spark-streaming-jobs:1.0.0
+    <<: *conf_default
+    entrypoint: "sh /app/shell/0_api_key_monitor.sh"
+    deploy:
+      restart_policy:
+        condition: on-failure
+      placement:
+        constraints: [node.hostname == dadaia-desktop]
 
 networks:
-  dm_cluster_prod-fast:
-    driver: overlay
+  layer_fast_prod:
+    external: true
+

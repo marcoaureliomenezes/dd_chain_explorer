@@ -14,14 +14,12 @@ x-common-healthcheck-default: &default_healthcheck
 
 x-common-network: &common-network
   networks:
-    - dm_cluster_dev-fast
-
+    - dm_cluster_dev_fast
 #################################################################
 ################    DEFINIÇÃO DOS SERVIÇOS    ###################
 #################################################################
 
 services:
-
 
   zookeeper:
     image: confluentinc/cp-zookeeper:${ZOOKEEPER_VERSION}
@@ -62,10 +60,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-1:29092,PLAINTEXT_HOST://localhost:9092
     volumes:
     - type: volume
-      source: dm_cluster_dev-broker-1-data
+      source: dm_cluster_dev_broker_1_data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster_dev-broker-1-secrets
+      source: dm_cluster_dev_broker_1_secrets
       target: /etc/kafka/secrets
 
   
@@ -87,10 +85,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-2:29093,PLAINTEXT_HOST://localhost:9093
     volumes:
     - type: volume
-      source: dm_cluster_dev-broker-2-data
+      source: dm_cluster_dev_broker_2_data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster_dev-broker-2-secrets
+      source: dm_cluster_dev_broker_2_secrets
       target: /etc/kafka/secrets
 
   broker-3:
@@ -111,10 +109,10 @@ services:
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-3:29094,PLAINTEXT_HOST://localhost:9094
     volumes:
     - type: volume
-      source: dm_cluster_dev-broker-3-data
+      source: dm_cluster_dev_broker_3_data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster_dev-broker-3-secrets
+      source: dm_cluster_dev_broker_3_secrets
       target: /etc/kafka/secrets
 
 
@@ -141,7 +139,9 @@ services:
     container_name: connect
     hostname: connect
     restart: always
-    <<: *common-network
+    networks:
+      - dm_cluster_dev_fast
+      - dm_cluster_dev_batch
     depends_on:
       - broker-1
       - broker-2
@@ -247,12 +247,12 @@ services:
       REDIS_HOSTS: "local:redis:6379"
 
 volumes:
-  dm_cluster_dev-broker-1-data:
-  dm_cluster_dev-broker-1-secrets:
-  dm_cluster_dev-broker-2-data:
-  dm_cluster_dev-broker-2-secrets:
-  dm_cluster_dev-broker-3-data:
-  dm_cluster_dev-broker-3-secrets:
+  dm_cluster_dev_broker_1_data:
+  dm_cluster_dev_broker_1_secrets:
+  dm_cluster_dev_broker_2_data:
+  dm_cluster_dev_broker_2_secrets:
+  dm_cluster_dev_broker_3_data:
+  dm_cluster_dev_broker_3_secrets:
   dm_cluster_dev-zookeeper-data:
   dm_cluster_dev-zookeeper-log:
   dm_cluster_dev-zookeeper-secrets:
@@ -260,8 +260,8 @@ volumes:
 
 
 networks:
-  dm_cluster_dev-fast:
-    name: dm_cluster_dev-fast
+  dm_cluster_dev_fast:
+    name: dm_cluster_dev_fast
 
-  dm_cluster_dev-batch:
-    name: dm_cluster_dev-batch
+  dm_cluster_dev_batch:
+    name: dm_cluster_dev_batch

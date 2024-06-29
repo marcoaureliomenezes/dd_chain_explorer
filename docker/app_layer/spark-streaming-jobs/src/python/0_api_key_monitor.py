@@ -18,8 +18,8 @@ kassandra_keyspace = "operations"
 kassandra_table = "api_keys_node_providers"
 
 spark = (
-  SparkSession \
-    .builder \
+  SparkSession
+    .builder
     .appName("API_KEY_Monitor")
     .master("spark://spark-master:7077")
     .getOrCreate()

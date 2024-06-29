@@ -1,7 +1,4 @@
 CREATE KEYSPACE IF NOT EXISTS operations WITH replication = {'class': 'SimpleStrategy', 'replication_factor': 1};
-
-USE operations;
-
 CREATE TABLE IF NOT EXISTS operations.api_keys_node_providers (
   name TEXT PRIMARY KEY, 
   start TEXT, 

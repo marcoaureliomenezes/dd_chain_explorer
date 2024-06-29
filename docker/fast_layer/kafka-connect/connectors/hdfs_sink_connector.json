@@ -1,0 +1,19 @@
+{
+  "name": "hdfs3-parquet-field",
+  "config": {
+      "connector.class": "io.confluent.connect.hdfs3.Hdfs3SinkConnector",
+      "tasks.max": "1",
+      "topics": "mainnet.mined.block.metadata",
+      "hdfs.url": "hdfs://namenode:9000",
+      "flush.size": "3",
+      "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+      "value.converter": "io.confluent.connect.avro.AvroConverter",
+      "value.converter.schema.registry.url":"http://localhost:8081",
+      "confluent.topic.bootstrap.servers": "broker-1:29092,broker-2:29093,broker-3:29094",
+      "confluent.topic.replication.factor": "1",
+
+      "format.class":"io.confluent.connect.hdfs3.parquet.ParquetFormat",
+      "partitioner.class":"io.confluent.connect.storage.partitioner.FieldPartitioner",
+      "partition.field.name":"is_customer"
+  }
+}
