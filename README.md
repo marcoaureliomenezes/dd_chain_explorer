@@ -6,30 +6,33 @@ Estão aqui implementadas estratégias e rotinas de extração, ingestão, proce
 
 ## Sumário
 
-- 1. Objetivo do case;
-  - 1.1. Objetivos de negócio;
-  - 1.2. Introdução;
-  - 1.3. Objetivos técnicos;
-  - 1.4. Observação sobre o tema escolhido;
-- 2. Explicação sobre o case desenvolvido;
-  - 2.1. Captura de dados;
-  - 2.2. Restrições de API keys;
-  - 2.3. Mecanismo para captura de dados;
-  - 2.4. Sistema Pub / Sub;
-- 3. Arquitetura do case;
-  - 3.1. Arquitetura de solução;
-  - 3.2. Arquitetura Técnica;
-- 4. Aspectos técnicos desse trabalho;
-  - 4.1. Docker;
-  - 4.2. Orquestração de containers Docker;
-- 5. Reprodução da arquitetura e do case;
-  - 5.1. Considerações;
-  - 5.2. Pré-requisitos;
-  - 5.3. Automação de comandos e Makefile;
-  - 5.4. Passo-a-passo para reprodução do sistema;
-- 6. Conclusão;
-- 7. Melhorias futuras;
+- [1. Objetivo do case](#1-objetivo-do-case)
+  - [1.1. Objetivos de negócio](#11-objetivos-de-negócio)
+  - [1.2. Introdução](#12-introdução)
+  - [1.3. Objetivos técnicos](#13-objetivos-técnicos)
 
+- [2. Explicação sobre o case desenvolvido](#2-explicação-sobre-o-case-desenvolvido)
+  - [2.1. Captura de dados](#21-captura-de-dados)
+  - [2.2. Restrições de API keys](#22-restrições-de-api-keys)
+  - [2.3. Mecanismo para captura de dados](#23-mecanismo-para-captura-de-dados)
+  - [2.4. Sistema Pub / Sub](#24-sistema-pub--sub)
+- [3. Arquitetura do case](#3-arquitetura-do-case)
+  - [3.1. Arquitetura de solução](#31-arquitetura-de-solução)
+  - [3.2. Arquitetura técnica](#32-arquitetura-técnica)
+- [4. Aspectos técnicos desse trabalho](#4-aspectos-técnicos-desse-trabalho)
+  - [4.1. Dockerização dos serviços](#41-dockerização-dos-serviços)
+  - [4.2. Orquestração de serviços em containers](#42-orquestração-de-serviços-em-containers)
+- [5. Reprodução do sistema em ambiente local](#5-reprodução-do-sistema-em-ambiente-local)
+  - [5.1. Requisitos](#51-requisitos)
+  - [5.2. Clonagem de repositórios desse trabalho](#52-clonagem-de-repositórios-desse-trabalho)
+  - [5.3. Reprodução do sistema usando o Docker Compose](#53-reprodução-do-sistema-usando-o-docker-compose)
+
+- [6. Conclusão](#6-conclusão)
+- [7. Melhorias futuras](#7-melhorias-futuras)
+  - [7.1. Aplicações downstream para consumo dos dados](#71-aplicações-downstream-para-consumo-dos-dados)
+  - [7.2. Melhoria em aplicações do repositório onchain-watchers](#72-melhoria-em-aplicações-do-repositório-onchain-watchers)
+  - [7.3. Troca do uso de provedores Blockchain Node-as-a-Service](#73-troca-do-uso-de-provedores-blockchain-node-as-a-service)
+  - [7.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#74-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
 
 ## 1. Objetivo do Case
 
@@ -56,7 +59,7 @@ Quando se fala em blockchain vale distinguir que o termo blockchain, tecnicament
 
 - **Rede blockchain**, de topologia Peer-to-Peer onde nós validam transações e mineram novos blocos, estes construídos em uma estrutura de dados blockchain mencionada acima. Todos os nós da rede possuem uma cópia dessa estrutura de dados e são sincronizados entre si. Assim, novos blocos minerados (contendo transações), após consenso, são adicionados ao blockchain permanentemente a rede. E todos nós para que a rede possa validar a integridade das transações contidas em todos os blocos.
 
-#### Observação
+#### Observação sobre o tema escolhido
 
 Não é requisito no case do Data Master usar blockchain. Porém, dada a natureza tecnológica dessa fonte de dados, bem como seus possíveis casos de uso, a escolha dessa temática para o trabalho se justifica. Com muita simplicidade, uma blockchain nada mais é do que uma forma de usuários transacionarem entre si através de uma rede sem a necessidade de um intermediário. A própria rede garante sua segurança. E essas transações podem ser troca de tokens nativos da rede (criados a cada bloco minerado) ou interação com contratos inteligentes.
 
@@ -251,7 +254,7 @@ Este tem por finalidade fazer o decode do campo input. Para que isso seja possí
 
 Se o objetivo é decodificar o campo input de transações de interação com contratos inteligentes, para todo contrato inteligente, é preciso que a ABI de todos os contratos esteja disponível. Para isso, será criada na próxima versão o job **contract_abi_ingestor**.
 
-### 2.4. Sistema Pub / Sub para comunicação entre Jobs
+### 2.4. Sistema Pub / Sub
 
 Para viabilizar a rotina descrita acima, como mencionado, é necessário que os jobs comuniquem-se entre si. É então necessário um sistema do tipo Fila ou **Publisher-Subscriber**.
 
@@ -369,7 +372,7 @@ Essas tecnologias são amplamente usadas em ecossistemas de plataformas de dados
 
 Nessa camada estão definidas:
 
-- Aplicações escritas em python para interação com blockchains do tipo EVM e plataforma de dados. As funcionalidades e jobs descritos na [seção 2.3](#Mecanismo-para-captura-de-dados).
+- Aplicações escritas em python para interação com blockchains do tipo EVM e plataforma de dados.
 - Aplicação Spark Streaming para monitoramento de consumo de API Keys.
 
 #### Observação sobre aplicações e repositórios desse trabalho
@@ -402,15 +405,13 @@ Na camada de operação estão definidos serviços necessários para realizar te
   - **Node exporter**: Agente para coletar dados de telemetria do nó em específico.
   - **Cadvisor**: Agente para coletar dados de telemetria do docker.
 
-
-
 ## 4. Aspectos técnicos desse trabalho
 
 Nessa seção estão apresentado alguns aspectos técnicos na implementação do sistema proposto em um ambiente local. Primeiramente, são apresentados os aspectos técnicos relacionados a  escolha do da ferramenta **docker** como base na construção desse trabalho e as formas de orquestração desses containers que são utilizadas aqui.
 
 Em seguida, será apresentada a estrutura desse projeto, explorando as pastas e arquivos que compõem o repositório **dm_v3_chain_explorer**.
 
-### 4.1. Docker
+## 4.1. Dockerização dos serviços
 
 Conforme mencionado em seções anteriores, o docker foi usado amplamente na implementação desse tabalho. O seu uso pode ser embasado de acordo com 2 propósitos.
 
@@ -429,7 +430,7 @@ Conforme mencionado em seções anteriores, o docker foi usado amplamente na imp
 
   - Os serviços aqui deployados em containers e open source podem ser facilmente substituídos por serviços análogos em cloud, caso haja a necessidade de se construir um ambiente produtivo robusto, seguro e eficiente.
   
-### 4.2. Orquestração de containers Docker
+## 4.2. Orquestração de serviços em containers
 
 Conforme mencionado, todos os serviços do sistema **dm_v3_chain_explorer** rodarão instanciados localmente em containers a partir de imagens docker. Então se faz necessário o uso de uma ferramenta de orquestração de execução desses containers. O docker tem 2 ferramentas para esse propósito: **docker-compose** e **docker-swarm**.
 
@@ -455,9 +456,9 @@ Por outro lado, a medida que o número de serviços aumentou, a necessidade de m
 
 2. Existem outras possibilidades de deploy e orquestração de containers que poderiam ter sido utilizadas aqui. Por exemplo o uso de clusters Kubernetes para orquestração de containers e o uso de operadores para deploy de serviços como Kafka, Spark, Hadoop, entre outros, baseados em Helm Charts. O uso de Kubernetes traria benefícios como autoescalonamento, alta disponibilidade, entre outros. Porém, a escolha do Docker Swarm foi feita por simplicidade e configuração em ambiente local, bastando o docker instalado.
 
-### 4.3. Estrutura do projeto
+## 4.3. Estrutura do projeto
 
-#### 4.3.1. Pasta Docker
+### 4.3.1. Pasta Docker
 
 Na pasta `/docker`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidas as imagens docker que compõem esse trabalho. Elas estão organizadas de acordo com suas respectivas camadas, sendo essas `app_layer`, `fast_layer`, `batch_layer`, e `ops_layer`.
 
@@ -546,9 +547,9 @@ Na pasta `/scripts`, localizada na raiz do repositório **dm_v3_chain_explorer**
 Na pasta `/mnt`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos volumes que são montados em containers para persistência de dados localmente.
 <hr>
 
-## 5. Passo-a-passo para reprodução do sistema
+## 5. Reprodução do sistema em ambiente local
 
-Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local. 
+Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local.
 
 Um dos requisitos deste trabalho é que a solução proposta seja reproduzível. Essa característica da reprodutibilidade é importante pelos seguintes motivos:
 
@@ -559,11 +560,11 @@ Esse passo a passo indica como clonar repositórios, configurar ambiente e deplo
 
 **Observação**: Um fator crucial e de maior dificuldade para reprodução desse sistema é a **necessidade de API Keys** para interagir com a rede blockchain por meio de um provedor Node-as-a-Service e capturar dados.
 
-### 5.1. Requisitos
+## 5.1. Requisitos
 
 Para reprodução desse sistema em ambiente local, é necessário que os seguintes requisitos sejam atendidos.
 
-#### 5.1.1. Requisitos de hardware
+### 5.1.1. Requisitos de hardware
 
 Para execução desse sistema em ambiente local, é recomendado possuir memoria RAM de no mínimo 16 GB e processador com 4 núcleos.
 
@@ -605,19 +606,15 @@ A saída esperada é algo como:
 
 <img src="./img/swarm_installed.png" alt="docker-swarm-version" width="70%"/>
 
-### 5.2. Passo-a-passo para reprodução do sistema
+### 5.2. Clonagem de repositórios desse trabalho
 
-Dado que os requisitos acima foram atendidos, o passo-a-passo para reprodução desse sistema em ambiente local é o seguinte.
-
-### 5.2.1.  Clonagem do repositório base
-
-O primeiro passo para reprodução desse sistema é clona-lo em um diretório local. Para isso, execute o comando abaixo e em seguida navegue para o diretório do projeto.
+Esse trabalho é composto por multiplos repositórios, conforme mencionado. O 1º passo para reprodução desse sistema é clonar o repositório base, definido como **dm_v3_chain_explorer**. Para isso, execute o comando abaixo e em seguida navegue para o diretório do projeto.
 
 ```bash
 git clone git@github.com:marcoaureliomenezes/dm_v3_chain_explorer.git
 ```
 
-Conforme mencionado, esse trabalho é composto de múltiplos repositórios. Para montar a estrura completa pastas precisam ser criadas e os demais repositórios precisam ser clonados. Para isso, um script foi criado e este pode ser chamado a partir do seguinte comando:
+Então, para montar a estrutura completa é necessário clonar os demais repositórios quem compõem a **camada app**. Um script shell chamado `0_create_dm_v3_chain_explorer_structure.sh` foi criado para esse proposito e pode ser chamado a partir do seguinte comando make:
 
 ```bash
 make create_dm_v3_explorer_structure
@@ -625,7 +622,7 @@ make create_dm_v3_explorer_structure
 
 O comando acima clonará todos os repositórios de aplicação necessários para dentro da pasta `/docker`.
 
-### 5.2.2.  Pull e Build das imagens docker
+### 5.2.1.  Pull e Build das imagens docker
 
 No docker é possível construir imagens a partir de um arquivo `Dockerfile` e depois fazer o build delas. Ou ainda, é possível fazer o pull de imagens já construídas e disponíveis no docker hub entre outros repositórios de imagens.
 
@@ -637,9 +634,25 @@ make build
 
 <img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="70%"/>
 
-Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub.
+**Observação**: Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub.
 
-### 5.4.3.  Deploy de camada Ops (Docker Compose)
+## 5.3. Reprodução do sistema usando o Docker Compose
+
+Caso o leitor queira deployar o sistema em ambiente local, single-node, usando o **docker-compose**, os passos a seguir devem ser seguidos.
+
+Dado que os requisitos acima foram atendidos, o passo-a-passo para reprodução desse sistema em ambiente local é o seguinte.
+
+## 5.3.1. Observação sobre execução usando Docker Compose
+
+A execução de todas as camadas de serviço em uma máquina local pode ser pesada, esgotando-se os recursos de hardware disponíveis. Por tanto que além dos requisitos citados, o leitor execute as camadas de serviço de forma separada, conforme descrito abaixo.
+
+- Camada de operações;
+- Camada Fast e camada App;
+- Camada Batch.
+
+Para que fosse possível executar todos os serviços em conjunto, foi então necessária a construção de um **cluster Swarm distribuído**.
+
+## 5.3.2.  Deploy de serviços da camada de Operações
 
 Conforme visto na seção de arquitetura técnica, a **camada ops** é composta por serviços que realizam telemetria dos recursos de infraestrutura do **dm_v3_chain_explorer**. Ela é composta dos seguintes serviços:
 
@@ -677,9 +690,9 @@ A interface do Grafana pode ser acessada no navegador, digitando o endereço `ht
 
 Dessa forma é possível visualizar os dados de telemetria do docker e do nó em específico no Grafana.
 
-### 5.4.4.  Deploy de camada fast (Docker Compose)
+## 5.3.4.  Deploy de serviços da camada Fast
 
-A camada fast é composta pelos seguintes serviços:
+A **camada fast** é composta pelos seguintes serviços:
 
 - **3 Brokers do Apache Kafka**, usados como backbone para comunicação entre Jobs e como plataforma de armazenamento de dados para fluxos downstream.
 - **Apache Zookeeper** utilizado por cluster de brokers do Kafka.
@@ -712,4 +725,87 @@ Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar dis
 - No Redis Commander é possível visualizar os dados no redis.
 - No Spark Master é possível visualizar a interface do spark.
 
-### 5.4.5.  Deploy de camada App (Docker Compose)
+## 5.2.5.  Deploy de serviços da camada de Aplicações
+
+A **camada app** é composta pelos seguintes serviços:
+
+- **block-clock**: Aplicação que captura dados de blocos da rede Ethereum e os envia para um tópico do Kafka.
+- **tx_processor**: Aplicação que captura dados de transações da rede Ethereum e os envia para um tópico do Kafka.
+- **tx_classifier**: Aplicação que classifica transações de acordo com seu tipo e as envia para tópicos específicos do Kafka.
+- **tx_input_decoder**: Aplicação que realiza decode de inputs de transações e os envia para um tópico do Kafka.
+- **api_keys_log_processor**: Job Spark Streaming que monitora consumo de API Keys e atualiza tabela no ScyllaDB.
+
+Para deploy da **camada app**, execute o comando abaixo.
+
+```bash
+make deploy_dev_app && make watch_dev_app
+```
+
+<img src="./img/laker_app_docker_compose.png" alt="laker_app_docker_compose.png" width="90%"/>
+
+## Job Spark Streaming `api_keys_log_processor` executando
+
+O job de Spark Streaming `api_keys_log_processor` monitora o consumo de API Keys e atualiza a tabela no ScyllaDB. Para visualizar o Job executando na Spark UI, acesse o endereço `http://localhost:8080` no navegador.
+
+<img src="./img/jobs_spark_executando.png" alt="jobs_spark_executando.png" width="90%"/>
+<hr>
+
+
+## Visualização de consumo diário de API Keys no ScyllaDB
+
+
+```bash
+docker exec -it scylladb cqlsh -e "select * from operations.api_keys_node_providers"
+```
+
+<img src="./img/cassandra_api_key_consume.png" alt="cassandra_api_key_consume.png" width="90%"/>
+<hr>
+
+## Semáforo de consumo de API Keys no Redis
+
+Abaixo é mostrado o controle de consumo de API Keys no Redis. Cada chave é um hash com a API Key e o valor é o timestamp de quando foi consumida.
+
+<img src="./img/redis_semaforo_api_keys.png" alt="redis_semaforo_api_keys.png" width="90%"/>
+<hr>
+
+## Dados sendo exibidos pelo Kafka Control Center
+
+Com o mecanismo de captura de dados e de gerenciamento de API Keys para compartilhamento entre jobs funcionando os dados passam a fluir pelos tópicos do Kafka.
+
+Abaixo é possível ver uma amostra das mensagens sendo enviadas para o tópico `ethereum-blocks` no Kafka. Essas mensagens são capturadas pela aplicação `block-clock` e enviadas para o Kafka.
+
+<img src="./img/data_topic_raw_data_txs.png" alt="data_topic_raw_data_txs.png" width="90%"/>
+<hr>
+
+## 5.4. Reprodução do sistema usando o Docker Swarm
+
+
+## 6. Conclusão
+
+Toda parte teórica e prática planejada para esse trabalho foi implementada. Demonstrações do workflow de captura descritos nesse documento serão feitas na apresentação, de forma que os avaliadores possam entender melhor o sistema **dm_v3_chain_explorer**, aqui proposto.
+
+Assim os avaliadores podem colocar suas dúvidas sobre o trabalho e também dúvidas técnicas sobre as tecnologias usadas, de maneira a avaliar da melhor forma o conhecimento desse autor nos campos relacionados a engenharia de dados. É dificil mensurar o quanto conhecimento em tecnologia está contido nesse trabalho. A construção de uma plataforma de dados para captura e ingestão de dados.
+
+## 7. Melhorias futuras
+
+Esse trabalho, após ser submetido continuará a ser desenvolvido, visto as possibilidades que ele apresenta, mesmo que seja apenas no campo de estudos e desenvolvimento de hard skills.
+Seguem abaixo listadas algumas dessa melhorias
+
+### 7.1. Aplicações downstream para consumo dos dados
+
+Está descrito nesse documento, somente o fluxo de captura, ingestão e algum processamento para obter dados em tempo real de uma blockchain do tipo EVM. Na apresentação serão demonstradas algumas aplicações downstream que evoluídas podem ter diversas aplicabilidades.
+
+### 7.2. Melhoria em aplicações do repositório onchain-watchers
+
+Como será apresentado, esse repositório tem aplicações que usam dados das transações ingestadas para obter dados de estado provenientes de contratos inteligentes. Para isso uma arquitetura voltada a eventos precisa ser implementada. Por exemplo, quando uma transação de swap de token WETH no protocolo DEFI Uniswap é feito, um evento é disparado para que dados da piscina de liquidez e preço dos tokens sejam ingestados no sistema.
+
+### 7.3. Troca do uso de provedores Blockchain Node-as-a-Service
+
+Conforme visto nesse trabalho o uso de provedores node-as-a-service tais como Infura e Alchemy limitam as requisições http para request dos dados. Então, a troca desses por nós proprietários é um passo importante para evolução do sistema, ao lidar com redes mais escalaveis do tipo EVM.
+
+### 7.4. Evolução dos serviços de um ambiente local para ambiente produtivo
+
+Conforme visto ao longo desse trabalho, todos os serviços usados, com exceção das aplicações construídas propriamente dita para esse sistema, tem versões totalmente gerenciadas em provedores de Cloud. O Kafka por exemplo pode ser substituído pelo Event Hub ou Amazon MSK ou Clonfluent Cloud. O data lake hadoop pode ser substituído por data lakes em recursos do tipo object storages, tais como S3 ou Azure ADLS. O Hive e o Spark podem ser substituídos pelo Delta Lake + Spark do Databricks. E assim por diante.
+Os containers de aplicação podem ser migrados para executarem em recursos tais com EKS da AWS ou o AKS da Azure.
+
+Essas são algumas das evoluções enumeradas no roadmap desse sistema.
