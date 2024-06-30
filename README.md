@@ -9,60 +9,27 @@ Estão aqui implementadas estratégias e rotinas de extração, ingestão, proce
 - 1. Objetivo do case;
   - 1.1. Objetivos de negócio;
   - 1.2. Introdução;
-    - 1.2.1.  Redes Blockchain, Públicas e privadas;
-    - 1.2.2.  Contratos inteligentes;
-    - 1.2.3. Oportunidades em blockchains públicas compatíveis com EVM;
-    - 1.2.4.  Possibilidade em blockchains privadas;
   - 1.3. Objetivos técnicos;
   - 1.4. Observação sobre o tema escolhido;
-
 - 2. Explicação sobre o case desenvolvido;
   - 2.1. Captura de dados;
   - 2.2. Restrições de API keys;
   - 2.3. Mecanismo para captura de dados;
-    - 2.3.1.  Captura dos dados do bloco mais recente;
-    - 2.3.2.  Captura de dados de transações;
-    - 2.3.3.  Separação de transações por finalidade;
-    - 2.3.4.  Decode do campo input contido em transações;
   - 2.4. Sistema Pub / Sub;
-
 - 3. Arquitetura do case;
   - 3.1. Arquitetura de solução;
   - 3.2. Arquitetura Técnica;
-    - 3.2.1.  Camada Fast;
-    - 3.2.2.  Camada Batch;
-    - 3.2.3.  Camada de aplicação;
-      - Observação sobre aplicações e repositórios desse trabalho;
-    - 3.2.4. Camada de operação;
-    - 3.2.5.  Segurança da plataforma;
-
 - 4. Aspectos técnicos desse trabalho;
   - 4.1. Docker;
   - 4.2. Orquestração de containers Docker;
-    - Por que usar além do docker-compose também o docker Swarm?
 - 5. Reprodução da arquitetura e do case;
   - 5.1. Considerações;
   - 5.2. Pré-requisitos;
-    - 5.2.1.  Requisitos de hardware;
-    - 5.2.2.  Docker;
-    - 5.2.3.  Docker Compose e Docker Swarm;
   - 5.3. Automação de comandos e Makefile;
   - 5.4. Passo-a-passo para reprodução do sistema;
-    - 5.4.1.  Clonagem do repositório base;
-    - 5.4.2.  Pull e Build das imagens docker;
-    - 5.4.3.  Inicialização de ambiente de Desenvolvimento;
-      - 1. Deploy de serviços da camada Fast;
-      - 2. Deploy de serviços da camada de Batch;
-        - 2.1. Hadoop Namenode;
-      - 3. Deploy de serviços da camada de Aplicação;
-      - 4. Deploy de serviços da camada de operações;
-
 - 6. Conclusão;
 - 7. Melhorias futuras;
-  - 7.1.1.  Aplicações downstream para consumo dos dados;
-  - 7.1.2.  Melhoria em aplicações do repositório onchain-watchers;
-  - 7.1.3.  Troca do uso de provedores Blockchain Node-as-a-Service;
-  - 7.1.4.  Evolução dos serviços de um ambiente local para ambiente produtivo;
+
 
 ## 1. Objetivo do Case
 
@@ -614,7 +581,7 @@ docker --version
 
 A saída esperada é algo como:
 
-<img src="./img/docker_installed.png" alt="Makefile" width="30%"/>
+<img src="./img/docker_installed.png" alt="Makefile" width="70%"/>
 
 Caso não esteja instalado, siga as instruções de instalação no [site oficial do docker](https://docs.docker.com/engine/install/).
 
@@ -674,21 +641,54 @@ Todas as imagens são construídas tendo tags apontando para o repositório **ma
 
 ### 5.4.3.  Deploy de camada Ops (Docker Compose)
 
-Para realizar o deploy da camada `ops`, execute o comando abaixo.
+Conforme visto na seção de arquitetura técnica, a **camada ops** é composta por serviços que realizam telemetria dos recursos de infraestrutura do **dm_v3_chain_explorer**. Ela é composta dos seguintes serviços:
+
+- **Prometheus**: Serviço de monitoramento de telemetria.
+- **Grafana**: Serviço de visualização de telemetria.
+- **Node Exporter**: Agente para coletar dados de telemetria do nó em específico.
+- **Cadvisor**: Agente para coletar dados de telemetria do docker.
+
+Para realizar o deploy da **camada ops**, execute o comando abaixo.
 
 ```bash
 make deploy_dev_ops && make watch_dev_ops
 ```
+
 <img src="./img/laker_ops_docker_compose_ps.png" alt="laker_ops_docker_compose_ps" width="90%"/>
 
+**Observação**: Após execução do comando, o terminal ficará monitorando o estado dos containers. Para sair dessa tela, pressione `Ctrl + C`. Os serviços continuarão rodando em background.
 
-Essa camada, composta pelo Prometheus, Grafana, Node Exporter e Cadvisor, é responsável por coletar dados de telemetria do docker e do nó em específico e enviar para o Prometheus. O Grafana é usado para visualização desses dados.
+Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar disponíveis para a **camada ops**:
 
+| Serviço        | Endpoint              |
+|----------------|-----------------------|
+| Prometheus     | http://localhost:9090 |
+| Grafana        | http://localhost:3000 |
 
+A interface do Grafana pode ser acessada no navegador, digitando o endereço `http://localhost:3000`. O usuário e senha padrão são `admin` e `admin`, respectivamente. A tela de login do Grafana é mostrada abaixo.
+
+<img src="./img/grafana_node_exporter.png" alt="grafana_node_exporter" width="80%"/>
+
+<img src="./img/grafana_container.png" alt="grafana_container" width="80%"/>
+
+#### Adicionando dashboards ao Grafana
+
+- Para adicionar o dashboard do Node Exporter e do docker, clique em `+` no lado esquerdo da tela, e depois em `Import`. No campo `Grafana.com Dashboard` digite o número `1860` e clique em `Load`. Em seguida, selecione o Prometheus como fonte de dados e clique em `Import`. Para adicionar o dashboard referente ao Docker, repita o processo usando o ID `193` no campo `Grafana.com Dashboard`.
+
+Dessa forma é possível visualizar os dados de telemetria do docker e do nó em específico no Grafana.
 
 ### 5.4.4.  Deploy de camada fast (Docker Compose)
 
-Os comandos para deploy de serviços foram divididos de acordo com as camadas mencionadas na seção 1.2. Dessa forma há maior espaço para que máquinas com recursos mais escassos possam executar o sistema em modulos.
+A camada fast é composta pelos seguintes serviços:
+
+- **3 Brokers do Apache Kafka**, usados como backbone para comunicação entre Jobs e como plataforma de armazenamento de dados para fluxos downstream.
+- **Apache Zookeeper** utilizado por cluster de brokers do Kafka.
+- **Confluent Control Center**: Serviço com interface gráfica para visualização de tópicos, kafka clusters, consumer groups e cluster de kafka-connect.
+- **Confluent Kafka Connect**: Integra o Apache Kafka às mais diferentes plataformas através do uso de sources e sinks já implementados. Assim é possível replicar os dados entre tópicos do Kafka e Data Lakes, Databases e Data Warehouses do mais diversos tipos.
+- **ScyllaDB**: Database No-SQL que permite alto throughput de operações de escrita, é por natureza distribuído de forma uniforme e pode ser escalado para atuar de forma global. Usado para update em tabela de consumo de API Keys, para que jobs tenham ciencia de chave e sua utilização em requests no tempo.
+- **Redis**: Banco de dados chave-valor usado para controle de consumo de API Keys em jobs de streaming, de forma a garantir que cada API key seja usada por somente um Job a determinado instante, atuando como um semáforo.
+- **Redis Commander**: Interface grafica para visualização dos dados no redis.
+- **Spark Master e Worker**: Serviços que gerenciam a execução de jobs de processamento de dados em Spark.
 
 Para deploy da camada `fast`, execute o comando abaixo.
 
@@ -696,6 +696,20 @@ Para deploy da camada `fast`, execute o comando abaixo.
 make deploy_dev_fast && make watch_dev_fast
 ```
 
-Após execução do comando, o terminal ficará monitorando o estado dos containers. Para sair dessa tela, pressione `Ctrl + C`. Os serviços continuarão rodando em background.
-
 <img src="./img/layer_batch_docker_compose_ps.png" alt="layer_batch_docker_compose_ps" width="90%"/>
+
+**Observação**: Após execução do comando, o terminal ficará monitorando o estado dos containers. Para sair dessa tela, pressione `Ctrl + C`. Os serviços continuarão rodando em background.
+
+Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar disponíveis para a **camada fast**:
+
+| Serviço        | Endpoint              |
+|----------------|-----------------------|
+| Control Center | http://localhost:9021 |
+| Redis Commander| http://localhost:8081 |
+| Spark Master   | http://localhost:8080 |
+
+- No Control Center é possível visualizar tópicos, clusters, consumer groups e cluster de kafka-connect.
+- No Redis Commander é possível visualizar os dados no redis.
+- No Spark Master é possível visualizar a interface do spark.
+
+### 5.4.5.  Deploy de camada App (Docker Compose)
