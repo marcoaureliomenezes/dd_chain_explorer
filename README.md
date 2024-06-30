@@ -135,7 +135,7 @@ O DREX, projeto do banco central do Brasil, é um exemplo de uso de blockchain p
 
 Ele funcionará com base em uma rede blockchain compativel com a EVM. [Nessa reportagem da Exame](https://exame.com/future-of-money/banco-central-quer-integracao-do-drex-com-ethereum-e-outros-blockchains-tradicionais/) é possível se obter mais informações sobre. Fica clara a utilidade de um sistema como o **dm_v3_chain_explorer**, podendo esse ser usado para monitorar e auditar transações e interações com contratos inteligentes nessa rede.
 
-###  1.3. Objetivos técnicos
+### 1.3. Objetivos técnicos
 
 Para alcançar os objetivos de negócio propostos é preciso implementar um sistema capaz de capturar, ingestar, processar, persistir e utilizar dados da origem mencionada. Para isso, foram definidos os seguintes objetivos técnicos:
 
@@ -182,9 +182,9 @@ Dado que o acesso ao nó esteja resolvido, ainda sim é preciso interagir com el
 
 - [Biblioteca Web3.py](https://web3py.readthedocs.io/en/stable/) para interação com a rede e captura de dados de blocos e transações;
 
-- [Framework brownie](https://eth-brownie.readthedocs.io/en/stable/python-package.html,) construída no topo da biblitoeca Web3.py para interação com contratos inteligentes chamada.
+- [Framework brownie](https://eth-brownie.readthedocs.io/en/stable/python-package.html), construída no topo da biblioteca `Web3.py` para interação com contratos inteligentes.
 
-Dado que ambos os pontos estejam satisfeitos, é possível fazer a ingestão de dados em tempo real, certo? Não exatamente.
+Dado que ambos os pontos estejam satisfeitos, é possível fazer a ingestão de dados em tempo real, correto? Não exatamente.
 
 ### 2.2. Restrições de API keys
 
@@ -206,8 +206,7 @@ Para capturar dados de blocos e transações da rede em tempo real usando o paco
 
 Nos subtópicos dessa sessão está detalhado o mecanismo para ingestão em tempo real dos dados de uma rede blockchain compatível com EVM. Eles se baseam em 2 funções específicas do pacote `web3.py`:
 
-- **get_block(block_number)**: Retorna um dicionário com os metadados do bloco e uma lista de hash_ids de transações pertencentes àquele bloco. Pode receber o parâmetro `latest` para capturar o bloco mais recente.
-
+- **get_latest_block()**: Retorna um dicionário com os metadados do bloco e uma lista de hash_ids de transações pertencentes ao último bloco minerado.
 - **get_transaction(tx_hash)**: Retorna um dicionário com os dados da transação referente ao hash_id passado como parâmetro.
 
 De forma simplória, é possivel com esses métodos capturar todas as transações da rede. Porém, deve ser considerado como os jobs que utilizam essas funções trabalharão em conjunto para capturar os dados de maneira eficiente. Faz necessário também considerar a limitação de requisições impostas pelos provedores de NaaS.
@@ -300,189 +299,403 @@ Então, se esse sistema é desenhado para ser usado com diferentes blockchains, 
 ## 3. Arquitetura do case
 
 Nesse tópico está detalhada a arquitetura de solução e técnica do dm_v3_chain_explorer. Foi explorado acima alguns atores no mecanismo que realiza a captura e ingestão do dados. Porém é necessário entender com clareza como estes componentes comunicam-se entre si.
-3.1. Arquitetura de solução
+
+### 3.1. Arquitetura de solução
+
 O desenho abaixo ilustra como a solução para captura e ingestão de dados da Ethereum, e em tempo real funciona.
-
-Para detalhar a arquitetura de solução desse trabalho, é preciso extrair dos objetivos técnicos decisões tomadas e requisitos para o sistema.
-
-#### 2.1.1 - Decisões tomadas
-
-1. Foi escolhido fazer ingestão de dados da rede Ethereum. Isso se justifica pelo fato de que a rede Ethereum é a rede com maior capital preso em tokens, sendo a melhor escolha para um requisito de negócio. Além disso, a rede Ethereum é uma rede do tipo EVM. Portanto, a solução proposta é agnóstica à rede de blockchain, mas restrita a redes do tipo EVM.
-
-2. Para capturar dados da rede é preciso ter um nó na rede Ethereum. Devido aos requisitos de hardware e software necessários para deploy de um nó on-premises ou em cloud, foi escolhido o uso de provedores de `Node-as-a-Service`. Esses provedores fornecem uma API para interação com um nó da rede Ethereum limitando o número de requisições por segundo e por dia usando uma API KEY.
-
-#### 2.1.2 - Requisitos para o sistema
-
-O requisito inicial do sistema é capturar e ingestar os dados brutos de transações da rede Ethereum com a menor latência possível. Dado que foi optado pelo uso de provedores de `Node-as-a-Service`, é preciso considerar os seguintes fatores:
-
-- As requisições em nós disponibilizados por um provedor de `Node-as-a-Service` são limitadas. O provedor infura por exemplo, sua API KEY em plano gratuito oferece 10 requisições por segundo e 100.000 requisições por dia.
-
-- Na rede Ethereum, um bloco é minerado a cada 8 segundos e contém cerca de 250 transações. Isso resulta em uma quantidade diária de mais de 2 milhões de transações. Portanto, para capturar esses dados, é necessário minimizar o número de requisições e manter um controle de uso das API KEYs.
-
-Dados os pontos o desenho de solução para ingestão de dadoss da Ethereum em tempo real está ilustrado a seguir.
 
 ![Arquitetura de Solução Captura e Ingestão Kafka](./img/arquitetura_solucao_ingestao_fast.png)
 
-NAs seções seguintes é demonstrado como os diferentes serviços colaboram entre si para capturar os dados e colocá-los em tópicos do Kafka.
+As seguintes tecnologias foram usadas para construir essa solução de captura:
 
-### 2.2 - Arquitetura Técnica
+- **Apache Kafka**: Plataforma de streaming distribuída que permite publicar e consumir mensagens em tópicos. É altamente escalável e tolerante a falhas. É o backbone do sistema Pub-Sub.
+- **Redis**: Banco de dados chave-valor em memória usado para armazenar dados sobre uso de API KEYs.
+- **Scylla**: Banco de dados NoSQL altamente escalável e tolerante a falhas usado para armazenar dados sobre uso de API KEYs.
+- **Azure Key Vault**: Serviço de segredos da Azure usado para armazenar as API Keys.
+- **Apache Spark**: Framework de processamento de dados em tempo real usado para monitorar o uso das API Keys.
+- **Jobs implementados em python Python**: Esses jobs são responsáveis por capturar, classificar e decodificar os dados usando as ferramentas mencionadas acima. Executam em containers docker.
+- **Kafka Connect**: Ferramenta usada para conectar o Kafka a diferentes fontes de dados. Nesse caso, o Kafka Connect é usado para envio dos dados de tópicos do Kafka para outros sistemas.
 
-A arquitetura técnica desse sistema é composta por diferentes camadas, cada uma com um conjunto de serviços que interagem entre si. As camadas são:
+### 3.2. Arquitetura Técnica
 
-- **Camada Fast**: Camada de ingestão de dados em tempo real.
-- **Camada Batch**: Camada de processamento de dados em batch.
-- **Camada de Aplicação**: Camada com aplicações que interagem com blockchain.
-- **Camada de Operação**: Camada com serviços necessários ao monitoramento do sistema.
+A arquitetura técnica desse sistema é composta por diferentes camadas, cada uma com um conjunto de serviços que interagem entre si para determinada finalidade. As camadas são:
 
-Foi optado nesse trabalho pela construção de um ambiente híbrido, ou seja, usando recursos de cloud e on-premises mas com foco no on-premises.
+- **Camada Fast**: Serviços relacionados a captura e ingestão em streaming.
+- **Camada Batch**: Serviços relacionados a captura e ingestão em batch.
+- **Camada de aplicação**: Jobs construídos para captura e ingestão usando camadas acima.
+- **Camada de operação**: Composta por serviços que realizam telemetria dos recursos de infraestrutura do **dm_v3_chain_explorer**.
 
-Nesta versão os serviços de cloud utilizados se restringem ao Key Vault e ao Azure Tables, ambos serviços da Azure e de um Service Principal para autenticação.
-
-#### 2.2.1 - Ambiente local e Docker
-
-Apesar da opção de construir um projeto usando recursos inteiramente da cloud se apresentar, a escolha pela construção de algo local. Para definir e deployar serviços a ferramenta `docker` trás os seguintes benefícios:
-
-1. A ferramenta é gratuita e suas imagens são portáveis, podendo esse trabalho ser reproduzível em outros ambientes locais com docker instalado.
-
-2. As imagens docker de serviços da camada de aplicação podem, posteriormente, ser usadas para deployar os serviços em recursos de cloud para gerenciamento e orquestação de containers.
-
-3. As imagens e serviços que representam ferramentas usadas para ingestão, processamento e armazenamento, entre outras funcionalidades, possuem serviços análogos em provedores de cloud, podendo ser migradas para esses ambientes sem grandes dificuldades.
-
-4. A construção, gerenciamento e deploy de serviços em ambiente local é uma oportunidade de aprendizado de mais baixo nível sobre especificidades de cada serviço.
-
-Além disso, o uso de docker possibilita que imagens possam ser instanciadas em containers, que se assemelham, nas devidas proporções, a computadores isolados, tornando a ferramenta ideal para simular um ambiente distribuído. Os containers encapsulam todo software necessário para execução de um serviço ou aplicação definidos da imagem, o que o torna portável para execução no computador do leitor ou em outros ambientes com a engine do docker instalada. As definições de imagens para esse trabalho se encontram no diretório `docker/`.
-
-#### 2.2.2 - Serviços deployados em Compose e Swarm
-
-Para orquestração de containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`.
-
-- **Docker Compose**: Usado para orquestrar containers em ambiente single node foi utilizado desde o início do trabalho.
-
-- **Docker Swarm**: Devido a quantidade de containers orquestrados e recursos computacionais consumidos, foi implementado um cluster swarm para deployar os serviços em ambiente distribuído, tendo assim maior controle sobre os recursos computacionais.
-
-As definições de serviços para essas ferramentas se encontram no diretório `services/`.
-
-#### 2.2.3 - Camadas do sistema
-
-Devido a quantidade de serviços orquestrados para exibir a funcionalidade completa do sistema, foi definido um sistema com diferentes camadas, cada uma com um conjunto de serviços que interagem entre si. As camadas são:
-
-Uma visão geral dos diferentes serviços dispostos em layer que compões esse sistema está ilustrada no diagrama a baixo.
+Todos os serviços que compõem essas camadas são orquestrados em containers docker. Para orquestração de containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`.
+Além deles, o recurso **Azure Key Vault** foi usado para armazenar as API Keys.
 
 ![Serviços do sistema](./img/batch_layer.drawio.png)
 
-Esse desenho acima traz um panorama geral. Os serviços das camadas Batch, Fast e Aplicação se encontram definidas em arquivos .yml na pasta `services/` onde:
+### 3.2.1. Camada Fast
 
-#### 2.2.3.1 - Camada Batch
+Nessa camada estão definidos os serviços utilizados para ingestão de dados em tempo real e que trabalham em conjunto com os Jobs implementados na camada de aplicação. Os serviços dessa camada são:
 
-Serviços relacionados a um Cluster Hadoop, junto a ferramentas que trabalham com tal cluster de forma conjunta, tais como o Apache Spark, Apache Airflow, entre outros.
+- **3 Brokers do Apache Kafka**, usados como backbone para comunicação entre Jobs e como plataforma de armazenamento de dados para fluxos downstream.
+- **Apache Zookeeper** utilizado por cluster de brokers do Kafka.
+- **Confluent Control Center**: Serviço com interface gráfica para visualização de tópicos, kafka clusters, consumer groups e cluster de kafka-connect.
+- **Confluent Kafka Connect**: Integra o Apache Kafka às mais diferentes plataformas através do uso de sources e sinks já implementados. Assim é possível replicar os dados entre tópicos do Kafka e Data Lakes, Databases e Data Warehouses do mais diversos tipos.
+- **ScyllaDB**: Database No-SQL que permite alto throughput de operações de escrita, é por natureza distribuído de forma uniforme e pode ser escalado para atuar de forma global. Usado para update em tabela de consumo de API Keys, para que jobs tenham ciencia de chave e sua utilização em requests no tempo.
+- **Redis**: Banco de dados chave-valor usado para controle de consumo de API Keys em jobs de streaming, de forma a garantir que cada API key seja usada por somente um Job a determinado instante, atuando como um semáforo.
+- **Redis Commander**: Interface grafica para visualização dos dados no redis.
 
-- **Definições de serviços**:
-  - Cluster Compose: `services/cluster_dev_batch.yml`.
-  - Cluster Swarm: `services/cluster_prod_batch.yml`.
+### 3.2.2. Camada Batch
 
-#### 2.2.3.2 - Camada Fast
+Nessa camada estão relacionados serviços necessários para armazenamento e processamento de dados em big data e outras ferramentas necessárias para que pipelines batch sejam definidos.
 
-serviços relacionados a um cluster Kafka e ferramentas de seu ecossistema, tais como Kafka Connect, Zookeeper, Schema Registry, o ScyllaDB, entre outros.
+### I) Apache Hadoop
 
-- **Definições de serviços**:
-  - Cluster Compose: `services/cluster_dev_fast.yml`.
-  - Cluster Swarm: `services/cluster_prod_fast.yml`.
+Conjunto de serviços que compõem o hadoop e algumas ferramentas de seu ecossistema. Um cluster hadoop é composto pelos seguintes sistemas:
 
-#### 2.2.3.3 - Camada de Aplicação
+- **Hadoop Namenode**: Mantém controle de metadados, logs e outros dados relacionados ao cluster e ao HDFS. Um cluster hadoop pode ter 1 namenode e eventualmente também um namenode secundário em estado de standby. Este tem por função assumir o lugar do namenode primário, caso necessário.
 
-Aplicações que interagem com a rede de blockchain para capturar os dados, ingestá-los, processa-los e armazena-los no serviços dos layers Batch e Fast.
+- **Hadoop Datanodes**: Armazenam dados do cluster e atuam em conjunto com o **namenode** para formar o HDFS (hadoop Distributed File System). Um cluster Hadoop pode ter 1 ou mais datanodes, o que permite a escalabilidade horizontal em volume de dados a serem armazenados.
 
-- **Definições de serviços**:
-  - Cluster Compose: `services/cluster_dev_app.yml`.
-  - Cluster Swarm: `services/cluster_prod_app.yml`.
+- **Resource Manager e Node managers**: Atuam em conjunto para gerenciar alocação de recursos de processamento no cluster Hadoop. Esse processamento se dá por meio de jobs de **Map reduce**,  jobs do **Apache Spark gerenciado pelo Yarn**, entre outros. 
+  
+  - Os **node managers** são instanciados em cada nó do cluster de forma a monitorar o uso de recursos naquele nó.
+  - O **resource manager** atua como um orquestrador na alocação dos recursos para processamento nesse cluster, trocando informações com os **node managers**. Uma referencia mais completa sobre o [YARN pode ser vista aqui.](https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YARN.html)
 
-#### 2.2.3.4 - Camada de Operação
+- **History Server**: Serviço utilizado para armazenar dados referentes a execução de jobs de processamento no cluster hadoop.
 
-Serviços que monitoram a infraestrutura do sistema, como Prometheus, Grafana e exporters de métricas necessários para monitoramento.
+O apache hadoop nesse trabalho é usado como data lake, onde chegam os dados inicialmente armazenados em tópicos do Kafka, por meio de um conector d otipo SINK do **kafka connect** e, futuramente de batches (processamento de jobs no airflow).
 
-TODO:
+### II) Apache Hive
 
-1. Imagem operações DEV (Dashes graphana)
-2. Imagem operações PROD (Dashes grafana)
+O hive é um sistema de Data Warehouse construída no topo do Apache Hadoop. É usado para fornecer uma camada de abstração sobre dados no data lake armazenados no HDFS. O hive permite a execução de queries em dados armazenados no HDFS. Esses dados são organizados em databases e tabelas, e consultados por meio de uma linguagem de query chamada HQL, similar ao SQL. O apache hive traduz então essas queries em jobs de map-reduce ou de spark, dependendo da engine de processamento configurada. O hive é composto por 3 serviços principais:
+
+- **Hive metastore**: Armazena metadados referentes a tabelas e dados para serem utilizados por motores de processamento em lote como map-reduce, presto e spark engine na execução de queries. Por debaixo dos panos o [hive metastore](https://www.ibm.com/docs/en/watsonx/watsonxdata/1.0.x?topic=components-hive-metastore-overview) utiliza um banco de dados relacional para persistir os dados, nesse caso um postgres.
+
+- **Hive server**: Servidor responsável por responder a de queries utilizando-se de um motor de processamento e dados do hive metastore.
+
+O apache hive é usado então para abstrair dados armazenados no HDFS em tabelas hive, a serem consumidas por processos sistẽmicos do tipo batch, ou por análise exploratória por meio do de queries HQL.
+
+### III) Hue
+
+O Hue é um client com interface gráfica onde é possível visualizar o sistema de pastas e arquivos do HDFS, databases e tabelas no Hive Metastore e executar ações sobre essas entidades.
+
+### IV) Apache Spark
+
+O Apache spark é uma engine de processamento de dados em memória distribuída. Pode ser usada para processamento de dados em batch e streaming e é altamente escalável. Pode estar em modo standalone ou tendo o Yarn como resource manager. O spark é composto por 3 serviços principais:
+
+- **Spark Master**: Responsável por gerenciar a execução de jobs no cluster spark.
+- **Spark Worker**: Responsável por executar os jobs de processamento de dados no cluster spark.
+- **Spark History Server**: Serviço que armazena dados referentes a execução de jobs no cluster spark.
+
+### V) Apache Airflow
+
+O Apache Airflow atua como orquestador de pipelines de dados batch. Nele é possível schedular jobs e definir relações de dependência entre esses. Os jobs são definidos em DAGs (Directed Acyclic Graphs) e são compostos por tarefas. Essas tarefas utilizam operadores específicos para execução de determinadas tarefas. É possível interagir com diferentes sistemas de armazenamento de dados, como HDFS, S3, ADLS, executar jobs de processamento de dados em spark, hive, entre outros. Também é possível realizar a transferência de arquivos usando protocolos como FTP, SFTP, entre outros.
+
+### Observação sobre serviços descritos acima
+
+Os serviços que compõe as camadas `batch` e `fast`, são usados para interação com aplicações desenvolvidas aqui na camada `app`.
+Essas tecnologias são amplamente usadas em ecossistemas de plataformas de dados. Também são open-source e possuem serviços análogos e totalmente gerenciados, na forma de **PaaS**, nos mais diversos provedores de cloud.
+
+- O **Apache Kafka** por exemplo, tem o **Amazon MSK**, **Confluent Cloud**, **Azure Event Hubs** e **Google Cloud Pub/Sub**.
+- O **Hadoop HDFS** pode ser substituído por **Amazon S3**, **Azure ADLS** e **Google Cloud Storage**. 
+- O **Apache Spark** pode ser substituído por um spark gerenciado dna plataforma **Databricks** ou por outros recursos que usam por debaixo dos panos o Spark, tais como **Synapse Analytics**, **Google Dataproc**, entre outros.
+
+### 3.2.3.  Camada de aplicação
+
+Nessa camada estão definidas:
+
+- Aplicações escritas em python para interação com blockchains do tipo EVM e plataforma de dados. As funcionalidades e jobs descritos na [seção 2.3](#Mecanismo-para-captura-de-dados).
+- Aplicação Spark Streaming para monitoramento de consumo de API Keys.
+
+#### Observação sobre aplicações e repositórios desse trabalho
+
+As aplicações desenvolvidas estão encapsuladas em imagens docker para serem instanciadas em containers. Devido à conveniência no gerenciamento de imagens, cada imagem docker produzida para esse trabalho foi organizada em um repositório diferente.
+
+Esses repositórios estão na **organização Dadaia-s-Chain-Analyser** no github. O critério para segregar as funcionalidades em um repositório foi a tecnologia usada, algo que influencia no peso da imagem. E também certo escopo de funcionalidade.
+
+Com diferentes repositórios é possível também definir workflows de CI-CD para build e deploy das imagens usando o **github actions**. Por esse motivo existem 4 repositórios relacionados a esse trabalho.
+
+- [dm_v3_chain_explorer](https://github.com/marcoaureliomenezes/dm_v3_chain_explorer): Repositório central onde estão definidos conjunto de serviços e forma de orquestra-los para alcançar objetivos do sistema.
+
+- [Offchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/offchain-watchers): Repositório composto por rotinas que usam a **biblioteca Web3.py** para ingestão dos dados de transações e blocos de uma rede blockchain.
+
+- [Onchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/onchain-watchers): Repositório composto por rotinas que usam **framework Brownie** para interação com contratos inteligentes e obtenção de estados dos mesmos, com o objetivo de ingestá-los no sistema.
+
+- [Onchain-actors](https://github.com/Dadaia-s-Chain-Analyser/onchain-actors): Repositório composto por rotinas que usam a **framework Brownie** para realizar transações em blockchains. São a ponta da linha do sistema e estão habilitados a realizar swaps entre outras interações em contratos inteligentes específicos.
+
+#### Observação sobre as aplicações
+
+As aplicações desenvolvidas nesse trabalho são construídas em python e encapsuladas em imagens docker. Dessa forma são portáveis e podem ser instanciadas em qualquer ambiente com a engine do docker instalada. Assim, em caso de necessidade de deploy em ambiente de cloud, as imagens podem ser usadas para instanciar containers em cloud, usando serviços de orquestração de containers como **ECS**, **EKS**, **AKS** ou **GKE**.
+
+### 3.2.4. Camada de operação
+
+Na camada de operação estão definidos serviços necessários para realizar telemetria e monitoramento de recursos da infraestrutura. Aqui estão definidos os serviços:
+
+- **Prometheus** para ingestão de dados de telemetria ;
+- **Grafana** para visualização de dados dessa telemetria;
+- **Agentes** responsáveis por coletar dados de telemetria do docker e do nó em específico e enviar para o Prometheus:
+  - **Node exporter**: Agente para coletar dados de telemetria do nó em específico.
+  - **Cadvisor**: Agente para coletar dados de telemetria do docker.
 
 
 
-## 3 - Explicação sobre o case desenvolvido
+## 4. Aspectos técnicos desse trabalho
 
-### 3.1 - Histórico de desenvolvimento
+Nessa seção estão apresentado alguns aspectos técnicos na implementação do sistema proposto em um ambiente local. Primeiramente, são apresentados os aspectos técnicos relacionados a  escolha do da ferramenta **docker** como base na construção desse trabalho e as formas de orquestração desses containers que são utilizadas aqui.
 
-Como foi o desenvolvimento desse case ao longo do tempo
+Em seguida, será apresentada a estrutura desse projeto, explorando as pastas e arquivos que compõem o repositório **dm_v3_chain_explorer**.
 
-### 3.2 - Temática do case
+### 4.1. Docker
 
-Qual é a temática do case e por que a aplicabilidade desse case pode se tornar algo maior?
+Conforme mencionado em seções anteriores, o docker foi usado amplamente na implementação desse tabalho. O seu uso pode ser embasado de acordo com 2 propósitos.
 
-## 4 - Aspectos técnicos
+- A construção de imagens que encapsulem jobs da camada de aplicação, bem como toda stack de software necessária para executá-los torna a aplicação portável, possibilitando que:
+  - Outros entusiastas do ramo possam reproduzir o sistema em sua máquina local, usando também o docker.
+  - As aplicações sejam futuramente portadas para ambientes em cloud que executam containers. Algo bem adequado em um cenário produtivo utilizando-se de serviços gerenciados de orquestração de containers. Todo provedor de cloud tem um serviço de orquestração de containers, como **ECS**, **EKS**, **AKS** e **GKE**.
 
-- **Docker**: A ferramenta docker foi utilizada para construção de imagens de serviços e orquestração de containers. As definições de imagens e serviços estão presentes no diretório `docker/` e `services/`.
+- A facilidade do uso de serviços como o Kafka, hadoop, Spark e toda stack de serviço definida nas camadas `batch`, `fast` e de `operações` em containers. Essa escolha também trás alguns benefícios tais como:
+  - O uso de containers abstrai a complexidade de instalação dessas ferramentas em máquina local, dado, a complexidade de muitas delas e também a quantidade de dependências e número de serviços que compõem a stack, algo que facilmente pode virar um pesadelo em ambiente local.
 
-- **Kafka**: O Apache Kafka foi utilizado para captura e ingestão de dados brutos da rede Ethereum. A definição de serviços para o Kafka está presente no arquivo `services/cluster_dev_fast.yml`.
+  - Containers são ambientes isolados que comunicam-se em rede. Apesar de compartilharem a mesma máquina física e o mesmo kernel, cada container tem seu próprio ambiente de execução. Portanto podem atuar de forma análoga a clusters, onde cada container representa um nó de um cluster. Assim é possível simular clusters de Kafka, Hadoop, Spark, entre outros, em ambiente local para testes e desenvolvimento.
+
+  - A definição de imagens e stack de serviços a serem orquestradas é suficiente para que se possa replicar o ambiente em qualquer máquina que tenha o docker instalado e os recursos de hardware necessários.
+
+  - Tecnologias aqui deployadas em containers, tais como spark, hadoop, kafka e outros fornecem um conhecimento mais aprofundado sobre essas tecnologias, devendo-se configurar e orquestrar esses serviços manualmente e entender sobre **volume mounts**, **networking** e outras configurações específicas dos recursos que são abstraídas em serviços gerenciados em cloud.
+
+  - Os serviços aqui deployados em containers e open source podem ser facilmente substituídos por serviços análogos em cloud, caso haja a necessidade de se construir um ambiente produtivo robusto, seguro e eficiente.
+  
+### 4.2. Orquestração de containers Docker
+
+Conforme mencionado, todos os serviços do sistema **dm_v3_chain_explorer** rodarão instanciados localmente em containers a partir de imagens docker. Então se faz necessário o uso de uma ferramenta de orquestração de execução desses containers. O docker tem 2 ferramentas para esse propósito: **docker-compose** e **docker-swarm**.
+
+### 4.2.1. Docker-compose
+
+O docker-compose é uma ferramenta que permite definir e executar aplicações multi-container. Com ele é possível definir os serviços que compõem a aplicação em um arquivo `docker-compose.yml` e então instanciar esses serviços em containers. O docker-compose é uma ferramenta de orquestração de containers para **ambiente local executando em um único nó**.
+
+É a ferramenta ideal para ambiente de desenvolvimento local e testes, onde é possível definir a stack de serviços que compõem a aplicação e instanciá-los em containers. Com o docker-compose é possível definir volumes, redes, variáveis de ambiente, entre outros, para cada serviço.
+
+### 4.2.2. Docker-swarm
+
+O docker-swarm é uma ferramenta de orquestração de containers para **ambientes distribuídos**. Com ele é possível definir e instanciar serviços em múltiplos nós. O docker-swarm pode ser usado como ferramenta de orquestração de containers para ambientes de produção, onde é necessário alta disponibilidade, escalabilidade e tolerância a falhas. Existem outras ferramentas de orquestração de containers, como **Kubernetes**, **Mesos** e outras, que são mais robustas e possuem mais recursos que o docker-swarm. Porém, o docker-swarm é uma ferramenta simples e fácil de usar para orquestração de containers em ambientes distribuídos e default no docker.
+
+### 4.2.3. Docker-Compose e Docker Swarm nesse trabalho
+
+O docker compose foi usado para orquestrar diferentes serviços nesse trabalho em seu desenvolvimento. Por exemplo, as aplicações em python, desenvolvidas e encapsuladas em imagens python, e que capturam os dados da rede Ethereum, foram orquestradas em containers usando o docker-compose juntamente com o Kafka, Redis, Scylla, entre outros.
+
+Por outro lado, a medida que o número de serviços aumentou, a necessidade de mais recursos de hardware para execução desses serviços também cresceu. Então, o docker-swarm foi usado para orquestrar esses serviços em múltiplos nós, simulando um ambiente distribuído. Da forma como foi feito, foi possível simular um ambiente de produção, onde os serviços estão distribuídos em múltiplos nós e orquestrados por um gerenciador de containers.
+
+#### Considerações
+
+1. Apesar de inúmeras ferramentas em cloud terem seus benefícios, o uso restrito delas pode trazer dependência de fornecedores de cloud. A construção de um sistema que usa tecnologias open source, e que de toda forma pode ser portado para cloud, é uma forma de se manter independente desses fornecedores.
+
+2. Existem outras possibilidades de deploy e orquestração de containers que poderiam ter sido utilizadas aqui. Por exemplo o uso de clusters Kubernetes para orquestração de containers e o uso de operadores para deploy de serviços como Kafka, Spark, Hadoop, entre outros, baseados em Helm Charts. O uso de Kubernetes traria benefícios como autoescalonamento, alta disponibilidade, entre outros. Porém, a escolha do Docker Swarm foi feita por simplicidade e configuração em ambiente local, bastando o docker instalado.
+
+### 4.3. Estrutura do projeto
+
+#### 4.3.1. Pasta Docker
+
+Na pasta `/docker`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidas as imagens docker que compõem esse trabalho. Elas estão organizadas de acordo com suas respectivas camadas, sendo essas `app_layer`, `fast_layer`, `batch_layer`, e `ops_layer`.
+
+- As imagens definidas em **app_layer** são as aplicações desenvolvidas em python para capturar os dados e interagircom redes EVM, como a rede Ethereum.
+
+- As imagens definidas nos diretórios **fast_layer**, **batch_layer** e **ops_layer** se justificam por 2 motivos:
+
+  1. Imagens construídas uma no topo da outra, com configurações adicionais, como é o caso do Hadoop, Hive e Spark. vale dar o crédito que as imagens definidas para o Hadoop, Hive e Spark foram **fortemente baseadas nos repositórios Big Data Europe** para o [Hadoop](https://github.com/big-data-europe/docker-hadoop) e o [Hive](https://github.com/big-data-europe/docker-hive).
 
 
-## 5 - Reprodução da arquitetura e do case
-
-Um dos requisitos do case é que a solução proposta seja reproduzível. Para que tal objetivo seja alcançado as seguintes escolhas foram tomadas em relação a ferramentas.
-
-### 5.1 - Docker
-
-Como foi visto nas seções anteriores, esse trabalho foi construído utilizando a ferramenta docker. A definição de imagens docker torna possível que essas imagens sejam instanciadas como containers em qualquer ambiente, desde que o docker esteja instalado e requisitos mínimos de hardware sejam atendidos.
-
-A orquestração de containers foi feita com as ferramentas Docker Compose e Docker Swarm e as definições presentes nos arquivos yml presentes no diretório `services/`.
-
-Dessa forma o case aqui implementado pode ser reproduzido (desde que requisitos de hardware sejam atendidos) em qualquer ambiente que possua o docker instalado. Para isso, basta executar alguns comandos no terminal.
-
-### 5.2 - Makefile
-
-Para automatizar esse processo de execução de diferentes e inúmeros comandos no terminal, foi definido um **Makefile** na raíz desse projeto. Nesse arquivo estão definidos comandos necessários para interagir com o docker e mais alguns shell scripts localizados no diretório `scripts/`. A seguir estão listados os comandos disponíveis no Makefile.
-
-#### Comandos disponíveis no Makefile
+  2. São imagens construídas no topo de serviços pré-definidos, porém com configurações adicionais necessárias para execução desse sistema. É o caso do **Scylla** e do **Postgres** que adicionam **scripts sql/cql** a serem executados no entrypoint da imagem e que criam databases/keyspaces, users e tabelas. Ou do Kafka Connect que adiciona plugins para conexão com diferentes sistemas no topo da imagem base do Kafka Connect da **Confluent**.
 
 ```bash
-make build # Realiza o build das imagens docker definidas no diretório docker/
-
+docker
+  ├── app_layer
+  │   ├── onchain-actors
+  │   ├── offchain-monitors
+  │   ├── offchain-stream-txs
+  │   ├── spark-streaming-jobs
+  │   └── onchain-watchers
+  ├── batch_layer
+  │   ├── hadoop
+  │   │   ├── base
+  │   │   ├── namenode
+  │   │   ├── datanode
+  │   │   ├── resourcemanager
+  │   │   ├──  nodemanager
+  │   │   └── historyserver
+  │   ├── hive
+  │   │   ├── base
+  │   │   ├── metastore
+  │   │   └── server
+  │   ├── postgres
+  │   ├── spark
+  │   │   ├── hadoop-base
+  │   │   ├── hive-base
+  │   │   ├── spark-base
+  │   │   ├── spark-master
+  │   │   └── spark-worker
+  │   └── hue
+  ├── fast_layer
+  │   ├── kafka-connect
+  │   ├── scylladb
+  └── ops_layer
+      └── prometheus
 ```
 
-### 1.3 Inicialização e gerenciamento de cluster Swarm
+Com esses arquivos é possível fazer o build das imagens que compõem esse trabalho.
 
-#### Table of urls
+### 4.3.2. Pasta Services
 
-| Camada |     Serviço      |  URL Exposta Compose   |      URL Exposta Swarm      |
-|--------|------------------|------------------------------------------------------|
-|  Fast  | KAFKA UI         | http://localhost:9021  | http://192.168.15.101:9021  |
-|  Fast  | SPARK UI         | http://localhost:18080 | http://192.168.15.101:18080 |
-|  Fast  | REDIS UI         | http://localhost:18081 | http://192.168.15.101:18081 |
-|  Fast  | VISUALIZER SWARM | http://localhost:28080 | http://192.168.15.101:28080 |
-|  Batch | NAMENODE UI      | http://localhost:8080  | http://192.168.15.101:8080  |
-|  Batch | HUE UI           | http://localhost:32762 | http://192.168.15.101:32762 |
-|  Batch | AIRFLOW UI       | http://localhost:8080  | http://192.168.15.101:8080  |
-|  Ops   | GRAFANA UI       | http://localhost:3000 | http://192.168.15.101:13000  |
-|  Ops   | PROMETHEUS UI    | http://localhost:9090  | http://192.168.15.101:9090  |
-
-
-1. **Inicialização do cluster Swarm**: Dado que os nós do cluster estão disponíveis, então o cluster pode ser inicializado com o comando:
+Na pasta `/services`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos os serviços que compõem esse trabalho. Esses serviços estão organizados de acordo com a camada a que pertencem, sendo essas camadas `fast`, `batch`, `app` e `ops`.
 
 ```bash
-make start_swarm_cluster
+services
+  ├── app_layer
+  │   ├── cluster_compose.yml
+  │   └── cluster_swarm.yml
+  ├── batch_layer
+  │   ├── cluster_compose.yml
+  │   └── cluster_swarm.yml
+  ├── fast_layer
+  │   ├── cluster_compose.yml
+  │   └── cluster_swarm.yml
+  └── ops_layer
+      ├── cluster_compose.yml
+      └── cluster_swarm.yml
 ```
 
-2. **Listagem de nós do cluster Swarm**: Lista os nós do cluster Swarm e verifica status e disponibilidade dos mesmos.
-3. **Deploy de stack de serviços no cluster Swarm**: O comando abaixo pode ser executado com os arquivos. Nesse projetos as stacks definidas estão são os arquivos `cluster_prod_fast.yml`, `cluster_prod_app.yml`e `cluster_prod_batch.yml`.
-4. **Deleção de um stack de serviços**:
-5. **Listagem de serviços deployados no cluster Swarm**:
+Os serviços estão definidos em arquivos `docker-compose.yml` e `docker-swarm.yml` para orquestração de containers em ambiente local e distribuído, respectivamente. E na pasta `/services` estão organizados de acordo com a camada a que pertencem.
+
+### 4.3.3. Arquivo Makefile
+
+Para simplificar esse processo de execução de comandos docker, de build e deploy de serviços, publicação de imagens, entre outros, foi definido um arquivo chamado [Makefile](https://www.gnu.org/software/make/manual/make.html) na raíz desse projeto. O Makefile é um componente central, para que comandos sejam reproduzidos de maneira simples. no arquivo `/Makefile`, na base do repositório **dm_v3_chain_explorer** é possivel visualizar os comandos definidos.
+
+<img src="./img/Makefile.png" alt="Makefile" width="50%"/>
+
+**Observação**: Essa ferramenta vem previamante instalada em sistemas operacionais Linux. Caso não possua o make instalado e tenha dificuldades para instalá-lo, uma opção não tão custosa é abrir o arquivo e executar os comandos docker manualmente.
+
+### 4.3.4. Pasta Scripts
+
+Na pasta `/scripts`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos scripts shell úteis para automação de tarefas mais complexas.
+
+### 4.3.5. Pasta Mnt
+
+Na pasta `/mnt`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos volumes que são montados em containers para persistência de dados localmente.
+<hr>
+
+## 5. Passo-a-passo para reprodução do sistema
+
+Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local. 
+
+Um dos requisitos deste trabalho é que a solução proposta seja reproduzível. Essa característica da reprodutibilidade é importante pelos seguintes motivos:
+
+- A reprodução do trabalho permite os avaliadores executarem o sistema e entenderem como ele funciona.
+- Esse trabalho é um sistema complexo, tendo diversos serviços interagindo com aplicações para que sua finalidade seja alcançada, como exposto nas seções anteriores. Provêr um passo-a-passo para o leitor possa reproduzi-lo em seu ambiente local dá a este a oportunidade de entende-lo em análise e síntese. E até mesmo extrair partes úteis para um projeto pessoal com funcionalidade parecida, após entendimento.
+
+Esse passo a passo indica como clonar repositórios, configurar ambiente e deployar os serviços em um ambiente local, single-node com **docker-compose**. Ao final é apresentado como executá-lo em um ambiente distribuído, multi-node com **docker swarm**.
+
+**Observação**: Um fator crucial e de maior dificuldade para reprodução desse sistema é a **necessidade de API Keys** para interagir com a rede blockchain por meio de um provedor Node-as-a-Service e capturar dados.
+
+### 5.1. Requisitos
+
+Para reprodução desse sistema em ambiente local, é necessário que os seguintes requisitos sejam atendidos.
+
+#### 5.1.1. Requisitos de hardware
+
+Para execução desse sistema em ambiente local, é recomendado possuir memoria RAM de no mínimo 16 GB e processador com 4 núcleos.
+
+### 5.1.2. Sistema Operacional
+
+Esse sistema foi desenvolvido e testado em ambiente Linux em Ubuntu 22.04. Portanto, é recomendado que para reprodução desse o sistema operacional seja Linux.
+
+### 5.1.3. Docker Instalado
+
+Para reproduzir esse sistema em ambiente local, é necessário ter o docker instalado e configurado. Para verificar se o docker está instalado e configurado adequadamente, execute os comandos abaixo.
 
 ```bash
-./start_cluster.sh
-docker node ls
-docker stack deploy -c {stack_file_name.yml} {stack_name}
-docker stack rm {stack_name}
-docker service ls
+docker --version
 ```
 
-## 6. Melhorias e considerações finais
+A saída esperada é algo como:
 
-Melhorias e considerações desse trabalho.
+<img src="./img/docker_installed.png" alt="Makefile" width="30%"/>
+
+Caso não esteja instalado, siga as instruções de instalação no [site oficial do docker](https://docs.docker.com/engine/install/).
+
+### 5.1.4.  Docker Compose e Docker Swarm instalados
+
+As ferramentas de orquestração de containers **Docker Compose** e **Docker Swarm** são necessárias para deployar os serviços em ambiente local e distribuído, respectivamente. Contudo elas são instaladas junto com o docker. Para verificar se estão instaladas adequadamente, execute os comandos abaixo.
+
+```bash
+docker-compose --version
+```
+
+A saída esperada é algo como:
+
+<img src="./img/docker_compose_installed.png" alt="docker-compose-version" width="35%"/>
+
+```bash
+docker swarm --version
+```
+
+A saída esperada é algo como:
+
+<img src="./img/swarm_installed.png" alt="docker-swarm-version" width="35%"/>
+
+### 5.2. Passo-a-passo para reprodução do sistema
+
+Dado que os requisitos acima foram atendidos, o passo-a-passo para reprodução desse sistema em ambiente local é o seguinte.
+
+### 5.2.1.  Clonagem do repositório base
+
+O primeiro passo para reprodução desse sistema é clona-lo em um diretório local. Para isso, execute o comando abaixo e em seguida navegue para o diretório do projeto.
+
+```bash
+git clone git@github.com:marcoaureliomenezes/dm_v3_chain_explorer.git
+```
+
+Conforme mencionado, esse trabalho é composto de múltiplos repositórios. Para montar a estrura completa pastas precisam ser criadas e os demais repositórios precisam ser clonados. Para isso, um script foi criado e este pode ser chamado a partir do seguinte comando:
+
+```bash
+make create_dm_v3_explorer_structure
+```
+
+O comando acima clonará todos os repositórios de aplicação necessários para dentro da pasta `/docker`.
+
+### 5.2.2.  Pull e Build das imagens docker
+
+No docker é possível construir imagens a partir de um arquivo `Dockerfile` e depois fazer o build delas. Ou ainda, é possível fazer o pull de imagens já construídas e disponíveis no docker hub entre outros repositórios de imagens.
+
+Para esse sistema diversas imagens foram construídas, devido a necessidade de customização. Geralmente essas imagens são construídas no topo de imagens base, que são imagens oficiais ou de terceiros, e disponíveis no docker hub. Para construir as imagens desse sistema, execute o comando abaixo.
+
+```bash
+make build
+```
+
+<img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="35%"/>
+
+Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub.
+
+### 5.4.3.  Deploy de camada Ops (Docker Compose)
+
+Para realizar o deploy da camada `ops`, execute o comando abaixo.
+
+```bash
+make deploy_dev_ops && make watch_dev_ops
+```
+<img src="./img/laker_ops_docker_compose_ps.png" alt="laker_ops_docker_compose_ps" width="90%"/>
+
+
+Essa camada, composta pelo Prometheus, Grafana, Node Exporter e Cadvisor, é responsável por coletar dados de telemetria do docker e do nó em específico e enviar para o Prometheus. O Grafana é usado para visualização desses dados.
+
+
+
+### 5.4.4.  Deploy de camada fast (Docker Compose)
+
+Os comandos para deploy de serviços foram divididos de acordo com as camadas mencionadas na seção 1.2. Dessa forma há maior espaço para que máquinas com recursos mais escassos possam executar o sistema em modulos.
+
+Para deploy da camada `fast`, execute o comando abaixo.
+
+```bash
+make deploy_dev_fast && make watch_dev_fast
+```
+
+Após execução do comando, o terminal ficará monitorando o estado dos containers. Para sair dessa tela, pressione `Ctrl + C`. Os serviços continuarão rodando em background.
+
+<img src="./img/layer_batch_docker_compose_ps.png" alt="layer_batch_docker_compose_ps" width="90%"/>
