@@ -628,7 +628,7 @@ docker-compose --version
 
 A saída esperada é algo como:
 
-<img src="./img/docker_compose_installed.png" alt="docker-compose-version" width="35%"/>
+<img src="./img/docker_compose_installed.png" alt="docker-compose-version" width="70%"/>
 
 ```bash
 docker swarm --version
@@ -636,7 +636,7 @@ docker swarm --version
 
 A saída esperada é algo como:
 
-<img src="./img/swarm_installed.png" alt="docker-swarm-version" width="35%"/>
+<img src="./img/swarm_installed.png" alt="docker-swarm-version" width="70%"/>
 
 ### 5.2. Passo-a-passo para reprodução do sistema
 
@@ -668,7 +668,7 @@ Para esse sistema diversas imagens foram construídas, devido a necessidade de c
 make build
 ```
 
-<img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="35%"/>
+<img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="70%"/>
 
 Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub.
 
