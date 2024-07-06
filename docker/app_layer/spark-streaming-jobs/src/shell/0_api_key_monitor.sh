@@ -17,3 +17,7 @@ spark-submit \
 --executor-memory 512M \
 --packages ${KAFKA_CONNECTOR},${SCYLLA_CONNECTOR} \
 ${SPARK_APPLICATION_PYTHON_LOCATION}
+
+
+
+for i in {1..4} ; do docker logs app-tx_processor-${i} | tail -n 10 | grep "API_request" ;done

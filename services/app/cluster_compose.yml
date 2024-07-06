@@ -3,11 +3,11 @@ version: '3'
 x-common-config-default: &conf_default
   restart: always
   networks:
-    - dm_cluster_dev-fast
+    - dm_cluster_dev_fast
   volumes:
     - ../../docker/app_layer/onchain-stream-txs/src:/app
   env_file:
-    - ../.secrets.conf
+    - ./.secrets.conf
 
 
 #################################################################
@@ -16,44 +16,43 @@ x-common-config-default: &conf_default
 
 services:
 
-  # topics_creator:
-  #   image: dm_data_lake/onchain-stream-txs:1.0.0
-  #   <<: *conf_default
-  #   container_name: topics_creator
-  #   restart: on-failure
-  #   entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
-
   block_clock:
     build: ../../docker/app_layer/onchain-stream-txs
     <<: *conf_default
     container_name: block_clock
-    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 50"
+    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 100"
     environment:
       KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
+      KAFKA_CLUSTER: broker:29092
 
   tx_processor:
     build: ../../docker/app_layer/onchain-stream-txs
-    container_name: tx_processor
+    #container_name: tx_processor
     <<: *conf_default
     environment:
-      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-12' 
-    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
+      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-12'
+      REDIS_HOST: 'redis'
+      REDIS_PORT: '6379'
+      SCYLLA_HOST: 'scylladb'
+      SCYLLA_PORT: '9042'
+      SCYLLA_KEYSPACE: 'operations'
+      KAFKA_CLUSTER: broker:29092
+    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini"
+    scale: 8
+  # tx_classifier:
+  #   build: ../../docker/app_layer/onchain-stream-txs
+  #   <<: *conf_default
+  #   container_name: tx_classifier
+  #   entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
 
-  tx_classifier:
-    build: ../../docker/app_layer/onchain-stream-txs
-    <<: *conf_default
-    container_name: tx_classifier
-    entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
-
-  tx_input_decoder:
-    build: ../../docker/app_layer/onchain-stream-txs
-    <<: *conf_default
-    container_name: tx_input_decoder
-    entrypoint: "python -u 4_transaction_converters.py configs/producers.ini configs/consumers.ini"
-    environment:
-      KEY_VAULT_NODE_SECRET: 'infura-api-key-16'
-      KEY_VAULT_SCAN_SECRET: 'etherscan-api-key-4'
-
+  # tx_input_decoder:
+  #   build: ../../docker/app_layer/onchain-stream-txs
+  #   <<: *conf_default
+  #   container_name: tx_input_decoder
+  #   entrypoint: "python -u 4_transaction_converters.py configs/producers.ini configs/consumers.ini"
+  #   environment:
+  #     KEY_VAULT_NODE_SECRET: 'infura-api-key-16'
+  #     KEY_VAULT_SCAN_SECRET: 'etherscan-api-key-4'
 
   api_keys_log_processor:
     build: ../../docker/app_layer/spark-streaming-jobs
@@ -61,19 +60,28 @@ services:
     restart: on-failure
     volumes:
       - ../../docker/app_layer/spark-streaming-jobs/src:/app
+    environment:
+      SPARK_MASTER_URL: spark://spark-master:7077
+      KAFKA_CLUSTER: broker:29092
+      TOPIC_SUBSCRIBE: 'mainnet.application.logs'
+      SCYLLA_HOST: 'scylladb'
+      SCYLLA_PORT: '9042'
+      SCYLLA_KEYSPACE: 'operations'
+      SCYLLA_TABLE: 'api_keys_node_providers'
+
     entrypoint: "sh /app/shell/0_api_key_monitor.sh"
     networks:
-      - dm_cluster_dev-fast
+      - dm_cluster_dev_fast
 
-  spark_streaming_simple_tx_handler:
-    build: ../../docker/app_layer/spark-streaming-jobs
-    container_name: spark_streaming_simple_tx_handler
-    restart: on-failure
-    volumes:
-      - ../../docker/app_layer/spark-streaming-jobs/src:/app
-    entrypoint: "sh /app/shell/1_handle_simple_txs.sh"
-    networks:
-      - dm_cluster_dev-fast
+  # spark_streaming_simple_tx_handler:
+  #   build: ../../docker/app_layer/spark-streaming-jobs
+  #   container_name: spark_streaming_simple_tx_handler
+  #   restart: on-failure
+  #   volumes:
+  #     - ../../docker/app_layer/spark-streaming-jobs/src:/app
+  #   entrypoint: "sh /app/shell/1_handle_simple_txs.sh"
+  #   networks:
+  #     - dm_cluster_dev_fast
 
   # onchain_watcher:
   #   build: ./docker/app_layer/onchain-watchers
@@ -88,7 +96,7 @@ services:
 
 
 networks:
-  dm_cluster_dev-fast:
-    name: dm_cluster_dev-fast
+  dm_cluster_dev_fast:
+    name: dm_cluster_dev_fast
   dm_cluster_dev-batch:
     name: dm_cluster_dev-batch

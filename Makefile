@@ -2,36 +2,53 @@ DOCKER_NETWORK = docker-hadoop_default
 ENV_FILE = hadoop.env
 current_branch = 1.0.0
 
+
+##################################################################################################################################
+#######################    COMANDOS DE INICIALIZAÇÃO DE AMBIENTE DE DESENVOLVIMENTO    ###########################################
 create_dm_v3_chain_explorer_structure:
 	sh scripts/0_create_dm_v3_chain_explorer_structure.sh
 
-build:
-	# docker build -t marcoaureliomenezes/dm-hadoop-base:$(current_branch) ./docker/batch_layer/hadoop/base
-	# docker build -t marcoaureliomenezes/dm-hadoop-namenode:$(current_branch) ./docker/batch_layer/hadoop/namenode
-	# docker build -t marcoaureliomenezes/dm-hadoop-datanode:$(current_branch) ./docker/batch_layer/hadoop/datanode
-	# docker build -t marcoaureliomenezes/dm-hadoop-resourcemanager:$(current_branch) ./docker/batch_layer/hadoop/resourcemanager
-	# docker build -t marcoaureliomenezes/dm-hadoop-nodemanager:$(current_branch) ./docker/batch_layer/hadoop/nodemanager
-	# docker build -t marcoaureliomenezes/dm-hadoop-historyserver:$(current_branch) ./docker/batch_layer/hadoop/historyserver
-	# docker build -t marcoaureliomenezes/dm-postgres:$(current_branch) ./docker/batch_layer/postgres
-	# docker build -t marcoaureliomenezes/dm-hive-base:$(current_branch) ./docker/batch_layer/hive/base
-	# docker build -t marcoaureliomenezes/dm-hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
-	# docker build -t marcoaureliomenezes/dm-hive-server:$(current_branch) ./docker/batch_layer/hive/server
-	# docker build -t marcoaureliomenezes/dm-hue-webui:$(current_branch) ./docker/batch_layer/hue
-	# docker build -t marcoaureliomenezes/dm-spark-hadoop-base:$(current_branch) ./docker/batch_layer/spark/hadoop-base
-	# docker build -t marcoaureliomenezes/dm-spark-hive-base:$(current_branch) ./docker/batch_layer/spark/hive-base
-	# docker build -t marcoaureliomenezes/dm-spark-base:$(current_branch) ./docker/batch_layer/spark/spark-base
-	# docker build -t marcoaureliomenezes/dm-spark-master:$(current_branch) ./docker/batch_layer/spark/spark-master
-	# docker build -t marcoaureliomenezes/dm-spark-worker:$(current_branch) ./docker/batch_layer/spark/spark-worker
-	# docker build -t marcoaureliomenezes/dm-apache-airflow:$(current_branch) ./docker/batch_layer/airflow/
-	# docker build -t marcoaureliomenezes/dm-scylladb:$(current_branch) ./docker/fast_layer/scylladb
-	# docker build -t marcoaureliomenezes/dm-kafka-connect:$(current_branch) ./docker/fast_layer/kafka-connect
-	# docker build -t marcoaureliomenezes/dm-onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
-	# docker build -t marcoaureliomenezes/dm-spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
-	# docker build -t marcoaureliomenezes/dm-prometheus:$(current_branch) ./docker/ops_layer/prometheus
 
-#########################	COMANDOS DE PUBLICAÇÃO DE IMAGENS   ###########################
+##################################################################################################################################
+#######################    COMANDOS DE INICIALIZAÇÃO DE AMBIENTE DE DESENVOLVIMENTO    ###########################################
+##################################################################################################################################
 
-publish:
+build_app:
+	docker build -t marcoaureliomenezes/dm-onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
+	docker build -t marcoaureliomenezes/dm-spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
+
+build_fast:
+	docker build -t marcoaureliomenezes/dm-scylladb:$(current_branch) ./docker/fast_layer/scylladb
+	docker build -t marcoaureliomenezes/dm-kafka-connect:$(current_branch) ./docker/fast_layer/kafka-connect
+
+build_batch:
+	docker build -t marcoaureliomenezes/dm-hadoop-base:$(current_branch) ./docker/batch_layer/hadoop/base
+	docker build -t marcoaureliomenezes/dm-hadoop-namenode:$(current_branch) ./docker/batch_layer/hadoop/namenode
+	docker build -t marcoaureliomenezes/dm-hadoop-datanode:$(current_branch) ./docker/batch_layer/hadoop/datanode
+	docker build -t marcoaureliomenezes/dm-hadoop-resourcemanager:$(current_branch) ./docker/batch_layer/hadoop/resourcemanager
+	docker build -t marcoaureliomenezes/dm-hadoop-nodemanager:$(current_branch) ./docker/batch_layer/hadoop/nodemanager
+	docker build -t marcoaureliomenezes/dm-hadoop-historyserver:$(current_branch) ./docker/batch_layer/hadoop/historyserver
+	docker build -t marcoaureliomenezes/dm-postgres:$(current_branch) ./docker/batch_layer/postgres
+	docker build -t marcoaureliomenezes/dm-hive-base:$(current_branch) ./docker/batch_layer/hive/base
+	docker build -t marcoaureliomenezes/dm-hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
+	docker build -t marcoaureliomenezes/dm-hive-server:$(current_branch) ./docker/batch_layer/hive/server
+	docker build -t marcoaureliomenezes/dm-hue-webui:$(current_branch) ./docker/batch_layer/hue
+
+build_ops:
+	docker build -t marcoaureliomenezes/dm-prometheus:$(current_branch) ./docker/ops_layer/prometheus
+
+##################################################################################################################################
+#########################	   COMANDOS DE PUBLICAÇÃO DE IMAGENS NO DOCKER-HUB    ##################################################
+
+publish_apps:
+	docker push marcoaureliomenezes/dm-onchain-stream-txs:$(current_branch)
+	docker push marcoaureliomenezes/dm-spark-streaming-jobs:$(current_branch)
+
+publish_fast:
+	docker push dm_data_lake/scylladb:$(current_branch)
+	docker push dm_data_lake/kafka-connect:$(current_branch)
+
+publish_batch:
 	# docker push marcoaureliomenezes/dm-scylladb:$(current_branch)
 	# docker push marcoaureliomenezes/dm-hadoop-namenode:$(current_branch)
 	# docker push marcoaureliomenezes/dm-hadoop-datanode:$(current_branch)
@@ -46,13 +63,12 @@ publish:
 	# docker push marcoaureliomenezes/dm-spark-master:$(current_branch)
 	# docker push marcoaureliomenezes/dm-spark-worker:$(current_branch)
 	# docker push marcoaureliomenezes/dm-apache-airflow:$(current_branch)
-	# docker push dm_data_lake/scylladb:$(current_branch)
-	# docker push dm_data_lake/kafka-connect:$(current_branch)
-	# docker push marcoaureliomenezes/dm-onchain-stream-txs:$(current_branch)
-	# docker push marcoaureliomenezes/dm-spark-streaming-jobs:$(current_branch)
 
+publish_ops:
+	docker push marcoaureliomenezes/dm-prometheus:$(current_branch)
 
-#################    DEPLOY CONTAINERS SINGLE NODE    ##########################
+##################################################################################################################################
+###################    COMANDOS DE DEPLOY DE CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ########################################
 
 deploy_dev_fast:
 	docker-compose -f services/fast/cluster_compose.yml up -d --build
@@ -68,7 +84,9 @@ deploy_dev_ops:
 
 deploy_dev_airflow:
 	docker-compose -f services/airflow/cluster_compose.yml up -d
-#################    STOP CONTAINERS SINGLE NODE    ###########################
+	
+##################################################################################################################################
+#########################    COMANDOS DE STOP CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    #######################################
 
 stop_dev_fast:
 	docker-compose -f services/fast/cluster_compose.yml down
@@ -85,7 +103,8 @@ stop_dev_ops:
 stop_dev_airflow:
 	docker-compose -f services/airflow/cluster_compose.yml down
 
-#################    WATCH CONTAINERS SINGLE NODE    #############################
+##################################################################################################################################
+#########################    COMANDOS DE WATCH CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ######################################
 
 watch_dev_fast:
 	watch docker-compose -f services/fast/cluster_compose.yml ps
@@ -101,13 +120,18 @@ watch_dev_ops:
 
 watch_dev_airflow:
 	watch docker-compose -f services/airflow/cluster_compose.yml ps
-########################    SWARM CLUSTER    #####################################
+
+
+##################################################################################################################################
+#######################    COMANDOS DE INICIALIZAÇÃO DE AMBIENTE DE PRODUÇÃO    ##################################################
 
 # COMANDO DE INICIALIZAÇÃO DO CLUSTER SWARM
 start_prod_cluster:
 	sh scripts/start_prod_cluster.sh
 
-#################    DEPLOY CONTAINERS CLUSTER SWARM     #########################
+
+##################################################################################################################################
+#######################    COMANDOS DE DEPLOY DE CONTAINERS EM AMBIENTE DE PRODUÇÃO    ###########################################
 
 deploy_prod_fast:
 	docker stack deploy -c services/fast/cluster_swarm.yml layer_fast
@@ -122,7 +146,8 @@ deploy_prod_ops:
 	docker stack deploy -c services/ops/cluster_swarm.yml layer_ops
 
 
-#################    STOP CONTAINERS CLUSTER SWARM    ############################
+##################################################################################################################################
+#######################    COMANDOS DE STOP DE CONTAINERS EM AMBIENTE DE PRODUÇÃO    #############################################
 
 stop_prod_fast:
 	docker stack rm layer_fast
@@ -136,10 +161,15 @@ stop_prod_batch:
 stop_prod_ops:
 	docker stack rm layer_ops
 
-#################    WATCH CONTAINERS CLUSTER SWARM    ###########################
+
+##################################################################################################################################
+#######################    COMANDOS DE WATCH DE CONTAINERS EM AMBIENTE DE PRODUÇÃO    ############################################
 
 watch_prod_services:
 	watch docker service ls
 
 
-#############################    FIM    ##########################################
+query_api_keys_consumption_table:
+	docker exec -it scylladb cqlsh -e "select * from operations.api_keys_node_providers;"
+
+##################################################################################################################################
