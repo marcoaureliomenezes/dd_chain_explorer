@@ -549,9 +549,7 @@ Na pasta `/mnt`, localizada na raiz do repositório **dm_v3_chain_explorer** est
 
 ## 5. Reprodução do sistema em ambiente local
 
-Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local.
-
-Um dos requisitos deste trabalho é que a solução proposta seja reproduzível. Essa característica da reprodutibilidade é importante pelos seguintes motivos:
+Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local. Um dos requisitos deste trabalho é que a solução proposta seja reproduzível. Essa característica da reprodutibilidade é importante pelos seguintes motivos:
 
 - A reprodução do trabalho permite os avaliadores executarem o sistema e entenderem como ele funciona.
 - Esse trabalho é um sistema complexo, tendo diversos serviços interagindo com aplicações para que sua finalidade seja alcançada, como exposto nas seções anteriores. Provêr um passo-a-passo para o leitor possa reproduzi-lo em seu ambiente local dá a este a oportunidade de entende-lo em análise e síntese. E até mesmo extrair partes úteis para um projeto pessoal com funcionalidade parecida, após entendimento.
@@ -634,7 +632,17 @@ make build
 
 <img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="70%"/>
 
-**Observação**: Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub.
+### Observação sobre o build a partir do Makefile
+
+Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub. É possível o leitor reapontar essa configuração para seu próprio repositório do DockerHub.
+
+**Para execução local desse sistema usando o docker-compose** não é necessário que as imagens estejam construídas ou disponíveis no docker hub. Caso não estejam, é necessário construí-las localmente. Por esse motivo, todos os arquivos de docker-compose, aqui chamados de **cluster_compose** estão configurados para fazer build das imagens localmente.
+
+Porém, **para executar o sistema em um ambiente distribuído usando o Docker Swarm**, é necessário que as imagens estejam disponíveis em um repositório de imagens, como o Docker Hub. Isso porque diferentes nós do cluster precisam acessar as mesmas imagens para instanciar os serviços. Por esse motivo, é necessário que as imagens sejam construídas e publicadas no Docker Hub. Para publicar as imagens no Docker Hub, execute o comando abaixo.
+
+```bash
+make publish
+```
 
 ## 5.3. Reprodução do sistema usando o Docker Compose
 

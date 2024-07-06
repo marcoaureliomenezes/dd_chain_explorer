@@ -2,104 +2,94 @@
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, split, count, window, max
 from pyspark.sql.types import StructType, StringType, IntegerType
-from datetime import datetime, timedelta
+from random import randint
+import os
 
-spark_url = "spark://spark-master:7077"
-spark_app = "Handle_Simple_Transactions"
-kafka_brokers = "broker-1:29092,broker-2:29093,broker-3:29094"
-topic_subscribe = "mainnet.application.logs"
-starting_offsets = "earliest"
-group_id = "api_key_consumer_1"
-max_offsets_per_trigger = "1000"
 
-kassandra_host = "scylladb"
-kassandra_port = "9042"
-kassandra_keyspace = "operations"
-kassandra_table = "api_keys_node_providers"
 
-spark = (
-  SparkSession
-    .builder
-    .appName("API_KEY_Monitor")
-    .master("spark://spark-master:7077")
-    .getOrCreate()
-)
+def main(spark, kafka_options, scylla_options):
+  df_logs = (
+    spark
+      .readStream
+      .format("kafka")
+      .options(**kafka_options)
+      .load()
+      .select(col("timestamp"), col("value").cast(StringType()))
+      .filter(col("value").startswith("API_request"))
+      .withColumn("api_key", split(col("value"), ";").getItem(1))
+      .select(col("timestamp"), col("api_key"))
+  )
 
-spark.sparkContext.setLogLevel("ERROR")
+  window_1D = window(col("timestamp"), "1 day")
+  df_windowed_counts = (
+    df_logs
+      .withWatermark("timestamp", "1 day")
+      .groupBy(col("api_key"), window_1D)
+      .agg(count("*").alias("count"), max("timestamp").alias("max_timestamp"))
+      .select(
+        col("api_key").alias("name").cast(StringType()), 
+        col("window.start").alias("start").cast(StringType()), 
+        col("window.end").alias("end").cast(StringType()), 
+        col("count").alias("num_req_1d").cast(IntegerType()),
+        col("max_timestamp").alias("last_req").cast(StringType())
+      )
+  )
 
-kafka_options = {
-    "kafka.bootstrap.servers": kafka_brokers,
-    "subscribe": topic_subscribe,
-    "startingOffsets": starting_offsets,
-    "group.id": group_id,
-    "maxOffsetsPerTrigger": max_offsets_per_trigger
-}
+  return (
+    df_windowed_counts.writeStream
+      .format("org.apache.spark.sql.cassandra")
+      .option("checkpointLocation", "/tmp/dm_checkpoint")
+      .outputMode("update")
+      .trigger(processingTime="1 seconds")
+      .foreachBatch(lambda df, epoch_id: 
+        df.write.mode("append")
+          .format("org.apache.spark.sql.cassandra")
+          .options(**scylla_options).save()
+      )
+      .start()  
+  )
 
-scylla_options = {
-    "spark.cassandra.connection.host": kassandra_host,
-    "spark.cassandra.connection.port": kassandra_port,
-    "keyspace": kassandra_keyspace,
-    "table": kassandra_table
-}
+def get_spark_session():
+  spark = (
+    SparkSession
+      .builder
+      .appName(APP_NAME)
+      .master(SPARK_URL)
+      .getOrCreate()
+  )
 
-kafka_options = {
-    "kafka.bootstrap.servers": "broker-1:29092,broker-2:29093,broker-3:29094",
-    "subscribe": "mainnet.application.logs",
-    "startingOffsets": "latest",
-    "failOnDataLoss": "false",
-    "maxOffsetsPerTrigger": "20000",
-}
+  spark.sparkContext.setLogLevel("ERROR")
+  return spark
 
-# Configurações do ScyllaDB
-scylla_options = {
-    "spark.cassandra.connection.host": "scylladb",
-    "spark.cassandra.connection.port": "9042",
-    "keyspace": "operations",
-    "table": "api_keys_node_providers",
-}
+if __name__ == "__main__":
 
-# Leia os dados do Kafka
-df_logs = (
-  spark
-    .readStream
-    .format("kafka")
-    .options(**kafka_options)
-    .load()
-    .select(col("timestamp"), col("value").cast(StringType()))
-    .filter(col("value").startswith("API_request"))
-    .withColumn("api_key", split(col("value"), ";").getItem(1))
-    .select(col("timestamp"), col("api_key"))
-)
+  SPARK_URL = os.getenv("SPARK_MASTER_URL")
+  KAFKA_CLUSTER = os.getenv("KAFKA_CLUSTER")
+  TOPIC_SUBSCRIBE = os.getenv("TOPIC_SUBSCRIBE")
+  SCYLLA_HOST = os.getenv("SCYLLA_HOST")
+  SCYLLA_PORT = os.getenv("SCYLLA_PORT")
+  SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE")
+  SCYLLA_TABLE = os.getenv("SCYLLA_TABLE")
+  APP_NAME = "Handle_Simple_Transactions"
 
-window_1D = window(col("timestamp"), "1 day")
 
-df_windowed_counts = (
-  df_logs
-    .withWatermark("timestamp", "1 day")
-    .groupBy(col("api_key"), window_1D)
-    .agg(count("*").alias("count"), max("timestamp").alias("max_timestamp"))
-    .select(
-      col("api_key").alias("name").cast(StringType()), 
-      col("window.start").alias("start").cast(StringType()), 
-      col("window.end").alias("end").cast(StringType()), 
-      col("count").alias("num_req_1d").cast(IntegerType()),
-      col("max_timestamp").alias("last_req").cast(StringType())
-    )
 
-)
+  spark = get_spark_session()
 
-_ = (
-  df_windowed_counts.writeStream
-        .format("org.apache.spark.sql.cassandra")
-        .option("checkpointLocation", "/tmp/dm_checkpoint")
-        .outputMode("update")
-        .trigger(processingTime="1 seconds")
-        .foreachBatch(lambda df, epoch_id: 
-                      df.write.mode("append")
-                        .format("org.apache.spark.sql.cassandra")
-                        .options(**scylla_options).save()
-        )
-        .start()
-        .awaitTermination()
-)
+  kafka_options = {
+    "kafka.bootstrap.servers": KAFKA_CLUSTER,
+    "subscribe": TOPIC_SUBSCRIBE,
+    "startingOffsets": "earliest",
+    "group.id": f"api_key_consumer_group",
+    "maxOffsetsPerTrigger": "1000"
+  }
 
+  scylla_options = {
+    "spark.cassandra.connection.host": SCYLLA_HOST,
+    "spark.cassandra.connection.port": SCYLLA_PORT,
+    "keyspace": SCYLLA_KEYSPACE,
+    "table": SCYLLA_TABLE
+  }
+
+  streaming_query = main(spark, kafka_options, scylla_options)
+  streaming_query.awaitTermination()
