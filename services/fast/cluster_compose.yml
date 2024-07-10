@@ -49,6 +49,7 @@ services:
     image: confluentinc/cp-server:7.5.0
     hostname: broker
     container_name: broker
+    restart: on-failure
     <<: *common-network
     depends_on:
       - zookeeper
@@ -59,7 +60,7 @@ services:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://${KAFKA_BROKERS_DEV},PLAINTEXT_HOST://localhost:9092
       KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
@@ -70,7 +71,7 @@ services:
       KAFKA_JMX_PORT: 9101
       KAFKA_JMX_HOSTNAME: localhost
       KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
-      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker:29092
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: ${KAFKA_BROKERS_DEV}
       CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
       CONFLUENT_METRICS_ENABLE: 'true'
       CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
@@ -81,8 +82,6 @@ services:
     - type: volume
       source: volume_broker_1_secrets
       target: /etc/kafka/secrets
-
-
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.5.0
@@ -95,13 +94,15 @@ services:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker:29092'
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: '${KAFKA_BROKERS_DEV}'
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
 
   connect:
-    image: cnfldemos/cp-server-connect-datagen:0.6.2-7.5.0
+    build: ../../docker/fast_layer/kafka-connect
     hostname: connect
     container_name: connect
+    restart: on-failure
     <<: *common-network
     depends_on:
       - broker
@@ -109,7 +110,7 @@ services:
     ports:
       - "8083:8083"
     environment:
-      CONNECT_BOOTSTRAP_SERVERS: 'broker:29092'
+      CONNECT_BOOTSTRAP_SERVERS: '${KAFKA_BROKERS_DEV}'
       CONNECT_REST_ADVERTISED_HOST_NAME: connect
       CONNECT_GROUP_ID: compose-connect-group
       CONNECT_CONFIG_STORAGE_TOPIC: docker-connect-configs
@@ -141,7 +142,7 @@ services:
     ports:
       - "9021:9021"
     environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker:29092'
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: '${KAFKA_BROKERS_DEV}'
       CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'connect:8083'
       CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
       CONTROL_CENTER_KSQL_KSQLDB1_ADVERTISED_URL: "http://localhost:8088"

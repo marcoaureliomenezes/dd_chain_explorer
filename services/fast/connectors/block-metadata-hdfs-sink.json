@@ -1,0 +1,16 @@
+{
+
+  "connector.class": "io.confluent.connect.hdfs3.Hdfs3SinkConnector",
+  "tasks.max": "1",
+  "topics": "mainnet.mined.block.metadata",
+  "topics.dir": "mainnet/block-metadata",
+  "hdfs.url": "hdfs://namenode:9000",
+  "flush.size": "3",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter": "io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url":"http://schema-registry:8081",
+  "confluent.topic.replication.factor": "1",
+  "format.class":"io.confluent.connect.hdfs3.parquet.ParquetFormat",
+  "partitioner.class":"io.confluent.connect.storage.partitioner.FieldPartitioner"
+
+}

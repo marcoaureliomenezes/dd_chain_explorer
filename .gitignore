@@ -26,6 +26,9 @@ z_conf
 
 docker/batch_layer/airflow
 
+raw-transactions-s3-sink.secret.json
+block-metadata-s3-sink.secret.json
+
 
 .~lock.**
 readme1.md
