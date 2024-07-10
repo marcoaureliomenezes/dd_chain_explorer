@@ -80,10 +80,7 @@ deploy_dev_batch:
 	docker-compose -f services/batch/cluster_compose.yml up -d --build
 
 deploy_dev_ops:
-	docker-compose -f services/ops/cluster_compose.yml up -d
-
-deploy_dev_airflow:
-	docker-compose -f services/airflow/cluster_compose.yml up -d
+	docker-compose -f services/ops/cluster_compose.yml up -d --build
 	
 ##################################################################################################################################
 #########################    COMANDOS DE STOP CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    #######################################
@@ -99,9 +96,6 @@ stop_dev_batch:
 
 stop_dev_ops:
 	docker-compose -f services/ops/cluster_compose.yml down
-
-stop_dev_airflow:
-	docker-compose -f services/airflow/cluster_compose.yml down
 
 ##################################################################################################################################
 #########################    COMANDOS DE WATCH CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ######################################
@@ -172,4 +166,31 @@ watch_prod_services:
 query_api_keys_consumption_table:
 	docker exec -it scylladb cqlsh -e "select * from operations.api_keys_node_providers;"
 
+
 ##################################################################################################################################
+##############################    COMANDOS DE RELATIVOS A CONNECTORS DO KAFKA CONNECT    #########################################
+
+connect_show_connectors:
+	http :8083/connector-plugins -b
+
+connect_deploy_sink_connectors:
+	http PUT :8083/connectors/block-metadata-s3-sink/config @services/fast/connectors/block-metadata-s3-sink.json -b
+	http PUT :8083/connectors/block-metadata-hdfs-sink/config @services/fast/connectors/block-metadata-hdfs-sink.json -b
+
+connect_stop_s3_sink:
+	http DELETE :8083/connectors/block-metadata-s3-sink -b
+
+connect_status_s3_sink:
+	http :8083/connectors/block-metadata-s3-sink/status -b
+
+connect_pause_s3_sink:
+	http PUT :8083/connectors/block-metadata-s3-sink/pause -b
+
+connect_stop_hdfs_sink:
+	http DELETE :8083/connectors/block-metadata-hdfs-sink -b
+
+connect_status_hdfs_sink:
+	http :8083/connectors/block-metadata-hdfs-sink/status -b
+
+connect_pause_hdfs_sink:
+	http PUT :8083/connectors/block-metadata-hdfs-sink/pause -b

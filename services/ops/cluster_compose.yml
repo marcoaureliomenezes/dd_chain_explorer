@@ -1,5 +1,9 @@
 version: '3'
 
+x-common-networks: &common_networks
+  networks:
+    - dm_cluster_dev_ops
+
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
 
@@ -8,13 +12,18 @@ services:
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
+    hostname: prometheus
     ports:
       - 9090:9090
     volumes:
       - ./conf-prometheus-compose.yml:/etc/prometheus/prometheus.yml
       - prometheus-dev-data:/prometheus
-    networks:
-      - dm-operations-dev
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "localhost", "9090" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    <<: *common_networks
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
 
@@ -23,8 +32,12 @@ services:
     container_name: grafana
     ports:
       - 3000:3000
-    networks:
-      - dm-operations-dev
+    healthcheck:
+      test: [ "CMD", "nc", "-z", "prometheus", "9090" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    <<: *common_networks
     volumes:
       - grafana-dev-data:/var/lib/grafana
 
@@ -33,10 +46,7 @@ services:
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.44.1-test
     container_name: cadvisor
-    networks:
-      - dm-operations-dev
-    ports:
-      - 8081:8080
+    <<: *common_networks
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:rw
@@ -52,8 +62,9 @@ services:
   node_exporter:
     image: quay.io/prometheus/node-exporter:latest
     container_name: node_exporter
+    <<: *common_networks
     networks:
-      - dm-operations-dev
+      - dm_cluster_dev_ops
     command:
       - '--path.rootfs=/host'
     pid: host
@@ -68,5 +79,5 @@ volumes:
   grafana-dev-data:
 
 networks:
-  dm-operations-dev:
+  dm_cluster_dev_ops:
     driver: bridge
