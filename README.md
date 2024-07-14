@@ -153,7 +153,7 @@ Contratos inteligentes são programas deployados numa rede blockchain por meio d
 
 Após deployados eles passam a ter um endereço próprio e estar disponíveis para que usuários interajam com eles. [No site Etherscan](https://etherscan.io/address/0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9#writeProxyContract) é possível visualizar esses contratos e métodos disponíveis para serem chamados.
 
-<img src="./img/intro/8_etherscan_contract_vizu.png" alt="Etherscan Contract" width="70%"/>
+<img src="./img/intro/8_etherscan_contract_vizu.png" alt="Etherscan Contract" width="100%"/>
 
 
 - Em [DeFi Llama Chains](https://defillama.com/chains) é possível ver o quanto capital está alocado em contratos nessa rede.
@@ -217,9 +217,7 @@ Para isso é possivel que usuários comuns monitorem os empréstimos do protocol
 
 Na Aave é ainda possível realizar uma transação de empréstimo sem garantia, denominada **[Flash Loan](https://docs.aave.com/faq/flash-loans)**. Devido a arquitetura da rede e a forma com que o contrato é implementado, é possível pegar tokens emprestados, sem dar garantia, desde que se pague o empréstimo no mesmo bloco. Isso é devido a característica de atomicidade. Se um flash loan que deve ser pago no mesmo bloco não for pago, a transação é revertida.
 
-#### Conclusão
-
-É possível realizar arbitragem e liquidações, e com isso obter retornos financeiros, sem grande capital inicial investido.
+**Conclusão**: É possível realizar arbitragem e liquidações, e com isso obter retornos financeiros, sem grande capital inicial investido.
 
 1. Com um mecanismo de monitoramento da rede e dos contratos, é possível identificar as oportunidades de arbitragem ou liquidação;
 2. Com o uso de flash Loan é possível levantar o capital necessário para realizar a operação de liquitação ou arbitragem;
@@ -229,26 +227,20 @@ Os fatos acima são exemplos de oportunidades de negócio que a exploração de 
 
 ## 3. Objetivos específicos
 
-A introdução acima embasa os objetivos específicos desse trabalho. As oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem são vastas.
-
-Abaixo estão listados os objetivos específicos de negócio e técnicos desse trabalho.
+A introdução acima embasa os objetivos específicos desse trabalho. As oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem são vastas. Abaixo estão listados os objetivos específicos de negócio e técnicos desse trabalho.
 
 ### 3.1. Objetivos de negócio
 
 As 2 proposições abaixo justificam resumidamente em termos de negócio a escolha do tema abordado nesse trabalho. São elas:
 
-#### Proposição 1
-
-É sabido que protocolos P2P do tipo blockchain são uma tecnologia nova e complexa. Esses protocolos são usados para:
+**Proposição 1**: É sabido que protocolos P2P do tipo blockchain são uma tecnologia nova e complexa. Esses protocolos são usados para:
   
 - transações entre usuários de uma rede sem a necessidade de um intermediário.
 - Interação com contratos inteligentes deployados na rede, para os mais diversos fins, desde finanças descentralizadas (DeFi) até jogos e NFTs.
 
 **Dado** o grande volume de capital circula nessas redes, através de transações e interações com contratos inteligentes, **então** é possivel que haja oportunidades de negócio para empresas que desejam explorar esses dados.
 
-#### Proposição 2
-
-Redes P2P públicas têm os dados públicos pelos seguintes motivos:
+**Proposição 2**: Redes P2P públicas têm os dados públicos pelos seguintes motivos:
 
 - Por a rede é descentralizada, qualquer pessoa pode fazer parte dela, desde que atenda aos requisitos de hardware, software e rede.
 - Todos os nós da rede possuem uma cópia da estrutura de dados blockchain sincronizada, de forma que a rede possa validar a integridade das transações contidas em todos os blocos. **Por consequência**, é possível se obter dados de transações e interações com contratos inteligentes dessas redes de forma direta, caso se tenha acesso a um nó da rede.
@@ -293,9 +285,9 @@ Devido aos requisitos de hardware, software e rede necessários para deploy de u
 
 ### 4.1. Provedores de Node-as-a-Service
 
-Provedores de NaaS são empresas que fornecem acesso a nós de redes blockchain públicas. Alguns exemplos são **Infura** e **Alchemy**. Esses provedores, como modelo de negócio, fornecem API keys para interação com os nós. 
+Provedores de NaaS são empresas que fornecem acesso a nós de redes blockchain públicas. Alguns exemplos são **Infura** e **Alchemy**. Esses provedores, como modelo de negócio, fornecem API keys para interação com os nós.
 
-<img src="./img/intro/4_bnaas_vendor_plans.png" alt="4_bnaas_vendor_plans.png" width="70%"/>
+<img src="./img/intro/4_bnaas_vendor_plans.png" alt="4_bnaas_vendor_plans.png" width="100%"/>
 
 Porém, esses provedores limitam a quantidade de requisições, de acordo com planos estabelacidos (gratuito, premium, etc.) que variam o preço e o limite de requisições diárias ou por segundo permitidas.
 
@@ -325,7 +317,7 @@ Para capturar dados de blocos e transações da rede em tempo real é usada a [B
 block_data = web3.eth.get_block('latest')
 ```
 
-<img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="40%"/>
+<img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="80%"/>
 
 Assim é possível identificar novos blocos minerados, ao se perceber que o número do bloco foi incrementado. E então disparar um evento com os dados do bloco.
 
@@ -335,7 +327,7 @@ Assim é possível identificar novos blocos minerados, ao se perceber que o núm
 tx_data = web3.eth.get_transaction('tx_hash_id')
 ```
 
-<img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="40%"/>
+<img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="80%"/>
 
 As 2 funções mencionadas trabalhando em conjunto são o suficiente para obter dados de transações recem minerada. Porém é necessário que as rotinas que se utilizem delas trabalhem de forma integrada e em cooperação.
 
@@ -364,7 +356,7 @@ Porém, o **dm_v3_chain_explorer** objetiva usar o sistema pub-sub para:
 - Comunicação inter processos;
 - Sistema robusto e escalável atuando como um **backbone de dados**.
 
-<img src="./img/intro/7_kafka_backbone.png" alt="Kafka Backbone" width="40%"/>
+<img src="./img/intro/7_kafka_backbone.png" alt="Kafka Backbone" width="80%"/>
 
 O sistema **dm_v3_chain_explorer** deve estar preparado para capturar e ingestar dados de redes blockchain do tipo EVM, não estando restrito a Ethereum.
 A Ethereum é a rede menos rápida e escalável entre as redes EVM. Por isso, o sistema deve estar preparado para capturar dados de redes mais rápidas e escaláveis, como Binance Smart Chain, Avalanche, Fantom, etc. Logo, a plataforma de mensageria escolhida deve ser capaz de suportar workloads de bigdata.
