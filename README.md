@@ -710,7 +710,7 @@ Os serviços estão definidos em arquivos `docker-compose.yml` e `docker-swarm.y
 
 Para simplificar esse processo de execução de comandos docker, de build e deploy de serviços, publicação de imagens, entre outros, foi definido um arquivo chamado [Makefile](https://www.gnu.org/software/make/manual/make.html) na raíz desse projeto. O Makefile é um componente central, para que comandos sejam reproduzidos de maneira simples. no arquivo `/Makefile`, na base do repositório **dm_v3_chain_explorer** é possivel visualizar os comandos definidos.
 
-<img src="./img/Makefile.png" alt="Makefile" width="50%"/>
+<img src="./img/Makefile.png" alt="Makefile" width="90%"/>
 
 **Observação**: Essa ferramenta vem previamante instalada em sistemas operacionais Linux. Caso não possua o make instalado e tenha dificuldades para instalá-lo, uma opção não tão custosa é abrir o arquivo e executar os comandos docker manualmente.
 
@@ -755,7 +755,7 @@ docker --version
 
 A saída esperada é algo como:
 
-<img src="./img/docker_installed.png" alt="Makefile" width="70%"/>
+<img src="./img/docker_installed.png" alt="Makefile" width="80%"/>
 
 Caso não esteja instalado, siga as instruções de instalação no [site oficial do docker](https://docs.docker.com/engine/install/).
 
@@ -769,7 +769,7 @@ docker-compose --version
 
 A saída esperada é algo como:
 
-<img src="./img/docker_compose_installed.png" alt="docker-compose-version" width="70%"/>
+<img src="./img/docker_compose_installed.png" alt="docker-compose-version" width="80%"/>
 
 ```bash
 docker swarm --version
@@ -777,7 +777,7 @@ docker swarm --version
 
 A saída esperada é algo como:
 
-<img src="./img/swarm_installed.png" alt="docker-swarm-version" width="70%"/>
+<img src="./img/swarm_installed.png" alt="docker-swarm-version" width="80%"/>
 
 ### 7.2. Clonagem de repositórios desse trabalho
 
@@ -805,7 +805,7 @@ Para esse sistema diversas imagens foram construídas, devido a necessidade de c
 make build
 ```
 
-<img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="70%"/>
+<img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="90%"/>
 
 ### Observação sobre o build a partir do Makefile
 
@@ -960,6 +960,7 @@ Abaixo é possível ver uma amostra das mensagens sendo enviadas para o tópico 
 
 ## 7.4. Reprodução do sistema usando o Docker Swarm
 
+Em construção
 
 ## 8. Conclusão
 
