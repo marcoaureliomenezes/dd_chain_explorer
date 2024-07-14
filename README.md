@@ -6,33 +6,41 @@ Estão aqui implementadas estratégias e rotinas de extração, ingestão, proce
 
 ## Sumário
 
-- [1. Objetivo do case](#1-objetivo-do-case)
-  - [1.1. Objetivos de negócio](#11-objetivos-de-negócio)
-  - [1.2. Introdução](#12-introdução)
-  - [1.3. Objetivos técnicos](#13-objetivos-técnicos)
-
-- [2. Explicação sobre o case desenvolvido](#2-explicação-sobre-o-case-desenvolvido)
-  - [2.1. Captura de dados](#21-captura-de-dados)
-  - [2.2. Restrições de API keys](#22-restrições-de-api-keys)
-  - [2.3. Mecanismo para captura de dados](#23-mecanismo-para-captura-de-dados)
-  - [2.4. Sistema Pub / Sub](#24-sistema-pub--sub)
-- [3. Arquitetura do case](#3-arquitetura-do-case)
-  - [3.1. Arquitetura de solução](#31-arquitetura-de-solução)
-  - [3.2. Arquitetura técnica](#32-arquitetura-técnica)
-- [4. Aspectos técnicos desse trabalho](#4-aspectos-técnicos-desse-trabalho)
-  - [4.1. Dockerização dos serviços](#41-dockerização-dos-serviços)
-  - [4.2. Orquestração de serviços em containers](#42-orquestração-de-serviços-em-containers)
-- [5. Reprodução do sistema em ambiente local](#5-reprodução-do-sistema-em-ambiente-local)
-  - [5.1. Requisitos](#51-requisitos)
-  - [5.2. Clonagem de repositórios desse trabalho](#52-clonagem-de-repositórios-desse-trabalho)
-  - [5.3. Reprodução do sistema usando o Docker Compose](#53-reprodução-do-sistema-usando-o-docker-compose)
-
-- [6. Conclusão](#6-conclusão)
-- [7. Melhorias futuras](#7-melhorias-futuras)
-  - [7.1. Aplicações downstream para consumo dos dados](#71-aplicações-downstream-para-consumo-dos-dados)
-  - [7.2. Melhoria em aplicações do repositório onchain-watchers](#72-melhoria-em-aplicações-do-repositório-onchain-watchers)
-  - [7.3. Troca do uso de provedores Blockchain Node-as-a-Service](#73-troca-do-uso-de-provedores-blockchain-node-as-a-service)
-  - [7.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#74-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
+- [1. Objetivo Geral](#1-objetivo-geral)
+- [2. Introdução](#2-introdução)
+  - [2.1 Estrutura de dados blockchain](#21-estrutura-de-dados-blockchain)
+  - [2.2 Rede blockchain tipo P2P](#22-rede-blockchain-tipo-p2p)
+  - [2.3 Redes Blockchain, Públicas e privadas](#23-redes-blockchain-públicas-e-privadas)
+  - [2.4 Características de uma rede blockchain](#24-características-de-uma-rede-blockchain)
+  - [2.5 Exemplos de blockchains públicas](#25-exemplos-de-blockchains-públicas)
+  - [2.6 Blockchains e Contratos inteligentes](#26-blockchains-e-contratos-inteligentes)
+  - [2.7 Oportunidades em blockchains públicas](#27-oportunidades-em-blockchains-públicas)
+- [3. Objetivos específicos](#3-objetivos-específicos)
+  - [3.1. Objetivos de negócio](#31-objetivos-de-negócio)
+  - [3.2. Objetivos técnicos](#32-objetivos-técnicos)
+  - [3.3. Observação sobre o tema escolhido](#33-observação-sobre-o-tema-escolhido)
+- [4. Explicação sobre o case desenvolvido](#4-explicação-sobre-o-case-desenvolvido)
+  - [4.1. Provedores de Node-as-a-Service](#41-provedores-de-node-as-a-service)
+  - [4.2. Restrições de API keys](#42-restrições-de-api-keys)
+  - [4.3. Captura de dados de blocos e transações](#43-captura-de-dados-de-blocos-e-transações)
+  - [4.4. Mecanismo para Captura de Dados](#44-mecanismo-para-captura-de-dados)
+  - [4.5. Mecanismo de compartilhamento de API Keys](#45-mecanismo-de-compartilhamento-de-api-keys)
+- [5. Arquitetura do case](#5-arquitetura-do-case)
+- [5.1. Arquitetura de solução](#51-arquitetura-de-solução)
+- [5.2. Arquitetura técnica](#52-arquitetura-técnica)
+- [6. Aspectos técnicos desse trabalho](#6-aspectos-técnicos-desse-trabalho)
+  - [6.1. Dockerização dos serviços](#61-dockerização-dos-serviços)
+  - [6.2. Orquestração de serviços em containers](#62-orquestração-de-serviços-em-containers)
+- [7. Reprodução do sistema dm_v3_chain_explorer](#7-reprodução-do-sistema-dm_v3_chain_explorer)
+  - [7.1. Requisitos](#71-requisitos)
+  - [7.2. Clonagem de repositórios desse trabalho](#72-clonagem-de-repositórios-desse-trabalho)
+  - [7.3. Reprodução do sistema usando o Docker Compose](#73-reprodução-do-sistema-usando-o-docker-compose)
+- [8. Conclusão](#8-conclusão)
+- [9. Melhorias futuras](#9-melhorias-futuras)
+  - [9.1. Aplicações downstream para consumo dos dados](#91-aplicações-downstream-para-consumo-dos-dados)
+  - [9.2. Melhoria em aplicações do repositório onchain-watchers](#92-melhoria-em-aplicações-do-repositório-onchain-watchers)
+  - [9.3. Troca do uso de provedores Blockchain Node-as-a-Service](#93-troca-do-uso-de-provedores-blockchain-node-as-a-service)
+  - [9.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#94-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
 
 ## 1. Objetivo Geral
 
@@ -60,7 +68,7 @@ Estrutura que armazena blocos de forma encadeada. Cada bloco contém:
 - Metadados do bloco anterior, como o hash do bloco anterior.
 - Lista de transações feitas por usuários da rede que foram mineradas (persistidas) no bloco.
 
-<img src="./img/intro/1_blocks_transactions.png" alt="Estrutura de dados Blockchain" width="50%"/>
+<img src="./img/intro/1_blocks_transactions.png" alt="Estrutura de dados Blockchain" width="80%"/>
 
 Em resumo, uma estrutura de dados do tipo blockchain contem uma lista de blocos encadeados.
 
@@ -72,7 +80,7 @@ Rede de topologia Peer-to-Peer onde nós pertencentes a ela possuem uma cópia d
 - Validação de novos blocos minerados e consenso sobre encadeá-los na estrutura de dados blockchain da rede.
 - Validação de integridade de transações contidas em blocos de toda a rede, utilizando-se dos hashes dos blocos.
 
-<img src="./img/intro/2_p2p_networks.jpg" alt="Rede P2P blockchain" width="30%"/>
+<img src="./img/intro/2_p2p_networks.jpg" alt="Rede P2P blockchain" width="80%"/>
 
 Com a ferramenta [tools.super_data_science](https://tools.superdatascience.com/blockchain/hash) é possível simular os conceitos mencionados acima.
 
@@ -84,13 +92,13 @@ Blockchains podem ser categorizadas de acordo com os critérios para que um nó 
 
 **Blockchains privadas**:  são redes onde somente membros autorizados podem fazer parte. Essas redes são usadas por empresas para uso interno. Exemplos de blockchains privadas são as redes construídas a partir da plataforma Hyperledger. O próprio DREX, projeto do Banco Central do Brasil, é um exemplo de blockchain privada.
 
-### 2.4. Arquitetura de uma rede blockchain
+### 2.4. Características de uma Rede Blockchain
 
 **Em sistemas distribuídos** é bem conhecido por nós o [Teorema CAP](https://www.ibm.com/br-pt/topics/cap-theorem), que enuncia que em sistemas distribuídos, é impossível garantir simultaneamente as 3 características: consistência, disponibilidade e tolerância a partições.
 
 **Em sistemas decentralizados**, do tipo blockchain existe, de forma análoga, o [Trilema do blockchain](https://www.coinbase.com/pt-br/learn/crypto-glossary/what-is-the-blockchain-trilemma), que diz entre 3 características, decentralização, segurança e escalabilidade, somente é possível alcançar plenamente 2 dessas, sendo necessário sacrificar a 3ª.
 
-<img src="./img/intro/3_blockchain_trilema.png" alt="Trilema blockchain" width="20%"/>
+<img src="./img/intro/3_blockchain_trilema.png" alt="Trilema blockchain" width="70%"/>
 
 A escalabilidade de uma rede blockchain é medida em termos de transações por segundo (TPS). Para uma dada rede, cada bloco tem tamanho limitado em bytes e é minerado a cada intervalo de tempo. Para escalar uma rede blockchain é preciso aumentar a frequência de mineração de blocos ou tamanho dos blocos. Porém, isso pode comprometer ou a segurança da rede ou a decentralização da mesma.
 
@@ -120,26 +128,96 @@ Em resumo, a blockchain é uma estrutura de dados que armazena blocos de forma e
 
 ### 2.7. Oportunidades em blockchains públicas
 
-Conforme dito acima, existem inúmeras redes blockchain públicas. Nessas redes circula uma quantidade significativa de capital. 
+Conforme dito acima, existem inúmeras redes blockchain públicas. Nessas redes circula uma quantidade significativa de capital. A finalidade de uma blockchain é que usuários possam transacionar entre si sem a necessidade de um intermediário. E essas transações podem ser de vários tipos:
 
-Em algumas delas existe um ecossistema diverso de aplicações construídas a partir de contratos inteligentes. Essas redes são usadas para, desde a transferência de tokens entre endereços, até a interação com contratos inteligentes, por meio da execução de funções deste, para aplicações dos mais diversos fins.
+- Transferência de tokens entre endereços de carteiras;
+- Interação com contratos inteligentes;
 
-Em [DeFi Llama Chains](https://defillama.com/chains) é possível ver o quanto capital está alocado em cada uma dessas redes. A rede Ethereum, por exemplo, é a rede com maior capital preso em smart contracts do protocolo (TVL). É inegável que as instituções financeiras tenham interesse em oferecer como produto a venda desses tokens, tais como BTC e ETH. Alguns bancos já o fazem. Mas qual seria o 1º passo para uma instituição financeira, altamente regulada, oferecer um produto como esse? Uma das etapas seria claramente a criação de mecanismos de segurança, para, por exemplo, monitorar e assegurar que pessoas sancionadas ou envolvidas em lavagem de dinheiro não transacionem livremente usando endereços ligados a instituição.
+### 2.7.1. Monitoração de transações entre endereços de carteiras
 
-Em [DeFi Llama Contracts](https://defillama.com/) é possível ver uma lista de aplicações DeFi (contratos inteligentes) e o volume de capital retido neles. Alguns exemplos de aplicações DeFi são:
+A forma mais simples de transação em uma rede blockchain é a transferência de token nativo da rede entre endereços de carteiras.
+
+- **Usuário 1** ENVIA **Quantidade X** de tokens nativo, no caso da Ethereum o `ETH`, para **Usuário 2**;
+
+A monitoração de transações entre usuários tem muitas aplicações. Uma delas é a identificação de padrões de transações entre endereços de carteiras. Esses padrões podem ser usados para identificar fraudes, lavagem de dinheiro, ou até mesmo para identificar oportunidades de negócio.
+
+#### Exemplo relativo a segurança
+
+Existem inúmeros casos em que [hackers exploram vulnerabilidades em contratos inteligentes para roubar tokens, causando prejuizos na casa de bilhões](https://br.cointelegraph.com/news/defi-exploits-and-access-control-hacks-cost-crypto-investors-billions-in-2022-report). Quando um hacker rouba tokens de um contrato inteligente, ele precisa transferir esses tokens para outros endereços, a fim de acobertar a origem criminosa. Para então vendê-los em alguma corretora.
+
+Ao se monitorar a rede em tempo real, é possível identificar o endereço inicial do hacker e rastrear os tokens roubados, a fim de se evitar que esses tokens sejam vendidos em exchanges e o hacker realize o lucro.
+
+### 2.7.2. Monitoração de interações com contratos inteligentes
+
+Contratos inteligentes são programas deployados numa rede blockchain por meio de uma transação. 
+
+Após deployados eles passam a ter um endereço próprio e estar disponíveis para que usuários interajam com eles. [No site Etherscan](https://etherscan.io/address/0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9#writeProxyContract) é possível visualizar esses contratos e métodos disponíveis para serem chamados.
+
+<img src="./img/intro/8_etherscan_contract_vizu.png" alt="Etherscan Contract" width="70%"/>
+
+
+- Em [DeFi Llama Chains](https://defillama.com/chains) é possível ver o quanto capital está alocado em contratos nessa rede.
+- Em [DeFi Llama Contracts](https://defillama.com/) é possível ver uma lista de aplicações DeFi (contratos inteligentes) e o volume de capital retido neles.
+
+### 2.7.3. Contratos inteligentes Aave e Uniswap
+
+Entre os contratos inteligentes mais conhecidos estão:
 
 - **[AAVE Borrowing and Lending](https://app.aave.com/)**: Aplicação decentralizada que permite usuários pegar empréstimos em criptomoedas, usando outras criptomoedas como garantia.
 - **[Uniswap DEX](https://app.uniswap.org/?intro=true)**: Aplicação decentralizada que permite usuários trocar tokens entre si, sem a necessidade de um intermediário.
 
 As 2 aplicações acima são exemplos de **aplicações DeFi (Finanças descentralizadas)**. Pela forma que são construídas, elas oferecem oportunidades de retorno financeiro da seguinte forma:
 
-1. A Uniswap realiza trocas de tokens entre usuários. Para o cálculo de preço de um token em relação a outro, é usado um mecanismo de liquidez. Esse mecanismo é chamado de [AMM - Automated Market Maker](https://academy.binance.com/pt/articles/what-is-an-automated-market-maker-amm). O AMM é um contrato inteligente que calcula o preço de um token em relação a outro, baseado na quantidade de tokens disponíveis para troca. Pela forma que é construído, quando há um desequilíbrio entre a quantidade de tokens, é possível se obter lucro ao se realizar trocas entre eles realizando [arbitragem](https://www.kraken.com/pt-br/learn/what-is-uniswap-uni). Tais operações de arbitragem mantém o preço relativo de 1 par de tokens em equilobrio, em acordo com o mercado.
+#### 1. UNISWAP
 
-2. A Aave realiza empréstimos de criptomoedas. Para se pegar um empréstimo é preciso deixar uma garantia. A garantia é usada para cobrir o empréstimo caso o usuário não o pague. O protocolo confia em terceiros para se manter saudável. Caso um empréstimo fique abaixo da garantia usuários da rede podem liquidar o empréstimo e obter lucro. Para isso, é preciso monitorar a rede e os estados do contrato. [No site da Aave - Liquidations](https://docs.aave.com/developers/guides/liquidations) é possível compreender melhor o mecanismo de liquidação.
+A Uniswap é um conjunto de contratos inteligentes que funcionam como uma aplicação decentralizada para troca de tokens ERC20. Para isso ele cria contratos chamados **piscinas de liquidez**. Esses contratos são definidos por um par de tokens e usuários podem fornecer liquidez ao contrato, depositando tokens nele objetivando retorno financeiro em taxas cobradas a usuários do protocolo trocando aquele determinado par de tokens.
 
-3. Na Aave é ainda possível realizar uma transação de empréstimo sem garantia, denominada **[Flash Loan](https://docs.aave.com/faq/flash-loans)**. Devido a arquitetura da rede e a forma com que o contrato é implementado, é possível pegar tokens emprestados, sem dar garantia, desde que se pague o empréstimo no mesmo bloco. Isso é devido a característica de atomicidade. Se um flash loan que deve ser pago no mesmo bloco não for pago, a transação é revertida.
+Para o cálculo de preço de um token em relação a outro, é usado um mecanismo chamado de [AMM - Automated Market Maker](https://academy.binance.com/pt/articles/what-is-an-automated-market-maker-amm). Um AMM tem por objetivo calcular o preço de um token em relação a outro e manter esse preço de acordo com o mercado externo.
 
-### Conclusão
+Um exemplo de AMM é fundamentado em que em uma piscina de liquidez o **produto da quantidade de um par de tokens X e Y deve ser constante**.
+
+**Exemplo:**
+
+- 1 piscina possui 10 WETH e 10 SDM em liquidez. O produto deve ser constante = 100 WETH x SDM ao final de toda transação de troca.
+- Se um usuário deseja trocar 1 WETH por SDM nessa piscina, ao final da da transação a piscina deve ter 11 WETH e 9,09 SDM.
+- Quanto mais a relação entre WETH e SDM se desequilibra, mais caro é o token que está em menor quantidade.
+- Contudo, o preço dos 2 ativos sofre uma flutuação que diverge do preço praticado pelo mercado em relação àqueles 2 tokens.
+- Portanto, nessas flutuações aparecem oportunidades de [arbitragem](https://www.kraken.com/pt-br/learn/what-is-uniswap-uni).
+- Pode-se comprar do token que flutuou para cima por um valor mais baixo no mercado e troca-lo na piscina de liquidez com valor maior, realizando-se lucros.
+
+No exemplo acima fica evidente como esse tipo de contrato inteligente se mantém em funcionamento. Ele precisa de 3 atores:
+
+- Provedores de liquidez para piscinas de par de tokens;
+- Usuários do protocolo que trocam tokens;
+- Operadores de arbitragem que mantém o preço dos tokens em equilíbrio com o mercado.
+
+Portanto, monitorar operações de Swap em contratos inteligentes da Uniswap podem fornecer informações para execução de operações de **arbitragem**.
+
+#### 2. AAVE
+
+A Aave realiza empréstimos de criptomoedas. Usuários podem realizar de forma simples 2 ações nesse protocolo.
+
+- **Depositar**: Usuários depositam um token X no contrato inteligente, provendo liquidez ao contrato para aquele token.
+- **Borrow**: Usuários pegam emprestado um token Y, usando o token X depositado como garantia.
+
+Quando os preços dos tokens flutuam, é possível que o valor do empréstimo fique abaixo do valor da garantia, deixando o protocolo em risco. Para evitar isso, a Aave usa um mecanismo de liquidação.
+
+**Exemplo:**
+
+- Um usuário deposita 15 WETH como garantia na AAVE.
+- Ele passa a poder pegar emprestado o valor de 10 WETHs em outros tokens, por exemplo 10 SDM.
+- O usuário pega emprestado então 10 SDM, que ele vende no mercado. Ele pagará taxas por esse empréstimo.
+- Supondo que o valor de WETH em relação ao SDM caia 30%:
+  - O valor necessário em garantia passa a ser 13 WETH.
+  - Porém o valor da garantia depositado é de 10 WETH.
+
+O contrato inteligente da Aave precisa de um mecanismo para liquidar o empréstimo, caso o valor da garantia fique abaixo do valor do empréstimo.
+
+Para isso é possivel que usuários comuns monitorem os empréstimos do protocolo e realizem operações de liquidação, obtendo lucro com isso. Além de obter lucros eles mantém o protocolo Aave saudável. [Em Aave - Liquidations](https://docs.aave.com/developers/guides/liquidations) é possível compreender melhor o mecanismo de liquidação.
+
+Na Aave é ainda possível realizar uma transação de empréstimo sem garantia, denominada **[Flash Loan](https://docs.aave.com/faq/flash-loans)**. Devido a arquitetura da rede e a forma com que o contrato é implementado, é possível pegar tokens emprestados, sem dar garantia, desde que se pague o empréstimo no mesmo bloco. Isso é devido a característica de atomicidade. Se um flash loan que deve ser pago no mesmo bloco não for pago, a transação é revertida.
+
+#### Conclusão
 
 É possível realizar arbitragem e liquidações, e com isso obter retornos financeiros, sem grande capital inicial investido.
 
@@ -151,7 +229,9 @@ Os fatos acima são exemplos de oportunidades de negócio que a exploração de 
 
 ## 3. Objetivos específicos
 
-A introdução acima embasa os objetivos específicos desse trabalho. Abaixo estão listados os objetivos específicos de negócio e técnicos desse trabalho.
+A introdução acima embasa os objetivos específicos desse trabalho. As oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem são vastas.
+
+Abaixo estão listados os objetivos específicos de negócio e técnicos desse trabalho.
 
 ### 3.1. Objetivos de negócio
 
@@ -199,8 +279,6 @@ Dado que a tecnologia blockchain não é assunto trivial e também não é um re
 - Conceitos relacionados a finanças.
 
 Portanto, a escolha desse tema para case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros.
-
-<hr>
 
 ## 4. Explicação sobre o case desenvolvido
 
@@ -305,15 +383,38 @@ O job **mined_blocks_crawler** que encapsula a chamada da função **get_block('
 
 **Observação:** a cada execução do método **get_block('latest')** uma requisição é feita usando a API key. Com a **frequência 1 req/segundo**, tem-se **86.400 requisições por dia**. Portanto, para satisfazer tal número de requisições 1 chave é o suficiente.
 
-### 4.4.3. Captura de dados de transações
+### 4.4.3. Captura de dados de transações (Mined Transactions Crawler)
 
 O job **mined_txs_crawler** encapsula a chamada da função **get_transaction(tx_hash_id)**. Ele opera da seguinte forma:
 
 - Inicialmente ele se subscreve no tópico **mined.txs.hash.ids** de forma a consumir os `hash_ids` produzidos pelo job **mined_blocks_crawler**.
 - A cada `hash_id` consumido, ele executa o método `get_transaction(tx_hash_id)` para obter os dados da transação.
+- Com os dados da transação ele classifica essa transação em 1 dos 3 tipos:
+  - **Tipo 1**: Transação de troca de token nativo entre 2 endereços de usuários (Campo `input` vazio) ;
+  - **Tipo 2**: Transação realizando o deploy de um contrato inteligente (Campo `to` vazio) ;
+  - **Tipo 3**: Interação de um endereço de usuário com um contrato inteligente (Campo `to` e `input` preenchidos).
 
+Cada tipo de transação é publicado em um tópico específico:
 
-Conforme os hash_ids são consumidos, o job **raw_tx_ingestor** executa o método `get_transaction(tx_hash_id)` para obter os dados daquela transação. Esses dados são então publicados em um tópico chamado **raw_data_txs**.
+- **mined.tx.1.native_token_transfer**: transação de troca de token nativo entre 2 endereços de usuários;
+- **mined.tx.2.contract_deployment**: transação realizando o deploy de um contrato inteligente;
+- **mined.tx.3.contract_interaction**: Interação de um endereço de usuário com um contrato inteligente.
+
+Após classificados em tópicos, cada tipo de transação pode alimentar aplicações downstream, cada uma com sua especificidade.
+
+### 4.4.4.  Decode do campo input em transações (Tx Input Decoder)
+
+As transações publicadas no tópico **mined.tx.3.contract_interaction** correspondem a interação com contratos inteligentes. Isso se dá por meio de chamada de funções do mesmo passando-se parâmetros.
+
+Por exemplo, para se trocar Ethereum por outros tokens na rede Uniswap, é necessário chamar a função `swapExactETHForTokens` passando os parâmetros necessários.
+
+Nesses tipos de transaçãoo campo `input` é onde se encontra a informação de qual função do contrato foi executada e quais parâmetros foram passados para ela. Porém, esses dados vem encodados. É necessário um mecanismo para decodificar esses dados e torná-los legíveis. Para isso, foi criado o job **txs_input_decoder**.
+
+Este tem por finalidade fazer o decode do campo input. Para que isso seja possível, é necessário que o contrato inteligente tenha uma ABI (Application Binary Interface) disponível. A ABI é um JSON que contém a assinatura de todas as funções do contrato. Com a ABI é possível decodificar o campo input e identificar qual função foi chamada e quais parâmetros foram passados.
+
+Com as informações decodificadas, o job **txs_input_decoder** publica as informações em um tópico chamado **mined.tx.3.contract_interaction.decoded**.
+
+### 4.5. Mecanismo de compartilhamento de API Keys
 
 Nesse job concentra-se o esforço em número de requisições.Como mencionado, o número de transações diárias na rede Ethereum ultrapassam em muito os limites de uma API Key para 1 plano gratuito. Logo é necessário que esse job seja escalado. Mas escalado de que forma?
 
@@ -323,8 +424,6 @@ Para segurança do sistema, essas API Keys não podem estar cravas no código, p
 
 **Máxima disponibilidade**: Para garantir a disponibilidade do sistema, é preciso manter o controle de requisições nas API Keys para que somente em último caso as requisições sejam esgotadas.
 Caso o número de requisições diárias seja atingido o job deve trocar de API Key. É interessante também que as instâncias do job troquem de API Keys de tempos em tempos, para que todas as API Keys sejam usadas de maneira equitativa. Para isso, é preciso um mecanismo de controle de uso das API Keys.
-
-### 2.3.2. Mecanismo de compartilhamento de chaves entre réplicas do job
 
 Para que o Job  **raw_tx_ingestor** em suas **n réplicas** consumam **m API Keys**, buscando atender aos 2 requisitos acima, se faz necessário que:
 
@@ -347,48 +446,15 @@ Como pode ser visualizado na seção de arquitetura de solução, o job **raw_tx
 
 2. Ao realizar uma requisição com determinada API Key, o job **raw_tx_ingestor** publica uma mensagem em um tópico do Kafka destinado a logs.
 
-Existe então o 3º job, do tipo Spark Streaming chamado **api_key_monitor**  que tem como tarefa consumir as mensagens do tópico de logs. Usando filtros e windowing, ele calcula o número de requisições nas últimas 24 horas para cada API Key e então atualiza uma tabela no banco de dados Scylla. 
+Existe então o 3º job, do tipo Spark Streaming chamado **api_key_monitor**  que tem como tarefa consumir as mensagens do tópico de logs. Usando filtros e windowing, ele calcula o número de requisições nas últimas 24 horas para cada API Key e então atualiza uma tabela no banco de dados Scylla.
 
 É justamente essa tabela que o Job **raw_tx_ingestor** consulta para escolher a API Key a ser usada em questão de menos requisições diárias.
 
-### 2.3.3.  Separação de transações por finalidade
-
-O job **tx_classifier** tem por finalidade classificar as transações brutas recebidas, a partir de uma subscrição no tópico **raw.data.txs** e publicá-las seus respectivos tópicos:
-
-- **mined.tx.1.native_token_transfer**: transação de troca de token nativo entre 2 endereços de usuários;
-- **mined.tx.2.contract_deployment**: transação realizando o deploy de um contrato inteligente;
-- **mined.tx.3.contract_interaction**: Interação de um endereço de usuário com um contrato inteligente.
-
-Após classificados em tópicos, cada tipo de transação pode alimentar aplicações downstream, cada uma com sua especificidade.
-
-### 2.3.4.  Decode do campo input contido em transações
-
-As transações publicadas no tópico **mined.tx.3.contract_interaction** correspondem a interação com contratos inteligentes. Isso se dá por meio de chamada de funções do mesmo passando-see parâmetros. Por exemplo, para se trocar Ethereum por outros tokens na rede Uniswap, é necessário chamar a função `swapExactETHForTokens` passando os parâmetros necessários.
-
-Nesses tipos de transaçãoo campo `input` é onde se encontra a informação de qual função do contrato foi executada e quais parâmetros foram passados para ela. Porém, esses dados vem encodados. É necessário um mecanismo para decodificar esses dados e torná-los legíveis. Para isso, foi criado o job **tx_input_decoder**.
-
-Este tem por finalidade fazer o decode do campo input. Para que isso seja possível, é necessário que o contrato inteligente tenha uma ABI (Application Binary Interface) disponível. A ABI é um JSON que contém a assinatura de todas as funções do contrato. Com a ABI é possível decodificar o campo input e identificar qual função foi chamada e quais parâmetros foram passados.
-
-Se o objetivo é decodificar o campo input de transações de interação com contratos inteligentes, para todo contrato inteligente, é preciso que a ABI de todos os contratos esteja disponível. Para isso, será criada na próxima versão o job **contract_abi_ingestor**.
-
-
- foram desenvolvidas rotinas que representam Jobs, com determinadas funcionalidades, como será visto nos tópicos adiante. Esses jobs comunicam entre si por meio de um sistema Pub-Sub, que é um sistema de mensagens assíncrono, onde um publisher publica mensagens em um tópico e um subscriber consome essas mensagens.
-
-Conforme mencionado, é preciso acesso a um nó de uma rede especifica para obter os dados da mesma. Certamente, esses dados podem ser obtidos de maneira indireta - alguém captura os dados e coloca em um database para serem usados. Contudo aqui se busca a forma direta, de maneira a satisfazer o requisito de minimização da latência para captura e ingestão dos dados.
-Dado que o acesso ao nó esteja resolvido, ainda sim é preciso interagir com ele para se obter os dados. Existem SDKs para diferentes linguagens de programação, para interação com esses nós. Aqui nesse trabalho, para interação com os nós foram usadas as seguintes ferramentas:
-
-- [Biblioteca Web3.py](https://web3py.readthedocs.io/en/stable/) para interação com a rede e captura de dados de blocos e transações;
-
-- [Framework brownie](https://eth-brownie.readthedocs.io/en/stable/python-package.html), construída no topo da biblioteca `Web3.py` para interação com contratos inteligentes.
-
-Dado que ambos os pontos estejam satisfeitos, é possível fazer a ingestão de dados em tempo real, correto? Não exatamente.
-
-
-## 3. Arquitetura do case
+## 5. Arquitetura do case
 
 Nesse tópico está detalhada a arquitetura de solução e técnica do dm_v3_chain_explorer. Foi explorado acima alguns atores no mecanismo que realiza a captura e ingestão do dados. Porém é necessário entender com clareza como estes componentes comunicam-se entre si.
 
-### 3.1. Arquitetura de solução
+### 5.1. Arquitetura de solução
 
 O desenho abaixo ilustra como a solução para captura e ingestão de dados da Ethereum, e em tempo real funciona.
 
@@ -404,7 +470,7 @@ As seguintes tecnologias foram usadas para construir essa solução de captura:
 - **Jobs implementados em python Python**: Esses jobs são responsáveis por capturar, classificar e decodificar os dados usando as ferramentas mencionadas acima. Executam em containers docker.
 - **Kafka Connect**: Ferramenta usada para conectar o Kafka a diferentes fontes de dados. Nesse caso, o Kafka Connect é usado para envio dos dados de tópicos do Kafka para outros sistemas.
 
-### 3.2. Arquitetura Técnica
+### 5.2. Arquitetura Técnica
 
 A arquitetura técnica desse sistema é composta por diferentes camadas, cada uma com um conjunto de serviços que interagem entre si para determinada finalidade. As camadas são:
 
@@ -418,7 +484,7 @@ Além deles, o recurso **Azure Key Vault** foi usado para armazenar as API Keys.
 
 ![Serviços do sistema](./img/batch_layer.drawio.png)
 
-### 3.2.1. Camada Fast
+### 5.3.1. Camada Fast
 
 Nessa camada estão definidos os serviços utilizados para ingestão de dados em tempo real e que trabalham em conjunto com os Jobs implementados na camada de aplicação. Os serviços dessa camada são:
 
@@ -430,7 +496,7 @@ Nessa camada estão definidos os serviços utilizados para ingestão de dados em
 - **Redis**: Banco de dados chave-valor usado para controle de consumo de API Keys em jobs de streaming, de forma a garantir que cada API key seja usada por somente um Job a determinado instante, atuando como um semáforo.
 - **Redis Commander**: Interface grafica para visualização dos dados no redis.
 
-### 3.2.2. Camada Batch
+### 5.3.2. Camada Batch
 
 Nessa camada estão relacionados serviços necessários para armazenamento e processamento de dados em big data e outras ferramentas necessárias para que pipelines batch sejam definidos.
 
@@ -486,7 +552,7 @@ Essas tecnologias são amplamente usadas em ecossistemas de plataformas de dados
 - O **Hadoop HDFS** pode ser substituído por **Amazon S3**, **Azure ADLS** e **Google Cloud Storage**. 
 - O **Apache Spark** pode ser substituído por um spark gerenciado dna plataforma **Databricks** ou por outros recursos que usam por debaixo dos panos o Spark, tais como **Synapse Analytics**, **Google Dataproc**, entre outros.
 
-### 3.2.3.  Camada de aplicação
+### 5.3.3.  Camada de aplicação
 
 Nessa camada estão definidas:
 
@@ -513,7 +579,7 @@ Com diferentes repositórios é possível também definir workflows de CI-CD par
 
 As aplicações desenvolvidas nesse trabalho são construídas em python e encapsuladas em imagens docker. Dessa forma são portáveis e podem ser instanciadas em qualquer ambiente com a engine do docker instalada. Assim, em caso de necessidade de deploy em ambiente de cloud, as imagens podem ser usadas para instanciar containers em cloud, usando serviços de orquestração de containers como **ECS**, **EKS**, **AKS** ou **GKE**.
 
-### 3.2.4. Camada de operação
+### 5.3.4. Camada de operação
 
 Na camada de operação estão definidos serviços necessários para realizar telemetria e monitoramento de recursos da infraestrutura. Aqui estão definidos os serviços:
 
@@ -523,13 +589,13 @@ Na camada de operação estão definidos serviços necessários para realizar te
   - **Node exporter**: Agente para coletar dados de telemetria do nó em específico.
   - **Cadvisor**: Agente para coletar dados de telemetria do docker.
 
-## 4. Aspectos técnicos desse trabalho
+## 6. Aspectos técnicos desse trabalho
 
 Nessa seção estão apresentado alguns aspectos técnicos na implementação do sistema proposto em um ambiente local. Primeiramente, são apresentados os aspectos técnicos relacionados a  escolha do da ferramenta **docker** como base na construção desse trabalho e as formas de orquestração desses containers que são utilizadas aqui.
 
 Em seguida, será apresentada a estrutura desse projeto, explorando as pastas e arquivos que compõem o repositório **dm_v3_chain_explorer**.
 
-## 4.1. Dockerização dos serviços
+## 6.1. Dockerização dos serviços
 
 Conforme mencionado em seções anteriores, o docker foi usado amplamente na implementação desse tabalho. O seu uso pode ser embasado de acordo com 2 propósitos.
 
@@ -548,21 +614,21 @@ Conforme mencionado em seções anteriores, o docker foi usado amplamente na imp
 
   - Os serviços aqui deployados em containers e open source podem ser facilmente substituídos por serviços análogos em cloud, caso haja a necessidade de se construir um ambiente produtivo robusto, seguro e eficiente.
   
-## 4.2. Orquestração de serviços em containers
+## 6.2. Orquestração de serviços em containers
 
 Conforme mencionado, todos os serviços do sistema **dm_v3_chain_explorer** rodarão instanciados localmente em containers a partir de imagens docker. Então se faz necessário o uso de uma ferramenta de orquestração de execução desses containers. O docker tem 2 ferramentas para esse propósito: **docker-compose** e **docker-swarm**.
 
-### 4.2.1. Docker-compose
+### 6.2.1. Docker-compose
 
 O docker-compose é uma ferramenta que permite definir e executar aplicações multi-container. Com ele é possível definir os serviços que compõem a aplicação em um arquivo `docker-compose.yml` e então instanciar esses serviços em containers. O docker-compose é uma ferramenta de orquestração de containers para **ambiente local executando em um único nó**.
 
 É a ferramenta ideal para ambiente de desenvolvimento local e testes, onde é possível definir a stack de serviços que compõem a aplicação e instanciá-los em containers. Com o docker-compose é possível definir volumes, redes, variáveis de ambiente, entre outros, para cada serviço.
 
-### 4.2.2. Docker-swarm
+### 6.2.2. Docker-swarm
 
 O docker-swarm é uma ferramenta de orquestração de containers para **ambientes distribuídos**. Com ele é possível definir e instanciar serviços em múltiplos nós. O docker-swarm pode ser usado como ferramenta de orquestração de containers para ambientes de produção, onde é necessário alta disponibilidade, escalabilidade e tolerância a falhas. Existem outras ferramentas de orquestração de containers, como **Kubernetes**, **Mesos** e outras, que são mais robustas e possuem mais recursos que o docker-swarm. Porém, o docker-swarm é uma ferramenta simples e fácil de usar para orquestração de containers em ambientes distribuídos e default no docker.
 
-### 4.2.3. Docker-Compose e Docker Swarm nesse trabalho
+### 6.2.3. Docker-Compose e Docker Swarm nesse trabalho
 
 O docker compose foi usado para orquestrar diferentes serviços nesse trabalho em seu desenvolvimento. Por exemplo, as aplicações em python, desenvolvidas e encapsuladas em imagens python, e que capturam os dados da rede Ethereum, foram orquestradas em containers usando o docker-compose juntamente com o Kafka, Redis, Scylla, entre outros.
 
@@ -574,7 +640,7 @@ Por outro lado, a medida que o número de serviços aumentou, a necessidade de m
 
 2. Existem outras possibilidades de deploy e orquestração de containers que poderiam ter sido utilizadas aqui. Por exemplo o uso de clusters Kubernetes para orquestração de containers e o uso de operadores para deploy de serviços como Kafka, Spark, Hadoop, entre outros, baseados em Helm Charts. O uso de Kubernetes traria benefícios como autoescalonamento, alta disponibilidade, entre outros. Porém, a escolha do Docker Swarm foi feita por simplicidade e configuração em ambiente local, bastando o docker instalado.
 
-## 4.3. Estrutura do projeto
+## 6.3. Estrutura do projeto
 
 ### 4.3.1. Pasta Docker
 
@@ -626,7 +692,7 @@ docker
 
 Com esses arquivos é possível fazer o build das imagens que compõem esse trabalho.
 
-### 4.3.2. Pasta Services
+### 6.3.2. Pasta Services
 
 Na pasta `/services`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos os serviços que compõem esse trabalho. Esses serviços estão organizados de acordo com a camada a que pertencem, sendo essas camadas `fast`, `batch`, `app` e `ops`.
 
@@ -648,7 +714,7 @@ services
 
 Os serviços estão definidos em arquivos `docker-compose.yml` e `docker-swarm.yml` para orquestração de containers em ambiente local e distribuído, respectivamente. E na pasta `/services` estão organizados de acordo com a camada a que pertencem.
 
-### 4.3.3. Arquivo Makefile
+### 6.3.3. Arquivo Makefile
 
 Para simplificar esse processo de execução de comandos docker, de build e deploy de serviços, publicação de imagens, entre outros, foi definido um arquivo chamado [Makefile](https://www.gnu.org/software/make/manual/make.html) na raíz desse projeto. O Makefile é um componente central, para que comandos sejam reproduzidos de maneira simples. no arquivo `/Makefile`, na base do repositório **dm_v3_chain_explorer** é possivel visualizar os comandos definidos.
 
@@ -656,16 +722,15 @@ Para simplificar esse processo de execução de comandos docker, de build e depl
 
 **Observação**: Essa ferramenta vem previamante instalada em sistemas operacionais Linux. Caso não possua o make instalado e tenha dificuldades para instalá-lo, uma opção não tão custosa é abrir o arquivo e executar os comandos docker manualmente.
 
-### 4.3.4. Pasta Scripts
+### 6.3.4. Pasta Scripts
 
 Na pasta `/scripts`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos scripts shell úteis para automação de tarefas mais complexas.
 
-### 4.3.5. Pasta Mnt
+### 6.3.5. Pasta Mnt
 
 Na pasta `/mnt`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos volumes que são montados em containers para persistência de dados localmente.
-<hr>
 
-## 5. Reprodução do sistema em ambiente local
+## 7. Reprodução do sistema `dm_v3_chain_explorer`
 
 Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local. Um dos requisitos deste trabalho é que a solução proposta seja reproduzível. Essa característica da reprodutibilidade é importante pelos seguintes motivos:
 
@@ -676,19 +741,19 @@ Esse passo a passo indica como clonar repositórios, configurar ambiente e deplo
 
 **Observação**: Um fator crucial e de maior dificuldade para reprodução desse sistema é a **necessidade de API Keys** para interagir com a rede blockchain por meio de um provedor Node-as-a-Service e capturar dados.
 
-## 5.1. Requisitos
+## 7.1. Requisitos
 
 Para reprodução desse sistema em ambiente local, é necessário que os seguintes requisitos sejam atendidos.
 
-### 5.1.1. Requisitos de hardware
+### 7.1.1. Requisitos de hardware
 
 Para execução desse sistema em ambiente local, é recomendado possuir memoria RAM de no mínimo 16 GB e processador com 4 núcleos.
 
-### 5.1.2. Sistema Operacional
+### 7.1.2. Sistema Operacional
 
 Esse sistema foi desenvolvido e testado em ambiente Linux em Ubuntu 22.04. Portanto, é recomendado que para reprodução desse o sistema operacional seja Linux.
 
-### 5.1.3. Docker Instalado
+### 7.1.3. Docker Instalado
 
 Para reproduzir esse sistema em ambiente local, é necessário ter o docker instalado e configurado. Para verificar se o docker está instalado e configurado adequadamente, execute os comandos abaixo.
 
@@ -702,7 +767,7 @@ A saída esperada é algo como:
 
 Caso não esteja instalado, siga as instruções de instalação no [site oficial do docker](https://docs.docker.com/engine/install/).
 
-### 5.1.4.  Docker Compose e Docker Swarm instalados
+### 7.1.4.  Docker Compose e Docker Swarm instalados
 
 As ferramentas de orquestração de containers **Docker Compose** e **Docker Swarm** são necessárias para deployar os serviços em ambiente local e distribuído, respectivamente. Contudo elas são instaladas junto com o docker. Para verificar se estão instaladas adequadamente, execute os comandos abaixo.
 
@@ -722,7 +787,7 @@ A saída esperada é algo como:
 
 <img src="./img/swarm_installed.png" alt="docker-swarm-version" width="70%"/>
 
-### 5.2. Clonagem de repositórios desse trabalho
+### 7.2. Clonagem de repositórios desse trabalho
 
 Esse trabalho é composto por multiplos repositórios, conforme mencionado. O 1º passo para reprodução desse sistema é clonar o repositório base, definido como **dm_v3_chain_explorer**. Para isso, execute o comando abaixo e em seguida navegue para o diretório do projeto.
 
@@ -738,7 +803,7 @@ make create_dm_v3_explorer_structure
 
 O comando acima clonará todos os repositórios de aplicação necessários para dentro da pasta `/docker`.
 
-### 5.2.1.  Pull e Build das imagens docker
+### 7.2.1.  Pull e Build das imagens docker
 
 No docker é possível construir imagens a partir de um arquivo `Dockerfile` e depois fazer o build delas. Ou ainda, é possível fazer o pull de imagens já construídas e disponíveis no docker hub entre outros repositórios de imagens.
 
@@ -762,13 +827,13 @@ Porém, **para executar o sistema em um ambiente distribuído usando o Docker Sw
 make publish
 ```
 
-## 5.3. Reprodução do sistema usando o Docker Compose
+## 7.3. Reprodução do sistema usando o Docker Compose
 
 Caso o leitor queira deployar o sistema em ambiente local, single-node, usando o **docker-compose**, os passos a seguir devem ser seguidos.
 
 Dado que os requisitos acima foram atendidos, o passo-a-passo para reprodução desse sistema em ambiente local é o seguinte.
 
-## 5.3.1. Observação sobre execução usando Docker Compose
+## 7.3.1. Observação sobre execução usando Docker Compose
 
 A execução de todas as camadas de serviço em uma máquina local pode ser pesada, esgotando-se os recursos de hardware disponíveis. Por tanto que além dos requisitos citados, o leitor execute as camadas de serviço de forma separada, conforme descrito abaixo.
 
@@ -778,7 +843,7 @@ A execução de todas as camadas de serviço em uma máquina local pode ser pesa
 
 Para que fosse possível executar todos os serviços em conjunto, foi então necessária a construção de um **cluster Swarm distribuído**.
 
-## 5.3.2.  Deploy de serviços da camada de Operações
+## 7.3.2.  Deploy de serviços da camada de Operações
 
 Conforme visto na seção de arquitetura técnica, a **camada ops** é composta por serviços que realizam telemetria dos recursos de infraestrutura do **dm_v3_chain_explorer**. Ela é composta dos seguintes serviços:
 
@@ -816,7 +881,7 @@ A interface do Grafana pode ser acessada no navegador, digitando o endereço `ht
 
 Dessa forma é possível visualizar os dados de telemetria do docker e do nó em específico no Grafana.
 
-## 5.3.4.  Deploy de serviços da camada Fast
+## 7.3.4.  Deploy de serviços da camada Fast
 
 A **camada fast** é composta pelos seguintes serviços:
 
@@ -851,7 +916,7 @@ Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar dis
 - No Redis Commander é possível visualizar os dados no redis.
 - No Spark Master é possível visualizar a interface do spark.
 
-## 5.2.5.  Deploy de serviços da camada de Aplicações
+## 7.3.5.  Deploy de serviços da camada de Aplicações
 
 A **camada app** é composta pelos seguintes serviços:
 
@@ -876,9 +941,7 @@ O job de Spark Streaming `api_keys_log_processor` monitora o consumo de API Keys
 <img src="./img/jobs_spark_executando.png" alt="jobs_spark_executando.png" width="90%"/>
 <hr>
 
-
 ## Visualização de consumo diário de API Keys no ScyllaDB
-
 
 ```bash
 docker exec -it scylladb cqlsh -e "select * from operations.api_keys_node_providers"
@@ -903,33 +966,33 @@ Abaixo é possível ver uma amostra das mensagens sendo enviadas para o tópico 
 <img src="./img/data_topic_raw_data_txs.png" alt="data_topic_raw_data_txs.png" width="90%"/>
 <hr>
 
-## 5.4. Reprodução do sistema usando o Docker Swarm
+## 7.4. Reprodução do sistema usando o Docker Swarm
 
 
-## 6. Conclusão
+## 8. Conclusão
 
 Toda parte teórica e prática planejada para esse trabalho foi implementada. Demonstrações do workflow de captura descritos nesse documento serão feitas na apresentação, de forma que os avaliadores possam entender melhor o sistema **dm_v3_chain_explorer**, aqui proposto.
 
 Assim os avaliadores podem colocar suas dúvidas sobre o trabalho e também dúvidas técnicas sobre as tecnologias usadas, de maneira a avaliar da melhor forma o conhecimento desse autor nos campos relacionados a engenharia de dados. É dificil mensurar o quanto conhecimento em tecnologia está contido nesse trabalho. A construção de uma plataforma de dados para captura e ingestão de dados.
 
-## 7. Melhorias futuras
+## 9. Melhorias futuras
 
 Esse trabalho, após ser submetido continuará a ser desenvolvido, visto as possibilidades que ele apresenta, mesmo que seja apenas no campo de estudos e desenvolvimento de hard skills.
 Seguem abaixo listadas algumas dessa melhorias
 
-### 7.1. Aplicações downstream para consumo dos dados
+### 9.1. Aplicações downstream para consumo dos dados
 
 Está descrito nesse documento, somente o fluxo de captura, ingestão e algum processamento para obter dados em tempo real de uma blockchain do tipo EVM. Na apresentação serão demonstradas algumas aplicações downstream que evoluídas podem ter diversas aplicabilidades.
 
-### 7.2. Melhoria em aplicações do repositório onchain-watchers
+### 9.2. Melhoria em aplicações do repositório onchain-watchers
 
 Como será apresentado, esse repositório tem aplicações que usam dados das transações ingestadas para obter dados de estado provenientes de contratos inteligentes. Para isso uma arquitetura voltada a eventos precisa ser implementada. Por exemplo, quando uma transação de swap de token WETH no protocolo DEFI Uniswap é feito, um evento é disparado para que dados da piscina de liquidez e preço dos tokens sejam ingestados no sistema.
 
-### 7.3. Troca do uso de provedores Blockchain Node-as-a-Service
+### 9.3. Troca do uso de provedores Blockchain Node-as-a-Service
 
 Conforme visto nesse trabalho o uso de provedores node-as-a-service tais como Infura e Alchemy limitam as requisições http para request dos dados. Então, a troca desses por nós proprietários é um passo importante para evolução do sistema, ao lidar com redes mais escalaveis do tipo EVM.
 
-### 7.4. Evolução dos serviços de um ambiente local para ambiente produtivo
+### 9.4. Evolução dos serviços de um ambiente local para ambiente produtivo
 
 Conforme visto ao longo desse trabalho, todos os serviços usados, com exceção das aplicações construídas propriamente dita para esse sistema, tem versões totalmente gerenciadas em provedores de Cloud. O Kafka por exemplo pode ser substituído pelo Event Hub ou Amazon MSK ou Clonfluent Cloud. O data lake hadoop pode ser substituído por data lakes em recursos do tipo object storages, tais como S3 ou Azure ADLS. O Hive e o Spark podem ser substituídos pelo Delta Lake + Spark do Databricks. E assim por diante.
 Os containers de aplicação podem ser migrados para executarem em recursos tais com EKS da AWS ou o AKS da Azure.
