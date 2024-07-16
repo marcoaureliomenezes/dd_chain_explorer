@@ -718,28 +718,64 @@ Para simplificar esse processo de execução de comandos docker, de build e depl
 
 Na pasta `/scripts`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos scripts shell úteis para automação de tarefas mais complexas.
 
+- **0_create_dm_v3_structure.sh**: Cria a pasta `docker/app_layer` e clona os repositórios da aplicação para dentro dele.
+- **1_create_swarm_networks.sh**: Cria as redes docker para orquestração de containers em ambiente distribuído.
+- **2_start_prod_cluster.sh**: Cria cluster Swarm para posterior deploy de serviços em ambiente distribuído.
+
+A chamada para execução desses scripts se dá também pelo uso de comandos definidos no `Makefile`.
+
 ### 6.3.5. Pasta Mnt
 
 Na pasta `/mnt`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos volumes que são montados em containers para persistência de dados localmente.
 
+### 6.3.6. Estrutura geral do projeto
+
+```bash
+dm_v3_chain_explorer
+  ├── docker
+  │   ├── app_layer
+  │   ├── batch_layer
+  │   ├── fast_layer
+  │   └── ops_layer
+  ├── img
+  ├── mnt
+  ├── scripts
+  ├── services
+  │   ├── app_layer
+  │   ├── batch_layer
+  │   ├── fast_layer
+  │   └── ops_layer
+  ├── Makefile
+  └── README.md
+```
+
+
 ## 7. Reprodução do sistema `dm_v3_chain_explorer`
 
-Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local. Um dos requisitos deste trabalho é que a solução proposta seja reproduzível. Essa característica da reprodutibilidade é importante pelos seguintes motivos:
+Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local, um dos requisitos deste trabalho. A reprodutibilidade é importante pelos seguintes motivos:
 
-- A reprodução do trabalho permite os avaliadores executarem o sistema e entenderem como ele funciona.
-- Esse trabalho é um sistema complexo, tendo diversos serviços interagindo com aplicações para que sua finalidade seja alcançada, como exposto nas seções anteriores. Provêr um passo-a-passo para o leitor possa reproduzi-lo em seu ambiente local dá a este a oportunidade de entende-lo em análise e síntese. E até mesmo extrair partes úteis para um projeto pessoal com funcionalidade parecida, após entendimento.
+- A reprodução do trabalho permite que os avaliadores executem o mesmo e compreendam como ele funciona.
 
-Esse passo a passo indica como clonar repositórios, configurar ambiente e deployar os serviços em um ambiente local, single-node com **docker-compose**. Ao final é apresentado como executá-lo em um ambiente distribuído, multi-node com **docker swarm**.
+- O **dm_v3_chain_explorer** é um sistema complexo, tendo diversos serviços interagindo com aplicações para que sua finalidade seja alcançada. Provêr um passo-a-passo para o leitor possa reproduzi-lo dá a este a oportunidade de entendê-lo em análise e síntese.
 
-**Observação**: Um fator crucial e de maior dificuldade para reprodução desse sistema é a **necessidade de API Keys** para interagir com a rede blockchain por meio de um provedor Node-as-a-Service e capturar dados.
+O passo a passo indica como clonar repositórios, configurar ambiente e deployar os serviços em um ambiente local, single-node com **Docker Compose**.
+
+Ao final é apresentada uma maneira de deployar este em um ambiente distribuído, multi-node usando o **Docker Swarm**.
+
+**Observação**: Um fator crucial e de maior dificuldade para reprodução desse sistema é a **necessidade de API Keys** para interagir com a rede blockchain por meio de um provedor Node-as-a-Service.
 
 ## 7.1. Requisitos
 
-Para reprodução desse sistema em ambiente local, é necessário que os seguintes requisitos sejam atendidos.
+Para reprodução em ambiente local, é necessário que os seguintes requisitos sejam satisfeitos.
 
 ### 7.1.1. Requisitos de hardware
 
-Para execução desse sistema em ambiente local, é recomendado possuir memoria RAM de no mínimo 16 GB e processador com 4 núcleos.
+É recomendado possuir uma máquina com:
+
+- 16 GB memória RAM de no mínimo
+- Processador com 4 núcleos.
+
+Pelo número de containers que serão instanciados, é necessário que a máquina tenha recursos de hardware suficientes para execução desses containers.
 
 ### 7.1.2. Sistema Operacional
 
@@ -750,12 +786,12 @@ Esse sistema foi desenvolvido e testado em ambiente Linux em Ubuntu 22.04. Porta
 Para reproduzir esse sistema em ambiente local, é necessário ter o docker instalado e configurado. Para verificar se o docker está instalado e configurado adequadamente, execute os comandos abaixo.
 
 ```bash
-docker --version
+docker version
 ```
 
 A saída esperada é algo como:
 
-<img src="./img/docker_installed.png" alt="Makefile" width="80%"/>
+<img src="./img/reproduction/1_docker_installed.png" alt="Makefile" width="80%"/>
 
 Caso não esteja instalado, siga as instruções de instalação no [site oficial do docker](https://docs.docker.com/engine/install/).
 
@@ -764,30 +800,43 @@ Caso não esteja instalado, siga as instruções de instalação no [site oficia
 As ferramentas de orquestração de containers **Docker Compose** e **Docker Swarm** são necessárias para deployar os serviços em ambiente local e distribuído, respectivamente. Contudo elas são instaladas junto com o docker. Para verificar se estão instaladas adequadamente, execute os comandos abaixo.
 
 ```bash
-docker-compose --version
+docker-compose version
 ```
 
 A saída esperada é algo como:
 
-<img src="./img/docker_compose_installed.png" alt="docker-compose-version" width="80%"/>
+<img src="./img/reproduction/2_docker_compose_installed.png" alt="docker-compose-version" width="80%"/>
 
 ```bash
-docker swarm --version
+docker swarm --help
 ```
 
 A saída esperada é algo como:
 
-<img src="./img/swarm_installed.png" alt="docker-swarm-version" width="80%"/>
+<img src="./img/reproduction/3_swarm_installed.png" alt="docker-swarm-version" width="80%"/>
 
-### 7.2. Clonagem de repositórios desse trabalho
+### 7.1.5.  Git instalado
 
-Esse trabalho é composto por multiplos repositórios, conforme mencionado. O 1º passo para reprodução desse sistema é clonar o repositório base, definido como **dm_v3_chain_explorer**. Para isso, execute o comando abaixo e em seguida navegue para o diretório do projeto.
+O git é necessário para que o leitor possa clonar os repositórios que compõem esse trabalho. Para verificar se o git está instalado, execute o comando abaixo.
+
+```bash
+git --version
+```
+
+<img src="./img/reproduction/4_git_installed.png" alt="docker-swarm-version" width="80%"/>
+
+### 7.2. Setup do ambiente local
+
+Esse trabalho é composto por multiplos repositórios, conforme mencionado. O 1º passo para reprodução desse sistema é clonar o repositório base, definido como **dm_v3_chain_explorer**.
+
+Para isso, execute o comando abaixo e em seguida navegue para o diretório do projeto e em seguida navegue para a pasta usando o terminal.
 
 ```bash
 git clone git@github.com:marcoaureliomenezes/dm_v3_chain_explorer.git
+cd dm_v3_chain_explorer
 ```
 
-Então, para montar a estrutura completa é necessário clonar os demais repositórios quem compõem a **camada app**. Um script shell chamado `0_create_dm_v3_chain_explorer_structure.sh` foi criado para esse proposito e pode ser chamado a partir do seguinte comando make:
+Esse repositorio é a base do sistema. Porém, é preciso também clonar os demais repositórios da camada de aplicação. Conforme dito na seção 6, um script chamado `0_create_dm_v3_structure.sh` foi criado para esse propósito e pode ser executado a partir do seguinte comando make:
 
 ```bash
 make create_dm_v3_explorer_structure
@@ -805,11 +854,13 @@ Para esse sistema diversas imagens foram construídas, devido a necessidade de c
 make build
 ```
 
-<img src="./img/imagens_docker_tagueadas.png" alt="docker-swarm-version" width="90%"/>
+<img src="./img/reproduction/5_docker_images_tagged.png" alt="imagens docker tagueadas" width="90%"/>
 
 ### Observação sobre o build a partir do Makefile
 
-Todas as imagens são construídas tendo tags apontando para o repositório **marcoaureliomenezes** no docker hub. É possível o leitor reapontar essa configuração para seu próprio repositório do DockerHub.
+Todas as imagens construídas ou personalizadas possuem tags apontando para o repositório **marcoaureliomenezes** no docker hub.
+
+É possível o leitor reapontar essa configuração para seu próprio repositório do DockerHub caso queira deployar imagens semelhantes.
 
 **Para execução local desse sistema usando o docker-compose** não é necessário que as imagens estejam construídas ou disponíveis no docker hub. Caso não estejam, é necessário construí-las localmente. Por esse motivo, todos os arquivos de docker-compose, aqui chamados de **cluster_compose** estão configurados para fazer build das imagens localmente.
 
@@ -822,8 +873,6 @@ make publish
 ## 7.3. Reprodução do sistema usando o Docker Compose
 
 Caso o leitor queira deployar o sistema em ambiente local, single-node, usando o **docker-compose**, os passos a seguir devem ser seguidos.
-
-Dado que os requisitos acima foram atendidos, o passo-a-passo para reprodução desse sistema em ambiente local é o seguinte.
 
 ## 7.3.1. Observação sobre execução usando Docker Compose
 
@@ -850,7 +899,7 @@ Para realizar o deploy da **camada ops**, execute o comando abaixo.
 make deploy_dev_ops && make watch_dev_ops
 ```
 
-<img src="./img/laker_ops_docker_compose_ps.png" alt="laker_ops_docker_compose_ps" width="90%"/>
+<img src="./img/reproduction/6_lake_ops_compose_ps.png" alt="Containers de operações" width="100%"/>
 
 **Observação**: Após execução do comando, o terminal ficará monitorando o estado dos containers. Para sair dessa tela, pressione `Ctrl + C`. Os serviços continuarão rodando em background.
 
@@ -861,30 +910,31 @@ Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar dis
 | Prometheus     | http://localhost:9090 |
 | Grafana        | http://localhost:3000 |
 
-A interface do Grafana pode ser acessada no navegador, digitando o endereço `http://localhost:3000`. O usuário e senha padrão são `admin` e `admin`, respectivamente. A tela de login do Grafana é mostrada abaixo.
+A interface do Grafana pode ser acessada no navegador, digitando o endereço `http://localhost:3000`. O usuário e senha padrão são `admin` e `admin`, respectivamente.
 
-<img src="./img/grafana_node_exporter.png" alt="grafana_node_exporter" width="80%"/>
+### Adicionando dashboards ao Grafana
 
-<img src="./img/grafana_container.png" alt="grafana_container" width="80%"/>
+- Para adicionar o dashboard do Node Exporter e do docker, clique em `+` no lado esquerdo da tela, e depois em `Import`. No campo `Grafana.com Dashboard` digite o número `1860` e clique em `Load`. Em seguida, selecione o Prometheus como fonte de dados e clique em `Import`.
 
-#### Adicionando dashboards ao Grafana
+- Para adicionar o dashboard referente ao Docker, repita o processo usando o ID `193` no campo `Grafana.com Dashboard`.
 
-- Para adicionar o dashboard do Node Exporter e do docker, clique em `+` no lado esquerdo da tela, e depois em `Import`. No campo `Grafana.com Dashboard` digite o número `1860` e clique em `Load`. Em seguida, selecione o Prometheus como fonte de dados e clique em `Import`. Para adicionar o dashboard referente ao Docker, repita o processo usando o ID `193` no campo `Grafana.com Dashboard`.
+<img src="./img/reproduction/7_grafana_node_exporter.png" alt="grafana_node_exporter" width="80%"/>
 
-Dessa forma é possível visualizar os dados de telemetria do docker e do nó em específico no Grafana.
+<img src="./img/reproduction/8_grafana_container.png" alt="grafana_container" width="80%"/>
+
 
 ## 7.3.4.  Deploy de serviços da camada Fast
 
-A **camada fast** é composta pelos seguintes serviços:
+A **camada fast** é composta pelos seguintes serviços, deployados em containers:
 
-- **3 Brokers do Apache Kafka**, usados como backbone para comunicação entre Jobs e como plataforma de armazenamento de dados para fluxos downstream.
-- **Apache Zookeeper** utilizado por cluster de brokers do Kafka.
-- **Confluent Control Center**: Serviço com interface gráfica para visualização de tópicos, kafka clusters, consumer groups e cluster de kafka-connect.
-- **Confluent Kafka Connect**: Integra o Apache Kafka às mais diferentes plataformas através do uso de sources e sinks já implementados. Assim é possível replicar os dados entre tópicos do Kafka e Data Lakes, Databases e Data Warehouses do mais diversos tipos.
-- **ScyllaDB**: Database No-SQL que permite alto throughput de operações de escrita, é por natureza distribuído de forma uniforme e pode ser escalado para atuar de forma global. Usado para update em tabela de consumo de API Keys, para que jobs tenham ciencia de chave e sua utilização em requests no tempo.
-- **Redis**: Banco de dados chave-valor usado para controle de consumo de API Keys em jobs de streaming, de forma a garantir que cada API key seja usada por somente um Job a determinado instante, atuando como um semáforo.
-- **Redis Commander**: Interface grafica para visualização dos dados no redis.
-- **Spark Master e Worker**: Serviços que gerenciam a execução de jobs de processamento de dados em Spark.
+- **1 Apache Zookeeper**: Utilizado por cluster de brokers Kafka para gestão de metadados e sincronização entre eles.
+- **1 Broker Apache Kafka**: Utilizado como pub-sub para comunicação entre Jobs e como e backbone de dados, provendo esses dados em tempo real para fluxos downstream.
+- **1 Confluent Schema Registry**: Serviço para registro de schemas de dados, usado para garantir compatibilidade entre diferentes versões de dados.
+- **1 Confluent Kafka Connect**: Usado para integração do Kafka com o HDFS e com o S3.
+- **1 Confluent Control Center**: Serviço com interface gráfica para visualização de tópicos, kafka clusters, consumer groups, schemas, clusters e jobs de kafka-connect.
+- **1 Database ScyllaDB**: Banco de dados NoSQL persistente usado para controle de consumo de API Keys em processos de captura dos dados.
+- **1 Redis**: Banco de dados em memória usado para garantir que uma API Key não será utilizada ao mesmo tempo por 2 processos.
+- **1 Spark Master e 1 Spark Worker**: Cluster Spark utilizado em job streaming que processa logs e registra consumo de API Key.
 
 Para deploy da camada `fast`, execute o comando abaixo.
 
@@ -892,7 +942,7 @@ Para deploy da camada `fast`, execute o comando abaixo.
 make deploy_dev_fast && make watch_dev_fast
 ```
 
-<img src="./img/layer_batch_docker_compose_ps.png" alt="layer_batch_docker_compose_ps" width="90%"/>
+<img src="./img/reproduction/9_lake_fast_compose_ps.png" alt="layer_batch_docker_compose_ps" width="90%"/>
 
 **Observação**: Após execução do comando, o terminal ficará monitorando o estado dos containers. Para sair dessa tela, pressione `Ctrl + C`. Os serviços continuarão rodando em background.
 
@@ -904,19 +954,16 @@ Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar dis
 | Redis Commander| http://localhost:8081 |
 | Spark Master   | http://localhost:8080 |
 
-- No Control Center é possível visualizar tópicos, clusters, consumer groups e cluster de kafka-connect.
-- No Redis Commander é possível visualizar os dados no redis.
-- No Spark Master é possível visualizar a interface do spark.
+Os conectores do Kafka Connect podem ser gerenciados tanto pelo Control Center quanto por interações com sua API Rest disponibilizada. O mesmo vale para o Schema Registry. No Makefile estão definidos comandos para interação com esses serviços.
 
 ## 7.3.5.  Deploy de serviços da camada de Aplicações
 
-A **camada app** é composta pelos seguintes serviços:
+A **camada de aplicação** é composta pelos seguintes serviços:
 
-- **block-clock**: Aplicação que captura dados de blocos da rede Ethereum e os envia para um tópico do Kafka.
-- **tx_processor**: Aplicação que captura dados de transações da rede Ethereum e os envia para um tópico do Kafka.
-- **tx_classifier**: Aplicação que classifica transações de acordo com seu tipo e as envia para tópicos específicos do Kafka.
-- **tx_input_decoder**: Aplicação que realiza decode de inputs de transações e os envia para um tópico do Kafka.
-- **api_keys_log_processor**: Job Spark Streaming que monitora consumo de API Keys e atualiza tabela no ScyllaDB.
+- **mined-blocks-crawler**: Aplicação que captura dados de blocos minerados e os ids de transações contidas nesse bloco os envia para tópicos do Kafka.
+- **mined-txs-crawler**: Aplicação que usa hash_ids de transações para obter dados dessas transações, classifica-las de acordo com o tipo e enviar para se respectivo tópico do Kafka.
+- **txs-input-decoder**: Aplicação que busca converter
+- **api_keys_log_processor**: Job Spark Streaming que consume tópico de logs e registra consumo de API Keys em tabela do ScyllaDB.
 
 Para deploy da **camada app**, execute o comando abaixo.
 
@@ -924,43 +971,84 @@ Para deploy da **camada app**, execute o comando abaixo.
 make deploy_dev_app && make watch_dev_app
 ```
 
-<img src="./img/laker_app_docker_compose.png" alt="laker_app_docker_compose.png" width="90%"/>
+<img src="./img/reproduction/10_lake_app_compose_ps.png" alt="docker-compose ps em cluster compose app" width="90%"/>
 
-## Job Spark Streaming `api_keys_log_processor` executando
+Com os serviços da camada **fast** e **app** deployados irá começar o fluxo de captura e ingestão de dados. Na seção seguinte será mostrado como visualizar esse fluxo em funcionamento.
 
-O job de Spark Streaming `api_keys_log_processor` monitora o consumo de API Keys e atualiza a tabela no ScyllaDB. Para visualizar o Job executando na Spark UI, acesse o endereço `http://localhost:8080` no navegador.
+## 7.4. Visualização do processo de captura e ingestão de dados
 
-<img src="./img/jobs_spark_executando.png" alt="jobs_spark_executando.png" width="90%"/>
-<hr>
+Com os serviços das camadas **fast** e **app** deployados é possível visualizar o sistema de captura e ingestão em funcionamento. Seguem abaixo os passos para visualização do processo de captura e ingestão de dados.
 
-## Visualização de consumo diário de API Keys no ScyllaDB
+### 7.4.1. Job Spark Streaming `api_keys_log_processor`
+
+Na camada de aplicação foi deployado o job de spark streaming `api_keys_log_processor`. Nas seções anteriores foi detalhado o funcionamento desse Job. Em resumo ele consome o tópico de logs e monitora o consumo de API Keys, registrando esse consumo em uma tabela no ScyllaDB.
+
+Para visualizar o Job executando na Spark UI, acesse o endereço `http://localhost:8080` no navegador.
+
+ monitora o consumo de API Keys e atualiza a tabela no ScyllaDB. Para visualizar o Job executando na Spark UI, acesse o endereço `http://localhost:8080` no navegador.
+
+<img src="./img/reproduction/11_spark_streaming_app.png" alt="Job Spark Streaming Monitoramento de consumode API Keys" width="90%"/>
+
+### 7.4.2. Visualização de consumo diário de API Keys no ScyllaDB
+
+O Job de Spark Streaming `api_keys_log_processor` monitora o consumo de API Keys e atualiza a tabela `api_keys_node_providers` no ScyllaDB. Para visualizar o consumo diário de API Keys, execute o comando abaixo.
 
 ```bash
 docker exec -it scylladb cqlsh -e "select * from operations.api_keys_node_providers"
+# OU
+make query_api_keys_consumption_table
 ```
 
-<img src="./img/cassandra_api_key_consume.png" alt="cassandra_api_key_consume.png" width="90%"/>
-<hr>
+<img src="./img/reproduction/12_api_key_consumption_table.png" alt="Consumo diário de API Keys" width="90%"/>
 
-## Semáforo de consumo de API Keys no Redis
+Será possivel acompanhar o consumo de API Keys em tempo real, conforme os dados são capturados e processados pelo Job de Spark Streaming `api_keys_log_processor`.
 
-Abaixo é mostrado o controle de consumo de API Keys no Redis. Cada chave é um hash com a API Key e o valor é o timestamp de quando foi consumida.
+### 7.4.3. Semáforo para consumo de API Keys no Redis
 
-<img src="./img/redis_semaforo_api_keys.png" alt="redis_semaforo_api_keys.png" width="90%"/>
-<hr>
+Abaixo é mostrado o controle de consumo de API Keys no Redis.
 
-## Dados sendo exibidos pelo Kafka Control Center
+Conforme mencionado, para manter a integridade dos dados, é necessário que uma API Key não seja consumida ao mesmo tempo por 2 processos. Para isso, um semáforo é implementado no Redis utilizando uma estrutura chamada hash, estrutura no formato:
+
+- Chave é a API Key.
+- O valor é um timestamp da última vez que foi consumida e o nome do job que a consumiu.
+
+Na figura abaixo é possível visualizar esse semáforo de API Keys no Redis.
+
+<img src="./img/reproduction/13_redis_acting_as_a_semaphore.png" alt="Semáforo de API Keys usando o redis" width="90%"/>
+
+**Observação**: Foi criado um job específico para coletar com frequência de 500 ms as API Keys registradas no redis e juntá-las em uma só chave, chamada **api_keys_semaphore**. Assim o leitor pode visualizar melhor o semáforo de API Keys em funcionamento, conforme a figura acima.
+
+### 7.4.4. Dados sendo exibidos pelo Kafka Control Center
 
 Com o mecanismo de captura de dados e de gerenciamento de API Keys para compartilhamento entre jobs funcionando os dados passam a fluir pelos tópicos do Kafka.
 
 Abaixo é possível ver uma amostra das mensagens sendo enviadas para o tópico `ethereum-blocks` no Kafka. Essas mensagens são capturadas pela aplicação `block-clock` e enviadas para o Kafka.
 
-<img src="./img/data_topic_raw_data_txs.png" alt="data_topic_raw_data_txs.png" width="90%"/>
+<img src="./img/reproduction/14_data_flowing_through_topic.png" alt="Streaming de dados em tópico Kafka" width="90%"/>
 <hr>
+
+## 7.3.7.  Deploy de serviços da camada Batch
+
+
+## 7.3.6. Deploy de conectores Kafka Connect
+
+Os conectores Kafka Connect são responsáveis por integrar o Kafka com outros sistemas, como o HDFS e o S3. Para deploy dos conectores, execute o comando abaixo.
+
+```bash
+make deploy_dev_connectors
+```
+
+<img src="./img/reproduction/15_lake_connectors_compose_ps.png" alt="Conectores Kafka Connect" width="90%"/>
+
+
 
 ## 7.4. Reprodução do sistema usando o Docker Swarm
 
-Em construção
+Comando para iniciação de cluster
+
+Comandos para deploy de serviços
+
+
 
 ## 8. Conclusão
 

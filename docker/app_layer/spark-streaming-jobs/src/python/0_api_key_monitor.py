@@ -64,14 +64,15 @@ def get_spark_session():
 if __name__ == "__main__":
 
   SPARK_URL = os.getenv("SPARK_MASTER_URL")
-  KAFKA_CLUSTER = os.getenv("KAFKA_CLUSTER")
+  KAFKA_CLUSTER = os.getenv("KAFKA_BROKERS")
   TOPIC_SUBSCRIBE = os.getenv("TOPIC_SUBSCRIBE")
   SCYLLA_HOST = os.getenv("SCYLLA_HOST")
   SCYLLA_PORT = os.getenv("SCYLLA_PORT")
   SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE")
   SCYLLA_TABLE = os.getenv("SCYLLA_TABLE")
   APP_NAME = "Handle_Simple_Transactions"
-
+  STARTING_OFFSETS = os.getenv("STARTING_OFFSETS")
+  MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER")
 
 
   spark = get_spark_session()
@@ -79,9 +80,9 @@ if __name__ == "__main__":
   kafka_options = {
     "kafka.bootstrap.servers": KAFKA_CLUSTER,
     "subscribe": TOPIC_SUBSCRIBE,
-    "startingOffsets": "earliest",
-    "group.id": f"api_key_consumer_group",
-    "maxOffsetsPerTrigger": "1000"
+    "startingOffsets": STARTING_OFFSETS,
+    "group.id": f"api_key_cg",
+    "maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER
   }
 
   scylla_options = {
