@@ -20,7 +20,7 @@ services:
     build: ../../docker/app_layer/onchain-stream-txs
     <<: *conf_default
     container_name: block_clock
-    entrypoint: "python -u 1_block_clock.py configs/producers.ini"
+    entrypoint: "python -u 1_mined_blocks_crawler.py configs/producers.ini"
     environment:
       NETWORK: ${NETWORK}
       AKV_NAME: 'DataMasterNodeAsAService'
@@ -30,11 +30,12 @@ services:
       TOPIC_LOGS: '${NETWORK}.application.logs'
       TOPIC_BLOCK_METADATA: '${NETWORK}.mined.block.metadata'
       TOPIC_TX_HASH_IDS: '${NETWORK}.mined.txs.hash.id'
-      TXS_PER_BLOCK: 5
+      TXS_PER_BLOCK: 150
+      TOPIC_TX_HASH_IDS_PARTITIONS: 8
 
   tx_processor:
     build: ../../docker/app_layer/onchain-stream-txs
-    container_name: tx_processor
+    #container_name: tx_processor
     <<: *conf_default
     environment:
       NETWORK: ${NETWORK}
@@ -49,30 +50,31 @@ services:
       KAFKA_BROKERS: ${KAFKA_BROKER}
       TOPIC_LOGS: '${NETWORK}.application.logs'
       TOPIC_TX_HASH_IDS: '${NETWORK}.mined.txs.hash.id'
-      TOPIC_TX_CONTRACT_DEPLOY: '${NETWORK}.application.contract.deploy'
-      TOPIC_TX_CONTRACT_CALL: '${NETWORK}.application.contract.call'
-      TOPIC_TX_TOKEN_TRANSFER: '${NETWORK}.application.token.transfer'
+      TOPIC_TX_CONTRACT_DEPLOY: '${NETWORK}.mined.txs.contract.deploy'
+      TOPIC_TX_CONTRACT_CALL: '${NETWORK}.mined.txs.contract.call'
+      TOPIC_TX_TOKEN_TRANSFER: '${NETWORK}.mined.txs.token.transfer'
       SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL}
-    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini"
-    #scale: 1
+    entrypoint: "python -u 2_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
+    deploy:
+      replicas: 8
 
 
-  tx_input_decoder:
-    build: ../../docker/app_layer/onchain-stream-txs
-    <<: *conf_default
-    container_name: tx_input_decoder
-    #entrypoint: "python -u 4_transaction_converters.py configs/producers.ini configs/consumers.ini"
-    environment:
-      NETWORK: ${NETWORK}
-      AKV_NODE_NAME: 'DataMasterNodeAsAService'
-      AKV_SCAN_NAME: 'DMEtherscanAsAService'
-      AKV_NODE_SECRET_NAME: 'infura-api-key-16'
-      AKV_SCAN_SECRET_NAME: 'etherscan-api-key-4'
-      KAFKA_BROKERS: ${KAFKA_BROKER}
-      TOPIC_LOGS: '${NETWORK}.application.logs'
-      TOPIC_TX_CONTRACT_CALL: '${NETWORK}.application.contract.call'
-      TOPIC_TX_CONTRACT_CALL_DECODED: '${NETWORK}.application.contract.call.decoded'
-      SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL}
+  # tx_input_decoder:
+  #   build: ../../docker/app_layer/onchain-stream-txs
+  #   <<: *conf_default
+  #   container_name: tx_input_decoder
+  #   #entrypoint: "python -u 4_transaction_converters.py configs/producers.ini configs/consumers.ini"
+  #   environment:
+  #     NETWORK: ${NETWORK}
+  #     AKV_NODE_NAME: 'DataMasterNodeAsAService'
+  #     AKV_SCAN_NAME: 'DMEtherscanAsAService'
+  #     AKV_NODE_SECRET_NAME: 'infura-api-key-16'
+  #     AKV_SCAN_SECRET_NAME: 'etherscan-api-key-4'
+  #     KAFKA_BROKERS: ${KAFKA_BROKER}
+  #     TOPIC_LOGS: '${NETWORK}.application.logs'
+  #     TOPIC_TX_CONTRACT_CALL: '${NETWORK}.application.contract.call'
+  #     TOPIC_TX_CONTRACT_CALL_DECODED: '${NETWORK}.application.contract.call.decoded'
+  #     SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL}
 
 
   api_keys_log_processor:
@@ -82,26 +84,30 @@ services:
     volumes:
       - ../../docker/app_layer/spark-streaming-jobs/src:/app
     environment:
-      SPARK_MASTER_URL: spark://spark-master:7077
-      KAFKA_BROKERS: broker:29092
+      SPARK_MASTER_URL: ${SPARK_MASTER_URL}
+      TOTAL_EXECUTOR_CORES: 4
+      MEMORY_OVERHEAD: 1G
+      KAFKA_BROKERS: ${KAFKA_BROKER}
       TOPIC_SUBSCRIBE: 'mainnet.application.logs'
       SCYLLA_HOST: 'scylladb'
       SCYLLA_PORT: '9042'
       SCYLLA_KEYSPACE: 'operations'
       SCYLLA_TABLE: 'api_keys_node_providers'
-    entrypoint: "sh /app/shell/0_api_key_monitor.sh"
+      STARTING_OFFSETS: 'earliest'
+      MAX_OFFSETS_PER_TRIGGER: 3000
+    entrypoint: "sh /app/shell/0_api_key_monitor.sh /app/python/0_api_key_monitor.py"
     networks:
       - dm_cluster_dev_fast
 
-  spark_streaming_simple_tx_handler:
-    build: ../../docker/app_layer/spark-streaming-jobs
-    container_name: spark_streaming_simple_tx_handler
-    restart: on-failure
-    volumes:
-      - ../../docker/app_layer/spark-streaming-jobs/src:/app
-    entrypoint: "sh /app/shell/1_handle_simple_txs.sh"
-    networks:
-      - dm_cluster_dev_fast
+  # spark_streaming_simple_tx_handler:
+  #   build: ../../docker/app_layer/spark-streaming-jobs
+  #   container_name: spark_streaming_simple_tx_handler
+  #   restart: on-failure
+  #   volumes:
+  #     - ../../docker/app_layer/spark-streaming-jobs/src:/app
+  #   entrypoint: "sh /app/shell/1_handle_simple_txs.sh"
+  #   networks:
+  #     - dm_cluster_dev_fast
 
   # onchain_watcher:
   #   build: ./docker/app_layer/onchain-watchers
@@ -114,6 +120,17 @@ services:
   #   entrypoint: "brownie run scripts/4_batch_uniswap_pair_pools.py main 2 --network mainnet"
 
 
+  redis_data_collector:
+    build: ../../docker/app_layer/onchain-stream-txs
+    container_name: redis_data_collector
+    <<: *conf_default
+    volumes:
+      - ../../docker/app_layer/onchain-stream-txs/src:/app
+    environment:
+      REDIS_HOST: 'redis'
+      REDIS_PORT: '6379'
+      FREQUENCY: 0.5
+    entrypoint: "python -u n_semaphore_collect.py"
 
 networks:
   dm_cluster_dev_fast:
