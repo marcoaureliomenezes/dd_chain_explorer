@@ -177,7 +177,7 @@ services:
     container_name: spark-worker
     environment:
       - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_MASTER_URL=${SPARK_MASTER_URL}
       - SPARK_WORKER_MEMORY=1G
       - SPARK_WORKER_CORES=4
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -228,6 +228,7 @@ services:
       - ../app/.secrets.conf
     environment:
       KAFKA_CLUSTER: broker:29092
+      NETWORK: mainnet
     depends_on:
       - broker
 

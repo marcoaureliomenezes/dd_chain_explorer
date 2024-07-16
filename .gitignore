@@ -24,7 +24,8 @@ venv*
 
 z_conf
 
-docker/batch_layer/airflow
+docker/airflow
+docker/batch_layer/airflow.old/
 
 raw-transactions-s3-sink.secret.json
 block-metadata-s3-sink.secret.json
