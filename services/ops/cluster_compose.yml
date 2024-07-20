@@ -39,10 +39,26 @@ services:
       retries: 3
     <<: *common_networks
     volumes:
-      - grafana-dev-data:/var/lib/grafana
+      - grafana_dev_vol:/var/lib/grafana
 
   ########################################################################################
-  ####################    MONITORING DOCKER SWARM CLUSTER    #############################
+  ###############################    KAFKA EXPORTER     #################################
+
+  kafka-exporter:
+    image: danielqsj/kafka-exporter 
+    container_name: kafka-exporter
+    restart: always
+    command: ["--kafka.server=broker:29092"]
+    networks:
+      - dm_cluster_dev_ops
+      - dm_cluster_dev_fast
+    ports:
+      - 9308:9308
+
+
+  ########################################################################################
+  ###############################    DOCKER EXPORTER     #################################
+
   cadvisor:
     image: gcr.io/cadvisor/cadvisor:v0.44.1-test
     container_name: cadvisor
@@ -52,6 +68,7 @@ services:
       - /var/run:/var/run:rw
       - /sys:/sys:ro
       - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
     command:
       - '--enable_metrics=advtcp,app,cpu,cpuLoad,cpu_topology,disk,diskIO,memory,memory_numa,network'
     restart: unless-stopped
@@ -76,8 +93,10 @@ services:
 
 volumes:
   prometheus-dev-data:
-  grafana-dev-data:
+  grafana_dev_vol:
 
 networks:
   dm_cluster_dev_ops:
-    driver: bridge
+    name: dm_cluster_dev_ops
+  dm_cluster_dev_fast:
+    name: dm_cluster_dev_fast

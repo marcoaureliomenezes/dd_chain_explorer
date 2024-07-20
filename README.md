@@ -42,139 +42,216 @@ Estão aqui implementadas estratégias e rotinas de extração, ingestão, proce
   - [9.3. Troca do uso de provedores Blockchain Node-as-a-Service](#93-troca-do-uso-de-provedores-blockchain-node-as-a-service)
   - [9.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#94-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
 
-## 1. Objetivo Geral
+## 1. Introdução
 
-O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo à banca de Data Experts. Nessa apresentação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos da tecnologia correlacionados, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**.
+Atualmente muitas tecnologias estão em alta no mercado. Contudo, para além do hype, entender conceitos e fundamentos nesses campos é promissor, pela possiblidade de oportunidades se revelarem, e enriquecedor, no âmbito do conhecimento. Nesse trabalho a tecnologia **Blockchain** é explorada como uma oportunidade de negócio.
 
-Para alcançar tal objetivo e, dados os requisitos especificados pela organização do programa, foi definida uma temática, objetivo geral eobjetivos específicos, categorizados em objetivos de negócio e objetivos técnicos.
+Pois bem, o objetivo desse trabalho é stressar conceitos de engenharia de dados e áreas correlatas, como arquitetura de sistemas, segurança da informação, entre outros. A tecnologia blockchain é um componente de negócio.
 
-Como tema foi escolhido o **uso de redes blockchain públicas como fonte de dados**. Essa escolha se deu por oportunidades de negócio que a exploração dessas redes possibilitam. A seguir uma introdução é feita, de forma que o leitor possa compreender melhor os objetivos desse trabalho e como se relacionam com a tecnologia blockchain.
+Quem nunca ouviu algo como:
 
-## 2. Introdução
+1. A tecnologia blockchain é disruptiva;
+2. Contratos inteligentes são o futuro;
+3. Dados de blockchain são públicos;
+4. Circulam bilhões de dólares na forma de ativos tokenizados blockchains.
 
-Nesse tópico é dada uma breve introdução ao tema desse trabalho. Foi escolhido o uso de redes blockchain públicas como fonte de dados, dadas as oportunidades de negócio que a exploração desses dados trazem. A seguir é dada uma introdução ao tema de blockchain, de forma a contextualizar o leitor sobre a tecnologia e as oportunidades que a exploração desses dados trazem.
+Entre outra infinidade de frases parecidas relacionadas ao tema. Mas será mesmo que tudo isso é tão verdade? Vale puxar o fio da meada.
 
-**Observação:** O conteúdo abaixo, introdutório, não é requisito para o case. Porém, é importante a contextualização do leitor sobre o tema, de forma que esse possa compreender melhor a arquitetura de solução proposta e os desafios técnicos enfrentados. Bem como entender as oportunidades de negócio que a exploração desses dados trazem.
+Pois bem, temos então: **(1)** um trabalho para explorar conceitos de engenharia de dados em profundidade; **(2)** uma tecnologia disruptiva onde os dados são públicos e **(3)** circula uma quantidade significativa de capital nessas redes. Está dada a razão do porque esse trabalho foi desenvolvido. Ele consiste de uma plataforma de captura, ingestão, armazenamento e uso de dados de redes blockchain públicas e é denominado **dm_v3_chain_explorer**.
 
-Com muita simplicidade, uma blockchain nada mais é do que uma forma de usuários transacionarem entre si através de uma rede sem a necessidade de um intermediário. A própria rede garante sua segurança. E essas transações podem ser troca de tokens nativos da rede (criados a cada bloco minerado) ou interação com contratos inteligentes.
+### Estrutura do documento
 
-Quando se fala em blockchain vale distinguir que o termo blockchain, tecnicamente, pode ser usado pra se referir a **estrutura de dados** ou a **rede P2P**. Abaixo estão dadas definições para cada um desses termos.
+1. **Introdução**: Após a apresentação inicial, dada acima, é preciso introduzir ao leitor, de forma breve, sobre a tecnologia blockchain, suas características, classificações e aplicações. Essa introdução construirá as bases para o entendimento do tema e dos objetivos desse trabalho.
 
-### 2.1. Estrutura de dados blockchain
+2. **Objetivos**: São apresentados os objetivos gerais e específicos desse trabalho. Os objetivos de negócio e técnicos são categorizados e justificados.
 
-Estrutura que armazena blocos de forma encadeada. Cada bloco contém:
+3. **Explicação sobre o case desenvolvido**: É dada uma explicação sobre o case desenvolvido, justificando a escolha da rede Ethereum como fonte de dados e a estratégia de captura de dados.
 
-- Metadados do bloco, como o número do bloco, timestamp de quando foi minerado.
-- Metadados do bloco anterior, como o hash do bloco anterior.
-- Lista de transações feitas por usuários da rede que foram mineradas (persistidas) no bloco.
+## 1.1. Introdução sobre blockchain
+
+Fundamentalmente, uma blockchain, consiste em uma rede decentralizada na qual usuários transacionam entre si sem a necessidade de um intermediário. Para tanto, a tecnologia se basea em 2 componentes, a **estrutura de dados** e a **rede P2P**, ambas cunhadas também pelo termo **blockchain**.
+
+### 1.1.1. Estrutura de dados blockchain
+
+Estrutura que armazena blocos de forma encadeada, dando origem ao termo **blockchain**. Um bloco é uma estrutura de dados composta por:
+
+- Metadados do bloco como por exemplo o número, hash, timestamp de quando foi minerado, quem o minerou, etc.
+- Lista de transações feitas por usuários da rede persistidas no bloco.
+- Hash do bloco anterior.
 
 <img src="./img/intro/1_blocks_transactions.png" alt="Estrutura de dados Blockchain" width="80%"/>
 
-Em resumo, uma estrutura de dados do tipo blockchain contem uma lista de blocos encadeados.
+Essa estrutura se basea de algoritmos de criptografia, como o **SHA-256**, para garantir a integridade dos dados. Isso ocorre da seguinte forma:
 
-### 2.2. Rede blockchain tipo P2P
+- Cada bloco tem seu campo `hash`, calculado a partir um algoritmo de hash e tendo como entrada os campos do bloco (lista de transações, timestamp e outros).
+- Cada bloco possui também o hash do bloco anterior registrado nele.
 
-Rede de topologia Peer-to-Peer onde nós pertencentes a ela possuem uma cópia da estrutura de dados blockchain sincronizada. Entre as ações que esses nós podem fazer estão:
+Suponhamos que o bloco anterior seja corrompido, alterando-se o valor de uma transação por exemplo. haverá uma quebra na cadeia de blocos, ou seja, o campo `hash` do bloco anterior não baterá com o campo `hash do bloco anterior` contido no bloco atual. E esse efeito se propaga por toda a cadeia de blocos.
 
-- Concorrer entre si para minerar novos blocos contendo transações.
-- Validação de novos blocos minerados e consenso sobre encadeá-los na estrutura de dados blockchain da rede.
-- Validação de integridade de transações contidas em blocos de toda a rede, utilizando-se dos hashes dos blocos.
+Portanto, com uma simples verificaçao de hashes, é possível garantir a integridade de toda a estrutura de dados blockchain. Com a ferramenta [tools.super_data_science](https://tools.superdatascience.com/blockchain/hash) é possível praticar os conceitos dessa estrutura de dados a partir de uma simulação.
+
+### 1.1.2. Rede Peer-to-peer (P2P) Blockchain
+
+Rede de computadores, de topologia **Peer-to-Peer** e onde nós pertencentes a ela possuem uma cópia da estrutura de dados blockchain sincronizada. Esses nós agem na rede, conforme 2 papéis distintos, **usuários** e **mantenedores**.
+
+- **Usuários da rede**: São atores que transacionam entre si por meio de carteiras digitais. Podem trocar tokens entre si e interagir com contratos inteligentes. Para submeter uma transação a rede, é preciso ter acesso a um nó da rede, seja de forma direta ou indireta.
+
+- **Mantenedores da rede**: São atores que mantém a rede funcionando. Eles são responsáveis por:
+
+  - Minerar novos blocos contendo transações;
+  - Validar novos blocos minerados e consenso sobre encadeá-los na estrutura de dados blockchain da rede;
+  - Validar a integridade de transações contidas em blocos de toda a rede, utilizando-se dos hashes dos blocos.
 
 <img src="./img/intro/2_p2p_networks.jpg" alt="Rede P2P blockchain" width="80%"/>
 
-Com a ferramenta [tools.super_data_science](https://tools.superdatascience.com/blockchain/hash) é possível simular os conceitos mencionados acima.
+**Observação**: Para um leitor curioso, ou um engenheiro curioso, interessado em explorar conceitos engenhosos, a forma com que essa rede P2P escolhe o próximo bloco a ser minerado é um campo fértil para exploração. A rede precisa entrar em consenso sobre quem irá minerar o próximo bloco. E existem atores maliciosos nessa rede, obviamente. O mecanismo de consenso é um campo de estudo vasto e interessante. Tem como pano de fundo o famoso [Problema dos Generais Bizantinos](https://pt.wikipedia.org/wiki/Problema_dos_generais_bizantinos) e suas aplicações em sistemas distribuídos tolerantes a falhas.
 
-### 2.3. Redes Blockchain, Públicas e privadas
+Quando a rede atinge um consenso sobre qual é o novo bloco minerado, esse bloco é propagado para todos os nós da rede. E cada nó valida a integridade do bloco, garantindo que a estrutura de dados blockchain permaneça íntegra.
 
-Blockchains podem ser categorizadas de acordo com os critérios para que um nó faça parte da rede.
+### 1.1.3. Redes Blockchain, Públicas e privadas
 
-**Blockchains públicas**:  permitem que qualquer nó possa fazer parte na rede, aumentando a decentralização da mesma. Assim qualquer pessoa, desde que com requisitos de hardware, software e rede satisfeitos, podem fazer parte dessa rede. Exemplos de blockchains públicas são Bitcoin e Ethereum.
+Conforme dito, redes blockchain são compostas pela estrutura de dados blockchain e por nós, que podem ser então classificados em **usuários** e **mantenedores**.
+Por consequência, essas redes podem ser categorizadas de acordo com os critérios para ingresso nas mesmas.
 
-**Blockchains privadas**:  são redes onde somente membros autorizados podem fazer parte. Essas redes são usadas por empresas para uso interno. Exemplos de blockchains privadas são as redes construídas a partir da plataforma Hyperledger. O próprio DREX, projeto do Banco Central do Brasil, é um exemplo de blockchain privada.
+**Blockchains públicas**:  permitem que qualquer nó ingressar nela. Assim qualquer pessoa, desde que com requisitos de hardware, software e rede satisfeitos, podem fazer parte dessa rede. Exemplos de blockchains públicas são Bitcoin e Ethereum.
 
-### 2.4. Características de uma Rede Blockchain
+**Blockchains privadas**: Redes onde existem critérios para se ingressar como nó. Essas redes são usadas por empresas para uso interno. Blockchains privadas são comumente construídas a partir de ferramentas da [Fundação Hyperledger](https://www.hyperledger.org/). O próprio DREX, projeto do Banco Central do Brasil, é um exemplo de blockchain privada, construída a partir da ferramenta Hyperledger Besu.
 
-**Em sistemas distribuídos** é bem conhecido por nós o [Teorema CAP](https://www.ibm.com/br-pt/topics/cap-theorem), que enuncia que em sistemas distribuídos, é impossível garantir simultaneamente as 3 características: consistência, disponibilidade e tolerância a partições.
+### 1.1.4. Características de uma Rede Blockchain
 
-**Em sistemas decentralizados**, do tipo blockchain existe, de forma análoga, o [Trilema do blockchain](https://www.coinbase.com/pt-br/learn/crypto-glossary/what-is-the-blockchain-trilemma), que diz entre 3 características, decentralização, segurança e escalabilidade, somente é possível alcançar plenamente 2 dessas, sendo necessário sacrificar a 3ª.
+**Em sistemas distribuídos** é bem conhecido o [Teorema CAP](https://www.ibm.com/br-pt/topics/cap-theorem), o qual enuncia que é impossível garantir, simultaneamente, as 3 características: **consistência**, **disponibilidade** e **tolerância a partições**. Esse teorema é fundamentado em limitações físicas de redes de computadores, culminando em que, a certa altura, é preciso sacrificar uma dessas características para melhorar as outras 2.
+
+De forma análoga, em **sistemas decentralizados do tipo blockchain** existe o [Trilema da Escalabilidade Blockchain](https://www.coinbase.com/pt-br/learn/crypto-glossary/what-is-the-blockchain-trilemma), enunciando que, entre **decentralização**, **segurança** e **escalabilidade**, somente é possível alcançar plenamente 2 dessas, sendo necessário sacrificar a 3ª.
+
+De forma prática a escalabilidade de uma rede blockchain é medida em termos de **transações por segundo (TPS)**. E conforme dito, há 2 parâmetros que tem influência direta nessa medida: a frequência de mineração de blocos e o tamanho dos blocos em bytes.
+
+- Redes P2P com muitos nós (mais decentralizadas), para garantirem segurança, sacrificam a escalabilidade. É mais fácil verificar com segurança blocos pequenos e com mais tempo, não é mesmo? O contrário também é verdadeiro. Para aumentarem a escalabilidade sacrificam a segurança.
+
+- Redes P2P com poucos nós (menos decentralizadas), podem investir em segurança e escalabilidade. Porém, a decentralização é sacrificada. E o que é a decentralização, senão a segurança em relação a própria rede?
 
 <img src="./img/intro/3_blockchain_trilema.png" alt="Trilema blockchain" width="70%"/>
 
-A escalabilidade de uma rede blockchain é medida em termos de transações por segundo (TPS). Para uma dada rede, cada bloco tem tamanho limitado em bytes e é minerado a cada intervalo de tempo. Para escalar uma rede blockchain é preciso aumentar a frequência de mineração de blocos ou tamanho dos blocos. Porém, isso pode comprometer ou a segurança da rede ou a decentralização da mesma.
+Existem soluções para driblar esse trilema, como por exemplo as **blockchains de Layer 2**. Essas redes são construídas no topo de redes blockchain públicas, como a Ethereum, geralmente menos escaláveis. Elas então herdam a segurança e decentralização da rede base, publicando provas de seu estado na rede base, podendo assim aumentar a escalabilidade.
 
-De forma a garantir a segurança e a decentralização, as redes blockchain públicas são lentas e tem baixa escalabilidade. Por outro lado, redes blockchain privadas, por serem menos decentralizadas, são mais rápidas e escaláveis.
+É importante ter esse conceitos em mente, pois fundamentam a construção de diferentes redes blockchain e a escolha de uma rede blockchain para um determinado fim. E obviamente, no sistema proposto mais a seguir, a métrica TPS é um fator crucial.
 
-### 2.5. Exemplos de blockchains públicas
+### 1.1.5. Contratos inteligentes
 
-- **Bitcoin**: 1ª blockchain construída, na qual seu token nativo, o BTC tem alto valor de mercado. É a blockchain mais decentralizada, porém lenta e com baixa escalabilidade. E seu token nativo é usado como reserva de valor;
+Quando surgiram as primeiras redes blockchain, como o Bitcoin, a única forma de transação entre usuários era a transferência de tokens entre endereços de carteiras. Em 2015, com o surgimento da rede Ethereum, foi possível se criar contratos inteligentes.
 
-- **Ethereum**: 1ª blockchain com possiblidade deploy e interação com contratos inteligentes. Altamente decentralizada, porém lenta e com baixa escalabilidade. Seu token nativo, o ETH, é usado para pagar taxas de transação e interação com contratos inteligentes.
+[Contratos inteligentes](https://www.coinbase.com/pt-br/learn/crypto-basics/what-is-a-smart-contract) são programas, desenvolvidos em uma linguagem de programação, que são deployados numa rede blockchain na forma de uma transação em um bloco. Eles funcionam como máquinas de estados, com métodos que podem ser chamados por usuários da rede após deployados.
 
-- **Tron, Cardano, Avalanche, Binance Smart Chain, Fantom**: Blockchains de **Layer 1** que usam EVM como máquina virtual. Foram criadas como solução para os problemas de escalabilidade da rede Ethereum. Porém sacrificam a decentralização ou segurança da rede.
+Conforme esses programas são chamados, eles mudam de estado. Para o cálculo de estado da rede, as redes blockchain desenvolveram **máquinas virtuais**. A [Ethereum Foundation](https://ethereum.org/en/foundation/), criadora da rede também desenvolveu uma virtual machine open-source chamada [EVM – Ethereum Virtual Machine](https://blog.bitso.com/pt-br/tecnologia/ethereum-virtual-machine). Por ser open-source, inúmeras redes blockchain públicas e privadas passaram a usar a EVM como máquina virtual para sua própria rede.
+
+Um exemplo de contrato inteligente e uma forma de interagir com ele seria ver o [contrato do Token USDT na rede Ethereum](https://etherscan.io/address/0xdac17f958d2ee523a2206206994597c13d831ec7#code).
+
+<img src="./img/intro/4_smart_contract_etherscan.png" alt="Trilema blockchain" width="70%"/>
+
+#### Curiosidade para o leitor
+
+Com os contratos inteligentes passou a ser possível se criar aplicações descentralizadas, as chamadas **DApps**. Um tipo específico de contrato, seguindo o [padrão ERC20](https://coinext.com.br/blog/erc-20), possibilitou a criação de tokens fungíveis dentro da rede, como no contrato acima. Essa informação é importante, pois as vezes você ja ouviu falar que qualquer um pode criar uma moeda digital. E é verdade. Basta criar um contrato inteligente seguindo o padrão ERC20 e deployar na rede. Dar valor a ele ja é outra história...
+
+É importante ter claro a diferença entre os tokens nativos da rede e os tokens criados por contratos inteligentes.
+
+### 1.1.6. Contratos inteligentes e a Web 3.0
+
+Na arquitetura de aplicações web convencionais é bem conhecido o modelo **Banco de Dados** -> **Back-end** -> **Front-end**. O back-end é responsável por processar as requisições do front-end, acessar o banco de dados e retornar a resposta ao front-end.
+
+Na arquitetura **Web 3.0**, o banco dados é o estado do contrato inteligente, o back-end é o contrato inteligente e o front-end é a interface gráfica que interage com o contrato inteligente. O estado é a soma de todas as transações que foram feitas com o contrato inteligente na rede blockchain. Tal estado é calculado pela máquina virtual da rede.
+
+Não cabe aqui explorar o quão benéfico a arquitetura acima descrita é em alguns pontos. Mas trago algumas afirmações. Caso o leitor duvide, essa será sua motivacao para explorar mais sobre o tema.
+
+- Aplicações desenvolvidas em contratos inteligentes só vão parar de funcionar se a rede blockchain inteira parar de funcionar.
+- Contratos inteligentes são imutáveis. Uma vez deployados, não é possível alterar seu código, somente lançar uma nova versão na forma de outro contrato.
+- Contratos inteligentes são transparentes. Qualquer um pode ver o código fonte de um contrato inteligente.
+
+Você ja ouviu falar de **hacks em contratos inteligentes na casa de bilhões em prejuizos**. Pois bem, o motivo está na imutabilidade dos contratos. Uma vez deployado, não é possível corrigir bugs. E por serem transparentes, qualquer um pode ver o código fonte e explorar vulnerabilidades.
+
+### 1.1.7. Exemplos de blockchains
+
+- **Bitcoin**: 1ª blockchain criada e tem o token nativo **BTC**. É a blockchain mais decentralizada, porém lenta e com baixa escalabilidade. Não possui capacidade de deploy de contratos inteligentes. Porém, por ser a mais decentralizada e a mais segura, e em paralelo seu token nativo ser escasso, o token é altamente usado como reserva de valor. Criada como implementação do conceito de dinheiro eletrônico peer-to-peer de [Satoshi Nakamoto](https://bitcoin.org/bitcoin.pdf).
+
+- **Ethereum**: 1ª blockchain com possiblidade deploy e interação com contratos inteligentes. Altamente decentralizada, porém possui baixa escalabilidade. Tem como token nativo o **ETH**, usado para pagar taxas de transações efetuadas na rede e para troca entre usuários. Entre redes com contratos inteligentes é a que possui mais capital alocado em contratos inteligentes.
+
+- **Tron, Cardano, Avalanche, Binance Smart Chain, Fantom e outras**: Blockchains de **Layer 1** que usam EVM como máquina virtual. Criadas como alternativas à Ethereum. Porém sacrificam a decentralização ou segurança da rede.
 
 - **Polygon, arbitrum, Optimist, Base**: Blockchains de **layer 2 rodando no topo da ethereum**, e que usam naturalmente a EVM como máquina virtual. Foram criadas como solução para os problemas de escalabilidade da rede Ethereum, porém herdando a segurança e decentralização da mesma.
 
 - **Solana e outras**: Blockchains de **Layer 1** com máquina virtual própria, diferente da EVM.
 
-### 2.6. Blockchains e Contratos inteligentes
+- **Blockchains Privadas**: Não é possível enunciar aqui muitas blockchains privadas. Elas se fundamentam da fundação Hyperledger, e podemos citar como exemplo de peso a rede do DREX, projeto do Banco Central do Brasil de uma rede blockchain privada entre bancos privados e o Banco Central. Nela serão desenvolvidas aplicações em contratos inteligentes para as mais diversas funcionalidades. Opera usando o Hyperledger Besu, compatível com a EVM.
 
-Nesse trabalho o interesse é em protocolos que possuem contratos inteligentes. Eles são desenvolvidos através de uma linguagem de programação e toda uma pilha de software para que funcionem como uma máquina de estados. [Para uma melhor compreensão esse material é uma boa referência](https://www.coinbase.com/pt-br/learn/crypto-basics/what-is-a-smart-contract).
+## 1.2. Oportunidades a serem exploradas em Redes Blockchain
 
-Em resumo, a blockchain é uma estrutura de dados que armazena blocos de forma encadeada, blocos esses contendo transações. Com o surgimento de contratos inteligentes, que funcionam como máquinas de estados, é possível se criar aplicações descentralizadas (dApps) dentro do protocolo.
-
- Para se calcular o estado da rede (lembre-se que essa funciona em baixo nível como blocos sendo minerados com certa frequência e estes contendo transações) são usadas as máquinas virtuais. Para a rede Ethereum foi criada uma virtual machine chamada máquina virtual open source chamada EVM – [Ethereum Virtual Machine](https://blog.bitso.com/pt-br/tecnologia/ethereum-virtual-machine)
-
- A **máquina virtual da Ethereum ou EVM** é usada por inúmeras rede de blockchain, públicas e privadas. Por isso redes que usam a EVM foram escolhidas para esse trabalho.
-
-### 2.7. Oportunidades em blockchains públicas
-
-Conforme dito acima, existem inúmeras redes blockchain públicas. Nessas redes circula uma quantidade significativa de capital. A finalidade de uma blockchain é que usuários possam transacionar entre si sem a necessidade de um intermediário. E essas transações podem ser de vários tipos:
+Em redes circula uma quantidade significativa de capital. Este circula na forma de transações que podem ser:
 
 - Transferência de tokens entre endereços de carteiras;
 - Interação com contratos inteligentes;
 
-### 2.7.1. Monitoração de transações entre endereços de carteiras
+Conforme visto os dados são públicos e podem ser explorados. A seguir são apresentadas algumas oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem.
+
+### 1.2.1. Monitoração de transações entre endereços de carteiras
 
 A forma mais simples de transação em uma rede blockchain é a transferência de token nativo da rede entre endereços de carteiras.
 
 - **Usuário 1** ENVIA **Quantidade X** de tokens nativo, no caso da Ethereum o `ETH`, para **Usuário 2**;
 
-A monitoração de transações entre usuários tem muitas aplicações. Uma delas é a identificação de padrões de transações entre endereços de carteiras. Esses padrões podem ser usados para identificar fraudes, lavagem de dinheiro, ou até mesmo para identificar oportunidades de negócio.
+A monitoração de transações entre usuários tem muitas aplicações. Uma delas é a identificação de padrões de transações entre usuários. Esses padrões podem ser usados para identificar fraudes, lavagem de dinheiro, ou por outro lado oportunidades de negócio.
 
-#### Exemplo relativo a segurança
+#### Exemplo relativo a segurança e compliance
 
-Existem inúmeros casos em que [hackers exploram vulnerabilidades em contratos inteligentes para roubar tokens, causando prejuizos na casa de bilhões](https://br.cointelegraph.com/news/defi-exploits-and-access-control-hacks-cost-crypto-investors-billions-in-2022-report). Quando um hacker rouba tokens de um contrato inteligente, ele precisa transferir esses tokens para outros endereços, a fim de acobertar a origem criminosa. Para então vendê-los em alguma corretora.
+Existem inúmeros casos em que [hackers exploram vulnerabilidades em contratos inteligentes para roubar tokens, causando prejuizos na casa de bilhões](https://br.cointelegraph.com/news/defi-exploits-and-access-control-hacks-cost-crypto-investors-billions-in-2022-report). Quando um hacker rouba tokens de um contrato inteligente, ele precisa transferir esses tokens para outros endereços, converter o token para outros, entre outras artimanhas, a fim de acobertar a origem criminosa. Para enfim vendê-los em alguma corretora e realizar o lucro da ação criminosa.
 
-Ao se monitorar a rede em tempo real, é possível identificar o endereço inicial do hacker e rastrear os tokens roubados, a fim de se evitar que esses tokens sejam vendidos em exchanges e o hacker realize o lucro.
+Se uma instituição financeira negocia tokens roubados, ela pode ser responsabilizada por lavagem de dinheiro da parte de agentes reguladores. Portanto, monitorar transações entre endereços de carteiras pode ser uma forma de identificar transações suspeitas e evitar prejuízos.
 
-### 2.7.2. Monitoração de interações com contratos inteligentes
+O meio para isso é a captura de dados de transações em tempo real, a fim de identificar esses atores criminosos.
 
-Contratos inteligentes são programas deployados numa rede blockchain por meio de uma transação. 
+### 1.2.2. Monitoração de interações com contratos inteligentes
 
-Após deployados eles passam a ter um endereço próprio e estar disponíveis para que usuários interajam com eles. [No site Etherscan](https://etherscan.io/address/0x7d2768dE32b0b80b7a3454c06BdAc94A69DDc7A9#writeProxyContract) é possível visualizar esses contratos e métodos disponíveis para serem chamados.
+Conforme visto, contratos inteligentes são programas deployados numa rede blockchain por meio de uma transação e então disponíveis para interação com usuários da rede. Essas interações se dão por meio de transações em que o usuário chama um método do contrato inteligente.
 
-<img src="./img/intro/8_etherscan_contract_vizu.png" alt="Etherscan Contract" width="100%"/>
+Se um contrato inteligente é um programa, bem, ele pode ser construído para os mais diversos fins. E não é diferente. Entre as principais aplicabilidades de contratos inteligentes estão:
 
+- **Finanças descentralizadas (DeFi)**: Aplicações financeiras que permitem usuários pegar empréstimos, trocar tokens, entre outras funcionalidades, sem a necessidade de um intermediário. Exemplos de aplicações DeFi são a Aave e Uniswap.
 
-- Em [DeFi Llama Chains](https://defillama.com/chains) é possível ver o quanto capital está alocado em contratos nessa rede.
-- Em [DeFi Llama Contracts](https://defillama.com/) é possível ver uma lista de aplicações DeFi (contratos inteligentes) e o volume de capital retido neles.
+- **Jogos e NFTs**: Lembra daquele jogo onde você pode comprar e vender um itens únicos para outro jogador? Ou de qualquer outro ativo digital que deveria ser único mas na internet é copiável? Bem, os NFTs são a solução para isso. E eles são contratos inteligentes.
 
-### 2.7.3. Contratos inteligentes Aave e Uniswap
+Pois bem, todas essas aplicações são alcançadas por meio de transações na rede. Logo, se todas as transações da rede em que os contratos foram deployados são monitoradas, é possível identificar padrões de interações com contratos inteligentes, obter insights sobre o que está acontecendo na rede e se beneficiar desse conhecimento.
 
-Entre os contratos inteligentes mais conhecidos estão:
+Oportunidade de negócio geralmente se traduz em oportunidade de ganho de capital. Em contratos inteligentes do tipo DeFi existe um **alto valor de capital alocado (TVL - Total Value Locked)**.
+
+- Em [DeFi Llama Chains](https://defillama.com/chains) é possível ver o quanto capital está alocado em contratos inteligentes deployados nessa rede.
+- Em [DeFi Llama Contracts](https://defillama.com/) é possível ver uma lista de DApps (contratos inteligentes) e o volume de capital retido nessas aplicações.
+
+#### Exemplo de Aplicabilidade de capturar dados de redes blockchains em tempo real
+
+Vejamos o seguinte cenário. Um hacker descobre uma vulnerabilidade em um contrato inteligente. Começa ele então a roubar tokens do mesmo. Esse roubo se dará, conforme mencionado, por transações na rede onde o hacker interage com o contrato. Na grande maioria dos casos essas transações maliciosas se dão em muitas transações pequenas, a fim de acobertar a origem criminosa.
+
+Com um sistema que capture dados das transações de uma rede em tempo real, é possível identificar padrões de transações suspeitas e alertar sobre possíveis hacks. E não só. É possível identificar o padrão da transação fraudulenta e reproduzi-la, a fim de roubar tokens do contrato inteligente. Existem empresas de segurança especializadas nisso. Detectam um hack, reproduzem o hack concorrentemente ao próprio hacker e devolvem os tokens roubados ao dono posteriormente.
+
+## 1.3. Estudo de caso sobre 2 contratos inteligentes
+
+Vamos explorar brevemente 2 contratos inteligentes da rede Ethereum, a fim de exemplificar outras oportunidades de negócio que a exploração de dados dessas redes trazem e o quão valiosos esses dados podem ser.
 
 - **[AAVE Borrowing and Lending](https://app.aave.com/)**: Aplicação decentralizada que permite usuários pegar empréstimos em criptomoedas, usando outras criptomoedas como garantia.
 - **[Uniswap DEX](https://app.uniswap.org/?intro=true)**: Aplicação decentralizada que permite usuários trocar tokens entre si, sem a necessidade de um intermediário.
 
-As 2 aplicações acima são exemplos de **aplicações DeFi (Finanças descentralizadas)**. Pela forma que são construídas, elas oferecem oportunidades de retorno financeiro da seguinte forma:
+As 2 aplicações acima são exemplos de **aplicações DeFi (Finanças descentralizadas)**. Foram desenvolvidas na rede Ethereum e são contratos inteligentes. A seguir são apresentadas as oportunidades de negócio que a exploração de dados desses contratos inteligentes trazem.
 
-#### 1. UNISWAP
+### 1.3.1. Exchange Decentralizada UNISWAP
 
-A Uniswap é um conjunto de contratos inteligentes que funcionam como uma aplicação decentralizada para troca de tokens ERC20. Para isso ele cria contratos chamados **piscinas de liquidez**. Esses contratos são definidos por um par de tokens e usuários podem fornecer liquidez ao contrato, depositando tokens nele objetivando retorno financeiro em taxas cobradas a usuários do protocolo trocando aquele determinado par de tokens.
+A [Uniswap](https://uniswap.org/developers) é um conjunto de contratos inteligentes que funcionam como uma aplicação decentralizada para **troca de tokens ERC20**. Em outros termos, é uma **exchange decentralizada**. O contrato principal possui o padrão factory para criação de contratos do tipo **piscinas de liquidez**.
 
-Para o cálculo de preço de um token em relação a outro, é usado um mecanismo chamado de [AMM - Automated Market Maker](https://academy.binance.com/pt/articles/what-is-an-automated-market-maker-amm). Um AMM tem por objetivo calcular o preço de um token em relação a outro e manter esse preço de acordo com o mercado externo.
+**Contrato de piscina de liquidez**: Esses contratos são definidos por um par de tokens ERC20. Usuários da rede podem:
 
-Um exemplo de AMM é fundamentado em que em uma piscina de liquidez o **produto da quantidade de um par de tokens X e Y deve ser constante**.
+- Fornecer liquidez ao contrato, depositando o par de tokens nele e objetivando retorno financeiro em taxas cobradas a usuários que trocam tokens;
+- Trocar tokens entre si, pagando taxas de troca.
+
+Lembra que foi dito que qualquer pessoa pode criar 1 token ou uma moeda digital? Mas dar valor a esse token ja é outra história? Pois bem, se um usuário cria um token e então cria uma piscina de liquidez para esse token, o atrelando ao token par, por exemplo o token WETH. Ao fornecer liquidez a essa piscina, ele está dando valor ao token. Pois ele está permitindo que o token seja trocado por outro token, no caso o WETH.
+
+**Cálculo de preço**: Para o cálculo de preço de um token em relação a outro, em uma piscina de liquidez, é usado um mecanismo chamado de [AMM - Automated Market Maker](https://academy.binance.com/pt/articles/what-is-an-automated-market-maker-amm). Um AMM tem por objetivo **regular** o preço de um token em relação a outro e mantendo a paridade com o mercado externo. O contrato inteligente é um agente passivo. Ele não tem a capacidade de regular o preço dos tokens. Ele é regulado pelos usuários que interagem com ele.
+
+O **mecanismo de AMM usado pela Uniswap** é fundamentado em> Numa piscina de liquidez o **produto da quantidade de um par de tokens X e Y deve ser constante**.
 
 **Exemplo:**
 
@@ -191,11 +268,11 @@ No exemplo acima fica evidente como esse tipo de contrato inteligente se mantém
 - Usuários do protocolo que trocam tokens;
 - Operadores de arbitragem que mantém o preço dos tokens em equilíbrio com o mercado.
 
-Portanto, monitorar operações de Swap em contratos inteligentes da Uniswap podem fornecer informações para execução de operações de **arbitragem**.
+Portanto, monitorar transações de swap entre tokens ERC-20 em contratos da Uniswap pode fornecer informações valiosas para operar **arbitragem**.
 
-#### 2. AAVE
+### 1.3.2. AAVE Borrowing and Lending
 
-A Aave realiza empréstimos de criptomoedas. Usuários podem realizar de forma simples 2 ações nesse protocolo.
+A [Aave](https://docs.aave.com/developers) é uma aplicação que realiza empréstimos de criptomoedas. Usuários podem realizar de forma simples 2 ações nesse protocolo.
 
 - **Depositar**: Usuários depositam um token X no contrato inteligente, provendo liquidez ao contrato para aquele token.
 - **Borrow**: Usuários pegam emprestado um token Y, usando o token X depositado como garantia.
@@ -223,15 +300,19 @@ Na Aave é ainda possível realizar uma transação de empréstimo sem garantia,
 2. Com o uso de flash Loan é possível levantar o capital necessário para realizar a operação de liquitação ou arbitragem;
 3. Após a operação ser realizada, o Flash Loan é pago e o lucro é obtido. Caso a operaçao não seja bem sucedida, o empréstimo e revertido.
 
-Os fatos acima são exemplos de oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem. E o 1º passo para se explorar essas oportunidades é a captura, ingestão, armazenamento e uso desses dados, o que possibilita o identificação de oportunidades de arbitragem e liquidações.
+## 1.4. Nota sobre a introdução acima e esse trabalho
 
-## 3. Objetivos específicos
+Foram explorados muitos conceitos acima. Muitos desses complexos e que demandam um estudo mais aprofundado. Porém, a intenção foi apresentar ao leitor as bases sobre a tecnologia blockchain, suas características, classificações e aplicações. Entendê-las, mesmo que de maneira superficial, é fundamental para a compreensão do sistema proposto a seguir, de sua arquitetura e dos desafios que ele apresenta. E por fim, apresentar oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem.
 
-A introdução acima embasa os objetivos específicos desse trabalho. As oportunidades de negócio que a exploração de dados de redes blockchain públicas trazem são vastas. Abaixo estão listados os objetivos específicos de negócio e técnicos desse trabalho.
+Dados esses fatos é possível então construir uma lista de objetivos gerais e específicos para construção de um sistema que capture, ingeste, processe, persista e utilize dados de redes blockchain públicas.
 
-### 3.1. Objetivos de negócio
+## 2. Objetivos específicos
 
-As 2 proposições abaixo justificam resumidamente em termos de negócio a escolha do tema abordado nesse trabalho. São elas:
+A introdução acima fundamenta os objetivos específicos desse trabalho. O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo à banca de Data Experts. Nessa apresentação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos da tecnologia correlacionados, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**, que tem o propósito de capturar, ingestar, processar, persistir e utilizar dados de redes blockchain públicas.
+
+### 2.1. Objetivos de negócio
+
+Em resumo à introdução apresentada, as 2 proposições abaixo justificam resumidamente em termos de negócio a escolha do tema abordado nesse trabalho. São elas:
 
 **Proposição 1**: É sabido que protocolos P2P do tipo blockchain são uma tecnologia nova e complexa. Esses protocolos são usados para:
   
@@ -247,24 +328,25 @@ As 2 proposições abaixo justificam resumidamente em termos de negócio a escol
 
 **Conclusão**: Com as proposições acima, é possível se inferir que a captura, ingestão, armazenamento e uso desses dados pode trazer oportunidades de negócio para empresas que desejam explorar esses dados. Para alcançar esses objetivos, é preciso implementar um sistema capaz de capturar, ingestar, processar, persistir e utilizar dados da origem mencionada.
 
-### 3.2. Objetivos técnicos
+### 2.2. Objetivos técnicos
 
-Conforme mencionado acima, seguem os objetivos técnicos desse trabalho:
+O sistema **dm_v3_chain_explorer** tem como objetivos tecnicos:
 
-- Criar sistema de captura de dados brutos de redes de blockchain públicas.
-- Criar um sistema de captura de dados de estado em contratos inteligentes.
-- Criar um sistema de captura agnóstico à rede de blockchain, porém restrito a redes do tipo EVM (Ethereum Virtual Machine).
-- Criar uma arquitetura de solução que permita a ingestão lambda.
+- Captura de dados brutos de redes de blockchain públicas que usam EVM com máquina virtual.
+- Captura de dados de estado em contratos inteligentes.
+- Ser um sistema de captura agnóstico à rede de blockchain, mas restrito a redes EVM.
 - Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema.
-- Criar um ambiente reproduzível e escalável com serviços necessários à execução de papeis necessários ao sistema.
+- Criar um ambiente reproduzível e escalável.
 - Armazenar e consumir dados pertinentes a operação e análises em bancos analíticos e transacionais.
-- Implementar ferramentas monitorar o sistema (dados de infraestrutura, logs, etc).
+- Possuir componentes que possam monitorar o funcionamento do mesmo (dados de infraestrutura, logs, gerenciamento de recursos, etc).
 
 Para alcançar tais objetivos, como será explorado mais adiante, um grande desafio apareceu e é talvez o ponto mais complexo desse trabalho. A maneira de capturar esses dados, através da interação com provedores de nós blockchain-as-a-service e API keys.
 
-### 3.3. Observação sobre o tema escolhido
+### 2.3. Observação sobre o tema escolhido
 
-Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, apesar da introdução feita acima, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi mais que o necessário. Porém, é entendido pelo autor desse trabalho que, apesar de não ser um requisito especificado no case, inúmeros conceitos aqui abordados exploram com profundidade campos como:
+Dado que a tecnologia blockchain não é assunto trivial e também não é um requisito especificado no case, apesar da introdução feita acima, no corpo principal desse trabalho evitou-se detalhar o funcionamento de contratos inteligentes e aplicações DeFi mais que o necessário para o entendimento desse sistema. 
+
+Porém, é entendido pelo autor que, apesar de não ser um requisito especificado no case, inúmeros conceitos aqui abordados exploram com profundidade campos como:
 
 - Estruturas de dados complexas (o próprio blockchain);
 - Arquiteturas de sistemas distribuídos e descentralizados;
@@ -272,46 +354,48 @@ Dado que a tecnologia blockchain não é assunto trivial e também não é um re
 
 Portanto, a escolha desse tema para case é uma oportunidade de aprendizado e de aplicação de conhecimentos de engenharia de dados, arquitetura de sistemas, segurança da informação, entre outros.
 
-## 4. Explicação sobre o case desenvolvido
+## 3. Explicação sobre o case desenvolvido
 
 Foi escolhido para esse trabalho o uso da rede Ethereum como fonte de dados. Isso é justificado na introdução e objetivos acima, sendo os fatores de peso:
 
 - Capital retido na rede Ethreum;
 - Compatibilidade de aplicações entre diferentes blockchains baseadas na EVM.
 
-Conforme visto, para se obter dados de uma rede blockchain pública diretamente, é necessário possuir acesso a um nó pertencente a tal rede. Para esse fim, 2 possibilidades se apresentam: **(1)** possuir um nó próprio e **(2)** usar um nó de terceiros.
+Conforme visto, para se obter dados de uma rede blockchain diretamente, é necessário possuir acesso a um nó pertencente a tal rede. Com isso, 2 possibilidades se apresentam: **(1)** possuir um nó próprio e **(2)** usar um nó de terceiros.
 
 Devido aos requisitos de hardware, software e rede necessários para deploy de um nó, seja on-premises ou em cloud, foi escolhido nesse trabalho o uso de **provedores de Node-as-a-Service ou NaaS**.
 
-### 4.1. Provedores de Node-as-a-Service
+## 3.1. Provedores de Node-as-a-Service
 
 Provedores de NaaS são empresas que fornecem acesso a nós de redes blockchain públicas. Alguns exemplos são **Infura** e **Alchemy**. Esses provedores, como modelo de negócio, fornecem API keys para interação com os nós.
 
 <img src="./img/intro/4_bnaas_vendor_plans.png" alt="4_bnaas_vendor_plans.png" width="100%"/>
 
-Porém, esses provedores limitam a quantidade de requisições, de acordo com planos estabelacidos (gratuito, premium, etc.) que variam o preço e o limite de requisições diárias ou por segundo permitidas.
+Porém, esses provedores restringem a quantidade de requisições, de acordo com planos estabelacidos (gratuito, premium, etc.) que variam o preço e o limite de requisições diárias ou por segundo permitidas.
 
 Foi optado pelo **uso de provedores NaaS**. Contudo, devido às limitações de requisições por segundo e diárias, foi preciso criar um mecanismo sofisticado para captura de todas as transações em tempo real. Por se tratar um desafio técnico, reduzir o custo para captura desses dados a zero virtualmente, satisfazendo os objetivos mencionados se mostra um caminho interessante.
 
-### 4.2. Restrições de API keys
+## 3.2. Restrições de API keys
 
 As requisições em nós disponibilizados por um provedores NaaS são controladas por meio de API Keys. Para o provedor infura temos as seguintes restrições para 1 API Key gratuita:
 
 - Máximo de **10 requests por segundo**;
 - Máximo de  **100.000 requests por dia**.
 
-Na rede Ethereum, um bloco tem tamanho em bytes limitado e é minerado a cada 8 segundos. Cada bloco contém em média 250 transações. Isso resulta em:
+Na rede Ethereum, um bloco tem tamanho em bytes limitado e é minerado em média a cada 8 segundos. Cada bloco contém em média 250 transações. Isso resulta em:
 
 - **2,7 milhões de transações por dia**;
 - **31 transações por segundo**.
 
-As limitações acima impõem um desafio. Como será visto a diante, o mecanismo **para se capturar n transações de um bloco recém-minerado** exige que sejam feitas em média **n + 8 requisições**. Usando o plano gratuito, obviamente é necessário o uso de varias API Keys. Porém o gerenciamento de uso dessas, de maneira a manter a disponibilidade e confiabilidade do sistema traz a necessidade de um mecanismo engenhoso. Aqui então ela se apresenta.
+As limitações acima impõem um desafio. Como será visto a diante, o mecanismo **para se capturar n transações de um bloco recém-minerado** exige que sejam feitas em média **n requisições** sejam feitas. Usando o plano gratuito, claramente é necessário o uso de várias API Keys.
 
-### 4.3. Captura de dados de blocos e transações
+Porém o gerenciamento de uso dessas API Keys, que possuem recursos limitados, buscando manter a disponibilidade e confiabilidade do sistema traz a necessidade de um mecanismo engenhoso. Aqui então ela se apresenta.
+
+## 3.3. Captura de dados de blocos e transações
 
 Para capturar dados de blocos e transações da rede em tempo real é usada a [Biblioteca Web3.py](https://web3py.readthedocs.io/en/stable/). Ela fornece uma interface para interação com nós de redes blockchain compatíveis com EVM. Entre as várias funções disponíveis, 2 são de interesse para esse trabalho:
 
-**get_block('latest')**: Retorna um dicionário com os metadados do bloco e uma lista de hash_ids de transações pertencentes ao último bloco minerado.
+**get_block('latest')**: Retorna um dicionário com os **dados e metadados do bloco** e uma **lista de hash_ids** de transações pertencentes ao último bloco minerado.
 
 ```python
 block_data = web3.eth.get_block('latest')
@@ -329,43 +413,45 @@ tx_data = web3.eth.get_transaction('tx_hash_id')
 
 <img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="80%"/>
 
-As 2 funções mencionadas trabalhando em conjunto são o suficiente para obter dados de transações recem minerada. Porém é necessário que as rotinas que se utilizem delas trabalhem de forma integrada e em cooperação.
+As 2 funções mencionadas trabalhando em conjunto são o suficiente para obter dados de transações recém mineradas. Porém, é necessário que as rotinas que se utilizem delas trabalhem de forma integrada e em cooperação.
 
-Cada chamada nas funções acima consomem 1 requisição nas API Keys. Logo, um mecanismo que otimize o uso dessas chaves, minimizando o número de requisições e maximizando a disponibilidade do sistema é necessário.
+Cada chamada nas funções acima consome 1 requisição de uma API Key. Logo, um mecanismo que otimize o uso dessas chaves, minimizando o número de requisições e maximizando a disponibilidade do sistema é necessário.
 
-### 4.4. Mecanismo para Captura de Dados
+## 3.4. Mecanismo para Captura de Dados
 
 Conforme mencionado, as 2 funções são suficientes para capturar dados em tempo real de uma rede EVM. Porém, eles precisam atuar em conjunto.
 
 1. O método **get_block('latest')** fornece uma lista de tx_hash_id para transações pertencentes àquele bloco.
-2. O método **get_transaction(tx_hash_id)** usa os **tx_hash_id** obtidos do 1º método para obter os dados de cada transação.
+2. O método **get_transaction(tx_hash_id)** usa os **tx_hash_id** obtidos do 1º método para capturar os dados de cada transação.
 
 Para que essa cooperação mutua ocorra, são necessários alguns componentes para o sistema.
 
-### 4.4.1 Sistema Pub / Sub
+### 3.4.1. Sistema Pub / Sub
 
-Para a captura dos dados em tempo real, é necessário que 2 jobs cooperem entre si trocando informações. Para isso, é necessário que esses jobs se comuniquem de forma assíncrona. Uma forma de se fazer isso seria usando um sistema **filas** ou de mensageria do tipo **Publisher-Subscriber**.
+Para a captura dos dados em tempo real, é necessário que 2 jobs cooperem entre si de forma assíncrona. Para alcançar tal finalidade, a inclusão de um componente do tipo  **fila** ou **mensageria do tipo Publisher-Subscriber** se faz necessária.
 
-Uma fila, como por exemplo o **RabbitMQ**, poderia satisfazer os requisitos de comunicação entre os Jobs. 
+Uma fila, como por exemplo o **RabbitMQ**, poderia satisfazer os requisitos de comunicação entre os Jobs de forma assíncrona.
 
 - O 1º job captura a lista de **tx_hash_id** e publica em uma fila.
-- O 2º job consome essa fila e executa o método **get_transaction(tx_hash_id)** para obter os dados da transação.
+- O 2º job que pode ter réplicas consome essa fila e executa o método **get_transaction(tx_hash_id)** para obter os dados da transação.
 
-Porém, o **dm_v3_chain_explorer** objetiva usar o sistema pub-sub para:
+Porém, caso se deseje utilizar uma plataforma mais robusta, o uso de um sistema de mensageria do tipo Pub/Sub como o **Apache Kafka** é mais adequado. Ele oferece:
 
-- Comunicação inter processos;
-- Sistema robusto e escalável atuando como um **backbone de dados**.
+- Comunicação inter processos através de tópicos;
+- Sistema robusto e escalável de forma horizontal;
+- Capacidade de processar e armazenar grandes volumes de dados, atuando como um **backbone de dados**.
 
 <img src="./img/intro/7_kafka_backbone.png" alt="Kafka Backbone" width="80%"/>
 
 O sistema **dm_v3_chain_explorer** deve estar preparado para capturar e ingestar dados de redes blockchain do tipo EVM, não estando restrito a Ethereum.
-A Ethereum é a rede menos rápida e escalável entre as redes EVM. Por isso, o sistema deve estar preparado para capturar dados de redes mais rápidas e escaláveis, como Binance Smart Chain, Avalanche, Fantom, etc. Logo, a plataforma de mensageria escolhida deve ser capaz de suportar workloads de bigdata.
 
-Portanto, pelos requisitos apresentados de escalabilidade, resiliência e robustez. O **Apache Kafka** se mostrou a solução ideal para essa finalidade.
+A Ethereum é a rede mais lenta e menos escalável entre as redes EVM. Por isso, o sistema deve estar preparado para capturar dados de redes mais rápidas , o que se traduz em volumes maiores, alta throughput de dados que esse componente deve suportar. Logo, a plataforma de mensageria escolhida deve ser capaz de suportar workloads de bigdata.
 
-### 4.4.2.  Captura dos dados do bloco recém minerados (Mined Blocks Crawler)
+Portanto, pelos requisitos apresentados de escalabilidade, resiliência e robustez. O **Apache Kafka** se mostrou o componente ideal para a finalidade apresentada.
 
-O job **mined_blocks_crawler** que encapsula a chamada da função **get_block('latest')**, mencionada anteriormente. Ele opera da seguinte forma:
+### 3.4.2. Captura dos dados do bloco recém minerados (Mined Blocks Crawler)
+
+O job **mined_blocks_crawler** que encapsula a chamada da função **get_block('latest')**, já mencionada. Ele opera da seguinte forma:
 
 - A cada período de tempo, por padrão 1 segundo, ele executa a função `get_block('latest')`, capturando os dados do bloco mais recente.
 - Observando o campo **blockNumber** dos dados retornados, ele identifica se houve um novo bloco minerado (block number incrementado).
@@ -375,7 +461,7 @@ O job **mined_blocks_crawler** que encapsula a chamada da função **get_block('
 
 **Observação:** a cada execução do método **get_block('latest')** uma requisição é feita usando a API key. Com a **frequência 1 req/segundo**, tem-se **86.400 requisições por dia**. Portanto, para satisfazer tal número de requisições 1 chave é o suficiente.
 
-### 4.4.3. Captura de dados de transações (Mined Transactions Crawler)
+### 3.4.3. Captura de dados de transações (Mined Transactions Crawler)
 
 O job **mined_txs_crawler** encapsula a chamada da função **get_transaction(tx_hash_id)**. Ele opera da seguinte forma:
 
@@ -388,25 +474,29 @@ O job **mined_txs_crawler** encapsula a chamada da função **get_transaction(tx
 
 Cada tipo de transação é publicado em um tópico específico:
 
-- **mined.tx.1.native_token_transfer**: transação de troca de token nativo entre 2 endereços de usuários;
-- **mined.tx.2.contract_deployment**: transação realizando o deploy de um contrato inteligente;
-- **mined.tx.3.contract_interaction**: Interação de um endereço de usuário com um contrato inteligente.
+- **mined.txs.token.transfer**: transação de troca de token nativo entre 2 endereços de usuários;
+- **mined.txs.contract.deploy**: transação realizando o deploy de um contrato inteligente;
+- **mined.txs.contract.call**: Interação de um endereço de usuário com um contrato inteligente.
 
 Após classificados em tópicos, cada tipo de transação pode alimentar aplicações downstream, cada uma com sua especificidade.
 
-### 4.4.4.  Decode do campo input em transações (Tx Input Decoder)
+#### Observação sobre a carga de trabalho nesse job
 
-As transações publicadas no tópico **mined.tx.3.contract_interaction** correspondem a interação com contratos inteligentes. Isso se dá por meio de chamada de funções do mesmo passando-se parâmetros.
+O job **mined_txs_crawler** é responsável pelo maior volume de requisições. Se o job **mined_blocks_crawler** precisa 1 requisição por intervalo de tempo, setado em 1 segundo e totalizando 86.400 requisições por dia, o job **mined_txs_crawler** precisa de 1 requisição por transação minerada. Como visto, a rede Ethereum tem uma média de 31 transações por segundo. Isso resulta em 2,7 milhões de transações por dia.
 
-Por exemplo, para se trocar Ethereum por outros tokens na rede Uniswap, é necessário chamar a função `swapExactETHForTokens` passando os parâmetros necessários.
+Então para que os objetivos de latência e disponibilidade do sistema sejam atendidos, é necessário que o job **mined_txs_crawler** tenha um mecanismo de controle de uso de API Keys. Esse mecanismo está detalhado na seção 3.5.
 
-Nesses tipos de transaçãoo campo `input` é onde se encontra a informação de qual função do contrato foi executada e quais parâmetros foram passados para ela. Porém, esses dados vem encodados. É necessário um mecanismo para decodificar esses dados e torná-los legíveis. Para isso, foi criado o job **txs_input_decoder**.
+### 3.4.4.  Decode do campo input em transações (Tx Input Decoder)
 
-Este tem por finalidade fazer o decode do campo input. Para que isso seja possível, é necessário que o contrato inteligente tenha uma ABI (Application Binary Interface) disponível. A ABI é um JSON que contém a assinatura de todas as funções do contrato. Com a ABI é possível decodificar o campo input e identificar qual função foi chamada e quais parâmetros foram passados.
+As transações publicadas no tópico **mined.txs.contract.call** correspondem a interação com contratos inteligentes. Essa interação se dá por meio dos campos **to** e **input**, contidos na transação. O campo `to` contém o endereço do contrato inteligente e o campo `input` contém a chamada de função e os parâmetros passados para ela. Por exemplo, para se trocar Ethereum por outros tokens na rede Uniswap, é necessário chamar a função `swapExactETHForTokens` passando os parâmetros necessários.
 
-Com as informações decodificadas, o job **txs_input_decoder** publica as informações em um tópico chamado **mined.tx.3.contract_interaction.decoded**.
+Porém, a informação no campo `input` está encodada. É necessário um mecanismo para decodificar esses dados. Para essa finalidade foi criado o job **txs_input_decoder**.
 
-### 4.5. Mecanismo de compartilhamento de API Keys
+Para que isso seja possível, é necessário o uso da **ABI (Application Binary Interface)** do contrato inteligente. Uma ABI é uma estrutura de dados que contém a assinatura de todas as funções do contrato. Com a ABI de um contrato é possível decodificar o campo `input` e extrair as informações valiosas ali contidas. As aplicações descritas na introdução, como arbitragem e liquidação, ou mesmo a identificação de ações de hackers dependem da decodificação desses dados.
+
+Com as informações decodificadas, o job **txs_input_decoder** publica as informações em um tópico chamado **mined.txs.input.decoded**.
+
+## 3.5. Mecanismo de compartilhamento de API Keys
 
 Nesse job concentra-se o esforço em número de requisições.Como mencionado, o número de transações diárias na rede Ethereum ultrapassam em muito os limites de uma API Key para 1 plano gratuito. Logo é necessário que esse job seja escalado. Mas escalado de que forma?
 
@@ -442,17 +532,23 @@ Existe então o 3º job, do tipo Spark Streaming chamado **api_key_monitor**  qu
 
 É justamente essa tabela que o Job **raw_tx_ingestor** consulta para escolher a API Key a ser usada em questão de menos requisições diárias.
 
-## 5. Arquitetura do case
+## 4. Arquitetura do case
 
-Nesse tópico está detalhada a arquitetura de solução e técnica do dm_v3_chain_explorer. Foi explorado acima alguns atores no mecanismo que realiza a captura e ingestão do dados. Porém é necessário entender com clareza como estes componentes comunicam-se entre si.
+Nessa seção está detalhada a arquitetura do sistema **dm_v3_chain_explorer**. Na seção acima foram detalhados mecanismos para captura e ingestão do dados, bem como outros componentes usados também necessários para o funcionamento do sistema. 
 
-### 5.1. Arquitetura de solução
+O objetivo aqui é ver como esses componentes se encaixam e como o sistema funciona como um todo. Essa seção está dividida em 2 partes:
+
+- **Arquitetura de solução**: Descrição de alto nível de como o sistema funciona para captura e ingestão de dados no Kafka. São descritos alguns componentes e seus papéis no sistema.
+
+- **Arquitetura técnica**: Descrição detalhada de como os componentes do sistema se comunicam entre si e com serviços auxiliares, bem como os mesmos são deployados,orquestrados e monitorados.
+
+## 4.1. Arquitetura de solução
 
 O desenho abaixo ilustra como a solução para captura e ingestão de dados da Ethereum, e em tempo real funciona.
 
-![Arquitetura de Solução Captura e Ingestão Kafka](./img/arquitetura_solucao_ingestao_fast.png)
+![Arquitetura de Solução Captura e Ingestão Kafka](./img/arquitetura/1_arquitetura_ingestão_fast.png)
 
-As seguintes tecnologias foram usadas para construir essa solução de captura:
+Os componentes dessa solução são:
 
 - **Apache Kafka**: Plataforma de streaming distribuída que permite publicar e consumir mensagens em tópicos. É altamente escalável e tolerante a falhas. É o backbone do sistema Pub-Sub.
 - **Redis**: Banco de dados chave-valor em memória usado para armazenar dados sobre uso de API KEYs.
@@ -462,19 +558,66 @@ As seguintes tecnologias foram usadas para construir essa solução de captura:
 - **Jobs implementados em python Python**: Esses jobs são responsáveis por capturar, classificar e decodificar os dados usando as ferramentas mencionadas acima. Executam em containers docker.
 - **Kafka Connect**: Ferramenta usada para conectar o Kafka a diferentes fontes de dados. Nesse caso, o Kafka Connect é usado para envio dos dados de tópicos do Kafka para outros sistemas.
 
-### 5.2. Arquitetura Técnica
+## 4.2. Arquitetura Técnica
 
-A arquitetura técnica desse sistema é composta por diferentes camadas, cada uma com um conjunto de serviços que interagem entre si para determinada finalidade. As camadas são:
+Esse trabalho utiliza inúmeros serviços e ferramentas para captura, ingestão, processamento e persistência de dados. De forma a organizar esses serviços, eles foram divididos em camadas. Cada camada é responsável por um conjunto de serviços que realizam tarefas específicas no funcionamento do **dm_v3_chain_explorer**.
 
-- **Camada Fast**: Serviços relacionados a captura e ingestão em streaming.
-- **Camada Batch**: Serviços relacionados a captura e ingestão em batch.
-- **Camada de aplicação**: Jobs construídos para captura e ingestão usando camadas acima.
-- **Camada de operação**: Composta por serviços que realizam telemetria dos recursos de infraestrutura do **dm_v3_chain_explorer**.
+- **Camada de operação**: Serviços que realizam telemetria dos recursos computacionais da infraestrutura utilizada pelo sistema.
+- **Camada de aplicação**: Aplicações construídas em Python e deployadas em containers que realizam a captura dos dados na rede Ethereum e persistem no Apache Kafka.
+- **Camada Fast**: Serviços auxiliares utilizados pela camada de aplicação para captura e ingestão de dados em tempo real, tais como Redis, Spark, Kafka, etc.
+- **Camada Batch**: Serviços relacionados a uma arquitetura de big data, como Hadoop, Hive, etc.
 
-Todos os serviços que compõem essas camadas são orquestrados em containers docker. Para orquestração de containers, foram utilizadas as ferramentas `Docker Compose` e `Docker Swarm`.
-Além deles, o recurso **Azure Key Vault** foi usado para armazenar as API Keys.
+Os serviços das camadas **Fast**, **Batch** e de **Operações** são aqui também **deployados em containers docker**. Em soluções produtivas, esses serviços podem ser deployados em máquinas virtuais, kubernetes ou mesmo em serviços gerenciados de cloud, cada alternativa tendo suas vantagens e desvantagens. Porém, para finalidade de um protótipo, o uso de containers é mais que suficiente.
 
-![Serviços do sistema](./img/batch_layer.drawio.png)
+Além dos serviços deployados em containers docker, é utilizado também recurso em cloud **Azure Key Vault** para armazenamento das API Keys como secrets.
+
+### 4.2.1. Ambientes de Orquestração de Containers
+
+Para orquestração de containers, foram utilizadas as ferramentas **Docker Compose** e **Docker Swarm**.
+
+### 1. Ambiente de desenvolvimento
+
+O **Docker Compose** é usado para orquestrar containers em um único host. O uso de bind mounts para compartilhar volumes entre o host e o container, facilita o desenvolvimento e testes. E o `docker-compose.yml` trás facilidade, agilidade e reprodutibilidade para deploy do conjunto de serviços em containers. Definamos o deploy de serviços em um único host como **single-host** e consideremos esse como o ambiente de desenvolvimento para o sistema **dm_v3_chain_explorer**.
+
+Esse trabalho utilizou um computador pessoal como host para deploy dos serviços em containers docker para desenvolvimento. Porém, pela quantidade de serviços e para fins de escalabilidade, foi explorado o uso de **Docker Swarm** para deploy dos serviços em múltiplos hosts.
+
+### 2. Ambiente de produção
+
+O **Docker Swarm** é usado para orquestrar containers em múltiplos hosts. Ele é também uma ferramenta nativa do Docker e pode ser usado para deploy de serviços em containers em ambiente produtivo, onde a alta disponibilidade e escalabilidade são necessárias. O docker swarm também usa arquivos yml de configuração, similares ao docker-compose, para definir o deploy de serviços em múltiplos hosts na forma de **Stacks**.
+
+Para esse trabalho foi montado um cluster Swarm com 4 máquinas, sendo um nó manager e 3 nós workers. Assim é possível distribuir as cargas de trabalho entre os nós e garantir a alta disponibilidade do sistema.
+
+- **Nó Manager**: Host **dadaia-desktop** com 16GB de RAM e 8 CPUs e 256 GB de armazenamento SSD.
+- **Nó Worker 1**: Host **dadaia-HP-ZBook-15-G2** com 16GB de RAM e 8 CPUs e 256 GB de armazenamento SSD.
+- **Nó Worker 2**: Host **dadaia-server** Laptop com 12GB de RAM e 8 CPUs e 256 GB de armazenamento SSD.
+- **Nó Worker 3**: Host **dadaia-server-2** Computador Laptop com 4GB de RAM e 8 CPUs e 256 GB de armazenamento em Hard Disk.
+
+![Cluster Swarm Local](./img/arquitetura/2_cluster_swarm_nodes.png)
+
+A medida que as camadas são descritas, desenhos representando a distribuição desses serviços em ambiente **single-host** e **multi-host** serão apresentados.
+
+### 4.2.2. Camada de operação
+
+Na camada de operação estão definidos serviços necessários para realizar telemetria e monitoramento de recursos da infraestrutura utilizados pelo sistema **dm_v3_chain_explorer**. Esses serviços são:
+
+- **[Prometheus](https://prometheus.io/)**: Serviço usado para coleta de logs e métricas utilizadas na telemetria e monitoramento;
+- **[Grafana](https://grafana.com/)**: Serviço usado para visualização de logs e métricas coletadas pelo Prometheus, provendo dashboards para monitoramento;
+- **[Prometheus Agents e Exporters](https://prometheus.io/docs/instrumenting/exporters/)**: Serviços responsáveis por coletar métricas de enviar para o Prometheus. Os agentes utilizados nesse trabalho foram:
+  - **[Node exporter](https://prometheus.io/docs/guides/node-exporter/)**: Agente para coletar dados de telemetria do nó em específico.
+  - **[Kafka exporter](https://danielmrosa.medium.com/monitoring-kafka-b97d2d5a5434)**: Agente para coletar dados de telemetria do kafka.
+  - **[Cadvisor](https://prometheus.io/docs/guides/cadvisor/)**: Agente para coletar dados de telemetria do docker.
+
+Quando deployados em ambiente de desenvolvimento, os serviços dessa camada são deployados em um único host. Uma ilustração dessa distribuição é mostrada abaixo.
+
+![Operational Layer Single Host](./img/arquitetura/4_compose_ops_layer.png)
+
+Quando deployado em ambiente de produção, os serviços dessa camada são deployados em múltiplos hosts. Logo, os exporters **cadvisor** e **node exporter** são deployados em cada nó do cluster Swarm. O **kafka exporter** é deployado em um nó específico, o nó manager. Uma ilustração dessa distribuição é mostrada abaixo.
+
+#### Observação
+
+Para deploy dos serviços foi feita segregação de redes. Os seviços referentes a camada de operação estão em uma rede chamada **dm_cluster_dev_ops**. Porém, o serviço **Kafka Exporter** está também attachado a rede **dm_cluster_dev_fast** para que possa se comunicar com o Kafka. Contudo, por dificuldades de representação, isso não está contido no desenho abaixo. Mas a lógica de segregação de redes foi mantida, conforme ilustrado na figura acima.
+
+![Operational Layer Multi Host](./img/arquitetura/5_compose_ops_multinode.png)
 
 ### 5.3.1. Camada Fast
 
@@ -571,15 +714,7 @@ Com diferentes repositórios é possível também definir workflows de CI-CD par
 
 As aplicações desenvolvidas nesse trabalho são construídas em python e encapsuladas em imagens docker. Dessa forma são portáveis e podem ser instanciadas em qualquer ambiente com a engine do docker instalada. Assim, em caso de necessidade de deploy em ambiente de cloud, as imagens podem ser usadas para instanciar containers em cloud, usando serviços de orquestração de containers como **ECS**, **EKS**, **AKS** ou **GKE**.
 
-### 5.3.4. Camada de operação
 
-Na camada de operação estão definidos serviços necessários para realizar telemetria e monitoramento de recursos da infraestrutura. Aqui estão definidos os serviços:
-
-- **Prometheus** para ingestão de dados de telemetria ;
-- **Grafana** para visualização de dados dessa telemetria;
-- **Agentes** responsáveis por coletar dados de telemetria do docker e do nó em específico e enviar para o Prometheus:
-  - **Node exporter**: Agente para coletar dados de telemetria do nó em específico.
-  - **Cadvisor**: Agente para coletar dados de telemetria do docker.
 
 ## 6. Aspectos técnicos desse trabalho
 

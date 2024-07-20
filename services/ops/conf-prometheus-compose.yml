@@ -15,7 +15,11 @@ scrape_configs:
       - targets:
         - node_exporter:9100
 
-  # Create a job for Docker Swarm containers.
+  - job_name: kafka
+    static_configs:
+      - targets:
+        - kafka-exporter:9308
+        
   - job_name: cadvisor
     scrape_interval: 5s 
     static_configs: 
