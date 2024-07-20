@@ -66,6 +66,7 @@ if __name__ == "__main__":
   SPARK_URL = os.getenv("SPARK_MASTER_URL")
   KAFKA_CLUSTER = os.getenv("KAFKA_BROKERS")
   TOPIC_SUBSCRIBE = os.getenv("TOPIC_SUBSCRIBE")
+  CONSUMER_GROUP = os.getenv("CONSUMER_GROUP")
   SCYLLA_HOST = os.getenv("SCYLLA_HOST")
   SCYLLA_PORT = os.getenv("SCYLLA_PORT")
   SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE")
@@ -81,8 +82,9 @@ if __name__ == "__main__":
     "kafka.bootstrap.servers": KAFKA_CLUSTER,
     "subscribe": TOPIC_SUBSCRIBE,
     "startingOffsets": STARTING_OFFSETS,
-    "group.id": f"api_key_cg",
-    "maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER
+    "group.id": CONSUMER_GROUP,
+    "maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER,
+    
   }
 
   scylla_options = {
