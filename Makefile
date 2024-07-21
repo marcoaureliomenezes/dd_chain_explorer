@@ -4,9 +4,13 @@ current_branch = 1.0.0
 
 
 ##################################################################################################################################
-#######################    COMANDOS DE INICIALIZAÇÃO DE AMBIENTE DE DESENVOLVIMENTO    ###########################################
+##################################    COMANDOS PARA CONFIGURAÇÃO DO AMBIENTE    ##################################################
 create_dm_v3_chain_explorer_structure:
-	sh scripts/0_create_dm_v3_chain_explorer_structure.sh
+	sh scripts/0_create_dm_v3_structure.sh
+
+start_cluster_swarm:
+	sh scripts/1_start_cluster_swarm.sh
+
 
 
 ##################################################################################################################################
