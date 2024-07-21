@@ -596,7 +596,7 @@ Para esse trabalho foi montado um cluster Swarm com 4 máquinas, sendo um nó ma
 
 A medida que as camadas são descritas, desenhos representando a distribuição desses serviços em ambiente **single-host** e **multi-host** serão apresentados.
 
-### 4.2.2. Camada de operação
+### 4.2.1. Camada de operação
 
 Na camada de operação estão definidos serviços necessários para realizar telemetria e monitoramento de recursos da infraestrutura utilizados pelo sistema **dm_v3_chain_explorer**. Esses serviços são:
 
@@ -609,27 +609,69 @@ Na camada de operação estão definidos serviços necessários para realizar te
 
 Quando deployados em ambiente de desenvolvimento, os serviços dessa camada são deployados em um único host. Uma ilustração dessa distribuição é mostrada abaixo.
 
-![Operational Layer Single Host](./img/arquitetura/4_compose_ops_layer.png)
+![Operational Layer Single Host](./img/arquitetura/4_ops_services_local.png)
 
-Quando deployado em ambiente de produção, os serviços dessa camada são deployados em múltiplos hosts. Logo, os exporters **cadvisor** e **node exporter** são deployados em cada nó do cluster Swarm. O **kafka exporter** é deployado em um nó específico, o nó manager. Uma ilustração dessa distribuição é mostrada abaixo.
+Na figura acima 2 pontos são importantes:
+
+- As métricas coletadas pelos exporters em suas fontes (server, kafka, docker) nos fluxos das **setas verdes**.
+- Os exporters coletam essas métricas e as enviam para o Prometheus, conforme fluxo das **setas laranjas**.
+- O Grafana consome essas métricas do Prometheus e as exibe em dashboards, conforme fluxo das **setas azuis**.
+
+Quando deployados em ambiente de produção (cluster swarm), os containers são instanciados em múltiplos hosts. Logo, os exporters **cadvisor** e **node exporter** são deployados em cada nó do cluster Swarm, de forma a monitorar o docker daquele nó e as métricas daquele nó.
+
+O **kafka exporter** precisa ser deployado em apenas um nó, o nó, desde que tenha conexão de rede com os brokers do kafka. Uma ilustração dessa distribuição é mostrada abaixo.
 
 #### Observação
 
-Para deploy dos serviços foi feita segregação de redes. Os seviços referentes a camada de operação estão em uma rede chamada **dm_cluster_dev_ops**. Porém, o serviço **Kafka Exporter** está também attachado a rede **dm_cluster_dev_fast** para que possa se comunicar com o Kafka. Contudo, por dificuldades de representação, isso não está contido no desenho abaixo. Mas a lógica de segregação de redes foi mantida, conforme ilustrado na figura acima.
+Para deploy dos serviços foi feita segregação de redes. Os seviços referentes a camada de operação estão em uma rede chamada **dm_cluster_dev_ops**. Porém, o serviço **Kafka Exporter** está também attachado a rede **dm_cluster_dev_fast** para que possa se comunicar com o Kafka. Na figura abaixo o perímetro em azul representa a rede **dm_cluster_dev_fast** e o perímetro em verde a rede **dm_cluster_dev_ops**.
 
 ![Operational Layer Multi Host](./img/arquitetura/5_compose_ops_multinode.png)
 
-### 5.3.1. Camada Fast
+### 4.2.2. Camada Fast
 
 Nessa camada estão definidos os serviços utilizados para ingestão de dados em tempo real e que trabalham em conjunto com os Jobs implementados na camada de aplicação. Os serviços dessa camada são:
 
-- **3 Brokers do Apache Kafka**, usados como backbone para comunicação entre Jobs e como plataforma de armazenamento de dados para fluxos downstream.
-- **Apache Zookeeper** utilizado por cluster de brokers do Kafka.
+- **Brokers do Apache Kafka**, usados como backbone de dados para fluxos de dados downstream e para comunicação entre Jobs;
+- **Apache Zookeeper** utilizado por cluster de brokers do Kafka para gerenciamento de metadados e sincronização entre brokers;
 - **Confluent Control Center**: Serviço com interface gráfica para visualização de tópicos, kafka clusters, consumer groups e cluster de kafka-connect.
-- **Confluent Kafka Connect**: Integra o Apache Kafka às mais diferentes plataformas através do uso de sources e sinks já implementados. Assim é possível replicar os dados entre tópicos do Kafka e Data Lakes, Databases e Data Warehouses do mais diversos tipos.
+- **Confluent Kafka Connect**: Integra o Apache Kafka às mais diferentes plataformas através de conectores do tipo sources e sinks já implementados.
+- **Confluent Schema Registry**: Serviço usado para armazenar e validar schemas de dados em tópicos do Kafka.
 - **ScyllaDB**: Database No-SQL que permite alto throughput de operações de escrita, é por natureza distribuído de forma uniforme e pode ser escalado para atuar de forma global. Usado para update em tabela de consumo de API Keys, para que jobs tenham ciencia de chave e sua utilização em requests no tempo.
 - **Redis**: Banco de dados chave-valor usado para controle de consumo de API Keys em jobs de streaming, de forma a garantir que cada API key seja usada por somente um Job a determinado instante, atuando como um semáforo.
-- **Redis Commander**: Interface grafica para visualização dos dados no redis.
+- **Apache Spark**: Engine de processamendo de dados. Usado para monitorar o uso de API Keys e atualizar a tabela no ScyllaDB.
+
+A abaixo estão representados os serviços das camadas de **operações** e camada **fast** em ambiente **single-host**.
+
+![Fast Layer Multi Host](./img/arquitetura/6_ops_fast_services_local.png)
+
+Os serviços acima deployados em ambiente de produção (cluster Swarm) são distribuídos conforme abaixo.
+
+### 4.2.3.  Camada de aplicação
+
+Nessa camada estão definidas:
+
+- Aplicações escritas em python para interação com blockchains do tipo EVM e plataforma de dados.
+- Aplicação Spark Streaming para monitoramento de consumo de API Keys.
+
+#### Observação sobre aplicações e repositórios desse trabalho
+
+As aplicações desenvolvidas estão encapsuladas em imagens docker para serem instanciadas em containers. Devido à conveniência no gerenciamento de imagens, cada imagem docker produzida para esse trabalho foi organizada em um repositório diferente.
+
+Esses repositórios estão na **organização Dadaia-s-Chain-Analyser** no github. O critério para segregar as funcionalidades em um repositório foi a tecnologia usada, algo que influencia no peso da imagem. E também certo escopo de funcionalidade.
+
+Com diferentes repositórios é possível também definir workflows de CI-CD para build e deploy das imagens usando o **github actions**. Por esse motivo existem 4 repositórios relacionados a esse trabalho.
+
+- [dm_v3_chain_explorer](https://github.com/marcoaureliomenezes/dm_v3_chain_explorer): Repositório central onde estão definidos conjunto de serviços e forma de orquestra-los para alcançar objetivos do sistema.
+
+- [Offchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/offchain-watchers): Repositório composto por rotinas que usam a **biblioteca Web3.py** para ingestão dos dados de transações e blocos de uma rede blockchain.
+
+- [Onchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/onchain-watchers): Repositório composto por rotinas que usam **framework Brownie** para interação com contratos inteligentes e obtenção de estados dos mesmos, com o objetivo de ingestá-los no sistema.
+
+- [Onchain-actors](https://github.com/Dadaia-s-Chain-Analyser/onchain-actors): Repositório composto por rotinas que usam a **framework Brownie** para realizar transações em blockchains. São a ponta da linha do sistema e estão habilitados a realizar swaps entre outras interações em contratos inteligentes específicos.
+
+#### Observação sobre as aplicações
+
+As aplicações desenvolvidas nesse trabalho são construídas em python e encapsuladas em imagens docker. Dessa forma são portáveis e podem ser instanciadas em qualquer ambiente com a engine do docker instalada. Assim, em caso de necessidade de deploy em ambiente de cloud, as imagens podem ser usadas para instanciar containers em cloud, usando serviços de orquestração de containers como **ECS**, **EKS**, **AKS** ou **GKE**.
 
 ### 5.3.2. Camada Batch
 
@@ -687,32 +729,7 @@ Essas tecnologias são amplamente usadas em ecossistemas de plataformas de dados
 - O **Hadoop HDFS** pode ser substituído por **Amazon S3**, **Azure ADLS** e **Google Cloud Storage**. 
 - O **Apache Spark** pode ser substituído por um spark gerenciado dna plataforma **Databricks** ou por outros recursos que usam por debaixo dos panos o Spark, tais como **Synapse Analytics**, **Google Dataproc**, entre outros.
 
-### 5.3.3.  Camada de aplicação
 
-Nessa camada estão definidas:
-
-- Aplicações escritas em python para interação com blockchains do tipo EVM e plataforma de dados.
-- Aplicação Spark Streaming para monitoramento de consumo de API Keys.
-
-#### Observação sobre aplicações e repositórios desse trabalho
-
-As aplicações desenvolvidas estão encapsuladas em imagens docker para serem instanciadas em containers. Devido à conveniência no gerenciamento de imagens, cada imagem docker produzida para esse trabalho foi organizada em um repositório diferente.
-
-Esses repositórios estão na **organização Dadaia-s-Chain-Analyser** no github. O critério para segregar as funcionalidades em um repositório foi a tecnologia usada, algo que influencia no peso da imagem. E também certo escopo de funcionalidade.
-
-Com diferentes repositórios é possível também definir workflows de CI-CD para build e deploy das imagens usando o **github actions**. Por esse motivo existem 4 repositórios relacionados a esse trabalho.
-
-- [dm_v3_chain_explorer](https://github.com/marcoaureliomenezes/dm_v3_chain_explorer): Repositório central onde estão definidos conjunto de serviços e forma de orquestra-los para alcançar objetivos do sistema.
-
-- [Offchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/offchain-watchers): Repositório composto por rotinas que usam a **biblioteca Web3.py** para ingestão dos dados de transações e blocos de uma rede blockchain.
-
-- [Onchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/onchain-watchers): Repositório composto por rotinas que usam **framework Brownie** para interação com contratos inteligentes e obtenção de estados dos mesmos, com o objetivo de ingestá-los no sistema.
-
-- [Onchain-actors](https://github.com/Dadaia-s-Chain-Analyser/onchain-actors): Repositório composto por rotinas que usam a **framework Brownie** para realizar transações em blockchains. São a ponta da linha do sistema e estão habilitados a realizar swaps entre outras interações em contratos inteligentes específicos.
-
-#### Observação sobre as aplicações
-
-As aplicações desenvolvidas nesse trabalho são construídas em python e encapsuladas em imagens docker. Dessa forma são portáveis e podem ser instanciadas em qualquer ambiente com a engine do docker instalada. Assim, em caso de necessidade de deploy em ambiente de cloud, as imagens podem ser usadas para instanciar containers em cloud, usando serviços de orquestração de containers como **ECS**, **EKS**, **AKS** ou **GKE**.
 
 
 
