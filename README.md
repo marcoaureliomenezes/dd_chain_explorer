@@ -642,9 +642,11 @@ Nessa camada estão definidos os serviços utilizados para ingestão de dados em
 
 A abaixo estão representados os serviços das camadas de **operações** e camada **fast** em ambiente **single-host**.
 
-![Fast Layer Multi Host](./img/arquitetura/6_ops_fast_services_local.png)
+![Fast Layer Single Host](./img/arquitetura/6_ops_fast_services_local.png)
 
 Os serviços acima deployados em ambiente de produção (cluster Swarm) são distribuídos conforme abaixo.
+
+![Fast Layer Multi Host](./img/arquitetura/7_ops_fast_services_multihost.png)
 
 ### 4.2.3.  Camada de aplicação
 
@@ -652,6 +654,10 @@ Nessa camada estão definidas:
 
 - Aplicações escritas em python para interação com blockchains do tipo EVM e plataforma de dados.
 - Aplicação Spark Streaming para monitoramento de consumo de API Keys.
+
+Como informado anteriormente, as aplicações são deployadas em containers docker e interagem com os serviços da camada **Fast**. A ilustração abaixo mostra a distribuição desses serviços em ambiente **single-host**.
+
+![Application Layer Single Host](./img/arquitetura/8_app_services_single_host.png)
 
 #### Observação sobre aplicações e repositórios desse trabalho
 
