@@ -659,29 +659,15 @@ Como informado anteriormente, as aplicações são deployadas em containers dock
 
 ![Application Layer Single Host](./img/arquitetura/8_app_services_single_host.png)
 
-#### Observação sobre aplicações e repositórios desse trabalho
+- Na figura acima, os jobs **mined_blocks_crawler**, **mined_txs_crawler** e **txs_input_decoder** são deployados em containers docker e interagem com os serviços da camada **Fast**.
 
-As aplicações desenvolvidas estão encapsuladas em imagens docker para serem instanciadas em containers. Devido à conveniência no gerenciamento de imagens, cada imagem docker produzida para esse trabalho foi organizada em um repositório diferente.
+- O job **api_key_monitor** é um job do tipo Spark Streaming e é deployado em container, descrito como que monitora o uso de API Keys através do tópico de logs e atualiza a tabela no ScyllaDB.
 
-Esses repositórios estão na **organização Dadaia-s-Chain-Analyser** no github. O critério para segregar as funcionalidades em um repositório foi a tecnologia usada, algo que influencia no peso da imagem. E também certo escopo de funcionalidade.
+- O **Kafka Connect** é usado para enviar dados dos tópicos do Kafka para o **HDFS** e outros sistemas de armazenamento de dados em cloud como o **AWS S3** ou **Azure Data Lake Storage**.
 
-Com diferentes repositórios é possível também definir workflows de CI-CD para build e deploy das imagens usando o **github actions**. Por esse motivo existem 4 repositórios relacionados a esse trabalho.
+### 4.2.4. Camada Batch
 
-- [dm_v3_chain_explorer](https://github.com/marcoaureliomenezes/dm_v3_chain_explorer): Repositório central onde estão definidos conjunto de serviços e forma de orquestra-los para alcançar objetivos do sistema.
-
-- [Offchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/offchain-watchers): Repositório composto por rotinas que usam a **biblioteca Web3.py** para ingestão dos dados de transações e blocos de uma rede blockchain.
-
-- [Onchain-watchers](https://github.com/Dadaia-s-Chain-Analyser/onchain-watchers): Repositório composto por rotinas que usam **framework Brownie** para interação com contratos inteligentes e obtenção de estados dos mesmos, com o objetivo de ingestá-los no sistema.
-
-- [Onchain-actors](https://github.com/Dadaia-s-Chain-Analyser/onchain-actors): Repositório composto por rotinas que usam a **framework Brownie** para realizar transações em blockchains. São a ponta da linha do sistema e estão habilitados a realizar swaps entre outras interações em contratos inteligentes específicos.
-
-#### Observação sobre as aplicações
-
-As aplicações desenvolvidas nesse trabalho são construídas em python e encapsuladas em imagens docker. Dessa forma são portáveis e podem ser instanciadas em qualquer ambiente com a engine do docker instalada. Assim, em caso de necessidade de deploy em ambiente de cloud, as imagens podem ser usadas para instanciar containers em cloud, usando serviços de orquestração de containers como **ECS**, **EKS**, **AKS** ou **GKE**.
-
-### 5.3.2. Camada Batch
-
-Nessa camada estão relacionados serviços necessários para armazenamento e processamento de dados em big data e outras ferramentas necessárias para que pipelines batch sejam definidos.
+A camada batch corresponde a serviços relacionados a processamento de dados em lote. Essa camada é composta por:
 
 ### I) Apache Hadoop
 
