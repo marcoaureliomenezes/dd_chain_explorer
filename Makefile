@@ -116,8 +116,8 @@ watch_dev_batch:
 watch_dev_ops:
 	watch docker-compose -f services/ops/cluster_compose.yml ps
 
-watch_dev_airflow:
-	watch docker-compose -f services/airflow/cluster_compose.yml ps
+watch_dev_batch:
+	watch docker-compose -f services/batch/cluster_compose.yml ps
 
 
 ##################################################################################################################################
@@ -177,24 +177,24 @@ query_api_keys_consumption_table:
 connect_show_connectors:
 	http :8083/connector-plugins -b
 
-connect_deploy_sink_connectors:
-	http PUT :8083/connectors/block-metadata-s3-sink/config @services/fast/connectors/block-metadata-s3-sink.json -b
-	http PUT :8083/connectors/block-metadata-hdfs-sink/config @services/fast/connectors/block-metadata-hdfs-sink.json -b
+deploy_sink_blocks_hdfs:
+	http PUT :8083/connectors/block-metadata-hdfs-sink/config @services/fast/connectors/hdfs-sink/block-metadata.json -b
 
-connect_stop_s3_sink:
-	http DELETE :8083/connectors/block-metadata-s3-sink -b
-
-connect_status_s3_sink:
-	http :8083/connectors/block-metadata-s3-sink/status -b
-
-connect_pause_s3_sink:
-	http PUT :8083/connectors/block-metadata-s3-sink/pause -b
-
-connect_stop_hdfs_sink:
+stop_sink_blocks_hdfs:
 	http DELETE :8083/connectors/block-metadata-hdfs-sink -b
 
-connect_status_hdfs_sink:
+status_sink_blocks_hdfs:
 	http :8083/connectors/block-metadata-hdfs-sink/status -b
 
-connect_pause_hdfs_sink:
+pause_sink_blocks_hdfs:
 	http PUT :8083/connectors/block-metadata-hdfs-sink/pause -b
+
+##################################################################################################################################
+deploy_sink_contract_call_hdfs:
+	http PUT :8083/connectors/contract-call-hdfs-sink/config @services/fast/connectors/hdfs-sink/contract-call-txs.json -b
+
+status_sink_contract_call_hdfs:
+	http :8083/connectors/contract-call-hdfs-sink/status -b
+
+stop_sink_contract_call_hdfs:
+	http DELETE :8083/connectors/contract-call-hdfs-sink -b
