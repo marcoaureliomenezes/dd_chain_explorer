@@ -44,7 +44,6 @@ services:
       source: volume-zookeeper-secrets
       target: /etc/zookeeper/secrets
 
-
   broker:
     image: confluentinc/cp-server:${KAFKA_VERSION}
     hostname: broker
@@ -225,12 +224,15 @@ services:
     volumes:
       - ../../docker/app_layer/onchain-stream-txs/src:/app
     env_file:
-      - ../app/.secrets.conf
+      - ./conf/.secrets.conf
     environment:
       KAFKA_CLUSTER: '${KAFKA_BROKERS_DEV}'
       NETWORK: ${NETWORK}
     depends_on:
       - broker
+      - schema-registry
+      - connect
+      - zookeeper
 
 
 volumes:

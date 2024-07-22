@@ -36,7 +36,7 @@ services:
     environment:
       - CLUSTER_NAME=dm_v3_chain_explorer_dev
     env_file:
-      - ./hadoop.env
+      - ./conf/hadoop.env
 
   datanode:
     build: ../../docker/batch_layer/hadoop/datanode
@@ -47,7 +47,7 @@ services:
     environment:
       SERVICE_PRECONDITION: "namenode:9870"
     env_file:
-      - ./hadoop.env
+      - ./conf/hadoop.env
 
   resourcemanager:
     build: ../../docker/batch_layer/hadoop/resourcemanager
@@ -58,7 +58,7 @@ services:
     environment:
       SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
     env_file:
-      - ./hadoop.env
+      - ./conf/hadoop.env
 
   nodemanager:
     build: ../../docker/batch_layer/hadoop/nodemanager
@@ -67,7 +67,7 @@ services:
     environment:
       SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
     env_file:
-      - ./hadoop.env
+      - ./conf/hadoop.env
 
   historyserver:
     build: ../../docker/batch_layer/hadoop/historyserver
@@ -80,7 +80,7 @@ services:
     volumes:
       - hadoop_historyserver_dev_vol:/hadoop/yarn/timeline
     env_file:
-      - ./hadoop.env
+      - ./conf/hadoop.env
 
 
   # APACHE HIVE SERVICES AND HUE
@@ -98,7 +98,7 @@ services:
       test: [ "CMD", "nc", "-z", "hive-metastore", "9083" ]
       <<: *default_healthcheck
     env_file:
-      - ./hadoop-hive.env
+      - ./conf/hadoop-hive.env
 
   hive-server:
     image: marcoaureliomenezes/dm-hive-base:1.0.0
@@ -111,7 +111,7 @@ services:
       test: [ "CMD", "nc", "-z", "hive-metastore", "9083" ]
       <<: *default_healthcheck
     env_file:
-      - ./hadoop-hive.env
+      - ./conf/hadoop-hive.env
 
   presto-coordinator:
     image: shawnzhu/prestodb:0.181

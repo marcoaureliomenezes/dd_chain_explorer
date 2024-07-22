@@ -75,16 +75,16 @@ publish_ops:
 ###################    COMANDOS DE DEPLOY DE CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ########################################
 
 deploy_dev_fast:
-	docker-compose -f services/fast/cluster_compose.yml up -d --build
+	docker-compose -f services/transactional/compose_fast.yml up -d --build
 
 deploy_dev_app:
-	docker-compose -f services/app/cluster_compose.yml up -d --build
+	docker-compose -f services/transactional/compose_apps.yml up -d --build
 
 deploy_dev_batch:
-	docker-compose -f services/batch/cluster_compose.yml up -d --build
+	docker-compose -f services/data_lake/compose_hadoop_hive.yml up -d --build
 
 deploy_dev_ops:
-	docker-compose -f services/ops/cluster_compose.yml up -d --build
+	docker-compose -f services/operations/compose_monitoring.yml up -d --build
 	
 ##################################################################################################################################
 #########################    COMANDOS DE STOP CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    #######################################
@@ -105,7 +105,7 @@ stop_dev_ops:
 #########################    COMANDOS DE WATCH CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ######################################
 
 watch_dev_fast:
-	watch docker-compose -f services/fast/cluster_compose.yml ps
+	watch docker-compose -f services/transactional/compose_fast.yml ps
 
 watch_dev_app:
 	watch docker-compose -f services/app/cluster_compose.yml ps

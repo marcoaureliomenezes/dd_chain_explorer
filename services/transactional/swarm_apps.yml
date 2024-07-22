@@ -75,7 +75,7 @@ services:
     networks:
       - layer_fast_prod
     deploy:
-      replicas: 10
+      replicas: 8
   
 
   api_keys_log_processor:

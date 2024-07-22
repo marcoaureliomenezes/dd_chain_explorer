@@ -1,0 +1,14 @@
+{
+  "name": "contract-call-hdfs-sink",
+  "connector.class": "io.confluent.connect.hdfs3.Hdfs3SinkConnector",
+  "tasks.max": "1",
+  "topics": "mainnet.mined.txs.contract.call",
+  "confluent.topic.bootstrap.servers": "broker-1:29092,broker-2:29093,broker-3:29094",
+  "confluent.topic.replication.factor": "1",
+  "hdfs.url": "hdfs://namenode:9000",
+  "topics.dir": "/mainnet/transactions/raw/contract-call",
+  "flush.size": "3",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter": "io.confluent.connect.avro.AvroConverter",
+  "value.converter.schema.registry.url": "http://schema-registry:8081"
+}

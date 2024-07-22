@@ -88,6 +88,16 @@ services:
       - grafana_prod_data:/var/lib/grafana
     
 
+  # VISUALIZER SWARM -> http://192.168.15.101:28080/
+  visualizer:
+    image: dockersamples/visualizer:stable
+    <<: *common_deploy_master
+    ports:
+      - "28080:8080"
+    stop_grace_period: 1m30s
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+
   ########################################################################################
 
   kafka-exporter:

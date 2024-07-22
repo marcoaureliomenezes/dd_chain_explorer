@@ -1,0 +1,112 @@
+version: '3'
+
+x-common-conf: &common_conf
+  restart: on-failure
+  networks:
+    - dm_cluster_dev_fast
+
+x-conf-dev-stream-txs: &conf_dev_onchain_stream_txs
+  build: ../../docker/app_layer/onchain-stream-txs
+  volumes:
+    - ../../docker/app_layer/onchain-stream-txs/src:/app
+
+
+x-conf-dev-spark-job: &conf_dev_spark_streaming_job
+  build: ../../docker/app_layer/spark-streaming-jobs
+  volumes:
+    - ../../docker/app_layer/spark-streaming-jobs/src:/app
+
+#################################################################
+################    DEFINIÇÃO DOS SERVIÇOS    ###################
+#################################################################
+
+services:
+
+  mined_blocks_crawler:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: mined_blocks_crawler
+    entrypoint: "python -u 1_mined_blocks_crawler.py configs/producers.ini"
+    <<: *common_conf
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/blocks_crawler.conf
+    environment:
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+
+
+  mined_txs_crawler:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: mined_txs_crawler
+    entrypoint: "python -u 2_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
+    <<: *common_conf
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/txs_crawlers.conf
+    environment:
+      AKV_SECRET_NAMES: 'infura-api-key-1-12'
+    deploy:
+      replicas: 2
+
+  redis_data_collector:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: redis_data_collector
+    entrypoint: "python -u n_semaphore_collect.py"
+    <<: *common_conf
+    environment:
+      REDIS_HOST: 'redis'
+      REDIS_PORT: '6379'
+      FREQUENCY: 0.5
+
+  txs_input_decoder:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: txs_input_decoder
+    #entrypoint: "python -u 3_txs_input_decoder.py configs/producers.ini configs/consumers.ini"
+    <<: *common_conf
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/txs.input.decoder.conf
+    environment:
+      AKV_NODE_SECRET_NAME: 'infura-api-key-16'
+      AKV_SCAN_SECRET_NAME: 'etherscan-api-key-4'
+
+
+  api_keys_log_processor:
+    <<: *conf_dev_spark_streaming_job
+    container_name: api_keys_log_processor
+    entrypoint: "sh /app/shell/0_api_key_monitor.sh /app/python/0_api_key_monitor.py"
+    <<: *common_conf
+    env_file:
+      - ./conf/api_key.monitor.conf
+
+
+  # spark_streaming_simple_tx_handler:
+  #   build: ../../docker/app_layer/spark-streaming-jobs
+  #   container_name: spark_streaming_simple_tx_handler
+  #   restart: on-failure
+  #   volumes:
+  #     - ../../docker/app_layer/spark-streaming-jobs/src:/app
+  #   entrypoint: "sh /app/shell/1_handle_simple_txs.sh"
+  #   networks:
+  #     - dm_cluster_dev_fast
+
+  # onchain_watcher:
+  #   build: ./docker/app_layer/onchain-watchers
+  #   <<: *conf_default
+  #   container_name: onchain_watcher
+  #   volumes:
+  #     - ../docker/app_layer/onchain-watchers/src:/app
+  #   entrypoint: "brownie run scripts/1_batch_aave_erc20_tokens.py main 2 --network mainnet"
+  #   entrypoint: "brownie run scripts/2_batch_aave_utility_tokens.py main 2 --network mainnet"
+  #   entrypoint: "brownie run scripts/4_batch_uniswap_pair_pools.py main 2 --network mainnet"
+
+
+
+
+
+
+
+networks:
+  dm_cluster_dev_fast:
+    name: dm_cluster_dev_fast
+  dm_cluster_dev-batch:
+    name: dm_cluster_dev-batch
