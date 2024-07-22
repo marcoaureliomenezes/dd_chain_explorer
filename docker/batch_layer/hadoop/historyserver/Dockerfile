@@ -1,4 +1,4 @@
-FROM marcoaureliomenezes/dm-hadoop-base:1.0.0
+FROM marcoaureliomenezes/hadoop-base:1.0.0
 
 HEALTHCHECK CMD curl -f http://localhost:8188/ || exit 1
 

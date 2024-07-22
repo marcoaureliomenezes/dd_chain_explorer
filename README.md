@@ -6,47 +6,44 @@ Estão aqui implementadas estratégias e rotinas de extração, ingestão, proce
 
 ## Sumário
 
-- [1. Objetivo Geral](#1-objetivo-geral)
-- [2. Introdução](#2-introdução)
-  - [2.1 Estrutura de dados blockchain](#21-estrutura-de-dados-blockchain)
-  - [2.2 Rede blockchain tipo P2P](#22-rede-blockchain-tipo-p2p)
-  - [2.3 Redes Blockchain, Públicas e privadas](#23-redes-blockchain-públicas-e-privadas)
-  - [2.4 Características de uma rede blockchain](#24-características-de-uma-rede-blockchain)
-  - [2.5 Exemplos de blockchains públicas](#25-exemplos-de-blockchains-públicas)
-  - [2.6 Blockchains e Contratos inteligentes](#26-blockchains-e-contratos-inteligentes)
-  - [2.7 Oportunidades em blockchains públicas](#27-oportunidades-em-blockchains-públicas)
-- [3. Objetivos específicos](#3-objetivos-específicos)
-  - [3.1. Objetivos de negócio](#31-objetivos-de-negócio)
-  - [3.2. Objetivos técnicos](#32-objetivos-técnicos)
-  - [3.3. Observação sobre o tema escolhido](#33-observação-sobre-o-tema-escolhido)
-- [4. Explicação sobre o case desenvolvido](#4-explicação-sobre-o-case-desenvolvido)
-  - [4.1. Provedores de Node-as-a-Service](#41-provedores-de-node-as-a-service)
-  - [4.2. Restrições de API keys](#42-restrições-de-api-keys)
-  - [4.3. Captura de dados de blocos e transações](#43-captura-de-dados-de-blocos-e-transações)
-  - [4.4. Mecanismo para Captura de Dados](#44-mecanismo-para-captura-de-dados)
-  - [4.5. Mecanismo de compartilhamento de API Keys](#45-mecanismo-de-compartilhamento-de-api-keys)
-- [5. Arquitetura do case](#5-arquitetura-do-case)
-- [5.1. Arquitetura de solução](#51-arquitetura-de-solução)
-- [5.2. Arquitetura técnica](#52-arquitetura-técnica)
-- [6. Aspectos técnicos desse trabalho](#6-aspectos-técnicos-desse-trabalho)
-  - [6.1. Dockerização dos serviços](#61-dockerização-dos-serviços)
-  - [6.2. Orquestração de serviços em containers](#62-orquestração-de-serviços-em-containers)
-- [7. Reprodução do sistema dm_v3_chain_explorer](#7-reprodução-do-sistema-dm_v3_chain_explorer)
-  - [7.1. Requisitos](#71-requisitos)
-  - [7.2. Clonagem de repositórios desse trabalho](#72-clonagem-de-repositórios-desse-trabalho)
-  - [7.3. Reprodução do sistema usando o Docker Compose](#73-reprodução-do-sistema-usando-o-docker-compose)
-- [8. Conclusão](#8-conclusão)
-- [9. Melhorias futuras](#9-melhorias-futuras)
-  - [9.1. Aplicações downstream para consumo dos dados](#91-aplicações-downstream-para-consumo-dos-dados)
-  - [9.2. Melhoria em aplicações do repositório onchain-watchers](#92-melhoria-em-aplicações-do-repositório-onchain-watchers)
-  - [9.3. Troca do uso de provedores Blockchain Node-as-a-Service](#93-troca-do-uso-de-provedores-blockchain-node-as-a-service)
-  - [9.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#94-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
+- [1. Introdução](#1-introdução)
+  - [1.1. Introdução sobre blockchain](#11-introdução-sobre-blockchain)
+  - [1.2. Oportunidades em Redes Blockchain](#12-oportunidades-em-redes-blockchain)
+  - [1.3. Estudo de caso com 2 contratos inteligentes](#13-estudo-de-caso-com-2-contratos-inteligentes)
+  - [1.4. Nota sobre a introdução acima e esse trabalho](#14-nota-sobre-a-introdução-acima-e-esse-trabalho)
+- [2. Objetivos deste trabalho](#2-objetivos-deste-trabalho)
+  - [2.1. Objetivos de negócio](#21-objetivos-de-negócio)
+  - [2.2. Objetivos técnicos](#22-objetivos-técnicos)
+  - [2.3. Observação sobre o tema escolhido](#23-observação-sobre-o-tema-escolhido)
+- [3. Explicação sobre o case desenvolvido](#3-explicação-sobre-o-case-desenvolvido)
+  - [3.1. Provedores de Node-as-a-Service](#31-provedores-de-node-as-a-service)
+  - [3.2. Restrições de API keys](#32-restrições-de-api-keys)
+  - [3.3. Captura de dados de blocos e transações](#33-captura-de-dados-de-blocos-e-transações)
+  - [3.4. Mecanismo para Captura de Dados](#34-mecanismo-para-captura-de-dados)
+  - [3.5. Mecanismo de compartilhamento de API Keys](#35-mecanismo-de-compartilhamento-de-api-keys)
+- [4. Arquitetura do case](45-arquitetura-do-case)
+- [4.1. Arquitetura de solução](#41-arquitetura-de-solução)
+- [4.2. Arquitetura técnica](#42-arquitetura-técnica)
+- [5. Aspectos técnicos desse trabalho](#5-aspectos-técnicos-desse-trabalho)
+  - [5.1. Dockerização dos serviços](#51-dockerização-dos-serviços)
+  - [5.2. Orquestração de serviços em containers](#52-orquestração-de-serviços-em-containers)
+- [6. Reprodução do sistema dm_v3_chain_explorer](#6-reprodução-do-sistema-dm_v3_chain_explorer)
+  - [6.1. Requisitos](#61-requisitos)
+  - [6.2. Setup do ambiente local](#62-setup-do-ambiente-local)
+  - [6.3. Reprodução do sistema usando o Docker Compose](#63-reprodução-do-sistema-usando-o-docker-compose)
+  - [6.4 Visualização do processo de captura e ingestão de dados](#64-visualização-do-processo-de-captura-e-ingestão-de-dados)
+- [7. Conclusão](#7-conclusão)
+- [8. Melhorias futuras](#8-melhorias-futuras)
+  - [8.1. Aplicações downstream para consumo dos dados](#81-aplicações-downstream-para-consumo-dos-dados)
+  - [8.2. Melhoria em aplicações do repositório onchain-watchers](#82-melhoria-em-aplicações-do-repositório-onchain-watchers)
+  - [8.3. Troca do uso de provedores Blockchain Node-as-a-Service](#83-troca-do-uso-de-provedores-blockchain-node-as-a-service)
+  - [8.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#84-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
 
 ## 1. Introdução
 
 Atualmente muitas tecnologias estão em alta no mercado. Contudo, para além do hype, entender conceitos e fundamentos nesses campos é promissor, pela possiblidade de oportunidades se revelarem, e enriquecedor, no âmbito do conhecimento. Nesse trabalho a tecnologia **Blockchain** é explorada como uma oportunidade de negócio.
 
-Pois bem, o objetivo desse trabalho é stressar conceitos de engenharia de dados e áreas correlatas, como arquitetura de sistemas, segurança da informação, entre outros. A tecnologia blockchain é um componente de negócio.
+Pois bem, o objetivo desse trabalho é estressar conceitos de engenharia de dados e áreas correlatas, como arquitetura de sistemas, segurança da informação, entre outros através da construção de uma proposta de uma plataforma de dados e implementação de um protótipo desta. A tecnologia blockchain é um componente de negócio.
 
 Quem nunca ouviu algo como:
 
@@ -55,21 +52,31 @@ Quem nunca ouviu algo como:
 3. Dados de blockchain são públicos;
 4. Circulam bilhões de dólares na forma de ativos tokenizados blockchains.
 
-Entre outra infinidade de frases parecidas relacionadas ao tema. Mas será mesmo que tudo isso é tão verdade? Vale puxar o fio da meada.
+Entre outra infinidade de frases parecidas e relacionadas ao tema. Mas será mesmo que tudo isso é tão verdade? Vale puxar o fio da meada.
 
-Pois bem, temos então: **(1)** um trabalho para explorar conceitos de engenharia de dados em profundidade; **(2)** uma tecnologia disruptiva onde os dados são públicos e **(3)** circula uma quantidade significativa de capital nessas redes. Está dada a razão do porque esse trabalho foi desenvolvido. Ele consiste de uma plataforma de captura, ingestão, armazenamento e uso de dados de redes blockchain públicas e é denominado **dm_v3_chain_explorer**.
+Pois bem, temos então: **(1)** um trabalho para explorar conceitos de engenharia de dados em profundidade; **(2)** uma tecnologia disruptiva onde os dados são públicos e **(3)** redes blockchain circula uma quantidade significativa de capital nessas redes. Está dada a motivação para construção desse trabalho. Ele consiste de uma plataforma de captura, ingestão, armazenamento e uso de dados de redes blockchain públicas e é denominado **dm_v3_chain_explorer**.
 
 ### Estrutura do documento
 
-1. **Introdução**: Após a apresentação inicial, dada acima, é preciso introduzir ao leitor, de forma breve, sobre a tecnologia blockchain, suas características, classificações e aplicações. Essa introdução construirá as bases para o entendimento do tema e dos objetivos desse trabalho.
+1. **Introdução**: É preciso introduzir o leitor, de forma breve, à tecnologia blockchain. Suas características, classificações e aplicações. Essa introdução dará as bases para o entendimento dos objetivos desse trabalho, oportunidades e aplicações que um sistema desse tipo tem e até mesmo de sua arquitetura.
 
 2. **Objetivos**: São apresentados os objetivos gerais e específicos desse trabalho. Os objetivos de negócio e técnicos são categorizados e justificados.
 
-3. **Explicação sobre o case desenvolvido**: É dada uma explicação sobre o case desenvolvido, justificando a escolha da rede Ethereum como fonte de dados e a estratégia de captura de dados.
+3. **Explicação sobre o case desenvolvido**: É dada uma explicação sobre o case desenvolvido. Dada a introdução, nesse tópico são dadas as características desse trabalho. Como ele foi construído, quais são os fatores que influenciaram sua construção e como ele se encaixa no contexto de negócio. Os mecanismos de captura de dados, compartilhamento de API keys e restrições de uso de API keys são apresentados.
+
+4. **Arquitetura do case**: É apresentada a arquitetura de solução para captura e ingestão dos dados. De forma mais detalhada, tecnicamente, são apresentados os serviços necessários para implementação do case.
+
+5. **Aspectos técnicos desse trabalho**: São apresentados os aspectos técnicos desse trabalho. A dockerização dos serviços, a orquestração dos serviços em containers e a forma como o sistema foi construído.
+
+6. **Reprodução do sistema dm_v3_chain_explorer**: É apresentado um guia passo-a-passo para reprodução do sistema dm_v3_chain_explorer. São apresentados os requisitos, o setup do ambiente local e a reprodução do sistema usando o Docker Compose.
+
+7. **Conclusão**: É apresentada a conclusão desse trabalho. São apresentados os resultados obtidos, as dificuldades encontradas e as lições aprendidas.
+
+8. **Melhorias futuras**: São apresentadas as melhorias futuras para o sistema **dm_v3_chain_explorer**.
 
 ## 1.1. Introdução sobre blockchain
 
-Fundamentalmente, uma blockchain, consiste em uma rede decentralizada na qual usuários transacionam entre si sem a necessidade de um intermediário. Para tanto, a tecnologia se basea em 2 componentes, a **estrutura de dados** e a **rede P2P**, ambas cunhadas também pelo termo **blockchain**.
+Fundamentalmente, uma blockchain, consiste em uma rede decentralizada na qual usuários transacionam entre si sem a necessidade de um intermediário. Para tanto, a tecnologia se baseia em 2 componentes, a **estrutura de dados** e a **rede P2P**, ambas cunhadas pelo termo **blockchain**.
 
 ### 1.1.1. Estrutura de dados blockchain
 
@@ -81,7 +88,7 @@ Estrutura que armazena blocos de forma encadeada, dando origem ao termo **blockc
 
 <img src="./img/intro/1_blocks_transactions.png" alt="Estrutura de dados Blockchain" width="80%"/>
 
-Essa estrutura se basea de algoritmos de criptografia, como o **SHA-256**, para garantir a integridade dos dados. Isso ocorre da seguinte forma:
+Essa estrutura se baseia de algoritmos de criptografia, como o **SHA-256**, para garantir a integridade dos dados. Isso ocorre da seguinte forma:
 
 - Cada bloco tem seu campo `hash`, calculado a partir um algoritmo de hash e tendo como entrada os campos do bloco (lista de transações, timestamp e outros).
 - Cada bloco possui também o hash do bloco anterior registrado nele.
@@ -92,19 +99,19 @@ Portanto, com uma simples verificaçao de hashes, é possível garantir a integr
 
 ### 1.1.2. Rede Peer-to-peer (P2P) Blockchain
 
-Rede de computadores, de topologia **Peer-to-Peer** e onde nós pertencentes a ela possuem uma cópia da estrutura de dados blockchain sincronizada. Esses nós agem na rede, conforme 2 papéis distintos, **usuários** e **mantenedores**.
+Rede de computadores, de topologia **Peer-to-Peer** e onde nós que a compõem possuem uma cópia da estrutura de dados blockchain sincronizada. Esses nós agem na rede, conforme 2 papéis distintos, **usuários** e **mantenedores**.
 
-- **Usuários da rede**: São atores que transacionam entre si por meio de carteiras digitais. Podem trocar tokens entre si e interagir com contratos inteligentes. Para submeter uma transação a rede, é preciso ter acesso a um nó da rede, seja de forma direta ou indireta.
+- **Usuários da rede**: São atores que transacionam entre si por meio de carteiras digitais. Podem trocar o token nativo da rede e interagir com contratos inteligentes. Para submeter uma transação a rede, é preciso ter acesso a um nó da rede, seja de forma direta ou indireta.
 
 - **Mantenedores da rede**: São atores que mantém a rede funcionando. Eles são responsáveis por:
 
   - Minerar novos blocos contendo transações;
-  - Validar novos blocos minerados e consenso sobre encadeá-los na estrutura de dados blockchain da rede;
+  - Validar novos blocos minerados e participar de consenso sobre encadeá-los na estrutura de dados blockchain da rede;
   - Validar a integridade de transações contidas em blocos de toda a rede, utilizando-se dos hashes dos blocos.
 
 <img src="./img/intro/2_p2p_networks.jpg" alt="Rede P2P blockchain" width="80%"/>
 
-**Observação**: Para um leitor curioso, ou um engenheiro curioso, interessado em explorar conceitos engenhosos, a forma com que essa rede P2P escolhe o próximo bloco a ser minerado é um campo fértil para exploração. A rede precisa entrar em consenso sobre quem irá minerar o próximo bloco. E existem atores maliciosos nessa rede, obviamente. O mecanismo de consenso é um campo de estudo vasto e interessante. Tem como pano de fundo o famoso [Problema dos Generais Bizantinos](https://pt.wikipedia.org/wiki/Problema_dos_generais_bizantinos) e suas aplicações em sistemas distribuídos tolerantes a falhas.
+**Observação**: Para um leitor curioso, ou um engenheiro curioso, interessado em explorar conceitos engenhosos, a forma com que essa rede P2P escolhe o próximo bloco a ser minerado é um campo fértil para exploração. A rede precisa entrar em consenso sobre quem minerará o próximo bloco. E existem atores maliciosos nessa rede, obviamente. O mecanismo de consenso é um campo de estudo vasto e interessante. Tem como pano de fundo o famoso [Problema dos Generais Bizantinos](https://pt.wikipedia.org/wiki/Problema_dos_generais_bizantinos) e suas aplicações em sistemas distribuídos buscando tolerância a falhas.
 
 Quando a rede atinge um consenso sobre qual é o novo bloco minerado, esse bloco é propagado para todos os nós da rede. E cada nó valida a integridade do bloco, garantindo que a estrutura de dados blockchain permaneça íntegra.
 
@@ -181,7 +188,7 @@ Você ja ouviu falar de **hacks em contratos inteligentes na casa de bilhões em
 
 - **Blockchains Privadas**: Não é possível enunciar aqui muitas blockchains privadas. Elas se fundamentam da fundação Hyperledger, e podemos citar como exemplo de peso a rede do DREX, projeto do Banco Central do Brasil de uma rede blockchain privada entre bancos privados e o Banco Central. Nela serão desenvolvidas aplicações em contratos inteligentes para as mais diversas funcionalidades. Opera usando o Hyperledger Besu, compatível com a EVM.
 
-## 1.2. Oportunidades a serem exploradas em Redes Blockchain
+## 1.2. Oportunidades em Redes Blockchain
 
 Em redes circula uma quantidade significativa de capital. Este circula na forma de transações que podem ser:
 
@@ -229,7 +236,7 @@ Vejamos o seguinte cenário. Um hacker descobre uma vulnerabilidade em um contra
 
 Com um sistema que capture dados das transações de uma rede em tempo real, é possível identificar padrões de transações suspeitas e alertar sobre possíveis hacks. E não só. É possível identificar o padrão da transação fraudulenta e reproduzi-la, a fim de roubar tokens do contrato inteligente. Existem empresas de segurança especializadas nisso. Detectam um hack, reproduzem o hack concorrentemente ao próprio hacker e devolvem os tokens roubados ao dono posteriormente.
 
-## 1.3. Estudo de caso sobre 2 contratos inteligentes
+## 1.3. Estudo de caso com 2 contratos inteligentes
 
 Vamos explorar brevemente 2 contratos inteligentes da rede Ethereum, a fim de exemplificar outras oportunidades de negócio que a exploração de dados dessas redes trazem e o quão valiosos esses dados podem ser.
 
@@ -306,7 +313,7 @@ Foram explorados muitos conceitos acima. Muitos desses complexos e que demandam 
 
 Dados esses fatos é possível então construir uma lista de objetivos gerais e específicos para construção de um sistema que capture, ingeste, processe, persista e utilize dados de redes blockchain públicas.
 
-## 2. Objetivos específicos
+## 2. Objetivos deste trabalho
 
 A introdução acima fundamenta os objetivos específicos desse trabalho. O objetivo final desse trabalho é sua submissão para o programa Data Master, e posterior apresentação do mesmo à banca de Data Experts. Nessa apresentação serão avaliados conceitos e técnicas de engenharia de dados, entre outros campos da tecnologia correlacionados, aplicados na construção prática deste sistema entitulado **dm_v3_chain_explorer**, que tem o propósito de capturar, ingestar, processar, persistir e utilizar dados de redes blockchain públicas.
 
@@ -700,38 +707,13 @@ O apache hive é usado então para abstrair dados armazenados no HDFS em tabelas
 
 O Hue é um client com interface gráfica onde é possível visualizar o sistema de pastas e arquivos do HDFS, databases e tabelas no Hive Metastore e executar ações sobre essas entidades.
 
-### IV) Apache Spark
+## 5. Aspectos técnicos desse trabalho
 
-O Apache spark é uma engine de processamento de dados em memória distribuída. Pode ser usada para processamento de dados em batch e streaming e é altamente escalável. Pode estar em modo standalone ou tendo o Yarn como resource manager. O spark é composto por 3 serviços principais:
-
-- **Spark Master**: Responsável por gerenciar a execução de jobs no cluster spark.
-- **Spark Worker**: Responsável por executar os jobs de processamento de dados no cluster spark.
-- **Spark History Server**: Serviço que armazena dados referentes a execução de jobs no cluster spark.
-
-### V) Apache Airflow
-
-O Apache Airflow atua como orquestador de pipelines de dados batch. Nele é possível schedular jobs e definir relações de dependência entre esses. Os jobs são definidos em DAGs (Directed Acyclic Graphs) e são compostos por tarefas. Essas tarefas utilizam operadores específicos para execução de determinadas tarefas. É possível interagir com diferentes sistemas de armazenamento de dados, como HDFS, S3, ADLS, executar jobs de processamento de dados em spark, hive, entre outros. Também é possível realizar a transferência de arquivos usando protocolos como FTP, SFTP, entre outros.
-
-### Observação sobre serviços descritos acima
-
-Os serviços que compõe as camadas `batch` e `fast`, são usados para interação com aplicações desenvolvidas aqui na camada `app`.
-Essas tecnologias são amplamente usadas em ecossistemas de plataformas de dados. Também são open-source e possuem serviços análogos e totalmente gerenciados, na forma de **PaaS**, nos mais diversos provedores de cloud.
-
-- O **Apache Kafka** por exemplo, tem o **Amazon MSK**, **Confluent Cloud**, **Azure Event Hubs** e **Google Cloud Pub/Sub**.
-- O **Hadoop HDFS** pode ser substituído por **Amazon S3**, **Azure ADLS** e **Google Cloud Storage**. 
-- O **Apache Spark** pode ser substituído por um spark gerenciado dna plataforma **Databricks** ou por outros recursos que usam por debaixo dos panos o Spark, tais como **Synapse Analytics**, **Google Dataproc**, entre outros.
-
-
-
-
-
-## 6. Aspectos técnicos desse trabalho
-
-Nessa seção estão apresentado alguns aspectos técnicos na implementação do sistema proposto em um ambiente local. Primeiramente, são apresentados os aspectos técnicos relacionados a  escolha do da ferramenta **docker** como base na construção desse trabalho e as formas de orquestração desses containers que são utilizadas aqui.
+Nessa seção estão apresentado alguns aspectos técnicos na implementação do sistema proposto em um ambiente local. Primeiramente, são apresentados e justificados aspectos relacionados à escolha da ferramenta **docker** como base na construção desse trabalho e as formas de orquestração desses containers que são utilizadas aqui.
 
 Em seguida, será apresentada a estrutura desse projeto, explorando as pastas e arquivos que compõem o repositório **dm_v3_chain_explorer**.
 
-## 6.1. Dockerização dos serviços
+## 5.1. Dockerização dos serviços
 
 Conforme mencionado em seções anteriores, o docker foi usado amplamente na implementação desse tabalho. O seu uso pode ser embasado de acordo com 2 propósitos.
 
@@ -750,21 +732,21 @@ Conforme mencionado em seções anteriores, o docker foi usado amplamente na imp
 
   - Os serviços aqui deployados em containers e open source podem ser facilmente substituídos por serviços análogos em cloud, caso haja a necessidade de se construir um ambiente produtivo robusto, seguro e eficiente.
   
-## 6.2. Orquestração de serviços em containers
+## 5.2. Orquestração de serviços em containers
 
 Conforme mencionado, todos os serviços do sistema **dm_v3_chain_explorer** rodarão instanciados localmente em containers a partir de imagens docker. Então se faz necessário o uso de uma ferramenta de orquestração de execução desses containers. O docker tem 2 ferramentas para esse propósito: **docker-compose** e **docker-swarm**.
 
-### 6.2.1. Docker-compose
+### 5.2.1. Docker-compose
 
 O docker-compose é uma ferramenta que permite definir e executar aplicações multi-container. Com ele é possível definir os serviços que compõem a aplicação em um arquivo `docker-compose.yml` e então instanciar esses serviços em containers. O docker-compose é uma ferramenta de orquestração de containers para **ambiente local executando em um único nó**.
 
 É a ferramenta ideal para ambiente de desenvolvimento local e testes, onde é possível definir a stack de serviços que compõem a aplicação e instanciá-los em containers. Com o docker-compose é possível definir volumes, redes, variáveis de ambiente, entre outros, para cada serviço.
 
-### 6.2.2. Docker-swarm
+### 5.2.2. Docker-swarm
 
 O docker-swarm é uma ferramenta de orquestração de containers para **ambientes distribuídos**. Com ele é possível definir e instanciar serviços em múltiplos nós. O docker-swarm pode ser usado como ferramenta de orquestração de containers para ambientes de produção, onde é necessário alta disponibilidade, escalabilidade e tolerância a falhas. Existem outras ferramentas de orquestração de containers, como **Kubernetes**, **Mesos** e outras, que são mais robustas e possuem mais recursos que o docker-swarm. Porém, o docker-swarm é uma ferramenta simples e fácil de usar para orquestração de containers em ambientes distribuídos e default no docker.
 
-### 6.2.3. Docker-Compose e Docker Swarm nesse trabalho
+### 5.2.3. Docker-Compose e Docker Swarm nesse trabalho
 
 O docker compose foi usado para orquestrar diferentes serviços nesse trabalho em seu desenvolvimento. Por exemplo, as aplicações em python, desenvolvidas e encapsuladas em imagens python, e que capturam os dados da rede Ethereum, foram orquestradas em containers usando o docker-compose juntamente com o Kafka, Redis, Scylla, entre outros.
 
@@ -776,9 +758,9 @@ Por outro lado, a medida que o número de serviços aumentou, a necessidade de m
 
 2. Existem outras possibilidades de deploy e orquestração de containers que poderiam ter sido utilizadas aqui. Por exemplo o uso de clusters Kubernetes para orquestração de containers e o uso de operadores para deploy de serviços como Kafka, Spark, Hadoop, entre outros, baseados em Helm Charts. O uso de Kubernetes traria benefícios como autoescalonamento, alta disponibilidade, entre outros. Porém, a escolha do Docker Swarm foi feita por simplicidade e configuração em ambiente local, bastando o docker instalado.
 
-## 6.3. Estrutura do projeto
+## 5.3. Estrutura do projeto
 
-### 4.3.1. Pasta Docker
+### 5.3.1. Pasta Docker
 
 Na pasta `/docker`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidas as imagens docker que compõem esse trabalho. Elas estão organizadas de acordo com suas respectivas camadas, sendo essas `app_layer`, `fast_layer`, `batch_layer`, e `ops_layer`.
 
@@ -787,7 +769,6 @@ Na pasta `/docker`, localizada na raiz do repositório **dm_v3_chain_explorer** 
 - As imagens definidas nos diretórios **fast_layer**, **batch_layer** e **ops_layer** se justificam por 2 motivos:
 
   1. Imagens construídas uma no topo da outra, com configurações adicionais, como é o caso do Hadoop, Hive e Spark. vale dar o crédito que as imagens definidas para o Hadoop, Hive e Spark foram **fortemente baseadas nos repositórios Big Data Europe** para o [Hadoop](https://github.com/big-data-europe/docker-hadoop) e o [Hive](https://github.com/big-data-europe/docker-hive).
-
 
   2. São imagens construídas no topo de serviços pré-definidos, porém com configurações adicionais necessárias para execução desse sistema. É o caso do **Scylla** e do **Postgres** que adicionam **scripts sql/cql** a serem executados no entrypoint da imagem e que criam databases/keyspaces, users e tabelas. Ou do Kafka Connect que adiciona plugins para conexão com diferentes sistemas no topo da imagem base do Kafka Connect da **Confluent**.
 
@@ -828,7 +809,7 @@ docker
 
 Com esses arquivos é possível fazer o build das imagens que compõem esse trabalho.
 
-### 6.3.2. Pasta Services
+### 5.3.2. Pasta Services
 
 Na pasta `/services`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos os serviços que compõem esse trabalho. Esses serviços estão organizados de acordo com a camada a que pertencem, sendo essas camadas `fast`, `batch`, `app` e `ops`.
 
@@ -850,7 +831,7 @@ services
 
 Os serviços estão definidos em arquivos `docker-compose.yml` e `docker-swarm.yml` para orquestração de containers em ambiente local e distribuído, respectivamente. E na pasta `/services` estão organizados de acordo com a camada a que pertencem.
 
-### 6.3.3. Arquivo Makefile
+### 5.3.3. Arquivo Makefile
 
 Para simplificar esse processo de execução de comandos docker, de build e deploy de serviços, publicação de imagens, entre outros, foi definido um arquivo chamado [Makefile](https://www.gnu.org/software/make/manual/make.html) na raíz desse projeto. O Makefile é um componente central, para que comandos sejam reproduzidos de maneira simples. no arquivo `/Makefile`, na base do repositório **dm_v3_chain_explorer** é possivel visualizar os comandos definidos.
 
@@ -858,7 +839,7 @@ Para simplificar esse processo de execução de comandos docker, de build e depl
 
 **Observação**: Essa ferramenta vem previamante instalada em sistemas operacionais Linux. Caso não possua o make instalado e tenha dificuldades para instalá-lo, uma opção não tão custosa é abrir o arquivo e executar os comandos docker manualmente.
 
-### 6.3.4. Pasta Scripts
+### 5.3.4. Pasta Scripts
 
 Na pasta `/scripts`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos scripts shell úteis para automação de tarefas mais complexas.
 
@@ -868,11 +849,11 @@ Na pasta `/scripts`, localizada na raiz do repositório **dm_v3_chain_explorer**
 
 A chamada para execução desses scripts se dá também pelo uso de comandos definidos no `Makefile`.
 
-### 6.3.5. Pasta Mnt
+### 5.3.5. Pasta Mnt
 
 Na pasta `/mnt`, localizada na raiz do repositório **dm_v3_chain_explorer** estão definidos volumes que são montados em containers para persistência de dados localmente.
 
-### 6.3.6. Estrutura geral do projeto
+### 5.3.6. Estrutura geral do projeto
 
 ```bash
 dm_v3_chain_explorer
@@ -893,8 +874,7 @@ dm_v3_chain_explorer
   └── README.md
 ```
 
-
-## 7. Reprodução do sistema `dm_v3_chain_explorer`
+## 6. Reprodução do sistema `dm_v3_chain_explorer`
 
 Nessa seção está definido o passo-a-passo para reprodução do sistema **dm_v3_chain_explorer** em ambiente local, um dos requisitos deste trabalho. A reprodutibilidade é importante pelos seguintes motivos:
 
@@ -908,24 +888,25 @@ Ao final é apresentada uma maneira de deployar este em um ambiente distribuído
 
 **Observação**: Um fator crucial e de maior dificuldade para reprodução desse sistema é a **necessidade de API Keys** para interagir com a rede blockchain por meio de um provedor Node-as-a-Service.
 
-## 7.1. Requisitos
+## 6.1. Requisitos
 
 Para reprodução em ambiente local, é necessário que os seguintes requisitos sejam satisfeitos.
 
-### 7.1.1. Requisitos de hardware
+### 6.1.1. Requisitos de hardware
 
 É recomendado possuir uma máquina com:
 
-- 16 GB memória RAM de no mínimo
+- Mínimo de 16 GB memória RAM;
 - Processador com 4 núcleos.
 
 Pelo número de containers que serão instanciados, é necessário que a máquina tenha recursos de hardware suficientes para execução desses containers.
 
-### 7.1.2. Sistema Operacional
+### 6.1.2. Sistema Operacional
 
-Esse sistema foi desenvolvido e testado em ambiente Linux em Ubuntu 22.04. Portanto, é recomendado que para reprodução desse o sistema operacional seja Linux.
+Esse sistema foi desenvolvido e testado em **kernel Linux, distro Ubuntu 22.04**. Portanto, é recomendado que para reprodução desse o sistema operacional seja Linux.
+Algumas das ferramentas usadas nesse trabalho, como o **Makefile**, são nativas do Linux. O docker também é mais eficiente em ambiente Linux, por compartilhar o mesmo kernel.
 
-### 7.1.3. Docker Instalado
+### 6.1.3. Docker Instalado
 
 Para reproduzir esse sistema em ambiente local, é necessário ter o docker instalado e configurado. Para verificar se o docker está instalado e configurado adequadamente, execute os comandos abaixo.
 
@@ -939,7 +920,7 @@ A saída esperada é algo como:
 
 Caso não esteja instalado, siga as instruções de instalação no [site oficial do docker](https://docs.docker.com/engine/install/).
 
-### 7.1.4.  Docker Compose e Docker Swarm instalados
+### 6.1.4.  Docker Compose e Docker Swarm instalados
 
 As ferramentas de orquestração de containers **Docker Compose** e **Docker Swarm** são necessárias para deployar os serviços em ambiente local e distribuído, respectivamente. Contudo elas são instaladas junto com o docker. Para verificar se estão instaladas adequadamente, execute os comandos abaixo.
 
@@ -959,7 +940,7 @@ A saída esperada é algo como:
 
 <img src="./img/reproduction/3_swarm_installed.png" alt="docker-swarm-version" width="80%"/>
 
-### 7.1.5.  Git instalado
+### 6.1.5.  Git instalado
 
 O git é necessário para que o leitor possa clonar os repositórios que compõem esse trabalho. Para verificar se o git está instalado, execute o comando abaixo.
 
@@ -969,7 +950,7 @@ git --version
 
 <img src="./img/reproduction/4_git_installed.png" alt="docker-swarm-version" width="80%"/>
 
-### 7.2. Setup do ambiente local
+### 6.2. Setup do ambiente local
 
 Esse trabalho é composto por multiplos repositórios, conforme mencionado. O 1º passo para reprodução desse sistema é clonar o repositório base, definido como **dm_v3_chain_explorer**.
 
@@ -988,7 +969,7 @@ make create_dm_v3_explorer_structure
 
 O comando acima clonará todos os repositórios de aplicação necessários para dentro da pasta `/docker`.
 
-### 7.2.1.  Pull e Build das imagens docker
+### 6.2.1.  Pull e Build das imagens docker
 
 No docker é possível construir imagens a partir de um arquivo `Dockerfile` e depois fazer o build delas. Ou ainda, é possível fazer o pull de imagens já construídas e disponíveis no docker hub entre outros repositórios de imagens.
 
@@ -1014,21 +995,21 @@ Porém, **para executar o sistema em um ambiente distribuído usando o Docker Sw
 make publish
 ```
 
-## 7.3. Reprodução do sistema usando o Docker Compose
+## 6.3. Reprodução do sistema usando o Docker Compose
 
-Caso o leitor queira deployar o sistema em ambiente local, single-node, usando o **docker-compose**, os passos a seguir devem ser seguidos.
+Caso o leitor queira deployar o sistema em **ambiente local**, **single-node**, usando o **docker-compose** como orquestrador, os passos a seguir devem ser seguidos.
 
-## 7.3.1. Observação sobre execução usando Docker Compose
+## 6.3.1. Observação sobre execução usando Docker Compose
 
-A execução de todas as camadas de serviço em uma máquina local pode ser pesada, esgotando-se os recursos de hardware disponíveis. Por tanto que além dos requisitos citados, o leitor execute as camadas de serviço de forma separada, conforme descrito abaixo.
+A execução de todas as camadas de serviço em uma máquina local será, esgotando-se os recursos de hardware disponíveis. Portanto que além dos requisitos citados, o leitor execute as camadas de serviço de forma separada, conforme descrito abaixo.
 
 - Camada de operações;
 - Camada Fast e camada App;
 - Camada Batch.
 
-Para que fosse possível executar todos os serviços em conjunto, foi então necessária a construção de um **cluster Swarm distribuído**.
+Esse foi o principal motivador para divisão de serviços em camadas e criação de um Cluster Swarm.
 
-## 7.3.2.  Deploy de serviços da camada de Operações
+## 6.3.2.  Deploy de serviços da camada de Operações
 
 Conforme visto na seção de arquitetura técnica, a **camada ops** é composta por serviços que realizam telemetria dos recursos de infraestrutura do **dm_v3_chain_explorer**. Ela é composta dos seguintes serviços:
 
@@ -1066,8 +1047,7 @@ A interface do Grafana pode ser acessada no navegador, digitando o endereço `ht
 
 <img src="./img/reproduction/8_grafana_container.png" alt="grafana_container" width="80%"/>
 
-
-## 7.3.4.  Deploy de serviços da camada Fast
+## 6.3.4.  Deploy de serviços da camada Fast
 
 A **camada fast** é composta pelos seguintes serviços, deployados em containers:
 
@@ -1100,7 +1080,7 @@ Quando os serviços estiverem saudáveis, seguintes endpoints passam a estar dis
 
 Os conectores do Kafka Connect podem ser gerenciados tanto pelo Control Center quanto por interações com sua API Rest disponibilizada. O mesmo vale para o Schema Registry. No Makefile estão definidos comandos para interação com esses serviços.
 
-## 7.3.5.  Deploy de serviços da camada de Aplicações
+## 6.3.5.  Deploy de serviços da camada de Aplicações
 
 A **camada de aplicação** é composta pelos seguintes serviços:
 
@@ -1119,11 +1099,11 @@ make deploy_dev_app && make watch_dev_app
 
 Com os serviços da camada **fast** e **app** deployados irá começar o fluxo de captura e ingestão de dados. Na seção seguinte será mostrado como visualizar esse fluxo em funcionamento.
 
-## 7.4. Visualização do processo de captura e ingestão de dados
+## 6.4. Visualização do processo de captura e ingestão de dados
 
 Com os serviços das camadas **fast** e **app** deployados é possível visualizar o sistema de captura e ingestão em funcionamento. Seguem abaixo os passos para visualização do processo de captura e ingestão de dados.
 
-### 7.4.1. Job Spark Streaming `api_keys_log_processor`
+### 6.4.1. Job Spark Streaming `api_keys_log_processor`
 
 Na camada de aplicação foi deployado o job de spark streaming `api_keys_log_processor`. Nas seções anteriores foi detalhado o funcionamento desse Job. Em resumo ele consome o tópico de logs e monitora o consumo de API Keys, registrando esse consumo em uma tabela no ScyllaDB.
 
@@ -1133,7 +1113,7 @@ Para visualizar o Job executando na Spark UI, acesse o endereço `http://localho
 
 <img src="./img/reproduction/11_spark_streaming_app.png" alt="Job Spark Streaming Monitoramento de consumode API Keys" width="90%"/>
 
-### 7.4.2. Visualização de consumo diário de API Keys no ScyllaDB
+### 6.4.2. Visualização de consumo diário de API Keys no ScyllaDB
 
 O Job de Spark Streaming `api_keys_log_processor` monitora o consumo de API Keys e atualiza a tabela `api_keys_node_providers` no ScyllaDB. Para visualizar o consumo diário de API Keys, execute o comando abaixo.
 
@@ -1147,7 +1127,7 @@ make query_api_keys_consumption_table
 
 Será possivel acompanhar o consumo de API Keys em tempo real, conforme os dados são capturados e processados pelo Job de Spark Streaming `api_keys_log_processor`.
 
-### 7.4.3. Semáforo para consumo de API Keys no Redis
+### 6.4.3. Semáforo para consumo de API Keys no Redis
 
 Abaixo é mostrado o controle de consumo de API Keys no Redis.
 
@@ -1162,7 +1142,7 @@ Na figura abaixo é possível visualizar esse semáforo de API Keys no Redis.
 
 **Observação**: Foi criado um job específico para coletar com frequência de 500 ms as API Keys registradas no redis e juntá-las em uma só chave, chamada **api_keys_semaphore**. Assim o leitor pode visualizar melhor o semáforo de API Keys em funcionamento, conforme a figura acima.
 
-### 7.4.4. Dados sendo exibidos pelo Kafka Control Center
+### 6.4.4. Dados sendo exibidos pelo Kafka Control Center
 
 Com o mecanismo de captura de dados e de gerenciamento de API Keys para compartilhamento entre jobs funcionando os dados passam a fluir pelos tópicos do Kafka.
 
@@ -1171,10 +1151,9 @@ Abaixo é possível ver uma amostra das mensagens sendo enviadas para o tópico 
 <img src="./img/reproduction/14_data_flowing_through_topic.png" alt="Streaming de dados em tópico Kafka" width="90%"/>
 <hr>
 
-## 7.3.7.  Deploy de serviços da camada Batch
+## 6.5.  Deploy de serviços da camada Batch
 
-
-## 7.3.6. Deploy de conectores Kafka Connect
+## 6.6. Deploy de conectores Kafka Connect
 
 Os conectores Kafka Connect são responsáveis por integrar o Kafka com outros sistemas, como o HDFS e o S3. Para deploy dos conectores, execute o comando abaixo.
 
@@ -1184,40 +1163,36 @@ make deploy_dev_connectors
 
 <img src="./img/reproduction/15_lake_connectors_compose_ps.png" alt="Conectores Kafka Connect" width="90%"/>
 
-
-
-## 7.4. Reprodução do sistema usando o Docker Swarm
+## 6.4. Reprodução do sistema usando o Docker Swarm
 
 Comando para iniciação de cluster
 
 Comandos para deploy de serviços
 
-
-
-## 8. Conclusão
+## 7. Conclusão
 
 Toda parte teórica e prática planejada para esse trabalho foi implementada. Demonstrações do workflow de captura descritos nesse documento serão feitas na apresentação, de forma que os avaliadores possam entender melhor o sistema **dm_v3_chain_explorer**, aqui proposto.
 
 Assim os avaliadores podem colocar suas dúvidas sobre o trabalho e também dúvidas técnicas sobre as tecnologias usadas, de maneira a avaliar da melhor forma o conhecimento desse autor nos campos relacionados a engenharia de dados. É dificil mensurar o quanto conhecimento em tecnologia está contido nesse trabalho. A construção de uma plataforma de dados para captura e ingestão de dados.
 
-## 9. Melhorias futuras
+## 8. Melhorias futuras
 
 Esse trabalho, após ser submetido continuará a ser desenvolvido, visto as possibilidades que ele apresenta, mesmo que seja apenas no campo de estudos e desenvolvimento de hard skills.
 Seguem abaixo listadas algumas dessa melhorias
 
-### 9.1. Aplicações downstream para consumo dos dados
+### 8.1. Aplicações downstream para consumo dos dados
 
 Está descrito nesse documento, somente o fluxo de captura, ingestão e algum processamento para obter dados em tempo real de uma blockchain do tipo EVM. Na apresentação serão demonstradas algumas aplicações downstream que evoluídas podem ter diversas aplicabilidades.
 
-### 9.2. Melhoria em aplicações do repositório onchain-watchers
+### 8.2. Melhoria em aplicações do repositório onchain-watchers
 
 Como será apresentado, esse repositório tem aplicações que usam dados das transações ingestadas para obter dados de estado provenientes de contratos inteligentes. Para isso uma arquitetura voltada a eventos precisa ser implementada. Por exemplo, quando uma transação de swap de token WETH no protocolo DEFI Uniswap é feito, um evento é disparado para que dados da piscina de liquidez e preço dos tokens sejam ingestados no sistema.
 
-### 9.3. Troca do uso de provedores Blockchain Node-as-a-Service
+### 8.3. Troca do uso de provedores Blockchain Node-as-a-Service
 
 Conforme visto nesse trabalho o uso de provedores node-as-a-service tais como Infura e Alchemy limitam as requisições http para request dos dados. Então, a troca desses por nós proprietários é um passo importante para evolução do sistema, ao lidar com redes mais escalaveis do tipo EVM.
 
-### 9.4. Evolução dos serviços de um ambiente local para ambiente produtivo
+### 8.4. Evolução dos serviços de um ambiente local para ambiente produtivo
 
 Conforme visto ao longo desse trabalho, todos os serviços usados, com exceção das aplicações construídas propriamente dita para esse sistema, tem versões totalmente gerenciadas em provedores de Cloud. O Kafka por exemplo pode ser substituído pelo Event Hub ou Amazon MSK ou Clonfluent Cloud. O data lake hadoop pode ser substituído por data lakes em recursos do tipo object storages, tais como S3 ou Azure ADLS. O Hive e o Spark podem ser substituídos pelo Delta Lake + Spark do Databricks. E assim por diante.
 Os containers de aplicação podem ser migrados para executarem em recursos tais com EKS da AWS ou o AKS da Azure.

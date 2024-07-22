@@ -1,9 +1,9 @@
 version: '3'
 
+
 ##########################################################################################
 x-common-config-default: &conf_default
-  networks:
-    - layer_fast_prod
+  image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
   env_file:
     - .secrets.conf
 
@@ -15,72 +15,96 @@ x-common-restart-default: &common_restart_policy
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
+x-common-networks: &common_networks
+  networks:
+    - layer_fast_prod
+
 x-common-deploy-master: &common_deploy_master
+  <<: *common_networks
   deploy:
     <<: *common_restart_policy
     placement:
       constraints: [node.hostname == dadaia-desktop]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
+  <<: *common_networks
   deploy:
     <<: *common_restart_policy
     placement:
       constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 services:
 
-  # topics_creator:
-  #   image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
-  #   <<: *conf_default
-  #   restart: on-failure
-  #   entrypoint: "python -u 0_topics_creator.py configs/topic_config.ini"
-  #   deploy:
-  #     restart_policy:
-  #       condition: on-failure
-  #     placement:
-  #       constraints: [node.hostname == dadaia-desktop]
-
-  block_clock:
-    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+  mined_blocks_crawler:
     <<: *conf_default
-    entrypoint: "python -u 1_block_clock.py configs/producers.ini --tx_threshold 100"
+    entrypoint: "python -u 1_mined_blocks_crawler.py configs/producers.ini"
     environment:
-      KEY_VAULT_NODE_SECRET: 'alchemy-api-key-1'
+      NETWORK: mainnet
+      AKV_NAME: 'DataMasterNodeAsAService'
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+      KAFKA_BROKERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      TOPIC_LOGS: 'mainnet.application.logs'
+      TOPIC_BLOCK_METADATA: 'mainnet.mined.block.metadata'
+      TOPIC_TX_HASH_IDS: 'mainnet.mined.txs.hash.id'
+      CLOCK_FREQUENCY: 1
+      #TXS_PER_BLOCK: 16
+      TOPIC_TX_HASH_IDS_PARTITIONS: 8
+    <<: *common_deploy_master
 
-  tx_processor:
-    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+  mined_txs_crawler:
     <<: *conf_default
     environment:
-      KEY_VAULT_NODE_SECRET: 'infura-api-key-1-12' 
-    entrypoint: "python -u 2_raw_transactions.py configs/producers.ini configs/consumers.ini configs/general_conf.ini"
+      NETWORK: mainnet
+      AKV_NAME: 'DataMasterNodeAsAService'
+      AKV_SECRET_NAMES: 'infura-api-key-1-15'
+      REDIS_HOST: 'redis'
+      REDIS_PORT: '6379'
+      SCYLLA_HOST: 'scylladb'
+      SCYLLA_PORT: '9042'
+      SCYLLA_KEYSPACE: 'operations'
+      SCYLLA_TABLE: 'api_keys_node_providers'
+      KAFKA_BROKERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
+      TOPIC_LOGS: 'mainnet.application.logs'
+      TOPIC_TX_HASH_IDS: 'mainnet.mined.txs.hash.id'
+      GROUP_ID: 'cg_tx_processor_per_id'
+      TOPIC_TX_CONTRACT_DEPLOY: 'mainnet.mined.txs.contract.deploy'
+      TOPIC_TX_CONTRACT_CALL: 'mainnet.mined.txs.contract.call'
+      TOPIC_TX_TOKEN_TRANSFER: 'mainnet.mined.txs.token.transfer'
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    entrypoint: "python -u 2_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
+    networks:
+      - layer_fast_prod
     deploy:
-      replicas: 2
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-desktop]
+      replicas: 10
   
-
-  tx_classifier:
-    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
-    <<: *conf_default
-    entrypoint: "python -u 3_transaction_classifier.py configs/producers.ini configs/consumers.ini"
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-desktop]
-
 
   api_keys_log_processor:
     image: marcoaureliomenezes/dm-spark-streaming-jobs:1.0.0
-    <<: *conf_default
-    entrypoint: "sh /app/shell/0_api_key_monitor.sh"
-    deploy:
-      restart_policy:
-        condition: on-failure
-      placement:
-        constraints: [node.hostname == dadaia-desktop]
+    environment:
+      SPARK_MASTER_URL: spark://spark-master:7077
+      TOTAL_EXECUTOR_CORES: 2
+      MEMORY_OVERHEAD: 1G
+      KAFKA_BROKERS: broker-1:29092,broker-2:29093,broker-3:29094
+      TOPIC_SUBSCRIBE: 'mainnet.application.logs'
+      CONSUMER_GROUP: 'cg_api_keys_log_processor'
+      SCYLLA_HOST: 'scylladb'
+      SCYLLA_PORT: '9042'
+      SCYLLA_KEYSPACE: 'operations'
+      SCYLLA_TABLE: 'api_keys_node_providers'
+      STARTING_OFFSETS: 'earliest'
+      MAX_OFFSETS_PER_TRIGGER: 3000
+    entrypoint: "sh /app/shell/0_api_key_monitor.sh /app/python/0_api_key_monitor.py"
+    <<: *common_deploy_worker_1
 
+
+  redis_data_collector:
+    <<: *conf_default
+    environment:
+      REDIS_HOST: 'redis'
+      REDIS_PORT: '6379'
+      FREQUENCY: 0.5
+    entrypoint: "python -u n_semaphore_collect.py"
+    <<: *common_deploy_master
 networks:
   layer_fast_prod:
     external: true

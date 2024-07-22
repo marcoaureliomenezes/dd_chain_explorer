@@ -46,7 +46,7 @@ services:
 
 
   broker:
-    image: confluentinc/cp-server:7.5.0
+    image: confluentinc/cp-server:${KAFKA_VERSION}
     hostname: broker
     container_name: broker
     restart: on-failure
@@ -84,7 +84,7 @@ services:
       target: /etc/kafka/secrets
 
   schema-registry:
-    image: confluentinc/cp-schema-registry:7.5.0
+    image: confluentinc/cp-schema-registry:${SCHEMA_REGISTRY_VERSION}
     hostname: schema-registry
     container_name: schema-registry
     depends_on:
@@ -193,6 +193,8 @@ services:
   scylladb:
     build: ../../docker/fast_layer/scylladb
     container_name: scylladb
+    ports:
+      - "9042:9042"
     restart: always
     <<: *common-network
     volumes:
