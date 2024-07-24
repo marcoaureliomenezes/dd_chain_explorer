@@ -65,8 +65,8 @@ if __name__ == "__main__":
 
   SPARK_URL = os.getenv("SPARK_MASTER_URL")
   KAFKA_CLUSTER = os.getenv("KAFKA_BROKERS")
-  TOPIC_SUBSCRIBE = os.getenv("TOPIC_SUBSCRIBE")
-  CONSUMER_GROUP = os.getenv("CONSUMER_GROUP")
+  TOPIC_SUBSCRIBE = os.getenv("TOPIC_LOGS")
+  CONSUMER_GROUP = os.getenv("CG_API_KEY_CONSUME")
   SCYLLA_HOST = os.getenv("SCYLLA_HOST")
   SCYLLA_PORT = os.getenv("SCYLLA_PORT")
   SCYLLA_KEYSPACE = os.getenv("SCYLLA_KEYSPACE")

@@ -16,7 +16,7 @@ services:
     ports:
       - 9090:9090
     volumes:
-      - ./conf-prometheus-compose.yml:/etc/prometheus/prometheus.yml
+      - ./conf/prom-compose.yml:/etc/prometheus/prometheus.yml
       - prometheus-dev-data:/prometheus
     healthcheck:
       test: [ "CMD", "nc", "-z", "localhost", "9090" ]

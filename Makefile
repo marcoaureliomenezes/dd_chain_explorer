@@ -26,17 +26,17 @@ build_fast:
 	docker build -t marcoaureliomenezes/dm-kafka-connect:$(current_branch) ./docker/fast_layer/kafka-connect
 
 build_batch:
-	docker build -t marcoaureliomenezes/dm-hadoop-base:$(current_branch) ./docker/batch_layer/hadoop/base
-	docker build -t marcoaureliomenezes/dm-hadoop-namenode:$(current_branch) ./docker/batch_layer/hadoop/namenode
-	docker build -t marcoaureliomenezes/dm-hadoop-datanode:$(current_branch) ./docker/batch_layer/hadoop/datanode
-	docker build -t marcoaureliomenezes/dm-hadoop-resourcemanager:$(current_branch) ./docker/batch_layer/hadoop/resourcemanager
-	docker build -t marcoaureliomenezes/dm-hadoop-nodemanager:$(current_branch) ./docker/batch_layer/hadoop/nodemanager
-	docker build -t marcoaureliomenezes/dm-hadoop-historyserver:$(current_branch) ./docker/batch_layer/hadoop/historyserver
-	docker build -t marcoaureliomenezes/dm-postgres:$(current_branch) ./docker/batch_layer/postgres
-	docker build -t marcoaureliomenezes/dm-hive-base:$(current_branch) ./docker/batch_layer/hive/base
-	docker build -t marcoaureliomenezes/dm-hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
-	docker build -t marcoaureliomenezes/dm-hive-server:$(current_branch) ./docker/batch_layer/hive/server
-	docker build -t marcoaureliomenezes/dm-hue-webui:$(current_branch) ./docker/batch_layer/hue
+	docker build -t marcoaureliomenezes/hadoop-base:$(current_branch) ./docker/batch_layer/hadoop/base
+	# docker build -t marcoaureliomenezes/dm-hadoop-namenode:$(current_branch) ./docker/batch_layer/hadoop/namenode
+	# docker build -t marcoaureliomenezes/dm-hadoop-datanode:$(current_branch) ./docker/batch_layer/hadoop/datanode
+	# docker build -t marcoaureliomenezes/dm-hadoop-resourcemanager:$(current_branch) ./docker/batch_layer/hadoop/resourcemanager
+	# docker build -t marcoaureliomenezes/dm-hadoop-nodemanager:$(current_branch) ./docker/batch_layer/hadoop/nodemanager
+	# docker build -t marcoaureliomenezes/dm-hadoop-historyserver:$(current_branch) ./docker/batch_layer/hadoop/historyserver
+	# docker build -t marcoaureliomenezes/dm-postgres:$(current_branch) ./docker/batch_layer/postgres
+	docker build -t marcoaureliomenezes/hive-base:$(current_branch) ./docker/batch_layer/hive/base
+	# docker build -t marcoaureliomenezes/dm-hive-metastore:$(current_branch) ./docker/batch_layer/hive/metastore
+	# docker build -t marcoaureliomenezes/dm-hive-server:$(current_branch) ./docker/batch_layer/hive/server
+	# docker build -t marcoaureliomenezes/dm-hue-webui:$(current_branch) ./docker/batch_layer/hue
 
 build_ops:
 	docker build -t marcoaureliomenezes/dm-prometheus:$(current_branch) ./docker/ops_layer/prometheus
@@ -75,49 +75,46 @@ publish_ops:
 ###################    COMANDOS DE DEPLOY DE CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ########################################
 
 deploy_dev_fast:
-	docker-compose -f services/transactional/compose_fast.yml up -d --build
+	docker compose -f services/transactional/compose_fast.yml up -d --build
 
 deploy_dev_app:
-	docker-compose -f services/transactional/compose_apps.yml up -d --build
+	docker compose -f services/transactional/compose_apps.yml up -d --build
 
 deploy_dev_batch:
-	docker-compose -f services/data_lake/compose_hadoop_hive.yml up -d --build
+	docker compose -f services/data_lake/compose_hadoop_hive.yml up -d --build
 
 deploy_dev_ops:
-	docker-compose -f services/operations/compose_monitoring.yml up -d --build
+	docker compose -f services/operations/compose_monitoring.yml up -d --build
 	
 ##################################################################################################################################
 #########################    COMANDOS DE STOP CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    #######################################
 
 stop_dev_fast:
-	docker-compose -f services/fast/cluster_compose.yml down
+	docker compose -f services/transactional/compose_fast.yml down
 
 stop_dev_app:
-	docker-compose -f services/app/cluster_compose.yml down
+	docker compose -f services/transactional/compose_apps.yml down
 
 stop_dev_batch:
-	docker-compose -f services/batch/cluster_compose.yml down
+	docker compose -f services/data_lake/compose_hadoop_hive.yml down
 
 stop_dev_ops:
-	docker-compose -f services/ops/cluster_compose.yml down
+	docker compose -f services/operations/compose_monitoring.yml down
 
 ##################################################################################################################################
 #########################    COMANDOS DE WATCH CONTAINERS EM AMBIENTE DE DESENVOLVIMENTO    ######################################
 
 watch_dev_fast:
-	watch docker-compose -f services/transactional/compose_fast.yml ps
+	watch docker compose -f services/transactional/compose_fast.yml ps
 
 watch_dev_app:
-	watch docker-compose -f services/app/cluster_compose.yml ps
+	watch docker compose -f services/transactional/compose_apps.yml ps
 
 watch_dev_batch:
-	watch docker-compose -f services/batch/cluster_compose.yml ps
+	watch docker compose -f services/data_lake/compose_hadoop_hive.yml ps
 
 watch_dev_ops:
-	watch docker-compose -f services/ops/cluster_compose.yml ps
-
-watch_dev_batch:
-	watch docker-compose -f services/batch/cluster_compose.yml ps
+	watch docker compose -f services/operations/compose_monitoring.yml ps
 
 
 ##################################################################################################################################
@@ -178,7 +175,7 @@ connect_show_connectors:
 	http :8083/connector-plugins -b
 
 deploy_sink_blocks_hdfs:
-	http PUT :8083/connectors/block-metadata-hdfs-sink/config @services/fast/connectors/hdfs-sink/block-metadata.json -b
+	http PUT :8083/connectors/block-metadata-hdfs-sink/config @connectors/hdfs-sink/block-metadata.json -b
 
 stop_sink_blocks_hdfs:
 	http DELETE :8083/connectors/block-metadata-hdfs-sink -b
@@ -189,12 +186,31 @@ status_sink_blocks_hdfs:
 pause_sink_blocks_hdfs:
 	http PUT :8083/connectors/block-metadata-hdfs-sink/pause -b
 
+
 ##################################################################################################################################
+
 deploy_sink_contract_call_hdfs:
-	http PUT :8083/connectors/contract-call-hdfs-sink/config @services/fast/connectors/hdfs-sink/contract-call-txs.json -b
+	http PUT :8083/connectors/contract-call-hdfs-sink/config @connectors/hdfs-sink/contract-call-txs.json -b
 
 status_sink_contract_call_hdfs:
 	http :8083/connectors/contract-call-hdfs-sink/status -b
 
 stop_sink_contract_call_hdfs:
 	http DELETE :8083/connectors/contract-call-hdfs-sink -b
+
+pause_sink_contract_call_hdfs:
+	http PUT :8083/connectors/contract-call-hdfs-sink/pause -b
+
+##################################################################################################################################
+
+deploy_sink_token_transfer_hdfs:
+	http PUT :8083/connectors/token-transfer-hdfs-sink/config @connectors/hdfs-sink/token-transfer-txs.json -b
+
+status_sink_token_transfer_hdfs:
+	http :8083/connectors/token-transfer-hdfs-sink/status -b
+
+stop_sink_token_transfer_hdfs:
+	http DELETE :8083/connectors/token-transfer-hdfs-sink -b
+
+pause_sink_token_transfer_hdfs:
+	http PUT :8083/connectors/token-transfer-hdfs-sink/pause -b

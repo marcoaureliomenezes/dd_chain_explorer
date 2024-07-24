@@ -3,7 +3,7 @@
   "connector.class": "io.confluent.connect.hdfs3.Hdfs3SinkConnector",
   "tasks.max": "1",
   "topics": "mainnet.mined.block.metadata",
-  "confluent.topic.bootstrap.servers": "broker-1:29092",
+  "confluent.topic.bootstrap.servers": "broker:29092",
   "confluent.topic.replication.factor": "1",
   "hdfs.url": "hdfs://namenode:9000",
   "hadoop.conf.dir": "/etc/hadoop/conf",
@@ -14,7 +14,11 @@
   "rotate.interval.ms": "60000",
   "key.converter": "org.apache.kafka.connect.storage.StringConverter",
   "value.converter": "io.confluent.connect.avro.AvroConverter",
+  "format.class":"io.confluent.connect.hdfs3.parquet.ParquetFormat",
+  "partitioner.class":"io.confluent.connect.storage.partitioner.HourlyPartitioner",
   "value.converter.schema.registry.url": "http://schema-registry:8081",
-  "value.converter.schemas.enable": "false"
-  
+  "locale": "pt_BR",
+  "path.format": "YYYY-MM-dd-HH",
+  "timezone": "America/Sao_Paulo"
+
 }
