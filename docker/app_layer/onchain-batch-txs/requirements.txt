@@ -1,0 +1,10 @@
+pyarrow
+pandas
+fastparquet
+pyspark
+requests
+delta-spark==3.1.0
+pyiceberg[s3fs,hive]
+hdfs
+azure-identity
+azure-keyvault
