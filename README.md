@@ -39,9 +39,9 @@ Blockchains públicas são redes P2P onde circula uma grande quantidade de capit
 
 ## 1. Introdução
 
-Para uma melhor compreensão do trabalho, é necessário uma breve introdução sobre blockchain e contratos inteligentes. Para não desviar do foco do trabalho essa introdução está subdividida em perguntas que ao final serão contextualizadas com o trabalho.
+Para uma melhor compreensão do trabalho, é necessário uma breve introdução sobre blockchain e contratos inteligentes. Devido a extensão e complexidade do tema, essa introdução se concentra em abordar conceitos e características relevantes para o trabalho aqui proposto.
 
-**Definição de Blockchain**: Rede Peer-to-peer na qual usuários transacionam entre si sem a necessidade de um intermediário. A tecnologia é baseada em 2 componentes, a **estrutura de dados** e a **rede P2P**.
+**Definição de Blockchain**: `Rede Peer-to-peer na qual usuários transacionam entre si sem a necessidade de um intermediário`. A tecnologia é baseada em 2 componentes, a **estrutura de dados** e a **rede P2P**, explorados abaixo.
 
 ### 1.1. Estrutura de dados blockchain
 
@@ -49,16 +49,16 @@ Estrutura de dados de blocos encadeados, dando origem ao termo **blockchain**. U
 
 - Metadados do bloco, tais como número, hash, timestamp, endereço de quem o minerou, etc;
 - Hash do bloco anterior (dá consistência ao blockchain);
-- Lista de transações feitas por usuários da rede;
+- Lista de transações feitas por usuários da rede.
 
 O propósito de uma rede blockchain é permitir que usuários transacionem entre si. Essas transações só serão de fato registradas quando estiverem contidas em um bloco minerado.
 
 #### Em termos práticos e aplicado a esse trabalho
 
-- A estrutura de dados blockchain é a fonte de dados;
-- Para que os dados sejam capturados as seguintes características são fatores importantes, pois ditarão o volume e a velocidade de dados a serem capturados.
-  - **Frequência de mineração de blocos**: Tempo médio que uma rede blockchain leva para minerar um bloco.
-  - **Tamanho dos blocos em bytes**: Limite de tamanho em bytes que um bloco pode ter.
+1. A estrutura de dados blockchain é a fonte de dados;
+2. Para que os dados sejam capturados as seguintes características são fatores importantes, pois ditarão o volume e a velocidade de dados a serem capturados:
+    - **Frequência de mineração de blocos**: Tempo médio que uma rede blockchain leva para minerar um bloco;
+    - **Tamanho dos blocos em bytes**: Limite de tamanho em bytes que um bloco pode ter.
 
 ### 1.2. Rede Peer-to-peer (P2P) Blockchain
 
@@ -68,48 +68,54 @@ O propósito de uma rede blockchain é permitir que usuários transacionem entre
 
 #### Em termos práticos e aplicado a esse trabalho
 
-- Dados de blockchains públicas são públicos porque qualquer pessoa pode fazer parte da rede e todos os nós possuem uma cópia sincronizada da estrutura de dados blockchain.
-- Para se obter os dados é necessário ter acesso a um nó da rede blockchain. Para esse caso existem 2 possibilidades:
-  - **Possuir um nó próprio**: Fazer o deploy de um nó na rede blockchain, o que requer requisitos de hardware, software e rede.
-  - **Usar um nó de terceiros**: Usar provedores de Node-as-a-Service (NaaS) que fornecem acesso a nós de redes blockchain públicas por meio de API Keys e um modelo de negócio baseado em planos de requisições.
+1. Dados de blockchains públicas são públicos pois não há critérios para fazer parte da rede e todos os nós possuem uma cópia sincronizada da estrutura de dados.
+2. Para se obter os dados de forma direta é necessário ter acesso a um nó da rede blockchain. Para esse caso existem 2 possibilidades:
+    - **Possuir um nó próprio**: Fazer o deploy de um nó na rede blockchain, o que requer requisitos de hardware, software e rede;
+    - **Usar um nó de terceiros**: Usar provedores de **Node-as-a-Service (NaaS)** que fornecem acesso a nós de redes blockchain públicas por meio de API Keys.
 
 ### 1.3. Contratos inteligentes
 
-[Contratos inteligentes](https://www.coinbase.com/pt-br/learn/crypto-basics/what-is-a-smart-contract) são aplicações ou programas de computadores deployados em uma rede blockchain. Dentre suas características estão:
+**Contratos inteligentes** são aplicações ou programas de computadores deployados em uma rede blockchain. Dentre suas características estão:
 
 - Podem ser deployados por qualquer usuário da rede;
 - São deployados por meio de uma transação persistida em um bloco;
 - Funcionam como máquinas de estados, com métodos que podem ser chamados por usuários da rede após deployados;
-- Após deployados, os contratos inteligentes são imutáveis;
-- Contratos inteligentes são passivos, ou seja, não fazem nada até que sejam chamados por um usuário da rede;
+- Após deployados são imutáveis;
+- São passivos, ou seja, não fazem nada até que sejam chamados por um usuário da rede;
+- Máquinas virtuais são usadas para o cálculo de estados dos contratos inteligentes a partir das transações submetidas na rede para esse contrato.
 
-Para implementação de contratos inteligentes as redes blockchain desenvolveram **máquinas virtuais**. A [Ethereum Foundation](https://ethereum.org/en/foundation/), criadora da rede criou a 1ª delas, open-source chamada [EVM – Ethereum Virtual Machine](https://blog.bitso.com/pt-br/tecnologia/ethereum-virtual-machine).
+Para viabilizar a implementação de contratos inteligentes as redes blockchain desenvolveram **máquinas virtuais**. A **Ethereum Foundation**, que mantém a rede Ethereum criou a [EVM – Ethereum Virtual Machine](https://blog.bitso.com/pt-br/tecnologia/ethereum-virtual-machine), primeira máquina virtual de contratos inteligentes criada e open-source.
 
 #### Em termos práticos e aplicado a esse trabalho
 
-- Foi escolhido para esse trabalho a rede ethereum por essa ter suporte a contratos inteligentes, ser uma rede pública e ter como base a EVM;
-- Diferentes blockchains usam a EVM como máquina virtual, o que torna o sistema proposto agnóstico à rede de blockchain, desde que usem a EVM como máquina virtual;
-- Conforme dito, contratos inteligentes são programas, tendo eles um endereço próprio na rede e suas funções com respectivos parâmetros;
-- Conforme também dito, a interação com os contratos inteligentes se dá por meio de transações submetidas na rede;
-- Então, ao capturar dados de transações da rede, é possível saber qual endereço de usuário interagiu com qual contrato inteligente, quais funções foram chamadas e com quais parâmetros.
+1. Foi escolhida a rede ethereum para implementação piloto, uma vez que essa possui suporte a contratos inteligentes, é uma rede pública e tem como base a EVM;
+2. Diferentes blockchains usam a EVM como máquina virtual, o que torna o sistema proposto agnóstico à rede de blockchain, desde que usem a EVM como máquina virtual;
+3. Contratos inteligentes são programas, tendo eles um endereço próprio na rede e suas funções com respectivos parâmetros;
+4. A interação com os contratos inteligentes se dá por meio de transações submetidas na rede;
+
+Portanto, ao capturar dados das transações da rede, é possível saber:
+- Qual endereço de usuário interagiu com qual contrato inteligente;
+- Qual método foi executado e com quais parâmetros.
 
 
 ## 1.4. Token nativo e Gás
 
 - Em redes blockchain, os tokens nativos são usados para pagar taxas de transação. Essas taxas são chamadas de **Gas**;
-- Contratos inteligentes consomem recursos computacionais, pois são programas. O **Gas** é a unidade de medida que quantifica esses recursos computacionais consumidos;
-- O gás é importante porque precifica o uso de recursos computacionais na rede blockchain. 
-- Dados sobre gás são importantes para se entender o custo de uma transação. O custo de uma transação é calculado como `custo_transação` = `gas_usado` x `preço_gás`
+- Contratos inteligentes consomem recursos computacionais, pois são programas deployados numa rede que se comporta como uma única máquina. 
+- O **Gas** é a unidade de medida que quantifica e precifica os recursos computacionais consumidos por chamadas de funções em contratos inteligentes;
+- A análise de dados relacionados ao gás podem ser uteis para entender:
+  - Custo de uma transação: Calculado como `custo_transação` = `gas_usado` x `preço_gás`
+  - Eficiência de contratos inteligentes e identificação de gargalos de performance.
+  - Picos de demanda de transações submetidas na rede.
 
+Dado que a frequência de mineração e o tamanho em bytes de um bloco são fixas, uma forma de lidar com aumento do número de transações é aumentar o preço do gás, retirando o incentivo para transações menos importantes.
 
-Dado que a frequência de mineração e o tamanho em bytes de um bloco são fixas, uma forma de lidar com aumento do número de transações é aumentar o preço do gás, retirando o incentivo para transações menos importantes. A análise de dados sobre o custo x consumo de gás pode fornecer insights sobre a eficiência de contratos inteligentes, bem como identificar possíveis gargalos de performance.
+#### Em termos práticos e aplicado a esse trabalho
 
-#### Em termos práticos e aplicado a esse trabalho,
+1. Os dados relacionados a gás serão capturados, armazenados e disponibilizados para aplicações downstream em analytics.
+2. As transações de troca de token nativo entre usuários da rede também serão capturadas, armazenadas e disponibilizadas para aplicações downstream em analytics.
 
-- Os dados relacionados a gás serão capturados, armazenados e disponibilizados para aplicações downstream em analytics.
-- As transações de troca de token nativo entre usuários da rede também serão capturadas, armazenadas e disponibilizadas para aplicações downstream em analytics.
-
-Entender o que é o gás e sua relaçãocom o token nativo sustentarão algumas das análises que podem ser feitas com os dados capturados nesse sistema.
+Portanto, entender o que é o gás e sua relação com o token nativo e a demanda da rede é importante para a análise dos dados capturados e realização de insights.
 
 
 ## 1.5. Usuários e mantenedores da rede
@@ -134,15 +140,15 @@ Vale mencionar que o tamanho em bytes de um bloco, bem como o tempo médio de mi
 
 #### Em termos práticos e aplicado a esse trabalho
 
-- Quando se pensa em captura e ingestão de dados, volume e velocidade são fatores importantes a serem analisados para dimensionar o sistema;
-- O tamanho em bytes de um bloco e o tempo médio de mineração de um bloco são diretamente proporcionais ao volume e velocidade de dados a serem capturados;
-- Devido ao propósito de uma rede blockchain, usuários transacionarem entre si, sua escalabilidade pode ser medida em termos de transações por segundo (TPS);
-- Redes mais seguras e descentralizadas são mais lentas e menos escaláveis. Redes mais rápidas e escaláveis são menos seguras e descentralizadas;
-- A rede Ethereum é a rede EVM mais lenta e menos escalável entre as redes EVM.
+1. Quando se pensa em captura e ingestão de dados, volume e velocidade são fatores importantes a serem analisados para dimensionar o sistema.
+2. O tamanho em bytes de um bloco e o tempo médio de mineração de um bloco são diretamente proporcionais ao volume e velocidade de dados a serem capturados.
+3. Devido ao propósito de uma rede blockchain, usuários transacionarem entre si, sua escalabilidade pode ser medida em termos de transações por segundo (TPS).
+4. Redes mais seguras e descentralizadas são mais lentas e menos escaláveis. Redes mais rápidas e escaláveis são menos seguras e descentralizadas.
+5. A rede Ethereum é a rede EVM mais lenta e menos escalável entre as redes EVM.
 
-Caso o leitor queira aprofundar no tema, o artigo [Trilema blockchain](https://ieeexplore.ieee.org/document/10411444) é uma referência.
+**Observação**: Caso o leitor queira aprofundar no tema, o artigo [Trilema blockchain](https://ieeexplore.ieee.org/document/10411444) é uma boa referência.
 
-## 1.6. Processo de mineração e blocos orfãos
+### 1.6. Processo de mineração e blocos orfãos
 
 - O processo de mineração de um bloco consiste de mineradores competindo entre si para minerar 1 bloco com transações obtidas da mempool;
 - A mineração envolve geralmente a resolução de um problema matemático, o que pode acarretar que 2 mineradores minerem 2 blocos diferentes ao mesmo tempo;
@@ -154,10 +160,10 @@ Caso o leitor queira aprofundar no tema, o artigo [Trilema blockchain](https://i
 
 #### Em termos práticos e aplicado a esse trabalho
 
-- Para uma captura de dados em tempo real, é necessário que o sistema esteja preparado para lidar com blocos órfãos;
-- Deve haver um mecanismo para que blocos órfãos sejam identificados e suas transações recebam o devido status, de modo a não serem duplicadas;
+1. Para uma captura de dados em tempo real, é necessário que o sistema esteja preparado para lidar com blocos órfãos.
+2. Deve haver um mecanismo para que blocos órfãos sejam identificados e suas transações recebam o devido status, de modo a não serem duplicadas.
 
-## 1.7. Oportunidades em Redes Blockchain
+### 1.7. Oportunidades em Redes Blockchain
 
 #### 1.7.1. Capital alocado em redes blockchain
 
@@ -179,41 +185,26 @@ Caso o leitor queira aprofundar no tema, o artigo [Trilema blockchain](https://i
 
 Com a introdução acima, é possível contextualizar o trabalho proposto e os objetivos a serem alcançados.
 
-## 2. Objetivos deste trabalho
+## 2. Objetivos
 
-Concepção e implementação de um sistema no qual conceitos e técnicas de engenharia de dados, entre outros campos da tecnologia correlacionados. O sistema, entitulado **dm_v3_chain_explorer**, tem o propósito de capturar, ingestar, processar, persistir e utilizar dados de redes blockchain públicas com suporte a contratos inteligentes e do tipo EVM.
+1. **Principal objetivo do trabalho**: Concepção e implementação de uma plataforma de dados, entitulada **dd_chain_explorer**.
+2. **Propósito do sistema**: Capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas.
 
-### 2.1. Objetivos de negócio
+### Escopo do trabalho
 
-Em resumo à introdução apresentada, as 2 proposições abaixo justificam resumidamente em termos de negócio a escolha do tema abordado nesse trabalho. São elas:
+- Captura de dados restrito a redes blockchain públicas do tipo EVM;
+- Uso da rede Ethereum como rede piloto, devido às características mencionadas na introdução (baixo TPS e alto valor de capital alocado);
+- Uso de provedores de Node-as-a-Service para captura de dados;
+- Ingestão dos dados em ambiente analitico do tipo Lakehouse;
+- Aplicação de arquitetura Medalhão para ingestão e enriquecimento dos dados em ambiente analítico.
 
-**Proposição 1**: É sabido que protocolos P2P do tipo blockchain são uma tecnologia nova e complexa. Esses protocolos são usados para:
-  
-- transações entre usuários de uma rede sem a necessidade de um intermediário.
-- Interação com contratos inteligentes deployados na rede, para os mais diversos fins, desde finanças descentralizadas (DeFi) até jogos e NFTs.
+### Objetivos específicos
 
-**Dado** o grande volume de capital circula nessas redes, através de transações e interações com contratos inteligentes, **então** é possivel que haja oportunidades de negócio para empresas que desejam explorar esses dados.
-
-**Proposição 2**: Redes P2P públicas têm os dados públicos pelos seguintes motivos:
-
-- Por a rede é descentralizada, qualquer pessoa pode fazer parte dela, desde que atenda aos requisitos de hardware, software e rede.
-- Todos os nós da rede possuem uma cópia da estrutura de dados blockchain sincronizada, de forma que a rede possa validar a integridade das transações contidas em todos os blocos. **Por consequência**, é possível se obter dados de transações e interações com contratos inteligentes dessas redes de forma direta, caso se tenha acesso a um nó da rede.
-
-**Conclusão**: Com as proposições acima, é possível se inferir que a captura, ingestão, armazenamento e uso desses dados pode trazer oportunidades de negócio para empresas que desejam explorar esses dados. Para alcançar esses objetivos, é preciso implementar um sistema capaz de capturar, ingestar, processar, persistir e utilizar dados da origem mencionada.
-
-### 2.2. Objetivos técnicos
-
-O sistema **dm_v3_chain_explorer** tem como objetivos tecnicos:
-
-- Captura de dados brutos de redes de blockchain públicas que usam EVM com máquina virtual.
-- Captura de dados de estado em contratos inteligentes.
-- Ser um sistema de captura agnóstico à rede de blockchain, mas restrito a redes EVM.
-- Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema.
-- Criar um ambiente reproduzível e escalável.
-- Armazenar e consumir dados pertinentes a operação e análises em bancos analíticos e transacionais.
-- Possuir componentes que possam monitorar o funcionamento do mesmo (dados de infraestrutura, logs, gerenciamento de recursos, etc).
-
-Para alcançar tais objetivos, como será explorado mais adiante, um grande desafio apareceu e é talvez o ponto mais complexo desse trabalho. A maneira de capturar esses dados, através da interação com provedores de nós blockchain-as-a-service e API keys.
+- Criar um sistema de captura de dados deve ser agnóstico à rede de blockchain, desde que usem a EVM como máquina virtual;
+- Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema;
+- Criar uma plataforma preparada para escalar a captura de dados em redes mais rápidas e escaláveis;
+- Criar mecanismos para gerenciamento do consumo de API Keys dos provedores NaaS entre os Jobs que as usam;
+- Criar mecanismos para observabilidade do sistema como um todo.
 
 ## 3. Explicação sobre o case desenvolvido
 
