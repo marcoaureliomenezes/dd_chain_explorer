@@ -1,11 +1,6 @@
 # dd_chain_explorer System
 
-Neste repositório se encontra a implementação e documentação de um case de estudo desenvolvido.
-
-### Abstract
-
 Blockchains públicas são redes P2P onde circula uma grande quantidade de capital, na forma de usuários trocando tokens entre si ou interagindo com contratos inteligentes. Por serem redes públicas os dados de transações dentro dessas redes também são de certa forma públicos e podem ser explorados. O sistema aqui implementado é uma plataforma de dados com o intuito de capturar, processar, armazenar e disponibilizar dados de redes blockchain públicas com suporte a contratos inteligentes e do tipo EVM.
-
 
 ## Sumário
 
@@ -48,9 +43,10 @@ Para uma melhor compreensão do trabalho, é necessário uma breve introdução 
 
 **Definição de Blockchain**: Rede Peer-to-peer na qual usuários transacionam entre si sem a necessidade de um intermediário. A tecnologia é baseada em 2 componentes, a **estrutura de dados** e a **rede P2P**.
 
-## 1.1. Estrutura de dados blockchain
+### 1.1. Estrutura de dados blockchain
 
-- Estrutura de dados de blocos encadeados, dando origem ao termo **blockchain**. Um bloco é uma estrutura de dados composta por:
+Estrutura de dados de blocos encadeados, dando origem ao termo **blockchain**. Um bloco é uma estrutura de dados composta por:
+
 - Metadados do bloco, tais como número, hash, timestamp, endereço de quem o minerou, etc;
 - Hash do bloco anterior (dá consistência ao blockchain);
 - Lista de transações feitas por usuários da rede;
@@ -64,7 +60,7 @@ O propósito de uma rede blockchain é permitir que usuários transacionem entre
   - **Frequência de mineração de blocos**: Tempo médio que uma rede blockchain leva para minerar um bloco.
   - **Tamanho dos blocos em bytes**: Limite de tamanho em bytes que um bloco pode ter.
 
-## 1.2. Rede Peer-to-peer (P2P) Blockchain
+### 1.2. Rede Peer-to-peer (P2P) Blockchain
 
 - Blockchain são redes de computadores, de topologia Peer-to-Peer com diversos nós;
 - O critério para ingressar em uma rede blockchain, ou a falta deste, diferencia redes públicas de privadas;
@@ -77,7 +73,7 @@ O propósito de uma rede blockchain é permitir que usuários transacionem entre
   - **Possuir um nó próprio**: Fazer o deploy de um nó na rede blockchain, o que requer requisitos de hardware, software e rede.
   - **Usar um nó de terceiros**: Usar provedores de Node-as-a-Service (NaaS) que fornecem acesso a nós de redes blockchain públicas por meio de API Keys e um modelo de negócio baseado em planos de requisições.
 
-## 1.3. Contratos inteligentes
+### 1.3. Contratos inteligentes
 
 [Contratos inteligentes](https://www.coinbase.com/pt-br/learn/crypto-basics/what-is-a-smart-contract) são aplicações ou programas de computadores deployados em uma rede blockchain. Dentre suas características estão:
 
@@ -88,7 +84,6 @@ O propósito de uma rede blockchain é permitir que usuários transacionem entre
 - Contratos inteligentes são passivos, ou seja, não fazem nada até que sejam chamados por um usuário da rede;
 
 Para implementação de contratos inteligentes as redes blockchain desenvolveram **máquinas virtuais**. A [Ethereum Foundation](https://ethereum.org/en/foundation/), criadora da rede criou a 1ª delas, open-source chamada [EVM – Ethereum Virtual Machine](https://blog.bitso.com/pt-br/tecnologia/ethereum-virtual-machine).
-
 
 #### Em termos práticos e aplicado a esse trabalho
 
