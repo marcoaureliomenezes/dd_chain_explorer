@@ -187,8 +187,9 @@ Com a introdução acima, é possível contextualizar o trabalho proposto e os o
 
 ## 2. Objetivos
 
-1. **Principal objetivo do trabalho**: Concepção e implementação de uma plataforma de dados, entitulada **dd_chain_explorer**.
-2. **Propósito do sistema**: Capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas.
+**Principal objetivo do trabalho**: Concepção e implementação de uma plataforma de dados, entitulada `dd_chain_explorer`.
+
+**Propósito do sistema**: Capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas.
 
 ### Escopo do trabalho
 
@@ -208,7 +209,7 @@ Com a introdução acima, é possível contextualizar o trabalho proposto e os o
 
 ## 3. Explicação sobre o case desenvolvido
 
-Foi escolhido para esse trabalho o uso da rede Ethereum como fonte de dados.
+
 
 Conforme visto, para se obter dados de uma rede blockchain diretamente, é necessário possuir acesso a um nó pertencente a tal rede. Com isso, 2 possibilidades se apresentam: **(1)** possuir um nó próprio e **(2)** usar um nó de terceiros.
 
