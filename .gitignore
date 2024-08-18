@@ -3,13 +3,13 @@ services/.secrets.conf
 .hypothesis/
 .idea
 
-z_ignore/
 mnt/
 
 .github
 
 
-
+connectors/s3-sink-dev/*
+connectors/s3-sink-prod/*
 __pycache__
 src/.infura_auth.txt
 .history
@@ -27,19 +27,8 @@ z_conf
 docker/airflow
 docker/batch_layer/airflow.old/
 
-raw-transactions-s3-sink.secret.json
-block-metadata-s3-sink.secret.json
+block-metadata-s3-sink.json
 
-
-.~lock.**
-readme1.md
-readme2.md
-readme3.md
-readme4.md
-readme5.md
-readme6.md
-z_appendice.md
-**.odt
 docker/app_layer/onchain-actors/
 
 chain_explorer/
@@ -50,7 +39,6 @@ docker/app_layer/onchain-monitor/
 docker/app_layer/onchain-actors/
 docker/app_layer/onchain-stream-txs/
 docker/batch_layer/airflow
-dadaia-tools/
 TODOs.md
 dm_doc/
 .secrets.conf
