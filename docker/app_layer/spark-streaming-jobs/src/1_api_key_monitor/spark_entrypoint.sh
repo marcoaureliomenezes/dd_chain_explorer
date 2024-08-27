@@ -19,9 +19,8 @@ echo "    ${PYFILES_SPARK_PATH},${PYFILES_SCHEMA_REGISTRY_PATH}    "
 
 
 spark-submit \
---master ${SPARK_MASTER_URL} \
 --deploy-mode client \
---total-executor-cores $TOTAL_EXECUTOR_CORES \
---executor-memory $EXECUTOR_MEMORY \
+--total-executor-cores $TOTAL_EXEC_CORES \
+--executor-memory $EXEC_MEMORY \
 --py-files ${PYFILES_SPARK_PATH},${PYFILES_SCHEMA_REGISTRY_PATH} \
 ${PYSPARK_FILEPATH}

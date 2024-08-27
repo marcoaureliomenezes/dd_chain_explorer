@@ -109,12 +109,12 @@ if __name__ == "__main__":
   SCHEMA_REGISTRY_URL = "http://schema-registry:8081"
   SCHEMA_REGISTRY_SUBJECT = "mainnet.application.logs-value"
 
-  REDIS_CLIENT = "redis"
-  REDIS_PORT = 6379
-  REDIS_SECRET = "secret"
+  REDIS_HOST = os.getenv("REDIS_HOST")
+  REDIS_PORT = os.getenv("REDIS_PORT")
+  REDIS_PASS = os.getenv("REDIS_PASS")
   
-  spark = SparkUtils.get_spark_session(APP_NAME, SPARK_URL)
-  redis_client = redis.StrictRedis(host=REDIS_CLIENT, port=REDIS_PORT, db=1, password=REDIS_SECRET)
+  spark = SparkUtils.get_spark_session(APP_NAME)
+  redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=1, password=REDIS_PASS)
   kafka_options = {
     "kafka.bootstrap.servers": KAFKA_CLUSTER,
     "subscribe": TOPIC_SUBSCRIBE,

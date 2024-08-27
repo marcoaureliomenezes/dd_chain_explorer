@@ -32,7 +32,7 @@ class EthercanAPI:
         return response
     
 
-    def get_contract_transactions_by_block_interval(self, address, startblock, endblock, page=1, offset=100, sort='asc'):
+    def get_contract_tx_by_block_interval(self, address, startblock, endblock, page=1, offset=100, sort='asc'):
         base_uri_method = "module=account&action=txlist"
         url_request = f"{self.url}?{base_uri_method}&address={address}" + \
             f"&startblock={startblock}&endblock={endblock}&page={page}" + \

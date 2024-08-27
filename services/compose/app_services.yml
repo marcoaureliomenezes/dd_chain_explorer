@@ -1,0 +1,104 @@
+x-common-conf: &common_conf
+  restart: on-failure
+  networks:
+    - dm_cluster_dev_fast
+    - analytical_layer
+
+x-conf-dev-onchain-stream-txs: &conf_dev_onchain_stream_txs
+  build: ../../docker/app_layer/onchain-stream-txs
+  volumes:
+    - ../../docker/app_layer/onchain-stream-txs/src:/app
+  <<: *common_conf
+
+
+x-conf-dev-spark-job: &conf_dev_spark_streaming_job
+  build: ../../docker/app_layer/spark-streaming-jobs
+  volumes:
+    - ../../docker/app_layer/spark-streaming-jobs/src:/app
+  <<: *common_conf
+
+#################################################################
+################    DEFINIÇÃO DOS SERVIÇOS    ###################
+#################################################################
+
+services:
+
+  mined_blocks_crawler:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: mined_blocks_crawler
+    entrypoint: "python -u 1_mined_blocks_crawler.py configs/producers.ini"
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/crawler_blocks_mined.conf
+    environment:
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+      KAFKA_BROKERS: broker:29092
+
+
+  orphan_blocks_crawler:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: orphan_blocks_crawler
+    entrypoint: "python -u 2_orphan_blocks_crawler.py configs/producers.ini configs/consumers.ini"
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/crawler_blocks_orphan.conf
+    environment:
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+      KAFKA_BROKERS: broker:29092
+
+
+  mined_txs_crawler:
+    <<: *conf_dev_onchain_stream_txs
+    #container_name: mined_txs_crawler
+    entrypoint: "python -u 3_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/crawler_txs_mined.conf
+    environment:
+      AKV_SECRET_NAMES: 'infura-api-key-1-12'
+      KAFKA_BROKERS: broker:29092
+    deploy:
+      replicas: 4
+
+
+  redis_data_collector:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: redis_data_collector
+    env_file:
+      - ./conf/.secrets.conf
+    entrypoint: "python -u n_semaphore_collect.py"
+    environment:
+      REDIS_HOST: 'redis'
+      REDIS_PORT: '6379'
+      FREQUENCY: 0.5
+
+
+  # txs_input_decoder:
+  #   <<: *conf_dev_onchain_stream_txs
+  #   container_name: txs_input_decoder
+  #   entrypoint: "python -u 3_txs_input_decoder.py configs/producers.ini configs/consumers.ini"
+  #   env_file:
+  #     - ../../conf/.secrets.conf
+  #     - ../../conf/job.3.txs.input.decoder.conf
+  #   environment:
+  #     AKV_NODE_SECRET_NAME: 'infura-api-key-16'
+  #     AKV_SCAN_SECRET_NAME: 'etherscan-api-key-2'
+  #     KAFKA_BROKERS: broker:29092
+
+
+  api_keys_log_processor:
+    <<: *conf_dev_spark_streaming_job
+    container_name: api_keys_log_processor
+    entrypoint: "sh /app/1_api_key_monitor/spark_entrypoint.sh"
+    env_file:
+      - ./conf/monitor_api_keys.conf
+      - ./conf/.secrets.conf
+    environment:
+      KAFKA_BROKERS: broker:29092
+
+
+networks:
+  dm_cluster_dev_fast:
+    name: dm_cluster_dev_fast
+  analytical_layer:
+    name: analytical_layer
