@@ -185,11 +185,9 @@ Vale mencionar que o tamanho em bytes de um bloco, bem como o tempo médio de mi
 
 Com a introdução acima, é possível contextualizar o trabalho proposto e os objetivos a serem alcançados.
 
-## 2. Objetivos
+## 2. Objetivo desse trabalho
 
-**Principal objetivo do trabalho**: Concepção e implementação de uma plataforma de dados, entitulada `dd_chain_explorer`.
-
-**Propósito do sistema**: Capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas.
+**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas.
 
 ### Escopo do trabalho
 

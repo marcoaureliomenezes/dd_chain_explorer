@@ -1,0 +1,200 @@
+version: '3'
+
+
+##########################################################################################
+
+x-common-log-config: &default_config
+  logging:
+    driver: "json-file"
+    options:
+      max-file: "5"
+      max-size: "10m"
+
+##########################################################################################
+#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
+
+x-common-network: &common_network
+  networks:
+    - layer_batch_prod
+
+x-common-restart-default: &common_restart_policy
+  restart_policy:
+    condition: on-failure
+
+
+x-common-deploy-master: &common_deploy_master
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-desktop]
+
+x-common-deploy-worker-1: &common_deploy_worker_1
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+x-common-deploy-worker-2: &common_deploy_worker_2
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server-2]
+
+x-common-deploy-worker-3: &common_deploy_worker_3
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server]
+
+##########################################################################################
+################################    SERVICES CONFIG    ###################################
+
+services:
+
+  # APACHE HADOOP SERVICES
+  namenode:
+    image: marcoaureliomenezes/dm-hadoop-namenode:1.0.0
+    <<: *default_config
+    ports:
+      - 9870:9870
+      - 9000:9000
+    volumes:
+      - hadoop_namenode_prod_vol:/hadoop/dfs/name
+    environment:
+      - CLUSTER_NAME=dm_v3_chain_explorer_prod
+    <<: *common_deploy_worker_1
+
+  datanode-1:
+    image: marcoaureliomenezes/dm-hadoop-datanode:1.0.0
+    <<: *default_config
+    volumes:
+      - hadoop_datanode_prod_vol_1:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./conf/hadoop_env_vars.conf
+    <<: *common_deploy_worker_1
+
+  datanode-2:
+    image: marcoaureliomenezes/dm-hadoop-datanode:1.0.0
+    <<: *default_config
+    volumes:
+      - hadoop_datanode_prod_vol_2:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./conf/hadoop_env_vars.conf
+    <<: *common_deploy_worker_2
+
+
+  datanode-3:
+    image: marcoaureliomenezes/dm-hadoop-datanode:1.0.0
+    <<: *default_config
+    volumes:
+      - hadoop_datanode_prod_vol_3:/hadoop/dfs/data
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    env_file:
+      - ./conf/hadoop_env_vars.conf
+    <<: *common_deploy_worker_3
+
+
+  hive-server:
+    image: marcoaureliomenezes/dm-hive-base:1.0.0
+    <<: *default_config
+    ports:
+      - "10000:10000"
+      - "10002:10002"
+    environment:
+      SERVICE_NAME: hiveserver2
+      SERVICE_OPTS: "-Dhive.metastore.uris=thrift://metastore:9083"
+      IS_RESUME: "true"
+    <<: *common_deploy_worker_1
+
+  metastore:
+    image: marcoaureliomenezes/dm-hive-base:1.0.0
+    ports:
+      - "9083:9083"
+    <<: *default_config
+    environment:
+      SERVICE_NAME: metastore
+      DB_DRIVER: postgres
+      SERVICE_OPTS: "-Djavax.jdo.option.ConnectionDriverName=org.postgresql.Driver 
+                     -Djavax.jdo.option.ConnectionURL=jdbc:postgresql://postgres_hive:5432/metastore_db 
+                     -Djavax.jdo.option.ConnectionUserName=hive
+                     -Djavax.jdo.option.ConnectionPassword=hive"
+    <<: *common_deploy_worker_1
+
+  postgres_hive:
+    image: marcoaureliomenezes/dm-hive-postgres:1.0.0
+    container_name: postgres_hive
+    <<: *default_config
+    environment:
+      POSTGRES_USER: hive
+      POSTGRES_PASSWORD: hive
+      POSTGRES_DB: metastore_db
+    volumes:
+      - pg_hive_hue_vol:/var/lib/postgresql/data
+    <<: *common_deploy_worker_1
+
+    
+  hue-webui:
+    image: marcoaureliomenezes/dm-hue-webui:1.0.0
+    <<: *default_config
+    ports:
+      - "32762:8888"
+    # volumes:
+    #   - ../mnt/hue/hue.ini:/usr/share/hue/desktop/conf/z-hue.ini
+    environment:
+      SERVICE_PRECONDITION: "hive-server:10000 postgres_hive:5432"
+    <<: *common_deploy_master
+
+
+  spark-master:
+    build: ../../docker/customized/spark
+    container_name: spark-master
+    <<: *default_config
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_METRICS_MASTER_ENABLED=true
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    ports:
+      - '18080:8080'
+    <<: *common_deploy_worker_1
+
+
+  spark-worker:
+    build: ../../docker/customized/spark
+    <<: *default_config
+    container_name: spark-worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_MEMORY=1G
+      - SPARK_WORKER_CORES=4
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    <<: *common_deploy_worker_2
+
+
+networks:
+  layer_batch_prod:
+    external: true
+
+volumes:
+  hadoop_namenode_prod_vol:
+  hadoop_datanode_prod_vol_1:
+  hadoop_datanode_prod_vol_2:
+  hadoop_datanode_prod_vol_3:
+  pg_hive_hue_vol:

@@ -1,0 +1,18 @@
+{
+  "name": "application-logs-hdfs-sink-prod",
+  "connector.class": "io.confluent.connect.hdfs3.Hdfs3SinkConnector",
+  "tasks.max": "1",
+  "topics": "mainnet.application.logs",
+  "confluent.topic.bootstrap.servers": "broker-1:29092,broker-2:29093,broker-3:29094",
+  "confluent.topic.replication.factor": "1",
+  "hdfs.url": "hdfs://namenode:9000",
+  "hadoop.conf.dir": "/etc/hadoop/conf",
+  "hadoop.home": "/mainnet",
+  "logs.dir": "/tmp/connect/logs",
+  "topics.dir": "prod/mainet/application/logs",
+  "flush.size": "100",
+  "rotate.interval.ms": "60000",
+  "key.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter": "org.apache.kafka.connect.storage.StringConverter",
+  "value.converter.schemas.enable": "false"
+}
