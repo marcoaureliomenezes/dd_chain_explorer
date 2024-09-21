@@ -49,16 +49,16 @@ services:
     ports:
       - 19120:19120
 
-  dremio:
-    image: dremio/dremio-oss:24.1
-    ports:
-      - 9047:9047
-      - 31010:31010
-      - 32010:32010
-    container_name: dremio
-    volumes:
-      - dremio_dev_vol:/opt/dremio/data
-    <<: *default_config
+  # dremio:
+  #   image: dremio/dremio-oss:24.1
+  #   ports:
+  #     - 9047:9047
+  #     - 31010:31010
+  #     - 32010:32010
+  #   container_name: dremio
+  #   volumes:
+  #     - dremio_dev_vol:/opt/dremio/data
+  #   <<: *default_config
 
 
   spark-master:

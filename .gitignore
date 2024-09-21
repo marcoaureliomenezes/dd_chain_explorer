@@ -11,9 +11,10 @@ old_readme.md
 mnt/airflow/logs
 mnt/airflow/plugins
 mnt/airflow/tmp
-
+mnt/rosemberg/notebooks/spark-warehouse
 mnt/rosemberg/warehouse
 
+scripts/.env
 
 connectors/s3-sink-dev/*
 connectors/s3-sink-prod/*
