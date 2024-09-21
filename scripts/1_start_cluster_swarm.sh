@@ -1,5 +1,8 @@
 #!/bin/bash
 
+
+
+
 init_docker_swarm() {
   join_cluster_command=$(docker swarm init --advertise-addr ${IP_MANAGER} 2>/dev/null | grep "docker swarm join --token")
   if [ $? -eq 0 ]; then
@@ -30,6 +33,8 @@ echo $IP_MANAGER
 
 init_docker_swarm
 echo $join_cluster_command
+
+
 
 join_node "$NODE_WORKER_1" "$join_cluster_command"
 join_node "$NODE_WORKER_2" "$join_cluster_command"
