@@ -15,7 +15,7 @@ start_prod_cluster:
 ####################################################################################################
 
 build_hadoop_base:
-	docker build -t marcoaureliomenezes/dm-hadoop-base:$(current_branch) ./docker/customized/hadoop/base
+	docker build -t marcoaureliomenezes/hadoop-base:$(current_branch) ./docker/customized/hadoop/base
 
 build_kafka_connect:
 	docker build -t marcoaureliomenezes/dm-kafka-connect:$(current_branch) ./docker/customized/kafka-connect
@@ -37,9 +37,9 @@ build_images_for_swarm:
 
 build_app:
 	docker build -t marcoaureliomenezes/dm-onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
-	docker build -t marcoaureliomenezes/dm-spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
-	docker build -t marcoaureliomenezes/dm-onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
-	docker build -t marcoaureliomenezes/dm-spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
+	# docker build -t marcoaureliomenezes/dm-spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
+	# docker build -t marcoaureliomenezes/dm-onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
+	# docker build -t marcoaureliomenezes/dm-spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
 
 ####################################################################################################
 ####################################################################################################

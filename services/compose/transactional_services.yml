@@ -13,8 +13,7 @@ x-common-healthcheck-default: &default_healthcheck
 
 x-common-network: &common-network
   networks:
-    - dm_cluster_dev_fast
-    - analytical_layer
+    - ice_lakehouse_dev
     
 #################################################################
 ################    DEFINIÇÃO DOS SERVIÇOS    ###################
@@ -197,9 +196,7 @@ volumes:
 
 
 networks:
-  dm_cluster_dev_fast:
-    name: dm_cluster_dev_fast
+  ice_lakehouse_dev:
+    name: ice_lakehouse_dev
 
-  analytical_layer:
-    name: analytical_layer
 

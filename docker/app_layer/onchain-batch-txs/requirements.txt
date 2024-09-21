@@ -8,3 +8,6 @@ pyiceberg[s3fs,hive]
 hdfs
 azure-identity
 azure-keyvault
+confluent-kafka
+fastavro
+duckdb
