@@ -52,8 +52,9 @@ if __name__ == "__main__":
   spark.sparkContext.setLogLevel("ERROR")
 
   etl_engine = RawToBronzeBlocksETL(LOGGER, spark, PATH_RAW_DATA, BRONZE_TABLENAME)
-  df = etl_engine.extract()
-  df_result = etl_engine.transform(df)
-  df_result.show()
+  
+  # df = etl_engine.extract()
+  # df_result = etl_engine.transform(df)
+  # df_result.show()
 
 
