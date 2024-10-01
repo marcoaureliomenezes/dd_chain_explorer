@@ -1,5 +1,0 @@
-pyspark
-requests
-jupyterlab
-delta-spark==3.1.0
-pyiceberg[s3fs,hive]

@@ -71,29 +71,35 @@ publish_apps:
 ####################################################################################################
 ###############################    DEPLOY COMPOSE SERVICES    ######################################
 
-deploy_dev_fast:
-	docker compose -f services/compose/transactional_services.yml up -d --build
-
 deploy_dev_app:
-	docker compose -f services/compose/app_services.yml up -d --build
+	docker compose -f services/compose/app_layer.yml up -d
+
+deploy_dev_fast:
+	docker compose -f services/compose/fast_layer.yml up -d
+
+deploy_dev_processing:
+	docker compose -f services/compose/processing_layer.yml up -d --build
 
 deploy_dev_lakehouse:
-	docker compose -f services/compose/lakehouse_services.yml up -d --build
+	docker compose -f services/compose/lakehouse_services.yml up -d
 
 deploy_dev_ops:
-	docker compose -f services/compose/observability_services.yml up -d --build
+	docker compose -f services/compose/observability_services.yml up -d
 	
 deploy_dev_orchestration:
-	docker compose -f services/compose/orchestration_services.yml up -d --build
+	docker compose -f services/compose/orchestration_services.yml up -d
 
 ####################################################################################################
 #############################    STOP COMPOSE SERVICES    ##########################################
 
-stop_dev_fast:
-	docker compose -f services/compose/transactional_services.yml down
-
 stop_dev_app:
-	docker compose -f services/compose/app_services.yml down
+	docker compose -f services/compose/app_layer.yml down
+
+stop_dev_fast:
+	docker compose -f services/compose/fast_layer.yml down
+
+stop_dev_processing:
+	docker compose -f services/compose/processing_layer.yml down
 
 stop_dev_lakehouse:
 	docker compose -f services/compose/lakehouse_services.yml down
@@ -107,11 +113,14 @@ stop_dev_ops:
 ####################################################################################################
 ###############################    WATCH COMPOSE SERVICES    #######################################
 
-watch_dev_fast:
-	watch docker compose -f services/compose/transactional_services.yml ps
-
 watch_dev_app:
-	watch docker compose -f services/compose/app_services.yml ps
+	watch docker compose -f services/compose/app_layer.yml ps
+
+watch_dev_fast:
+	watch docker compose -f services/compose/fast_layer.yml ps
+
+watch_dev_processing:
+	watch docker compose -f services/compose/processing_layer.yml ps
 
 watch_dev_lakehouse:
 	watch docker compose -f services/compose/lakehouse_services.yml ps
