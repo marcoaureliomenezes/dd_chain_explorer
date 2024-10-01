@@ -209,6 +209,16 @@ Com a introdução acima, é possível contextualizar o trabalho proposto e os o
 
 
 
+
+### Processo de captura
+
+
+### Processo de Ingestão
+
+Multiplex Bronze:
+
+
+### Fim novo README.md
 Conforme visto, para se obter dados de uma rede blockchain diretamente, é necessário possuir acesso a um nó pertencente a tal rede. Com isso, 2 possibilidades se apresentam: **(1)** possuir um nó próprio e **(2)** usar um nó de terceiros.
 
 Devido aos requisitos de hardware, software e rede necessários para deploy de um nó, seja on-premises ou em cloud, foi escolhido nesse trabalho o uso de **provedores de Node-as-a-Service ou NaaS**.
