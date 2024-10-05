@@ -1,0 +1,135 @@
+version: "3"
+
+
+##########################################################################################
+#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
+
+x-common-restart-default: &common_restart_policy
+  restart_policy:
+    condition: on-failure
+
+x-common-network: &common_network
+  networks:
+    - ice_lakehouse_prod
+
+x-common-deploy-master: &common_deploy_master
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+x-common-deploy-worker-1: &common_deploy_worker_1
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+x-common-deploy-worker-2: &common_deploy_worker_2
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server-2]
+
+x-common-deploy-worker-3: &common_deploy_worker_3
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server]
+
+####################################################################################
+####################################################################################
+
+
+x-spark-worker-common: &spark_worker_common
+  env_file:
+    - ./conf/.minio.conf
+  environment:
+    - SPARK_MODE=worker
+    - SPARK_MASTER_URL=spark://spark-master:7077
+    - SPARK_WORKER_MEMORY=2G
+    - SPARK_WORKER_CORES=2
+    - SPARK_RPC_AUTHENTICATION_ENABLED=no
+    - SPARK_RPC_ENCRYPTION_ENABLED=no
+    - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+    - SPARK_SSL_ENABLED=no
+    - SPARK_USER=spark
+
+
+####################################################################################
+####################################################################################
+
+services:
+
+  rosemberg:
+    image: marcoaureliomenezes/rosemberg:1.0.0
+    env_file:
+      - ./conf/.minio.conf
+      - ./conf/.secrets.conf
+    volumes:
+      - rosemberg_vol_prod:/app/notebooks
+    ports:
+      - 8888:8888
+    environment:
+      NESSIE_URI: http://nessie:19120/api/v1
+      MINIO_HOST: http://minio:9000
+    <<: *common_deploy_master
+
+
+  spark-master:
+    image: marcoaureliomenezes/spark:1.0.0
+    env_file:
+      - ./conf/.minio.conf
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_METRICS_MASTER_ENABLED=true
+      - SPARK_SSL_ENABLED=no
+      - SPARK_USER=spark
+    ports:
+      - '18080:8080'
+    <<: *common_deploy_master
+
+
+  spark-worker-1:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_1
+
+
+  spark-worker-2:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_2
+
+
+  spark-worker-3:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_2
+
+
+
+  # trino:
+  #   image: trinodb/trino
+  #   container_name: trino
+  #   <<: *default_config
+  #   environment:
+  #     - DISCOVERY_SERVER_ENABLED=true
+  #     - HTTP_PORT=8080
+  #   volumes:
+  #     - ../mnt/trino/conf:/etc/trino/catalog
+  #   ports:
+  #     - "28080:8080"
+
+networks:
+  ice_lakehouse_prod:
+    external: true
+
+volumes:
+  rosemberg_vol_prod:
