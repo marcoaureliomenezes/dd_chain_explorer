@@ -1,0 +1,99 @@
+version: "3"
+
+
+##########################################################################################
+#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
+
+x-common-restart-default: &common_restart_policy
+  restart_policy:
+    condition: on-failure
+
+x-common-network: &common_network
+  networks:
+    - ice_lakehouse_prod
+
+x-common-deploy-master: &common_deploy_master
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+x-common-deploy-worker-1: &common_deploy_worker_1
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+x-common-deploy-worker-2: &common_deploy_worker_2
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server-2]
+
+x-common-deploy-worker-3: &common_deploy_worker_3
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server]
+
+
+services:
+
+  minio:
+    image: bitnami/minio:2024.9.22
+    env_file:
+      - ./conf/.minio.conf
+      - ./conf/.secrets.conf
+    volumes:
+      - ice_lakehouse_minio_prod_vol:/bitnami/minio/data
+    ports:
+      - 9001:9001
+    <<: *common_deploy_worker_2
+
+
+  postgres_nessie:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: nessie
+      POSTGRES_PASSWORD: nessie
+      POSTGRES_DB: nessie
+    volumes:
+      - ice_lakehouse_pg_nessie_prod_vol:/var/lib/postgresql/data
+    <<: *common_deploy_worker_2
+
+  nessie:
+    image: bitnami/nessie:0.99.0
+    restart: always
+    environment:
+      - NESSIE_VERSION_STORE_TYPE=JDBC
+      - QUARKUS_DATASOURCE_JDBC_URL=jdbc:postgresql://postgres_nessie:5432/nessie
+      - QUARKUS_DATASOURCE_USERNAME=nessie
+      - QUARKUS_DATASOURCE_PASSWORD=nessie
+    ports:
+      - 19120:19120
+    depends_on:
+      - postgres_nessie
+    <<: *common_deploy_worker_2
+
+
+  dremio:
+    image: dremio/dremio-oss:25.1
+    ports:
+      - 9047:9047
+    volumes:
+      - ice_lakehouse_dremio_prod_vol:/opt/dremio/data
+    <<: *common_deploy_worker_2
+
+
+volumes:
+  ice_lakehouse_minio_prod_vol:
+  ice_lakehouse_dremio_prod_vol:
+  ice_lakehouse_pg_nessie_prod_vol:
+
+networks:
+  ice_lakehouse_prod:
+    external: true

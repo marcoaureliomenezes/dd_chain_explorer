@@ -1,21 +1,20 @@
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-network: &common_network
-  networks:
-    - layer_batch_prod
-
 x-common-restart-default: &common_restart_policy
   restart_policy:
     condition: on-failure
 
+x-common-network: &common_network
+  networks:
+    - ice_lakehouse_prod
 
 x-common-deploy-master: &common_deploy_master
   <<: *common_network
   deploy:
     <<: *common_restart_policy
     placement:
-      constraints: [node.hostname == dadaia-desktop]
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
   <<: *common_network
@@ -187,5 +186,5 @@ volumes:
   pg_airflow_vol_prod:
 
 networks:
-  layer_batch_prod:
+  ice_lakehouse_prod:
     external: true

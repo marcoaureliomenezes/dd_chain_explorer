@@ -1,18 +1,20 @@
+import boto3
 import logging
 import os
 
-from datetime import datetime as dt, timedelta
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from datetime import datetime as dt, timedelta
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-from hdfs import InsecureClient
 
 from utils.etherscan import EthercanAPI
 from utils.log_handlers import ConsoleLoggingHandler, KafkaLoggingHandler
 from utils.kafka_handlers import SchemaRegistryHandler
+
+
 
 class ContractTransactionsCrawler:
 
@@ -21,8 +23,8 @@ class ContractTransactionsCrawler:
     self.contract_address = None
     self.etherscan_client = None
     self.timestamp_interval = None
-    self.basepath = None
-    self.hdfs_client = None
+    self.local_path = None
+    self.s3_path = None
     self.overwrite = overwrite
     self.configure_pagination()
 
@@ -35,12 +37,16 @@ class ContractTransactionsCrawler:
     self.etherscan_client = etherscan_client
     return self
 
-  def config_hdfs_client(self, host):
-    self.hdfs_client = InsecureClient(host)
+  def config_s3_client_conn(self, host):
+    self.s3 = boto3.client('s3',
+      endpoint_url=host,
+      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
     return self
 
   def config_timestamp_interval(self, end_date):
-    end_date = dt.strptime(end_date, '%Y-%m-%d %H:%M:%S%z')
+    end_date = dt.strptime(end_date, '%Y-%m-%d %H:%M:%S')
     start_date = end_date - timedelta(hours=1)
     start_timestamp, end_timestamp = int(start_date.timestamp()), int(end_date.timestamp())
     self.timestamp_interval = (start_timestamp, end_timestamp)
@@ -51,11 +57,11 @@ class ContractTransactionsCrawler:
     assert self.timestamp_interval is not None, "Timestamp interval not configured"
     start_date = dt.fromtimestamp(self.timestamp_interval[0])
     partitioned_path = dt.strftime(start_date, 'year=%Y/month=%m/day=%d/hour=%H')
+
     basepath = f"{self.contract_address[:8]}/{partitioned_path}"
-    self.basepath = {"local": f"./tmp/{basepath}", "hdfs": f"{lake_path}/{basepath}"}
+    self.basepath = {"local": f"./tmp/{basepath}", "s3": f"{lake_path}/{basepath}"}
     _ = os.makedirs(self.basepath["local"], exist_ok=True)
-    _ = self.hdfs_client.makedirs(self.basepath["hdfs"])
-    self.logger.info(f"local_path:{self.basepath['local']};lake_path:{self.basepath['hdfs']}")
+    self.logger.info(f"local_path:{self.basepath['local']};lake_path:{self.basepath['s3']}")
     return self
 
   def configure_pagination(self, page=1, offset=100, sort='asc'):
@@ -104,7 +110,7 @@ class ContractTransactionsCrawler:
       
   def __run_config_checks(self):
     assert self.etherscan_client is not None, "Etherscan client not configured"
-    assert self.hdfs_client is not None, "HDFS client not configured"
+    assert self.s3 is not None, "S3 client not configured"
     assert self.timestamp_interval is not None, "Timestamp interval not configured"
     assert self.contract_address is not None, "Contract address not configured"
     assert self.basepath is not None, "Basepath not configured"
@@ -121,54 +127,43 @@ class ContractTransactionsCrawler:
       start_block = data[0]["blockNumber"]
       end_block = data[-1]["blockNumber"]
       local_path = f"{self.basepath['local']}/{start_block}_{end_block}.parquet"
-      hdfs_path = f"{self.basepath['hdfs']}/{start_block}_{end_block}.parquet"
+      #hdfs_path = f"{self.basepath['hdfs']}/{start_block}_{end_block}.parquet"
+      s3_path = f"{self.basepath['s3']}/{start_block}_{end_block}.parquet"
       self.__write_compressed_parquet(data, local_path)
-      self.hdfs_client.upload(hdfs_path, local_path, overwrite=True)
-      self.logger.info(f"File uploaded to HDFS: {hdfs_path}")
+      self.s3.upload_file(local_path, 'mybucketpython', s3_path)
+      self.logger.info(f"File uploaded to HDFS: {s3_path}")
   
 
 if __name__ == "__main__":
   
   APP_NAME = "CONTRACT_TRANSACTIONS_CRAWLER"
+  ADDR_DEFAULT = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
 
-  AKV_VAULT_NAME = os.getenv("AKV_VAULT_NAME")
-  HOST_HDFS = os.getenv("HOST_HDFS")
-  KAFKA_BROKERS = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
-  SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
-  API_KEY_NAME = os.getenv("API_KEY_NAME")
-  NETWORK = os.getenv("NETWORK")
-  ADDRESS = os.getenv("ADDRESS", "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
-  END_DATE = os.getenv("END_DATE")
-  LAKE_PATH = os.getenv("LAKE_PATH")
-  TOPIC_LOGS = os.getenv("TOPIC_LOGS")
+  END_DATE = os.getenv("END_DATE", dt.now().strftime('%Y-%m-%d %H:%M:%S%z'))
+  END_DATE = dt.now().strftime('%Y-%m-%d %H:%M:%S%z')
 
-  print("Execution date: ", END_DATE)
-  print("Type: ", type(END_DATE))
-
-  akv_url = f'https://{AKV_VAULT_NAME}.vault.azure.net/'
+  akv_url = f"https://{os.getenv('AKV_NAME')}.vault.azure.net/"
   akv_client = SecretClient(vault_url=akv_url, credential=DefaultAzureCredential())
-  
    
   logger = logging.getLogger(APP_NAME)
   logger.setLevel(logging.INFO)
-  logger.addHandler(ConsoleLoggingHandler())
-
-  schema_registry_handler = SchemaRegistryHandler(logger, SCHEMA_REGISTRY_URL)
+  schema_registry_handler = SchemaRegistryHandler(logger, os.getenv("SR_URL"))
   logs_schema = schema_registry_handler.get_avro_schema("schemas/application_logs_avro.json")
-  producer_conf = {**KAFKA_BROKERS,  "client.id": APP_NAME, "acks": 1}
+  producer_conf = {"bootstrap.servers": os.getenv("KAFKA_BROKERS"), "client.id": APP_NAME, "acks": 1}
   logs_schema = schema_registry_handler.get_avro_schema("schemas/application_logs_avro.json")
   producer_logs = schema_registry_handler.create_avro_producer(producer_conf, logs_schema)
-  kafka_handler = KafkaLoggingHandler(producer_logs, TOPIC_LOGS)
+  kafka_handler = KafkaLoggingHandler(producer_logs, os.getenv("TOPIC_LOGS"))
   logger.addHandler(kafka_handler)
+  logger.addHandler(ConsoleLoggingHandler())
 
-  etherscan_client = EthercanAPI(logger, akv_client, API_KEY_NAME, NETWORK)
+  etherscan_client = EthercanAPI(logger, akv_client, os.getenv("APK_NAME"), os.getenv("NETWORK"))
 
   crawler = (
     ContractTransactionsCrawler(logger, overwrite=True)
-      .config_contract_address(ADDRESS)
+      .config_s3_client_conn(os.getenv("S3_URL"))
+      .config_contract_address(os.getenv("ADDRESS", ADDR_DEFAULT))
       .config_etherscan_client(etherscan_client)
-      .config_hdfs_client(HOST_HDFS)
       .config_timestamp_interval(END_DATE)
-      .config_file_prefix(LAKE_PATH)
+      .config_file_prefix(os.getenv("S3_BUCKET"))
       .run()
   )

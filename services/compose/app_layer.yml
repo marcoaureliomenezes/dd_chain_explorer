@@ -98,7 +98,7 @@ services:
   bronze_streaming_job:
     <<: *conf_dev_spark_streaming_job
     container_name: bronze_streaming_job
-    #entrypoint: "sh /app/2_job_raw_to_bronze_blocks/spark_entrypoint.sh"
+    entrypoint: "sh /app/2_job_raw_to_bronze_blocks/spark_entrypoint.sh"
     env_file:
       - ./conf/monitor_api_keys.conf
       - ./conf/.secrets.conf

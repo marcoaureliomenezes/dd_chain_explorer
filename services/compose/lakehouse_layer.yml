@@ -17,6 +17,7 @@ services:
     container_name: minio
     env_file:
       - ./conf/.minio.conf
+      - ./conf/.secrets.conf
     <<: *default_config
     volumes:
       - ice_lakehouse_minio_dev_vol:/bitnami/minio/data
@@ -25,7 +26,7 @@ services:
 
 
   postgres_nessie:
-    build: ../docker/postgres/
+    image: postgres:16
     container_name: postgres_nessie
     environment:
       POSTGRES_USER: nessie
@@ -66,5 +67,5 @@ volumes:
   ice_lakehouse_pg_nessie_dev_vol:
 
 networks:
-  ice_lakehouse:
+  ice_lakehouse_dev:
     name: ice_lakehouse_dev

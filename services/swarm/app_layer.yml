@@ -15,24 +15,45 @@ x-common-restart-default: &common_restart_policy
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-networks: &common_networks
+##########################################################################################
+#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
+
+x-common-restart-default: &common_restart_policy
+  restart_policy:
+    condition: on-failure
+
+x-common-network: &common_network
   networks:
-    - layer_fast_prod
+    - ice_lakehouse_prod
 
 x-common-deploy-master: &common_deploy_master
-  <<: *common_networks
-  deploy:
-    <<: *common_restart_policy
-    placement:
-      constraints: [node.hostname == dadaia-desktop]
-
-x-common-deploy-worker-1: &common_deploy_worker_1
-  <<: *common_networks
+  <<: *common_network
   deploy:
     <<: *common_restart_policy
     placement:
       constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
+x-common-deploy-worker-1: &common_deploy_worker_1
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+
+x-common-deploy-worker-2: &common_deploy_worker_2
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server-2]
+
+x-common-deploy-worker-3: &common_deploy_worker_3
+  <<: *common_network
+  deploy:
+    <<: *common_restart_policy
+    placement:
+      constraints: [node.hostname == dadaia-server]
+      
 #################################################################
 ################    DEFINIÇÃO DOS SERVIÇOS    ###################
 #################################################################
@@ -44,36 +65,44 @@ services:
     entrypoint: "python -u 1_mined_blocks_crawler.py configs/producers.ini"
     env_file:
       - ./conf/.secrets.conf
-      - ./conf/job.1.prod.blocks.crawler.conf
+      - ./conf/crawler_blocks_mined.conf
     environment:
       AKV_SECRET_NAME: 'alchemy-api-key-1'
       KAFKA_BROKERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
     <<: *common_deploy_master
 
+  orphan_blocks_crawler:
+    <<: *conf_default
+    entrypoint: "python -u 2_orphan_blocks_crawler.py configs/producers.ini configs/consumers.ini"
+    env_file:
+      - ./conf/.secrets.conf
+      - ./conf/crawler_blocks_orphan.conf
+    environment:
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+      KAFKA_BROKERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
 
   mined_txs_crawler:
     <<: *conf_default
     entrypoint: "python -u 2_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
     env_file:
       - ./conf/.secrets.conf
-      - ./conf/job.2.txs.crawlers.conf
+      - ./conf/crawler_txs_mined.conf
     environment:
       AKV_SECRET_NAMES: 'infura-api-key-1-12'
       KAFKA_BROKERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
-    networks:
-      - layer_fast_prod
     deploy:
       replicas: 8
+    <<: *common_deploy_worker_2
   
 
   api_keys_log_processor:
     image: marcoaureliomenezes/dm-spark-streaming-jobs:1.0.0
     env_file:
-      - ./conf/job.4.api_key.monitor.conf
+      - ./conf/monitor_api_keys.conf
     environment:
       KAFKA_BROKERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
     entrypoint: "sh /app/shell/0_api_key_monitor.sh /app/python/0_api_key_monitor.py"
-    <<: *common_deploy_worker_1
+    <<: *common_deploy_worker_2
 
 
   redis_data_collector:
@@ -85,8 +114,12 @@ services:
       REDIS_PORT: '6379'
       FREQUENCY: 0.5
     entrypoint: "python -u n_semaphore_collect.py"
-    <<: *common_deploy_master
+    <<: *common_deploy_worker_2
+
+
+
+
 networks:
-  layer_fast_prod:
+  ice_lakehouse_prod:
     external: true
 

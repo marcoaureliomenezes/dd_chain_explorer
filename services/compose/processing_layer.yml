@@ -18,6 +18,7 @@ services:
     <<: *default_config
     env_file:
       - ./conf/.minio.conf
+      - ./conf/.secrets.conf
     volumes:
       - ../../mnt/jupyterlab:/app/notebooks
     ports:
@@ -68,6 +69,18 @@ services:
       test: [ "CMD", "ls" ]
       <<: *default_healthcheck
 
+  python_job:
+    build: ../../docker/app_layer/onchain-batch-txs
+    container_name: onchain-batch-txs
+    <<: *default_config
+    env_file:
+      - ./conf/.minio.conf
+      - ./conf/.secrets.conf
+      - ./conf/batch_py.conf
+    volumes:
+      - ../../docker/app_layer/onchain-batch-txs/src:/app
+
+    
 
   # trino:
   #   image: trinodb/trino

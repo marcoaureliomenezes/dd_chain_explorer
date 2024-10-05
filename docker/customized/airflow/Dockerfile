@@ -49,8 +49,8 @@ USER airflow
 COPY requirements.txt /requirements.txt
 RUN pip install -r /requirements.txt
 
-COPY mnt/dags /opt/airflow/dags
-COPY mnt/airflow.cfg /opt/airflow/airflow.cfg
+# COPY mnt/dags /opt/airflow/dags
+# COPY mnt/airflow.cfg /opt/airflow/airflow.cfg
 
 
 
