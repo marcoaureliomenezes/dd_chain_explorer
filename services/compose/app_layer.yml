@@ -57,7 +57,7 @@ services:
       AKV_SECRET_NAMES: 'infura-api-key-1-12'
       KAFKA_BROKERS: broker:29092
     deploy:
-      replicas: 4
+      replicas: 1
 
 
   redis_data_collector:
@@ -88,24 +88,29 @@ services:
   api_keys_log_processor:
     <<: *conf_dev_spark_streaming_job
     container_name: api_keys_log_processor
-    entrypoint: "sh /app/1_api_key_monitor/spark_entrypoint.sh"
+    entrypoint: "sh /app/1_api_key_monitor/entrypoint.sh"
     env_file:
-      - ./conf/monitor_api_keys.conf
       - ./conf/.secrets.conf
+      - ./conf/spark_str_apk_req_counter.conf
     environment:
-      KAFKA_BROKERS: broker:29092
+      TOPIC_LOGS: mainnet.application.logs
+      CG_API_KEY_CONSUME: cg_api_keys_log_processor
+      STARTING_OFFSETS: earliest
+      MAX_OFFSETS_PER_TRIGGER: 3000
+
 
   bronze_streaming_job:
     <<: *conf_dev_spark_streaming_job
     container_name: bronze_streaming_job
-    entrypoint: "sh /app/2_job_raw_to_bronze_blocks/spark_entrypoint.sh"
+    entrypoint: "sh /app/2_job_bronze_fast_multiplex/entrypoint.sh"
     env_file:
-      - ./conf/monitor_api_keys.conf
       - ./conf/.secrets.conf
+      - ./conf/spark_str_bronze_multiplex.conf
     environment:
-      KAFKA_BROKERS: broker:29092
-
-
+      
+      CG_API_KEY_CONSUME: etherscan-api-key-2
+      STARTING_OFFSETS: latest
+      MAX_OFFSETS_PER_TRIGGER: 1000
 networks:
   ice_lakehouse_dev:
     name: ice_lakehouse_dev

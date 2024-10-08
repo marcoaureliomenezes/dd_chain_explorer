@@ -16,7 +16,7 @@ services:
     image: bitnami/minio:2024.9.22
     container_name: minio
     env_file:
-      - ./conf/.minio.conf
+      - ./conf/spark_str_bronze_multiplex.conf
       - ./conf/.secrets.conf
     <<: *default_config
     volumes:
@@ -52,14 +52,14 @@ services:
     depends_on:
       - postgres_nessie
 
-  dremio:
-    image: dremio/dremio-oss:25.1
-    ports:
-      - 9047:9047
-    container_name: dremio
-    volumes:
-      - ice_lakehouse_dremio_dev_vol:/opt/dremio/data
-    <<: *default_config
+  # dremio:
+  #   image: dremio/dremio-oss:25.1
+  #   ports:
+  #     - 9047:9047
+  #   container_name: dremio
+  #   volumes:
+  #     - ice_lakehouse_dremio_dev_vol:/opt/dremio/data
+  #   <<: *default_config
 
 volumes:
   ice_lakehouse_minio_dev_vol:

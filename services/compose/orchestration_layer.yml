@@ -1,13 +1,13 @@
 x-airflow-common-networks:
   &airflow-common-networks
   networks:
-  - app_dev_network
+  - ice_lakehouse_dev
 
 
 x-airflow-common: &airflow-common
   build: ../../docker/customized/airflow
   networks:
-    - app_dev_network
+    - ice_lakehouse_dev
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -19,6 +19,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
   env_file:
     - conf/.secrets.conf
+    - conf/airflow_env_vars.conf
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
@@ -33,11 +34,11 @@ x-airflow-common: &airflow-common
 
 services:
   postgres:
-    image: postgres:13
+    image: postgres:16
     container_name: postgres_airflow
     restart: always
     networks:
-      - app_dev_network
+      - ice_lakehouse_dev
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
@@ -149,5 +150,5 @@ volumes:
   postgres_airflow_vol:
 
 networks:
-  app_dev_network:
-    name: app_dev_network
+  ice_lakehouse_dev:
+    name: ice_lakehouse_dev

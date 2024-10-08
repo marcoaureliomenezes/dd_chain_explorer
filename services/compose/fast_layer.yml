@@ -86,6 +86,7 @@ services:
     image: confluentinc/cp-schema-registry:7.6.0
     hostname: schema-registry
     container_name: schema-registry
+    restart: always
     depends_on:
       - broker
     <<: *common-network

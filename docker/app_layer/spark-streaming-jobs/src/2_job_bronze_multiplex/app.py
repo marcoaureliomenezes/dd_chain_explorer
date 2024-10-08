@@ -59,15 +59,18 @@ if __name__ == "__main__":
   starting_offsets = os.getenv("STARTING_OFFSETS", "latest")
   max_offsets_per_trigger = os.getenv("MAX_OFFSETS_PER_TRIGGER", 1000)
   bronze_table = 'nessie.test'
-  checkpoint_path = "s3a://sistemas/checkpoints/multiplex_bronze"
+  checkpoint_path = "s3a://sistemas/checkpoints/multiplex_bronze2"
 
+
+  
 
   kafka_options = {
   "kafka.bootstrap.servers": kafka_cluster,
   "subscribe": "mainnet.mined.block.metadata,mainnet.mined.txs.token.transfer",
   "startingOffsets": starting_offsets,
   "group.id": consumer_group,
-  "maxOffsetsPerTrigger": max_offsets_per_trigger 
+  "maxOffsetsPerTrigger": max_offsets_per_trigger ,
+  'failOnDataLoss': 'false'
   }
 
   spark = SparkUtils.get_spark_session(APP_NAME)
@@ -76,6 +79,6 @@ if __name__ == "__main__":
   engine.create_table()
   data_extracted = engine.extract_data(kafka_options)
   query = engine.load_data_to_bronze(data_extracted, checkpoint_path)
-  #query = engine.load_data_to_console(data_transformed)
+  #query = engine.load_data_to_console(data_extracted)
   query.awaitTermination()
   
