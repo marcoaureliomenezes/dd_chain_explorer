@@ -1,8 +1,6 @@
-pyarrow
-pandas
 fastparquet
+pandas
+pyarrow
+pyiceberg[s3fs,hive]
 pyspark
 requests
-delta-spark==3.1.0
-pyiceberg[s3fs,hive]
-hdfs

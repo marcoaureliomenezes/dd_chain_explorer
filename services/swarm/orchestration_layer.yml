@@ -40,52 +40,42 @@ x-common-deploy-worker-3: &common_deploy_worker_3
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
 
-x-airflow-common:  &airflow-common
-  image: marcoaureliomenezes/dm-airflow:1.0.0
-  env_file:
-    - conf/.secrets.conf
+x-airflow-common: &airflow-common
+  image: marcoaureliomenezes/airflow:1.0.0
+  networks:
+    - ice_lakehouse_prod
   environment:
     &airflow-common-env
-    AIRFLOW__CORE__EXECUTOR: CeleryExecutor
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
-    AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+  env_file:
+    - conf/.secrets.conf
+    - conf/airflow_env_vars.conf
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
-    # - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
-    # - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    # - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
-    # - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    # - ${AIRFLOW_PROJ_DIR:-.}/tmp:/tmp:rw
   user: "${AIRFLOW_UID:-50000}:0"
-
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
 
 services:
+
   postgres:
-    image: postgres:13
+    image: postgres:16
     container_name: postgres_airflow
+    env_file:
+      - conf/.secrets.conf
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
     volumes:
       - pg_airflow_vol_prod:/var/lib/postgresql/data
     <<: *common_deploy_worker_1
 
-  redis:
-    image: redis:7.2-bookworm
-    expose:
-      - 6379
-    <<: *common_deploy_worker_2
 
   airflow-webserver:
     <<: *airflow-common
@@ -99,18 +89,6 @@ services:
     command: scheduler
     <<: *common_deploy_master
 
-  airflow-worker:
-    <<: *airflow-common
-    command: celery worker
-    environment:
-      <<: *airflow-common-env
-      DUMB_INIT_SETSID: "0"
-    <<: *common_deploy_master
-
-  airflow-triggerer:
-    <<: *airflow-common
-    command: triggerer
-    <<: *common_deploy_master
 
   airflow-init:
     <<: *airflow-common
@@ -175,11 +153,6 @@ services:
     #   - ${AIRFLOW_PROJ_DIR:-.}:/sources
     <<: *common_deploy_worker_1
 
-  flower:
-    <<: *airflow-common
-    command: celery flower
-    ports:
-      - "5555:5555"
 
 
 volumes:

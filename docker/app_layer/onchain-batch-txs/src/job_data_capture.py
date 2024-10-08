@@ -46,7 +46,7 @@ class ContractTransactionsCrawler:
     return self
 
   def config_timestamp_interval(self, end_date):
-    end_date = dt.strptime(end_date, '%Y-%m-%d %H:%M:%S')
+    end_date = dt.strptime(end_date, '%Y-%m-%d %H:%M:%S%z')
     start_date = end_date - timedelta(hours=1)
     start_timestamp, end_timestamp = int(start_date.timestamp()), int(end_date.timestamp())
     self.timestamp_interval = (start_timestamp, end_timestamp)
@@ -139,9 +139,6 @@ if __name__ == "__main__":
   APP_NAME = "CONTRACT_TRANSACTIONS_CRAWLER"
   ADDR_DEFAULT = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
 
-  END_DATE = os.getenv("END_DATE", dt.now().strftime('%Y-%m-%d %H:%M:%S%z'))
-  END_DATE = dt.now().strftime('%Y-%m-%d %H:%M:%S%z')
-
   akv_url = f"https://{os.getenv('AKV_NAME')}.vault.azure.net/"
   akv_client = SecretClient(vault_url=akv_url, credential=DefaultAzureCredential())
    
@@ -163,7 +160,7 @@ if __name__ == "__main__":
       .config_s3_client_conn(os.getenv("S3_URL"))
       .config_contract_address(os.getenv("ADDRESS", ADDR_DEFAULT))
       .config_etherscan_client(etherscan_client)
-      .config_timestamp_interval(END_DATE)
+      .config_timestamp_interval(os.getenv("END_DATE"))
       .config_file_prefix(os.getenv("S3_BUCKET"))
       .run()
   )

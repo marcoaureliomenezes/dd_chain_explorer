@@ -40,8 +40,6 @@ class APIKeyMonitor:
         .withColumn("api_key", split(col("message"), ";").getItem(1))
         .select("kafka_timestamp", "timestamp", "api_key")
     )
-
-
     window_1D = window(col("kafka_timestamp"), "1 day")
     df_windowed = (
       df_transformed
@@ -83,21 +81,19 @@ class APIKeyMonitor:
       
 
   def load_data_to_redis(self, df_transformed):
-      query = (
-        df_transformed
-          .writeStream
-          .outputMode("update")
-          .foreachBatch(self.__batch_to_redis)
-          .start()
-          .awaitTermination()
-      )
-      return query
-
+    query = (
+      df_transformed
+        .writeStream
+        .outputMode("update")
+        .foreachBatch(self.__batch_to_redis)
+        .start()
+        .awaitTermination())
+    return query
 
 
 if __name__ == "__main__":
     
-  APP_NAME = "Handle_Simple_Transactions"
+  APP_NAME = "api_keys_consume_monitoring"
   SPARK_URL = os.getenv("SPARK_MASTER_URL")
 
   KAFKA_CLUSTER = os.getenv("KAFKA_BROKERS")
