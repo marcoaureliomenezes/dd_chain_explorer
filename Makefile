@@ -62,11 +62,11 @@ publish_apps:
 ###############################    DEPLOY COMPOSE SERVICES    ######################################
 
 deploy_dev_all:
-	# docker compose -f services/compose/fast_layer.yml up -d
+	docker compose -f services/compose/fast_layer.yml up -d
 	docker compose -f services/compose/lakehouse_layer.yml up -d
 	docker compose -f services/compose/processing_layer.yml up -d
 	docker compose -f services/compose/orchestration_layer.yml up -d
-	docker compose -f services/compose/observability_services.yml up -d
+	docker compose -f services/compose/observability_layer.yml up -d
 	# docker compose -f services/compose/app_layer.yml up -d
 
 stop_dev_all:

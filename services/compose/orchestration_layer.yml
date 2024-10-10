@@ -19,7 +19,7 @@ x-airflow-common: &airflow-common
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
   env_file:
     - conf/.secrets.conf
-    - conf/airflow_env_vars.conf
+    - conf/airflow_environ_variables.conf
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
