@@ -1,7 +1,7 @@
 #!/bin/bash
 
 
-PYSPARK_FILEPATH="/app/2_raw_to_bronze_logs_fast/app.py"
+PYSPARK_FILEPATH="/app/3_job_silver_app_logs/app.py"
 PYFILES_SPARK_PATH="/app/utils/spark_utils.py"
 PYFILES_SCHEMA_REGISTRY_PATH="/app/utils/schema_registry_utils.py"
 
