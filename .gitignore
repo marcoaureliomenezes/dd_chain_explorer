@@ -39,14 +39,7 @@ block-metadata-s3-sink.json
 
 docker/app_layer/onchain-actors/
 
-chain_explorer/
-scripts/pre_deploy_airflow.sh
-scripts/start_prod_cluster.sh
-docker/app_layer/onchain-watchers/
-docker/app_layer/onchain-monitor/
-docker/app_layer/onchain-actors/
-docker/app_layer/onchain-stream-txs/
-docker/batch_layer/airflow
+
 TODOs.md
 dm_doc/
 .secrets.conf
