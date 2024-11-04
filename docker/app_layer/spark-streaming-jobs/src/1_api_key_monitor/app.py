@@ -98,7 +98,7 @@ if __name__ == "__main__":
 
   KAFKA_CLUSTER = os.getenv("KAFKA_BROKERS")
   TOPIC_SUBSCRIBE = os.getenv("TOPIC_LOGS")
-  CONSUMER_GROUP = os.getenv("CG_API_KEY_CONSUME")
+  CONSUMER_GROUP = os.getenv("CONSUMER_GROUP")
   STARTING_OFFSETS = os.getenv("STARTING_OFFSETS")
   MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER")
 

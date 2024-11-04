@@ -15,5 +15,5 @@ pyarrow==17.0.0
 python-dotenv==0.16.0
 redis==5.1.1
 requests==2.32.3
-trino==7.3.0
+trino==0.330.0
 web3==7.3.0

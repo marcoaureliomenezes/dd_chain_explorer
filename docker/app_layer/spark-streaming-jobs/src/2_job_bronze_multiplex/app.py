@@ -10,6 +10,7 @@ class MultiplexIngestor:
     self.table_name = table_name
 
   def create_table(self):
+    self.spark.sql("CREATE NAMESPACE IF NOT EXISTS nessie.bronze")
     self.spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {self.table_name} (
     key binary,
@@ -17,8 +18,9 @@ class MultiplexIngestor:
     partition int,
     offset long,
     timestamp timestamp,
-    topic string) 
-    USING ICEBERG PARTITIONED BY (topic)""").show()
+    topic string)
+    USING ICEBERG 
+    PARTITIONED BY (topic, hour(timestamp))""").show()
     spark.table(self.table_name).printSchema()
     
   def extract_data(self, kafka_options):
@@ -49,29 +51,27 @@ class MultiplexIngestor:
         .toTable(bronze_table))
 
 
-
 if __name__ == "__main__":
     
   APP_NAME = "bronze_multiplex"
 
   kafka_cluster = os.getenv("KAFKA_BROKERS", "broker:29092")
-  consumer_group = os.getenv("CG_API_KEY_CONSUME", "cg_war")
+  consumer_group = os.getenv("CONSUMER_GROUP", "cg_war")
   starting_offsets = os.getenv("STARTING_OFFSETS", "latest")
   max_offsets_per_trigger = os.getenv("MAX_OFFSETS_PER_TRIGGER", 1000)
-  bronze_table = 'nessie.test'
-  checkpoint_path = "s3a://sistemas/checkpoints/multiplex_bronze2"
-
-
-  
-
+  bronze_table = 'nessie.bronze.data_multiplexed'
+  checkpoint_path = "s3a://sistemas/checkpoints/multiplex_bronze"
+  topics = ",mainnet.1.mined_blocks.data,mainnet.2.orphan_blocks.data,mainnet.4.mined.txs.raw_data"
+  # mainnet.0.application.logs
   kafka_options = {
   "kafka.bootstrap.servers": kafka_cluster,
-  "subscribe": "mainnet.mined.block.metadata,mainnet.mined.txs.token.transfer",
+  "subscribe": topics,
   "startingOffsets": starting_offsets,
   "group.id": consumer_group,
-  "maxOffsetsPerTrigger": max_offsets_per_trigger ,
+  "maxOffsetsPerTrigger": max_offsets_per_trigger,
   'failOnDataLoss': 'false'
   }
+
 
   spark = SparkUtils.get_spark_session(APP_NAME)
   engine = MultiplexIngestor(spark, bronze_table)

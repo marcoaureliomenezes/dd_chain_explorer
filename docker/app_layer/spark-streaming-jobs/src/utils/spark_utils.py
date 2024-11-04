@@ -33,8 +33,6 @@ class SparkUtils:
       .set('spark.sql.catalog.nessie.uri', os.getenv("NESSIE_URI"))
       .set('spark.sql.catalog.nessie.ref', 'main')
       .set('spark.sql.catalog.nessie.authentication.type', 'NONE')
-      .set("spark.executor.cores", "1")
-      .set("spark.executor.memory", "512M")
       .set('spark.sql.catalog.nessie.catalog-impl', 'org.apache.iceberg.nessie.NessieCatalog')
       .set('spark.sql.catalog.nessie.io-impl', 'org.apache.iceberg.aws.s3.S3FileIO')
       .set('spark.sql.catalog.nessie.s3.endpoint', os.getenv("S3_URL"))
