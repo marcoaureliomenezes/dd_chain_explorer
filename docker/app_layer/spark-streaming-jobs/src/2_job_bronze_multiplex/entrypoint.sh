@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PYSPARK_FILEPATH="/app/2_job_bronze_fast_multiplex/app.py"
+PYSPARK_FILEPATH="/app/2_job_bronze_multiplex/app.py"
 PYFILES_SPARK_PATH="/app/utils/spark_utils.py"
 
 TOTAL_EXEC_CORES=1

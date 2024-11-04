@@ -1,12 +1,9 @@
-version: '3'
-
 x-common-networks: &common_networks
   networks:
-    - dm_cluster_dev_ops
+    - ice_lakehouse_dev
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
-
 
 services:
 
@@ -50,9 +47,7 @@ services:
     container_name: kafka-exporter
     restart: always
     command: ["--kafka.server=broker:29092"]
-    networks:
-      - dm_cluster_dev_ops
-      - dm_cluster_dev_fast
+    <<: *common_networks
     ports:
       - 9308:9308
 
@@ -81,8 +76,6 @@ services:
     image: quay.io/prometheus/node-exporter:latest
     container_name: node_exporter
     <<: *common_networks
-    networks:
-      - dm_cluster_dev_ops
     command:
       - '--path.rootfs=/host'
     pid: host
@@ -97,7 +90,5 @@ volumes:
   grafana_dev_vol:
 
 networks:
-  dm_cluster_dev_ops:
-    name: dm_cluster_dev_ops
-  dm_cluster_dev_fast:
-    name: dm_cluster_dev_fast
+  ice_lakehouse_dev:
+    name: ice_lakehouse_dev

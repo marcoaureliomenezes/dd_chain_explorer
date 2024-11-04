@@ -17,7 +17,7 @@ services:
     container_name: notebook
     <<: *default_config
     env_file:
-      - ./conf/spark_str_bronze_multiplex.conf
+      - ./conf/lakehouse.conf
       - ./conf/.secrets.conf
     volumes:
       - ../../mnt/jupyterlab:/app/notebooks
@@ -33,7 +33,7 @@ services:
     container_name: spark-master
     <<: *default_config
     env_file:
-      - ./conf/spark_str_bronze_multiplex.conf
+      - ./conf/lakehouse.conf
       - ./conf/.secrets.conf
     environment:
       - SPARK_MODE=master
@@ -52,10 +52,11 @@ services:
 
   spark-worker:
     build: ../../docker/customized/spark
+    restart: always
     <<: *default_config
     container_name: spark-worker
     env_file:
-      - ./conf/spark_str_bronze_multiplex.conf
+      - ./conf/lakehouse.conf
       - ./conf/.secrets.conf
     environment:
       - SPARK_MODE=worker

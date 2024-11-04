@@ -121,17 +121,7 @@ class ContractTransactionsCrawler:
     table = pa.Table.from_pandas(df_data)
     pq.write_table(table, path, compression='SNAPPY')
 
-  def run(self):
-    self.__run_config_checks()
-    for data in self.__get_transactions():
-      start_block = data[0]["blockNumber"]
-      end_block = data[-1]["blockNumber"]
-      local_path = f"{self.basepath['local']}/{start_block}_{end_block}.parquet"
-      #hdfs_path = f"{self.basepath['hdfs']}/{start_block}_{end_block}.parquet"
-      s3_path = f"{self.basepath['s3']}/{start_block}_{end_block}.parquet"
-      self.__write_compressed_parquet(data, local_path)
-      self.s3.upload_file(local_path, 'mybucketpython', s3_path)
-      self.logger.info(f"File uploaded to HDFS: {s3_path}")
+
   
 
 if __name__ == "__main__":

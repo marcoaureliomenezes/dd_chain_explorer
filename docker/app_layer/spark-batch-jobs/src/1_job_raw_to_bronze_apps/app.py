@@ -12,21 +12,21 @@ class RawToBronzeBlocksEngine:
   def __init__(self, spark: SparkSession, raw_data_path, bronze_table_name: str):
     self.spark = spark
     self.bronze_table_name = f"{bronze_table_name}"
-    self.partition_level = "/year=<year>/month=<month>/day=<day>/hour=<hour>"
     self.raw_data_path = raw_data_path
 
-  def configure_path(self, dat_ref, carga):
-    year, month, day = dat_ref.split("-")
-    partition_level = self.partition_level.replace("<year>", year)
-    partition_level = partition_level.replace("<month>", month)
-    partition_level = partition_level.replace("<day>", day)
-    partition_level = partition_level.replace("<hour>", carga)
-    total_path = self.raw_data_path + partition_level
+
+  def configure_path(self, execution_datetime):
+    partition_level = "/year=<year>/month=<month>/day=<day>/hour=<hour>"
+    partition_level = partition_level.replace("<year>", str(execution_datetime.year))
+    partition_level = partition_level.replace("<month>", str(execution_datetime.month))
+    partition_level = partition_level.replace("<day>", str(execution_datetime.day))
+    partition_level = partition_level.replace("<hour>", str(execution_datetime.hour))
+    total_path = f"{self.raw_data_path}{partition_level}"
     return total_path
 
 
-  def extract(self, data_ref, hour):
-    total_path = self.configure_path(data_ref, hour)
+  def extract(self, execution_datetime):
+    total_path = self.configure_path(execution_datetime)
     df_app_logs_raw = (
     self.spark.read.format("parquet")
       .option("basePath", self.raw_data_path)
@@ -59,20 +59,15 @@ if __name__ == "__main__":
 
   # format = "2024-07-20 03:00:00+00:00"
   
-  dt_odatetime = dt.strptime(odatetime, '%Y-%m-%d %H:%M:%S%z')
+  execution_datetime = dt.strptime(odatetime, '%Y-%m-%d %H:%M:%S%z')
 
-  odate = dt_odatetime.strftime('%Y-%m-%d')
-  ohour = dt_odatetime.strftime('%H')
-  print("AQUIII A DATA O")
-  print(odate)
-  print(ohour)
 
   spark = SparkSession.builder.appName(APP_NAME).getOrCreate()
   spark.sparkContext.setLogLevel("ERROR")
 
 
   etl_engine = RawToBronzeBlocksEngine(spark, PATH_RAW_DATA, BRONZE_TABLENAME)
-  df_app_logs_raw = etl_engine.extract(odate, ohour)
+  df_app_logs_raw = etl_engine.extract(execution_datetime)
   df_app_logs_bronze = etl_engine.transform(df_app_logs_raw)
 
   df_app_logs_bronze.show()
@@ -86,6 +81,5 @@ if __name__ == "__main__":
 
 
   
-
 
 
