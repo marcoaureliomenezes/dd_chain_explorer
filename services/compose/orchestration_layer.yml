@@ -34,7 +34,7 @@ x-airflow-common: &airflow-common
 
 services:
   postgres:
-    image: postgres:16
+    image: postgres:${POSTGRES_VERSION}
     container_name: postgres_airflow
     restart: always
     networks:

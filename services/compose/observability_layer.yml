@@ -30,6 +30,10 @@ services:
     container_name: grafana
     ports:
       - 3000:3000
+    environment:
+      GF_SECURITY_ADMIN_USER: dadaia
+      GF_SECURITY_ADMIN_PASSWORD: dadaia
+
     healthcheck:
       test: [ "CMD", "nc", "-z", "prometheus", "9090" ]
       interval: 30s

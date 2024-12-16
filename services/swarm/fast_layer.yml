@@ -3,67 +3,26 @@ version: "3"
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-restart-default: &common_restart_policy
-  restart_policy:
-    condition: on-failure
-
-x-common-network: &common_network
-  networks:
-    - ice_lakehouse_prod
-
 x-common-deploy-master: &common_deploy_master
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+      constraints: [node.hostname == dadaia-desktop]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
 x-common-deploy-worker-2: &common_deploy_worker_2
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-server-2]
-
-x-common-deploy-worker-3: &common_deploy_worker_3
-  <<: *common_network
-  deploy:
-    <<: *common_restart_policy
-    placement:
-      constraints: [node.hostname == dadaia-server]
-      
-##########################################################################################
-#####################    NETWORK AND KAFKA CONFIGS    ####################################
-
-x-default-healthcheck: &default_healthcheck
-  interval: 10s
-  timeout: 10s
-  retries: 3
-
-
-x-kafka-common-configs: &kafka_common_configs
-  KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-  KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-  KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
-  KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
-  KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-  KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-  KAFKA_JMX_PORT: 9101
-  KAFKA_JMX_HOSTNAME: localhost
-  KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: ${SCHEMA_REGISTRY_URL}
-  KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
-  CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
-  CONFLUENT_METRICS_ENABLE: 'true'
-  CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
-  KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-  KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
 
 ##########################################################################################
 #############################    SERVICES    #############################################
@@ -72,166 +31,147 @@ services:
 
   zookeeper:
     image: confluentinc/cp-zookeeper:7.6.0
-    <<: *common_deploy_worker_1
     hostname: zookeeper
+    restart: always
+    networks:
+      - vpc_kafka
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 3000
+      ZOOKEEPER_TICK_TIME: 2000
     volumes:
     - type: volume
-      source: dm_cluster_prod_zookeeper_data
+      source: swarm_zookeeper_data
       target: /var/lib/zookeeper/data
     - type: volume
-      source: dm_cluster_prod_zookeeper_log
+      source: swarm_zookeeper_log
       target: /var/lib/zookeeper/log
     - type: volume
-      source: dm_cluster_prod_zookeeper_secrets
+      source: swarm_zookeeper_secrets
       target: /etc/zookeeper/secrets
-
-
-  ################################################################################
-  ######################    BEGIN KAFKA SERVICES    ##############################
+    <<: *common_deploy_worker_1
 
   broker-1:
     image: confluentinc/cp-server:7.6.0
-    hostname: broker-1
-    <<: *common_deploy_worker_1
-    depends_on:
-      - zookeeper
+    hostname: broker
+    restart: on-failure
+    networks:
+      - vpc_kafka
     environment:
       KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-1:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_CONFLUENT_LICENSE_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_CONFLUENT_BALANCER_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_JMX_PORT: 9101
+      KAFKA_JMX_HOSTNAME: localhost
+      KAFKA_CONFLUENT_SCHEMA_REGISTRY_URL: http://schema-registry:8081
       CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-1:29092
-      <<: *kafka_common_configs
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 1
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
     volumes:
     - type: volume
-      source: dm_cluster_prod_kafka_1_data
+      source: swarm_broker_1_data
       target: /var/lib/kafka/data
     - type: volume
-      source: dm_cluster_prod_kafka_1_secrets
+      source: swarm_broker_1_secrets
       target: /etc/kafka/secrets
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "zookeeper", "2181" ]
-      <<: *default_healthcheck
+    <<: *common_deploy_worker_1
 
-
-  broker-2:
-    image: confluentinc/cp-server:7.6.0
-    hostname: broker-2
-    <<: *common_deploy_worker_2
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 2
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-2:29093,PLAINTEXT_HOST://localhost:9093
-      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-2:29093
-      <<: *kafka_common_configs
-    volumes:
-    - type: volume
-      source: dm_cluster_prod_kafka_2_data
-      target: /var/lib/kafka/data
-    - type: volume
-      source: dm_cluster_prod_kafka_2_secrets
-      target: /etc/kafka/secrets
-    healthcheck:
-      test: [ "CMD", "nc", "-z", "zookeeper", "2181" ]
-      <<: *default_healthcheck
-
-  broker-3:
-    image: confluentinc/cp-server:7.6.0
-    hostname: broker-3
-    <<: *common_deploy_worker_3
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 3
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://broker-3:29094,PLAINTEXT_HOST://localhost:9094
-      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: broker-3:29094
-      <<: *kafka_common_configs
-    volumes:
-    - type: volume
-      source: dm_cluster_prod_kafka_3_data
-      target: /var/lib/kafka/data
-    - type: volume
-      source: dm_cluster_prod_kafka_3_secrets
-      target: /etc/kafka/secrets
-    healthcheck:
-      <<: *default_healthcheck
-      test: [ "CMD", "nc", "-z", "zookeeper", "2181" ]
-    
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.6.0
     hostname: schema-registry
-    depends_on:
-      - broker-1
-      - broker-2
-      - broker-3
-    <<: *common_deploy_worker_1
+    restart: always
+    networks:
+      - vpc_kafka
     ports:
       - "8081:8081"
     environment:
       SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: 'broker-1:29092'
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
       SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: FULL
+    <<: *common_deploy_worker_1
 
 
-
-  # KAFKA UI -> http://192.168.15.101:9021
   control-center:
     image: confluentinc/cp-enterprise-control-center:7.6.0
     hostname: control-center
-    <<: *common_deploy_master
-
+    restart: always
+    networks:
+      - vpc_kafka
     ports:
       - "9021:9021"
     environment:
-      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker-1:29092,broker-2:29093,broker-3:29094'
-      CONTROL_CENTER_CONNECT_CONNECT-DEFAULT_CLUSTER: 'connect:8083'
+      CONTROL_CENTER_BOOTSTRAP_SERVERS: 'broker-1:29092'
+      #CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
+      #CONTROL_CENTER_KSQL_KSQLDB1_ADVERTISED_URL: "http://localhost:8088"
+      #CONTROL_CENTER_KSQL_KSQLDB1_URL: "http://ksqldb-server:8088"
+      CONTROL_CENTER_KSQL_KSQLDB1_ADVERTISED_URL: "http://localhost:8088"
       CONTROL_CENTER_SCHEMA_REGISTRY_URL: "http://schema-registry:8081"
       CONTROL_CENTER_REPLICATION_FACTOR: 1
       CONTROL_CENTER_INTERNAL_TOPICS_PARTITIONS: 1
       CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
       CONFLUENT_METRICS_TOPIC_REPLICATION: 1
       PORT: 9021
+    <<: *common_deploy_worker_1
 
+
+  rest-proxy:
+    image: confluentinc/cp-kafka-rest:7.5.0
+    networks:
+      - vpc_kafka
+    ports:
+      - 8082:8082
+    hostname: rest-proxy
+    environment:
+      KAFKA_REST_HOST_NAME: rest-proxy
+      KAFKA_REST_BOOTSTRAP_SERVERS: 'broker-1:29092'
+      KAFKA_REST_LISTENERS: "http://0.0.0.0:8082"
+      KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
+    <<: *common_deploy_worker_1
+    
 
   redis: 
     image: redis:7.2
-    <<: *common_deploy_worker_2
+    networks:
+    - vpc_kafka
     command: redis-server --requirepass secret
     ports:
       - "16379:6379"
+    <<: *common_deploy_worker_1
 
 
-  topics_creator:
-    image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
-    entrypoint: "python -u 0_topics_creator.py configs/topics_prd.ini"
-    env_file:
-      - ./conf/.secrets.conf
-    environment:
-      KAFKA_CLUSTER: 'broker-1:29092,broker-2:29093,broker-3:29094'
-      NETWORK: mainnet
-    depends_on:
-      - broker-1
-      - broker-2
-      - broker-3
-    <<: *common_deploy_master
+  # topics_creator:
+  #   image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
+  #   entrypoint: "python -u 0_topics_creator.py configs/topics_prd.ini"
+  #   env_file:
+  #     - ./conf/.secrets.conf
+  #   environment:
+  #     KAFKA_CLUSTER: 'broker-1:29092,broker-2:29093,broker-3:29094'
+  #     NETWORK: mainnet
+  #   depends_on:
+  #     - broker-1
+  #     - broker-2
+  #     - broker-3
+  #   <<: *common_deploy_master
       
 volumes:
-  dm_cluster_prod_zookeeper_data:
-  dm_cluster_prod_zookeeper_log:
-  dm_cluster_prod_zookeeper_secrets:
-  dm_cluster_prod_kafka_1_data:
-  dm_cluster_prod_kafka_1_secrets:
-  dm_cluster_prod_kafka_2_data:
-  dm_cluster_prod_kafka_2_secrets:
-  dm_cluster_prod_kafka_3_data:
-  dm_cluster_prod_kafka_3_secrets:
+  swarm_zookeeper_data:
+  swarm_zookeeper_log:
+  swarm_zookeeper_secrets:
+  swarm_broker_1_data:
+  swarm_broker_1_secrets:
 
 networks:
-  ice_lakehouse_prod:
+  vpc_kafka:
     external: true
 
 

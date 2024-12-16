@@ -1,8 +1,8 @@
 #!/bin/bash
 
-IP_MANAGER=192.168.15.88
-NODE_WORKER_1=dadaia@192.168.15.8
-NODE_WORKER_2=dadaia-server@192.168.15.83
+IP_MANAGER=192.168.15.101
+HOST_WORKER_1=dadaia@192.168.15.88
+HOST_WORKER_2=dadaia@192.168.15.8
 
 
 init_docker_swarm() {
@@ -22,13 +22,16 @@ init_docker_swarm() {
   fi
 }
 
+
+
+
 join_node() {
-  HOST_MEU=$1
+  HOST_WORKER=$1
   COMMAND=$2
-  echo "HOST para SSH: $HOST_MEU"
+  echo "HOST para SSH: $HOST_WORKER"
   echo "Executando comando: $COMMAND"
-  ssh $HOST_MEU "docker swarm leave --force"
-  ssh $HOST_MEU $COMMAND
+  ssh $HOST_WORKER "docker swarm leave --force"
+  ssh $HOST_WORKER $COMMAND
 }
 
 echo $IP_MANAGER
@@ -38,6 +41,6 @@ echo $join_cluster_command
 
 
 
-join_node "$NODE_WORKER_1" "$join_cluster_command"
-join_node "$NODE_WORKER_2" "$join_cluster_command"
-#join_node "$NODE_WORKER_3" "$join_cluster_command"
+join_node "$HOST_WORKER_1" "$join_cluster_command"
+join_node "$HOST_WORKER_2" "$join_cluster_command"
+#join_node "$HOST_WORKER_3" "$join_cluster_command"

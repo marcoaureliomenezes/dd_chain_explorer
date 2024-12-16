@@ -5,6 +5,8 @@ version: '3'
 
 x-common-exporters-default: &node_exporter_commons
   image: quay.io/prometheus/node-exporter:latest
+  networks:
+    - vpc_kafka
   command:
     - '--path.rootfs=/host'
   pid: host
@@ -13,6 +15,8 @@ x-common-exporters-default: &node_exporter_commons
 
 x-common-cadvisor-default: &cadvisor_commons
   image: gcr.io/cadvisor/cadvisor:v0.44.1-test
+  networks:
+    - vpc_kafka
   volumes:
     - /:/rootfs:ro
     - /var/run:/var/run:rw
@@ -26,41 +30,26 @@ x-common-cadvisor-default: &cadvisor_commons
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-restart-default: &common_restart_policy
-  restart_policy:
-    condition: on-failure
-
-x-common-network: &common_network
-  networks:
-    - ice_lakehouse_prod
-
 x-common-deploy-master: &common_deploy_master
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+      constraints: [node.hostname == dadaia-desktop]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
 x-common-deploy-worker-2: &common_deploy_worker_2
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-server-2]
-
-x-common-deploy-worker-3: &common_deploy_worker_3
-  <<: *common_network
-  deploy:
-    <<: *common_restart_policy
-    placement:
-      constraints: [node.hostname == dadaia-server]
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
@@ -70,11 +59,13 @@ services:
   # PROMETHEUS UI -> http://192.168.15.101:9090
   prometheus:
     image: marcoaureliomenezes/prometheus:1.0.0
-    <<: *common_deploy_master
+    <<: *common_deploy_worker_1
+    networks:
+      - vpc_kafka
     ports:
       - 9090:9090
     volumes:
-      - prometheus_prod_data:/prometheus
+      - swarm_vol_prometheus:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
 
@@ -82,11 +73,13 @@ services:
   # GRAFANA UI -> http://192.168.15.101:13000
   grafana:
     image: grafana/grafana
-    <<: *common_deploy_master
+    <<: *common_deploy_worker_1
+    networks:
+      - vpc_kafka
     ports:
       - 3000:3000
     volumes:
-      - grafana_prod_data:/var/lib/grafana
+      - swarm_vol_grafana:/var/lib/grafana
     
 
   # VISUALIZER SWARM -> http://192.168.15.101:28080/
@@ -101,13 +94,17 @@ services:
 
   ########################################################################################
 
+  # Dashboard ID: 18941, 15465 Don't work 12931, 1442
   kafka-exporter:
     image: danielqsj/kafka-exporter 
     container_name: kafka-exporter
-    command: ["--kafka.server=broker-1:29092" ,"--kafka.server=broker-2:29093" ,"--kafka.server=broker-3:29094"]
+    command: ["--kafka.server=broker:29092"]
+    networks:
+      - vpc_kafka
     <<: *common_deploy_worker_1
     ports:
       - 9308:9308
+
 
   ########################################################################################
   #####################    MONITORING DOCKER WITH CADVISOR    ############################
@@ -119,11 +116,11 @@ services:
     <<: *common_deploy_master
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 1
-  # cadvisor_worker_1:
-  #   <<: *cadvisor_commons
-  #   ports:
-  #     - 38081:8080
-  #   <<: *common_deploy_worker_1
+  cadvisor_worker_1:
+    <<: *cadvisor_commons
+    ports:
+      - 38081:8080
+    <<: *common_deploy_worker_1
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 2
   cadvisor_worker_2:
@@ -133,11 +130,11 @@ services:
     <<: *common_deploy_worker_2
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 3
-  cadvisor_worker_3:
-    <<: *cadvisor_commons
-    ports:
-      - 38083:8080
-    <<: *common_deploy_worker_3
+  # cadvisor_worker_3:
+  #   <<: *cadvisor_commons
+  #   ports:
+  #     - 38083:8080
+  #   <<: *common_deploy_worker_3
 
   ########################################################################################
   #####################    MONITORING SERVERS SWARM CLUSTER    ###########################
@@ -146,25 +143,25 @@ services:
     <<: *node_exporter_commons
     <<: *common_deploy_master
 
-  # node_exporter_worker_1:
-  #   <<: *node_exporter_commons
-  #   <<: *common_deploy_worker_1
+  node_exporter_worker_1:
+    <<: *node_exporter_commons
+    <<: *common_deploy_worker_1
 
   node_exporter_worker_2:
     <<: *node_exporter_commons
     <<: *common_deploy_worker_2
 
-  node_exporter_worker_3:
-    <<: *node_exporter_commons
-    <<: *common_deploy_worker_3
+  # node_exporter_worker_3:
+  #   <<: *node_exporter_commons
+  #   <<: *common_deploy_worker_3
 
 ############################    END OF SERVICES CONFIG    ################################
 ##########################################################################################
 
 volumes:
-  prometheus_prod_data:
-  grafana_prod_data:
+  swarm_vol_prometheus:
+  swarm_vol_grafana:
 
 networks:
-  ice_lakehouse_prod:
+  vpc_kafka:
     external: true

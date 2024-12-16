@@ -1,0 +1,98 @@
+x-conf-dev-onchain-stream-txs: &conf_dev_onchain_stream_txs
+  restart: on-failure
+  env_file:
+    - ./conf/dev.secrets.conf
+    - ./conf/dev.kafka.conf
+    - ./conf/dev.redis.conf
+  networks:
+    - vpc_kafka
+  build: ../../docker/app_layer/onchain-stream-txs
+  volumes:
+    - ../../docker/app_layer/onchain-stream-txs/src:/app
+
+services:
+
+  ################################################################################################
+  ############################    PYTHON APPLICATIONS    #########################################
+
+  # topics_creator:
+  #   <<: *conf_dev_onchain_stream_txs
+  #   container_name: topics_creator
+  #   restart: on-failure
+  #   entrypoint: "python -u 0_topics_creator.py configs/topics_dev.ini"
+  #   environment:
+  #     NETWORK: mainnet
+
+  python-job-mined-blocks:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: python-job-mined-blocks
+    entrypoint: "python -u 1_mined_blocks_crawler.py configs/producers.ini"
+    environment:
+      AKV_NODE_NAME: DataMasterNodeAsAService
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+      TOPIC_LOGS: mainnet.0.application.logs
+      TOPIC_MINED_BLOCKS: mainnet.1.mined_blocks.data
+      TOPIC_TXS_HASH_IDS: 'mainnet.3.mined.txs.hash_id'
+      TOPIC_TXS_HASH_IDS_PARTITIONS: 8
+      CLOCK_FREQUENCY: 1
+      TXS_PER_BLOCK: 4
+
+
+  python-job-orphan-blocks:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: python-job-orphan-blocks
+    entrypoint: "python -u 2_orphan_blocks_crawler.py configs/producers.ini configs/consumers.ini"
+    environment:
+      AKV_NODE_NAME: DataMasterNodeAsAService
+      AKV_SECRET_NAME: 'alchemy-api-key-1'
+      TOPIC_LOGS: mainnet.0.application.logs
+      TOPIC_MINED_BLOCKS: mainnet.1.mined_blocks.data
+      TOPIC_ORPHAN_BLOCKS: mainnet.2.orphan_blocks.data
+      TOPIC_TXS_HASH_IDS: mainnet.3.mined.txs.hash_id
+      CONSUMER_GROUP_ID: cg_orphan_blocks
+      TOPIC_TXS_HASH_IDS_PARTITIONS: 8
+
+
+  python-job-mined-txs:
+    <<: *conf_dev_onchain_stream_txs
+    #container_name: python-job-mined-txs
+    entrypoint: "python -u 3_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
+    environment:
+      AKV_NODE_NAME: DataMasterNodeAsAService
+      AKV_SECRET_NAMES: 'infura-api-key-1-12'
+      TOPIC_LOGS: mainnet.0.application.logs
+      TOPIC_TXS_HASH_IDS: mainnet.3.mined.txs.hash_id
+      TOPIC_TXS_RAW_DATA: mainnet.4.mined.txs.raw_data
+      CONSUMER_GROUP: 'cg_mined_raw_txs'
+    deploy:
+      replicas: 2
+
+  python-job-redis-collector:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: python-job-redis-collector
+    entrypoint: "python -u n_semaphore_collect.py"
+    environment:
+      FREQUENCY: 0.5
+
+
+  # # txs_input_decoder:
+  # #   <<: *conf_dev_onchain_stream_txs
+  # #   container_name: txs_input_decoder
+  # #   entrypoint: "python -u 3_txs_input_decoder.py configs/producers.ini configs/consumers.ini"
+  # #   env_file:
+  # #     - ../../conf/.secrets.conf
+  # #     - ./conf/kafka.conf
+  # #     - ../../conf/job.3.txs.input.decoder.conf
+  # #   environment:
+  # #     AKV_SCAN_NAME: DMEtherscanAsAService
+  # #     AKV_NODE_NAME: DataMasterNodeAsAService
+  # #     AKV_NODE_SECRET_NAME: infura-api-key-16
+  # #     AKV_SCAN_SECRET_NAME: etherscan-api-key-2
+  # #     TOPIC_LOGS: mainnet.0.application.logs
+  # #     TOPIC_TXS_RAW_DATA: mainnet.4.mined.txs.raw_data
+  # #     TOPIC_TXS_INPUT_DECODED: mainnet.5.mined.txs.input_decoded
+  # #     KAFKA_CG_INPUT_DECODER: cg_txs_input_decoder
+
+networks:
+  vpc_kafka:
+    external: true

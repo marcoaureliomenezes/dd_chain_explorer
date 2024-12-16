@@ -101,9 +101,9 @@ if __name__ == "__main__":
   CONSUMER_GROUP = os.getenv("CONSUMER_GROUP")
   STARTING_OFFSETS = os.getenv("STARTING_OFFSETS")
   MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER")
-
-  SCHEMA_REGISTRY_URL = "http://schema-registry:8081"
-  SCHEMA_REGISTRY_SUBJECT = "mainnet.application.logs-value"
+  SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
+  
+  SCHEMA_REGISTRY_SUBJECT = f"{TOPIC_SUBSCRIBE}-value"
 
   REDIS_HOST = os.getenv("REDIS_HOST")
   REDIS_PORT = os.getenv("REDIS_PORT")
@@ -111,6 +111,7 @@ if __name__ == "__main__":
   
   spark = SparkUtils.get_spark_session(APP_NAME)
   redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=1, password=REDIS_PASS)
+ 
   kafka_options = {
     "kafka.bootstrap.servers": KAFKA_CLUSTER,
     "subscribe": TOPIC_SUBSCRIBE,
@@ -122,7 +123,7 @@ if __name__ == "__main__":
   engine = APIKeyMonitor(spark, kafka_options, redis_client)
   sc_client = SchemaRegistryUtils.get_schema_registry_client(SCHEMA_REGISTRY_URL)
   avro_schema_logs = SchemaRegistryUtils.get_avro_schema(sc_client, SCHEMA_REGISTRY_SUBJECT)
-
+  print(avro_schema_logs)
   data_extracted = engine.extract_data(avro_schema_logs)
   data_transformed = engine.transform_data(data_extracted)
   query = engine.load_data_to_redis(data_transformed)
