@@ -38,8 +38,7 @@ class MultiplexIngestor:
         .writeStream
         .outputMode("append")
         .format("console")
-        .start()
-        .awaitTermination())
+        .start())
 
   def load_data_to_bronze(self, df_transformed, checkpoint_path):
     return (
@@ -60,8 +59,8 @@ if __name__ == "__main__":
   starting_offsets = os.getenv("STARTING_OFFSETS", "latest")
   max_offsets_per_trigger = os.getenv("MAX_OFFSETS_PER_TRIGGER", 1000)
   bronze_table = 'nessie.bronze.data_multiplexed'
-  checkpoint_path = "s3a://sistemas/checkpoints/multiplex_bronze"
-  topics = ",mainnet.1.mined_blocks.data,mainnet.2.orphan_blocks.data,mainnet.4.mined.txs.raw_data"
+  checkpoint_path = "s3a://spark/checkpoints/multiplex_bronze"
+  topics = "mainnet.1.mined_blocks.data,mainnet.2.orphan_blocks.data,mainnet.4.mined.txs.raw_data"
   # mainnet.0.application.logs
   kafka_options = {
   "kafka.bootstrap.servers": kafka_cluster,

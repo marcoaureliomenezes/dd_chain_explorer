@@ -4,41 +4,26 @@ version: "3"
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-restart-default: &common_restart_policy
-  restart_policy:
-    condition: on-failure
-
-x-common-network: &common_network
-  networks:
-    - ice_lakehouse_prod
-
 x-common-deploy-master: &common_deploy_master
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+      constraints: [node.hostname == dadaia-desktop]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
 x-common-deploy-worker-2: &common_deploy_worker_2
-  <<: *common_network
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-server-2]
-
-x-common-deploy-worker-3: &common_deploy_worker_3
-  <<: *common_network
-  deploy:
-    <<: *common_restart_policy
-    placement:
-      constraints: [node.hostname == dadaia-server]
 
 ####################################################################################
 ####################################################################################
@@ -46,7 +31,11 @@ x-common-deploy-worker-3: &common_deploy_worker_3
 
 x-spark-worker-common: &spark_worker_common
   env_file:
-    - ./conf/.minio.conf
+    - ./conf/swarm.lakehouse.conf
+    - ./conf/swarm.secrets.conf
+
+  networks:
+    - vpc_kafka
   environment:
     - SPARK_MODE=worker
     - SPARK_MASTER_URL=spark://spark-master:7077
@@ -67,22 +56,26 @@ services:
   rosemberg:
     image: marcoaureliomenezes/rosemberg:1.0.0
     env_file:
-      - ./conf/.minio.conf
-      - ./conf/.secrets.conf
+    - ./conf/swarm.lakehouse.conf
+    - ./conf/swarm.secrets.conf
     volumes:
-      - rosemberg_vol_prod:/app/notebooks
+      - swarm_vol_rosemberg:/app/notebooks
+    networks:
+      - vpc_kafka
     ports:
       - 8888:8888
     environment:
       NESSIE_URI: http://nessie:19120/api/v1
       MINIO_HOST: http://minio:9000
-    <<: *common_deploy_master
+    <<: *common_deploy_worker_1
 
 
   spark-master:
     image: marcoaureliomenezes/spark:1.0.0
     env_file:
-      - ./conf/.minio.conf
+    - ./conf/swarm.lakehouse.conf
+    networks:
+      - vpc_kafka
     environment:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -93,19 +86,20 @@ services:
       - SPARK_USER=spark
     ports:
       - '18080:8080'
-    <<: *common_deploy_master
+      - '7077:7077'
+    <<: *common_deploy_worker_1
 
 
   spark-worker-1:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_1
+    <<: *common_deploy_worker_2
 
 
   spark-worker-2:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_2
+    <<: *common_deploy_worker_1
 
 
   spark-worker-3:
@@ -114,22 +108,21 @@ services:
     <<: *common_deploy_worker_2
 
 
-
-  # trino:
-  #   image: trinodb/trino
-  #   container_name: trino
-  #   <<: *default_config
-  #   environment:
-  #     - DISCOVERY_SERVER_ENABLED=true
-  #     - HTTP_PORT=8080
-  #   volumes:
-  #     - ../mnt/trino/conf:/etc/trino/catalog
-  #   ports:
-  #     - "28080:8080"
-
+  trino:
+    image: trinodb/trino
+    networks:
+      - vpc_kafka
+    <<: *common_deploy_worker_2
+    environment:
+      - DISCOVERY_SERVER_ENABLED=true
+      - HTTP_PORT=8080
+    # volumes:
+    #   - ../mnt/trino/conf:/etc/trino/catalog
+    ports:
+      - "7080:8080"
 networks:
-  ice_lakehouse_prod:
+  vpc_kafka:
     external: true
 
 volumes:
-  rosemberg_vol_prod:
+  swarm_vol_rosemberg:

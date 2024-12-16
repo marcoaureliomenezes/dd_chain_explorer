@@ -529,38 +529,67 @@ Como informado anteriormente, as aplicações são deployadas em containers dock
 
 ### 4.2.4. Camada Batch
 
+
 A camada batch corresponde a serviços relacionados a processamento de dados em lote. Essa camada é composta por:
 
-### I) Apache Hadoop
 
-Conjunto de serviços que compõem o hadoop e algumas ferramentas de seu ecossistema. Um cluster hadoop é composto pelos seguintes sistemas:
+### I) Minio
 
-- **Hadoop Namenode**: Mantém controle de metadados, logs e outros dados relacionados ao cluster e ao HDFS. Um cluster hadoop pode ter 1 namenode e eventualmente também um namenode secundário em estado de standby. Este tem por função assumir o lugar do namenode primário, caso necessário.
+### II) Nessie
 
-- **Hadoop Datanodes**: Armazenam dados do cluster e atuam em conjunto com o **namenode** para formar o HDFS (hadoop Distributed File System). Um cluster Hadoop pode ter 1 ou mais datanodes, o que permite a escalabilidade horizontal em volume de dados a serem armazenados.
 
-- **Resource Manager e Node managers**: Atuam em conjunto para gerenciar alocação de recursos de processamento no cluster Hadoop. Esse processamento se dá por meio de jobs de **Map reduce**,  jobs do **Apache Spark gerenciado pelo Yarn**, entre outros. 
-  
-  - Os **node managers** são instanciados em cada nó do cluster de forma a monitorar o uso de recursos naquele nó.
-  - O **resource manager** atua como um orquestrador na alocação dos recursos para processamento nesse cluster, trocando informações com os **node managers**. Uma referencia mais completa sobre o [YARN pode ser vista aqui.](https://hadoop.apache.org/docs/stable/hadoop-yarn/hadoop-yarn-site/YARN.html)
-
-- **History Server**: Serviço utilizado para armazenar dados referentes a execução de jobs de processamento no cluster hadoop.
-
-O apache hadoop nesse trabalho é usado como data lake, onde chegam os dados inicialmente armazenados em tópicos do Kafka, por meio de um conector d otipo SINK do **kafka connect** e, futuramente de batches (processamento de jobs no airflow).
-
-### II) Apache Hive
-
-O hive é um sistema de Data Warehouse construída no topo do Apache Hadoop. É usado para fornecer uma camada de abstração sobre dados no data lake armazenados no HDFS. O hive permite a execução de queries em dados armazenados no HDFS. Esses dados são organizados em databases e tabelas, e consultados por meio de uma linguagem de query chamada HQL, similar ao SQL. O apache hive traduz então essas queries em jobs de map-reduce ou de spark, dependendo da engine de processamento configurada. O hive é composto por 3 serviços principais:
-
-- **Hive metastore**: Armazena metadados referentes a tabelas e dados para serem utilizados por motores de processamento em lote como map-reduce, presto e spark engine na execução de queries. Por debaixo dos panos o [hive metastore](https://www.ibm.com/docs/en/watsonx/watsonxdata/1.0.x?topic=components-hive-metastore-overview) utiliza um banco de dados relacional para persistir os dados, nesse caso um postgres.
-
-- **Hive server**: Servidor responsável por responder a de queries utilizando-se de um motor de processamento e dados do hive metastore.
 
 O apache hive é usado então para abstrair dados armazenados no HDFS em tabelas hive, a serem consumidas por processos sistẽmicos do tipo batch, ou por análise exploratória por meio do de queries HQL.
 
-### III) Hue
+### III) Dremio
 
-O Hue é um client com interface gráfica onde é possível visualizar o sistema de pastas e arquivos do HDFS, databases e tabelas no Hive Metastore e executar ações sobre essas entidades.
+O Dremio é uma ferramena 
+
+
+**Source Nessie**:
+- **Name**:  nessie
+- **Nessie Endpoint URL**: http://nessie:19120/api/v2
+- **Nessie Authentication Type**: None
+- **AWS root path**: warehouse
+- **AWS Access Key**: access_key
+- **AWS Access Secret**: access_secret
+- **Connection Properties**:
+  - **fs.s3a.path.style.access**:   true
+  - **dremio.s3.compat**:   true
+  - **fs.s3a.endpoint**:    minio:9000
+- **Check Encrypted connection**:  false
+
+```json
+{
+  "Name": "nessie",
+  "Nessie Endpoint URL": "http://nessie:19120/api/v2",
+  "Nessie Authentication Type": "None",
+  "AWS root path": "warehouse",
+  "AWS Access Key": "AWS_ACCESS_KEY_ID gerado",
+  "AWS Access Secret": "AWS_SECRET_ACCESS_KEY gerado",
+  "Connection Properties": {
+    "fs.s3a.path.style.access": "true",
+    "dremio.s3.compat": "true",
+    "fs.s3a.endpoint": "minio:9000"
+  }
+
+```
+
+```json
+{
+  "Name": "minio",
+  "AWS Access Key": "AWS_ACCESS_KEY_ID gerado",
+  "AWS Access Secret": "AWS_SECRET_ACCESS_KEY gerado",
+  "enable compatibility mode": true,
+  "Connection Properties": {
+    "fs.s3a.path.style.access": "true",
+    "dremio.s3.compat": "true",
+    "fs.s3a.endpoint": "minio:9000"
+  }
+}
+```
+
+
 
 ## 5. Aspectos técnicos desse trabalho
 

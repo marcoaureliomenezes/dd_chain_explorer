@@ -6,7 +6,6 @@ import time
 
 from configparser import ConfigParser
 from requests import HTTPError
-from confluent_kafka import Producer
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
@@ -98,7 +97,7 @@ class MinedBlocksProcessor:
       "hash": bytes.hex(block_raw_data['hash']),
       "parentHash": bytes.hex(block_raw_data['parentHash']),
       "difficulty": block_raw_data['difficulty'],
-      "totalDifficulty": str(block_raw_data['totalDifficulty']),
+      "totalDifficulty": str(block_raw_data.get('totalDifficulty')),
       "nonce": bytes.hex(block_raw_data['nonce']),
       "size": block_raw_data['size'],
       "miner": block_raw_data['miner'],

@@ -70,95 +70,107 @@ deploy_dev_all:
 	docker compose -f services/compose/app_layer.yml up -d
 
 stop_dev_all:
-	docker compose -f services/compose/app_layer.yml down
+	docker compose -f services/compose/python_app_layer.yml down
+	docker compose -f services/compose/spark_app_layer.yml down
 	docker compose -f services/compose/orchestration_layer.yml down
 	docker compose -f services/compose/lakehouse_layer.yml down
 	docker compose -f services/compose/fast_layer.yml down
 	docker compose -f services/compose/processing_layer.yml down
 	docker compose -f services/compose/observability_layer.yml down
 
-deploy_dev_app:
-	docker compose -f services/compose/app_layer.yml up -d  --build
+####################################################################################################
+####################################################################################################
+
+deploy_dev_python:
+	docker compose -f services/compose/python_app_layer.yml up -d  --build
+
+stop_dev_python:
+	docker compose -f services/compose/python_app_layer.yml down
+
+
+deploy_dev_spark:
+	docker compose -f services/compose/spark_app_layer.yml up -d  --build
+
+stop_dev_python:
+	docker compose -f services/compose/python_app_layer.yml down
+
+####################################################################################################
+####################################################################################################
 
 deploy_dev_fast:
 	docker compose -f services/compose/fast_layer.yml up -d
 
-deploy_dev_processing:
-	docker compose -f services/compose/processing_layer.yml up -d --build
-
-deploy_dev_lakehouse:
-	docker compose -f services/compose/lakehouse_layer.yml up -d
-
-deploy_dev_ops:
-	docker compose -f services/compose/observability_services.yml up -d
-	
-deploy_dev_orchestration:
-	docker compose -f services/compose/orchestration_layer.yml up -d --build
-
-####################################################################################################
-#############################    STOP COMPOSE SERVICES    ##########################################
-
-stop_dev_app:
-	docker compose -f services/compose/app_layer.yml down
-
 stop_dev_fast:
 	docker compose -f services/compose/fast_layer.yml down
+
+####################################################################################################
+####################################################################################################
+
+deploy_dev_processing:
+	docker compose -f services/compose/processing_layer.yml up -d --build
 
 stop_dev_processing:
 	docker compose -f services/compose/processing_layer.yml down
 
+####################################################################################################
+####################################################################################################
+
+deploy_dev_lakehouse:
+	docker compose -f services/compose/lakehouse_layer.yml up -d
+
 stop_dev_lakehouse:
 	docker compose -f services/compose/lakehouse_layer.yml down
 
+####################################################################################################
+####################################################################################################
+
+deploy_dev_ops:
+	docker compose -f services/compose/observability_layer.yml up -d
+	
 stop_dev_orchestration:
 	docker compose -f services/compose/orchestration_layer.yml down
 
+
+deploy_dev_orchestration:
+	docker compose -f services/compose/orchestration_layer.yml up -d --build
+
+
 stop_dev_ops:
-	docker compose -f services/compose/observability_services.yml down
+	docker compose -f services/compose/observability_layer.yml down
+
 
 ####################################################################################################
 ###############################    WATCH COMPOSE SERVICES    #######################################
 
-watch_dev_app:
-	watch docker compose -f services/compose/app_layer.yml ps
-
-watch_dev_fast:
+watch_dev_compose:
 	watch docker compose -f services/compose/fast_layer.yml ps
 
-watch_dev_processing:
-	watch docker compose -f services/compose/processing_layer.yml ps
-
-watch_dev_lakehouse:
-	watch docker compose -f services/compose/lakehouse_layer.yml ps
-
-watch_dev_orchestration:
-	docker compose -f services/compose/orchestration_services.yml ps
-
-watch_dev_ops:
-	watch docker compose -f services/compose/observability_services.yml ps
 
 ####################################################################################################
 ####################################################################################################
 #################################    DEPLOY SWARM STACKS    ########################################
 
-deploy_prod_processing:
-	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
-
 deploy_prod_fast:
 	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
 
-deploy_prod_app:
-	docker stack deploy -c services/swarm/app_layer.yml layer_app
+deploy_prod_processing:
+	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
 
 deploy_prod_lakehouse:
 	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
 
-deploy_prod_orchestration:
-	docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
-
 deploy_prod_observability:
 	docker stack deploy -c services/swarm/observability_layer.yml layer_observability
 
+deploy_prod_orchestration:
+	docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
+
+deploy_prod_all:
+	docker stack deploy -c services/swarm/observability_layer.yml layer_observability
+	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
+	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
+	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
+	#docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
 ####################################################################################################
 ##################################    STOP SWARM STACKS    #########################################
 
@@ -180,8 +192,18 @@ stop_prod_orchestration:
 stop_prod_observability:
 	docker stack rm layer_observability
 
+stop_prod_all:
+	docker stack rm layer_observability
+	docker stack rm layer_processing
+	docker stack rm layer_fast
+	docker stack rm layer_lakehouse
+	docker stack rm layer_app
+	docker stack rm layer_orchestration
 ####################################################################################################
 ###############################    WATCH SWARM SERVICES    #########################################
 
 watch_prod_services:
 	watch docker service ls
+
+open_services_in_browser:
+	@python scripts/lazy_helper.py

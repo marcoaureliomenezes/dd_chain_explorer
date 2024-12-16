@@ -1,41 +1,32 @@
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-restart-default: &common_restart_policy
-  restart_policy:
-    condition: on-failure
-
-x-common-network: &common_network
-  networks:
-    - ice_lakehouse_prod
-
 x-common-deploy-master: &common_deploy_master
-  <<: *common_network
+  networks:
+    - vpc_kafka
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+      constraints: [node.hostname == dadaia-desktop]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
-  <<: *common_network
+  networks:
+    - vpc_kafka
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
 x-common-deploy-worker-2: &common_deploy_worker_2
-  <<: *common_network
+  networks:
+    - vpc_kafka
   deploy:
-    <<: *common_restart_policy
+    restart_policy:
+      condition: on-failure
     placement:
       constraints: [node.hostname == dadaia-server-2]
-
-x-common-deploy-worker-3: &common_deploy_worker_3
-  <<: *common_network
-  deploy:
-    <<: *common_restart_policy
-    placement:
-      constraints: [node.hostname == dadaia-server]
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
@@ -43,7 +34,7 @@ x-common-deploy-worker-3: &common_deploy_worker_3
 x-airflow-common: &airflow-common
   image: marcoaureliomenezes/airflow:1.0.0
   networks:
-    - ice_lakehouse_prod
+    - vpc_kafka
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -71,10 +62,12 @@ services:
     env_file:
       - conf/.secrets.conf
     environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
     volumes:
-      - pg_airflow_vol_prod:/var/lib/postgresql/data
-    <<: *common_deploy_worker_1
+      - swarm_vol_pg_airflow:/var/lib/postgresql/data
+    <<: *common_deploy_worker_2
 
 
   airflow-webserver:
@@ -82,12 +75,12 @@ services:
     command: webserver
     ports:
       - "8080:8080"
-    <<: *common_deploy_master
+    <<: *common_deploy_worker_2
 
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
-    <<: *common_deploy_master
+    <<: *common_deploy_worker_2
 
 
   airflow-init:
@@ -151,13 +144,13 @@ services:
     user: "0:0"
     # volumes:
     #   - ${AIRFLOW_PROJ_DIR:-.}:/sources
-    <<: *common_deploy_worker_1
+    <<: *common_deploy_worker_2
 
 
 
 volumes:
-  pg_airflow_vol_prod:
+  swarm_vol_pg_airflow:
 
 networks:
-  ice_lakehouse_prod:
+  vpc_kafka:
     external: true
