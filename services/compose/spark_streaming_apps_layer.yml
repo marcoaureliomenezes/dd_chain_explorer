@@ -1,0 +1,74 @@
+x-conf-dev-spark-job: &conf_dev_spark_streaming_job
+  restart: on-failure
+  networks:
+    - vpc_dm
+  build: ../../docker/app_layer/spark-streaming-jobs
+  volumes:
+    - ../../docker/app_layer/spark-streaming-jobs/src:/app
+    - ../../docker/app_layer/spark-streaming-jobs/conf/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+
+services:
+
+  spark-app-apk-comsumption:
+    <<: *conf_dev_spark_streaming_job
+    container_name: spark-app-apk-comsumption
+    entrypoint: "sh /app/entrypoint.sh /app/1_api_key_monitor.py"
+    env_file:
+      - ./conf/dev.secrets.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.redis.conf
+      - ./conf/dev.lakehouse.conf
+    environment:
+      TOPIC_LOGS: mainnet.0.application.logs
+      CONSUMER_GROUP: cg_logs_processor
+      STARTING_OFFSETS: earliest
+      MAX_OFFSETS_PER_TRIGGER: 3000
+
+
+  spark-app-multiplex-bronze:
+    <<: *conf_dev_spark_streaming_job
+    container_name: spark-app-multiplex-bronze
+    entrypoint: "sh /app/entrypoint.sh /app/2_job_bronze_multiplex.py"
+    env_file:
+      - ./conf/swarm.secrets.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.lakehouse.conf
+    environment:
+      CONSUMER_GROUP: cg_bronze_1
+      STARTING_OFFSETS: earliest
+      MAX_OFFSETS_PER_TRIGGER: 10000
+      TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
+
+
+  spark-app-silver-blocks:
+    <<: *conf_dev_spark_streaming_job
+    container_name: spark-app-silver-blocks
+    entrypoint: "sh /app/entrypoint.sh /app/3_job_silver_blocks.py"
+    env_file:
+      - ./conf/swarm.secrets.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.lakehouse.conf
+    environment:
+      TOPIC_BLOCKS: "mainnet.1.mined_blocks.data"
+      TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
+      TABLE_SILVER_BLOCKS: "nessie.silver.blocks"
+      TABLE_SILVER_BLOCKS_TXS: "nessie.silver.blocks_transactions"
+
+
+  spark-app-silver-txs:
+    <<: *conf_dev_spark_streaming_job
+    container_name: spark-app-silver-txs
+    entrypoint: "sh /app/entrypoint.sh /app/4_job_silver_transactions.py"
+    env_file:
+      - ./conf/swarm.secrets.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.lakehouse.conf
+    environment:
+      TOPIC_TXS: "mainnet.4.mined.txs.raw_data"
+      TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
+      TABLE_SILVER_TXS: "nessie.silver.transactions"
+
+
+networks:
+  vpc_dm:
+    external: true

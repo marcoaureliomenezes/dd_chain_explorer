@@ -1,87 +1,88 @@
-##########################################################################################
-#########################    DEPLOYMENT CONFIGS FOR NODES    #############################
-
-x-common-deploy-master: &common_deploy_master
-  networks:
-    - vpc_dm
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-desktop]
-
-x-common-deploy-worker-1: &common_deploy_worker_1
-  networks:
-    - vpc_dm
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
-
-x-common-deploy-worker-2: &common_deploy_worker_2
-  networks:
-    - vpc_dm
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-server-2]
-
-##########################################################################################
-################################    SERVICES CONFIG    ###################################
-
 x-airflow-common: &airflow-common
-  image: marcoaureliomenezes/airflow:1.0.0
+  build: ../../docker/customized/airflow
   networks:
     - vpc_dm
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_AIRFLOW_USER-airflow}:${PG_AIRFLOW_PASSWORD-airflow}@airflow_pg/${PG_AIRFLOW_DB-airflow}
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow_pg/airflow
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
   env_file:
-    - ./conf/swarm.secrets.conf
-    - ./conf/swarm.lakehouse.conf
-    - ./conf/swarm.kafka.conf
+    - conf/swarm.secrets.conf
+    - conf/dev.kafka.conf
+    - conf/dev.lakehouse.conf
   volumes:
+    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
+    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
+    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
+    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - /var/run/docker.sock:/var/run/docker.sock
-  user: "1000:0"
-
-##########################################################################################
-################################    SERVICES CONFIG    ###################################
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    airflow_pg:
+      condition: service_healthy
 
 services:
 
   airflow_pg:
     image: postgres:16
+    container_name: airflow_pg
+    restart: always
+    networks:
+      - vpc_dm
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-airflow}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
-      POSTGRES_DB: ${POSTGRES_DB:-airflow}
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
     volumes:
-      - swarm_vol_pg_airflow:/var/lib/postgresql/data
-    <<: *common_deploy_worker_1
+      - postgres_airflow_vol:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
 
 
   airflow-webserver:
-    <<: *airflow-common
+    container_name: airflow_webserver
     command: webserver
+    <<: *airflow-common
+    restart: always
+    environment:
+      <<: *airflow-common-env
     ports:
       - "8080:8080"
-    <<: *common_deploy_worker_2
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
 
   airflow-scheduler:
-    <<: *airflow-common
+    container_name: airflow_scheduler
     command: scheduler
-    <<: *common_deploy_worker_2
+    <<: *airflow-common
+    environment:
+      <<: *airflow-common-env
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
 
 
   airflow-init:
+    container_name: airflow_init
     <<: *airflow-common
     entrypoint: /bin/bash
     command:
@@ -140,14 +141,12 @@ services:
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
       _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
-    # volumes:
-    #   - ${AIRFLOW_PROJ_DIR:-.}:/sources
-    <<: *common_deploy_worker_2
-
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}:/sources
 
 
 volumes:
-  swarm_vol_pg_airflow:
+  postgres_airflow_vol:
 
 networks:
   vpc_dm:

@@ -35,7 +35,7 @@ x-spark-worker-common: &spark_worker_common
     - ./conf/swarm.secrets.conf
 
   networks:
-    - vpc_kafka
+    - vpc_dm
   environment:
     - SPARK_MODE=worker
     - SPARK_MASTER_URL=spark://spark-master:7077
@@ -53,29 +53,12 @@ x-spark-worker-common: &spark_worker_common
 
 services:
 
-  rosemberg:
-    image: marcoaureliomenezes/rosemberg:1.0.0
-    env_file:
-    - ./conf/swarm.lakehouse.conf
-    - ./conf/swarm.secrets.conf
-    volumes:
-      - swarm_vol_rosemberg:/app/notebooks
-    networks:
-      - vpc_kafka
-    ports:
-      - 8888:8888
-    environment:
-      NESSIE_URI: http://nessie:19120/api/v1
-      MINIO_HOST: http://minio:9000
-    <<: *common_deploy_worker_1
-
-
   spark-master:
     image: marcoaureliomenezes/spark:1.0.0
     env_file:
     - ./conf/swarm.lakehouse.conf
     networks:
-      - vpc_kafka
+      - vpc_dm
     environment:
       - SPARK_MODE=master
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -107,11 +90,21 @@ services:
     <<: *spark_worker_common
     <<: *common_deploy_worker_2
 
+  spark-worker-4:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_1
+
+
+  spark-worker-5:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_2
 
   trino:
     image: trinodb/trino
     networks:
-      - vpc_kafka
+      - vpc_dm
     <<: *common_deploy_worker_2
     environment:
       - DISCOVERY_SERVER_ENABLED=true
@@ -121,7 +114,7 @@ services:
     ports:
       - "7080:8080"
 networks:
-  vpc_kafka:
+  vpc_dm:
     external: true
 
 volumes:

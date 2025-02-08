@@ -1,0 +1,56 @@
+services:
+
+  notebook:
+    build: ../../docker/customized/jupyterlab
+    container_name: notebook
+    restart: on-failure
+    networks:
+      - vpc_dm
+    env_file:
+      - ./conf/swarm.secrets.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.redis.conf
+      - ./conf/dev.lakehouse.conf
+    volumes:
+      - ../../mnt/jupyterlab/spark-notebooks:/app/spark-notebooks
+      - ../../docker/customized/jupyterlab/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+    ports:
+      - 8888:8888
+    environment:
+      NESSIE_URI: http://nessie:19120/api/v1
+      MINIO_HOST: http://minio:9000
+
+
+  python-batch:
+    build: ../../docker/app_layer/onchain-batch-txs
+    container_name: python-batch
+    #entrypoint: ""
+    env_file:
+      - ./conf/dev.secrets.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.redis.conf
+      - ./conf/dev.lakehouse.conf
+    volumes:
+      - ../../docker/app_layer/onchain-batch-txs/src:/app
+    environment:
+      TOPIC_LOGS: mainnet.0.application.logs
+      CONSUMER_GROUP: cg_logs_processor
+
+  spark-batch:
+    build: ../../docker/app_layer/spark-batch-jobs
+    container_name: spark-batch
+    restart: on-failure
+    #entrypoint: ""
+    networks:
+      - vpc_dm
+    env_file:
+      - ./conf/swarm.secrets.conf
+      - ./conf/dev.lakehouse.conf
+    volumes:
+      - ../../docker/app_layer/spark-batch-jobs/src:/app
+      - ../../docker/app_layer/spark-batch-jobs/conf/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+
+
+networks:
+  vpc_dm:
+    external: true
