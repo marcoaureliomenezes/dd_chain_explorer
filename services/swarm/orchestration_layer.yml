@@ -3,7 +3,7 @@
 
 x-common-deploy-master: &common_deploy_master
   networks:
-    - vpc_kafka
+    - vpc_dm
   deploy:
     restart_policy:
       condition: on-failure
@@ -12,7 +12,7 @@ x-common-deploy-master: &common_deploy_master
 
 x-common-deploy-worker-1: &common_deploy_worker_1
   networks:
-    - vpc_kafka
+    - vpc_dm
   deploy:
     restart_policy:
       condition: on-failure
@@ -21,7 +21,7 @@ x-common-deploy-worker-1: &common_deploy_worker_1
 
 x-common-deploy-worker-2: &common_deploy_worker_2
   networks:
-    - vpc_kafka
+    - vpc_dm
   deploy:
     restart_policy:
       condition: on-failure
@@ -34,40 +34,38 @@ x-common-deploy-worker-2: &common_deploy_worker_2
 x-airflow-common: &airflow-common
   image: marcoaureliomenezes/airflow:1.0.0
   networks:
-    - vpc_kafka
+    - vpc_dm
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${PG_AIRFLOW_USER-airflow}:${PG_AIRFLOW_PASSWORD-airflow}@airflow_pg/${PG_AIRFLOW_DB-airflow}
     AIRFLOW__CORE__FERNET_KEY: ''
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
   env_file:
-    - conf/.secrets.conf
-    - conf/airflow_env_vars.conf
+    - ./conf/swarm.secrets.conf
+    - ./conf/swarm.lakehouse.conf
+    - ./conf/swarm.kafka.conf
   volumes:
     - /var/run/docker.sock:/var/run/docker.sock
-  user: "${AIRFLOW_UID:-50000}:0"
+  user: "1000:0"
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
 
 services:
 
-  postgres:
+  airflow_pg:
     image: postgres:16
-    container_name: postgres_airflow
-    env_file:
-      - conf/.secrets.conf
     environment:
-      POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
-      POSTGRES_DB: airflow
+      POSTGRES_USER: ${POSTGRES_USER:-airflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: ${POSTGRES_DB:-airflow}
     volumes:
       - swarm_vol_pg_airflow:/var/lib/postgresql/data
-    <<: *common_deploy_worker_2
+    <<: *common_deploy_worker_1
 
 
   airflow-webserver:
@@ -152,5 +150,5 @@ volumes:
   swarm_vol_pg_airflow:
 
 networks:
-  vpc_kafka:
+  vpc_dm:
     external: true

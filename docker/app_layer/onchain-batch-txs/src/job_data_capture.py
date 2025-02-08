@@ -12,38 +12,30 @@ from azure.keyvault.secrets import SecretClient
 
 from utils.etherscan import EthercanAPI
 from utils.log_handlers import ConsoleLoggingHandler, KafkaLoggingHandler
-from utils.kafka_handlers import SchemaRegistryHandler
+from utils.schema_registry_utils import SchemaRegistryUtils
 
 
 
 class ContractTransactionsCrawler:
 
-  def __init__(self, logger, overwrite=True):
+  def __init__(self, logger, etherscan_client, boto3_client, contract_address, overwrite=True):
     self.logger = logger
-    self.contract_address = None
-    self.etherscan_client = None
+    self.etherscan_client = etherscan_client
+    self.boto3_client = boto3_client
+    self.contract_address = contract_address
+    self.overwrite = overwrite
     self.timestamp_interval = None
     self.local_path = None
     self.s3_path = None
-    self.overwrite = overwrite
     self.configure_pagination()
 
-  
-  def config_contract_address(self, contract_address):
-    self.contract_address = contract_address
-    return self
-  
-  def config_etherscan_client(self, etherscan_client):
-    self.etherscan_client = etherscan_client
-    return self
 
-  def config_s3_client_conn(self, host):
-    self.s3 = boto3.client('s3',
-      endpoint_url=host,
-      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
-    )
+  def configure_pagination(self, page=1, offset=100, sort='asc'):
+    self.page = page
+    self.offset = offset
+    self.sort = sort
     return self
+  
 
   def config_timestamp_interval(self, end_date):
     end_date = dt.strptime(end_date, '%Y-%m-%d %H:%M:%S%z')
@@ -57,18 +49,12 @@ class ContractTransactionsCrawler:
     assert self.timestamp_interval is not None, "Timestamp interval not configured"
     start_date = dt.fromtimestamp(self.timestamp_interval[0])
     partitioned_path = dt.strftime(start_date, 'year=%Y/month=%m/day=%d/hour=%H')
-
     basepath = f"{self.contract_address[:8]}/{partitioned_path}"
     self.basepath = {"local": f"./tmp/{basepath}", "s3": f"{lake_path}/{basepath}"}
     _ = os.makedirs(self.basepath["local"], exist_ok=True)
     self.logger.info(f"local_path:{self.basepath['local']};lake_path:{self.basepath['s3']}")
     return self
 
-  def configure_pagination(self, page=1, offset=100, sort='asc'):
-    self.page = page
-    self.offset = offset
-    self.sort = sort
-    return self
 
   def get_block_interval(self):
     get_block = lambda timestamp, closest: self.etherscan_client.get_block_by_timestamp(timestamp, closest=closest)
@@ -127,28 +113,41 @@ class ContractTransactionsCrawler:
 if __name__ == "__main__":
   
   APP_NAME = "CONTRACT_TRANSACTIONS_CRAWLER"
-  ADDR_DEFAULT = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
-
+  TOPIC_LOGS = "etherscan.0.application.logs"
+  KAFKA_BROKERS = os.getenv("KAFKA_BROKERS")
+  SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
+  CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS", "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
   akv_url = f"https://{os.getenv('AKV_NAME')}.vault.azure.net/"
   akv_client = SecretClient(vault_url=akv_url, credential=DefaultAzureCredential())
    
   logger = logging.getLogger(APP_NAME)
   logger.setLevel(logging.INFO)
-  schema_registry_handler = SchemaRegistryHandler(logger, os.getenv("SR_URL"))
-  logs_schema = schema_registry_handler.get_avro_schema("schemas/application_logs_avro.json")
-  producer_conf = {"bootstrap.servers": os.getenv("KAFKA_BROKERS"), "client.id": APP_NAME, "acks": 1}
-  logs_schema = schema_registry_handler.get_avro_schema("schemas/application_logs_avro.json")
+  sc_client = SchemaRegistryUtils.get_schema_registry_client(SR_URL)
+  schema_registry_handler = SchemaRegistryUtils()
+  logs_schema = schema_registry_handler.get_avro_schema(sc_client, f"{TOPIC_LOGS}-value")
+  producer_conf = {"bootstrap.servers": KAFKA_BROKERS, "client.id": APP_NAME, "acks": 1}
   producer_logs = schema_registry_handler.create_avro_producer(producer_conf, logs_schema)
-  kafka_handler = KafkaLoggingHandler(producer_logs, os.getenv("TOPIC_LOGS"))
+  kafka_handler = KafkaLoggingHandler(producer_logs, TOPIC_LOGS)
   logger.addHandler(kafka_handler)
   logger.addHandler(ConsoleLoggingHandler())
+
+
+  boto3_client = boto3.client('s3',
+      endpoint_url=os.getenv("S3_URL"),
+      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+    )
 
   etherscan_client = EthercanAPI(logger, akv_client, os.getenv("APK_NAME"), os.getenv("NETWORK"))
 
   crawler = (
-    ContractTransactionsCrawler(logger, overwrite=True)
-      .config_s3_client_conn(os.getenv("S3_URL"))
-      .config_contract_address(os.getenv("ADDRESS", ADDR_DEFAULT))
+    ContractTransactionsCrawler(
+      logger,
+      etherscan_client,
+      boto3_client,
+      contract_address=CONTRACT_ADDRESS,
+      overwrite=True)
+      .config_contract_address()
       .config_etherscan_client(etherscan_client)
       .config_timestamp_interval(os.getenv("END_DATE"))
       .config_file_prefix(os.getenv("S3_BUCKET"))

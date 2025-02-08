@@ -30,7 +30,7 @@ build_airflow:
 
 build_app:
 	docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
-	# docker build -t marcoaureliomenezes/spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
+	docker build -t marcoaureliomenezes/spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
 	# docker build -t marcoaureliomenezes/onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
 	# docker build -t marcoaureliomenezes/spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
 
@@ -52,9 +52,9 @@ publish_airflow:
 
 
 publish_apps:
-	docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
-	docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
-	docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
+	# docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
+	# docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
+	# docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
 	docker push marcoaureliomenezes/spark-streaming-jobs:$(current_branch)
 
 ####################################################################################################
@@ -62,93 +62,58 @@ publish_apps:
 ###############################    DEPLOY COMPOSE SERVICES    ######################################
 
 deploy_dev_all:
-	docker compose -f services/compose/observability_layer.yml up -d
-	docker compose -f services/compose/processing_layer.yml up -d
-	docker compose -f services/compose/fast_layer.yml up -d
-	docker compose -f services/compose/lakehouse_layer.yml up -d
-	# docker compose -f services/compose/orchestration_layer.yml up -d
-	docker compose -f services/compose/app_layer.yml up -d
+	docker compose -f services/compose/airflow_orchestration_layer.yml up -d
+	docker compose -f services/compose/python_streaming_apps_layer.yml up -d
+	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d
+	docker compose -f services/compose/batch_apps_layer.yml up -d
+
+deploy_dev_batch:
+	docker compose -f services/compose/batch_apps_layer.yml up -d --build
+
+deploy_dev_airflow:
+	docker compose -f services/compose/airflow_orchestration_layer.yml up -d --build
+
+deploy_dev_python_streaming:
+	docker compose -f services/compose/python_streaming_apps_layer.yml up -d  --build
+
+deploy_dev_spark_streaming:
+	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
+
+####################################################################################################
+################################    STOP COMPOSE SERVICES    #######################################
 
 stop_dev_all:
-	docker compose -f services/compose/python_app_layer.yml down
-	docker compose -f services/compose/spark_app_layer.yml down
-	docker compose -f services/compose/orchestration_layer.yml down
-	docker compose -f services/compose/lakehouse_layer.yml down
-	docker compose -f services/compose/fast_layer.yml down
-	docker compose -f services/compose/processing_layer.yml down
-	docker compose -f services/compose/observability_layer.yml down
+	docker compose -f services/compose/airflow_orchestration_layer.yml down
+	docker compose -f services/compose/python_streaming_apps_layer.yml down
+	docker compose -f services/compose/spark_streaming_apps_layer.yml down
+	docker compose -f services/compose/batch_apps_layer.yml down
 
-####################################################################################################
-####################################################################################################
+stop_dev_batch:
+	docker compose -f services/compose/batch_apps_layer.yml down
 
-deploy_dev_python:
-	docker compose -f services/compose/python_app_layer.yml up -d  --build
+stop_dev_airflow:
+	docker compose -f services/compose/airflow_orchestration_layer.yml down
 
-stop_dev_python:
-	docker compose -f services/compose/python_app_layer.yml down
+stop_dev_python_streaming:
+	docker compose -f services/compose/python_streaming_apps_layer.yml down
 
-
-deploy_dev_spark:
-	docker compose -f services/compose/spark_app_layer.yml up -d  --build
-
-stop_dev_python:
-	docker compose -f services/compose/python_app_layer.yml down
-
-####################################################################################################
-####################################################################################################
-
-deploy_dev_fast:
-	docker compose -f services/compose/fast_layer.yml up -d
-
-stop_dev_fast:
-	docker compose -f services/compose/fast_layer.yml down
-
-####################################################################################################
-####################################################################################################
-
-deploy_dev_processing:
-	docker compose -f services/compose/processing_layer.yml up -d --build
-
-stop_dev_processing:
-	docker compose -f services/compose/processing_layer.yml down
-
-####################################################################################################
-####################################################################################################
-
-deploy_dev_lakehouse:
-	docker compose -f services/compose/lakehouse_layer.yml up -d
-
-stop_dev_lakehouse:
-	docker compose -f services/compose/lakehouse_layer.yml down
-
-####################################################################################################
-####################################################################################################
-
-deploy_dev_ops:
-	docker compose -f services/compose/observability_layer.yml up -d
-	
-stop_dev_orchestration:
-	docker compose -f services/compose/orchestration_layer.yml down
-
-
-deploy_dev_orchestration:
-	docker compose -f services/compose/orchestration_layer.yml up -d --build
-
-
-stop_dev_ops:
-	docker compose -f services/compose/observability_layer.yml down
-
-
-####################################################################################################
-###############################    WATCH COMPOSE SERVICES    #######################################
+stop_dev_spark_streaming:
+	docker compose -f services/compose/spark_streaming_apps_layer.yml down
 
 watch_dev_compose:
-	watch docker compose -f services/compose/fast_layer.yml ps
+	watch docker compose -f services/compose/spark_streaming_apps_layer.yml ps
 
 
 ####################################################################################################
 ####################################################################################################
 #################################    DEPLOY SWARM STACKS    ########################################
+
+deploy_prod_all:
+	docker stack deploy -c services/swarm/observability_layer.yml layer_observability
+	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
+	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
+	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
+	docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
 
 deploy_prod_fast:
 	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
@@ -164,13 +129,6 @@ deploy_prod_observability:
 
 deploy_prod_orchestration:
 	docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
-
-deploy_prod_all:
-	docker stack deploy -c services/swarm/observability_layer.yml layer_observability
-	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
-	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
-	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
-	#docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
 ####################################################################################################
 ##################################    STOP SWARM STACKS    #########################################
 

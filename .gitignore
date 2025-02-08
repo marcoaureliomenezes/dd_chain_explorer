@@ -1,25 +1,11 @@
-services/.secrets.conf
 
 .hypothesis/
 .idea
-
-
-.github
-
-old_readme.md
-
-mnt/airflow/logs
-mnt/airflow/plugins
-mnt/airflow/tmp
-mnt/rosemberg/notebooks/spark-warehouse
-mnt/rosemberg/warehouse
-
-
-connectors/s3-sink-dev/*
-connectors/s3-sink-prod/*
+.ipynb_checkpoints
 __pycache__
 src/.infura_auth.txt
 .history
+.github
 .gitignore
 **/*.pyc
 **/*.pyo
@@ -27,12 +13,15 @@ src/.infura_auth.txt
 /logs
 venv*
 
-.git
 
-
-
-
-
-TODOs.md
+mnt/airflow/logs
+mnt/airflow/plugins
+mnt/airflow/tmp
+mnt/rosemberg/notebooks/spark-warehouse
+mnt/rosemberg/warehouse
+services/.secrets.conf
 swarm.secrets.conf
 dev.secrets.conf
+
+z_old/
+z_understanding.md

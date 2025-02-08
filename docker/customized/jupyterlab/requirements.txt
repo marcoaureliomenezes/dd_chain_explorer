@@ -7,3 +7,4 @@ pyiceberg[s3fs,hive]==0.7.1
 redis
 requests==2.32.3
 trino
+rand-engine==0.3.5

@@ -6,7 +6,7 @@ version: '3'
 x-common-exporters-default: &node_exporter_commons
   image: quay.io/prometheus/node-exporter:latest
   networks:
-    - vpc_kafka
+    - vpc_dm
   command:
     - '--path.rootfs=/host'
   pid: host
@@ -16,7 +16,7 @@ x-common-exporters-default: &node_exporter_commons
 x-common-cadvisor-default: &cadvisor_commons
   image: gcr.io/cadvisor/cadvisor:v0.44.1-test
   networks:
-    - vpc_kafka
+    - vpc_dm
   volumes:
     - /:/rootfs:ro
     - /var/run:/var/run:rw
@@ -61,7 +61,7 @@ services:
     image: marcoaureliomenezes/prometheus:1.0.0
     <<: *common_deploy_worker_1
     networks:
-      - vpc_kafka
+      - vpc_dm
     ports:
       - 9090:9090
     volumes:
@@ -75,7 +75,7 @@ services:
     image: grafana/grafana
     <<: *common_deploy_worker_1
     networks:
-      - vpc_kafka
+      - vpc_dm
     ports:
       - 3000:3000
     volumes:
@@ -96,11 +96,10 @@ services:
 
   # Dashboard ID: 18941, 15465 Don't work 12931, 1442
   kafka-exporter:
-    image: danielqsj/kafka-exporter 
-    container_name: kafka-exporter
-    command: ["--kafka.server=broker:29092"]
+    image: danielqsj/kafka-exporter
+    command: ["--kafka.server=broker-1:29092"]
     networks:
-      - vpc_kafka
+      - vpc_dm
     <<: *common_deploy_worker_1
     ports:
       - 9308:9308
@@ -163,5 +162,5 @@ volumes:
   swarm_vol_grafana:
 
 networks:
-  vpc_kafka:
+  vpc_dm:
     external: true

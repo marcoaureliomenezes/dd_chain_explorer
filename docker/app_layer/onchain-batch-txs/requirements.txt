@@ -1,10 +1,5 @@
 azure-identity
 azure-keyvault
 boto3
-confluent-kafka
-fastavro
-fastparquet
 pandas
-pyarrow
-pyiceberg[s3fs,hive]
 requests
