@@ -8,23 +8,17 @@ class CreateIcebergSilverBlocksTxs(TableCreator):
 
   def create_table(self):
     self.create_namespace()
-    self.spark.sql(f"""
+    query = f"""
     CREATE TABLE IF NOT EXISTS {self.table_name} (
       block_timestamp TIMESTAMP           COMMENT 'Block timestamp',
+      ingestion_time TIMESTAMP            COMMENT 'Kafka ingestion_time',
       block_number LONG                   COMMENT 'Block number',
       transaction_id STRING               COMMENT 'Number of transactions',
-      dt_hour_ref STRING                  COMMENT 'Partition Field with Date and hour of Kafka Message')
+      dat_ref STRING                      COMMENT 'Partition Field with Date of Kafka Message')
     USING ICEBERG
-    PARTITIONED BY (dt_hour_ref)
-    TBLPROPERTIES (
-      'gc.enabled' = 'true',
-      'write.delete.mode' = 'copy-on-write',
-      'write.update.mode' = 'merge-on-read',
-      'write.merge.mode' = 'merge-on-read',
-      'write.metadata.delete-after-commit.enabled' = true,
-      'write.metadata.previous-versions-max' = 3,
-      'write.parquet.compression-codec' = 'snappy'
-    )""").show()
+    PARTITIONED BY (dat_ref)"""
+    query += self.get_iceberg_table_properties()
+    self.spark.sql(query).show()
     print(f"Table {self.table_name} created successfully!")
     self.table_exists = True
     return self

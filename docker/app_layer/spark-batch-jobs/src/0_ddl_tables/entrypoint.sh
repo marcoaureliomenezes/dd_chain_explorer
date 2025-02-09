@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PYSPARK_FILEPATH="/app/0_ddl_tables/${1}"
+PYSPARK_FILEPATH=${1}
 PYFILES_DDL_SCRIPTS="/app/0_ddl_tables/table_creator.py"
 PYFILES_SPARK="/app/utils/spark_utils.py"
 PYFILES_ICEBERG="/app/utils/iceberg_utils.py"

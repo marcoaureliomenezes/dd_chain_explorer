@@ -16,7 +16,7 @@ class TopicCreator:
     def __create_topic(self, 
                        name, 
                        num_partitions, 
-                       replication_factor, 
+                       replication_factor,
                        topic_configs={}, 
                        overwrite=False,
                        use_network=True
@@ -56,7 +56,7 @@ class TopicCreator:
 
 if __name__ == "__main__":
 
-    network = os.environ["NETWORK"]
+    NETWORK = os.environ["NETWORK"]
     KAFKA_BROKER = os.getenv("KAFKA_BROKERS")
     parser = ArgumentParser(description=f'Stream transactions network')
     parser.add_argument('config_file', type=FileType('r'), help='Config file')
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     overwrite = args.overwrite
 
     print(f"KAFKA BROKER = {KAFKA_BROKER}")
-    topics_maker = TopicCreator(network, config, KAFKA_BROKER)
+    topics_maker = TopicCreator(NETWORK, config, KAFKA_BROKER)
     topics_maker.make_topic_from_configs('topic.mined_blocks', overwrite=overwrite)
     topics_maker.make_topic_from_configs('topic.orphan_blocks', overwrite=overwrite)
     topics_maker.make_topic_from_configs('topic.hash_txs_ids', overwrite=overwrite)

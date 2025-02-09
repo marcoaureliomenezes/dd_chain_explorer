@@ -57,8 +57,29 @@ class EthercanAPI:
         return response
 
 
+    def get_total_nodes_count(self):
+        req = "https://api.etherscan.io/api?module=stats&action=nodecount&apikey=YourApiKeyToken"
+
+    def get_latest_eth_price(self):
+        req = "https://api.etherscan.io/api?module=stats&action=ethprice&apikey=YourApiKeyToken"
+
+
+    def get_eth_supply(self):
+        req = "https://api.etherscan.io/api?module=stats&action=ethsupply2&apikey=YourApiKeyToken"
+
+    def get_eth2_supply(self):
+        req = "https://api.etherscan.io/api?module=stats&action=ethsupply2&apikey=YourApiKeyToken"
+
+    def get_gas_estimate(self):
+        req = "https://api.etherscan.io/api?module=gastracker&action=gasestimate&gasprice=2000000000 &apikey=YourApiKeyToken"
+
+
+    # TriggerDragRun: For when the trigger event comes from another DAG in the same environment. Pass trigger_dag_id and wait_for_completion=True
+    # Sensors: For when the trigger event comes from an external source. Pass external_trigger=True and wait_for_completion=True
+    # Deferrable Operators
+    # Airflow API.
     def make_request_to_etherscan(self, request_url):
-        try: 
+        try:
             response = requests.get(request_url)
             response = response.json()
         except AttributeError:
