@@ -25,16 +25,22 @@ services:
     build: ../../docker/app_layer/onchain-batch-txs
     container_name: python-batch
     #entrypoint: ""
+    networks:
+      - vpc_dm
     env_file:
-      - ./conf/dev.secrets.conf
+      - ./conf/swarm.secrets.conf
       - ./conf/dev.kafka.conf
-      - ./conf/dev.redis.conf
       - ./conf/dev.lakehouse.conf
     volumes:
       - ../../docker/app_layer/onchain-batch-txs/src:/app
     environment:
       TOPIC_LOGS: mainnet.0.application.logs
-      CONSUMER_GROUP: cg_logs_processor
+      AKV_NAME: "DMEtherscanAsAService"
+      APK_NAME: "etherscan-api-key-2"
+      ADDRESS: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+      EXEC_DATE: "2025-02-01 00:00:00+00:00"
+      S3_BUCKET: "raw-data"
+      S3_BUCKET_PREFIX: "contracts_transactions"
 
   spark-batch:
     build: ../../docker/app_layer/spark-batch-jobs

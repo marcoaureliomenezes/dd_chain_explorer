@@ -9,26 +9,20 @@ class CreateIcebergBronzeMultiplex(TableCreator):
 
   def create_table(self):
     self.create_namespace()
-    self.spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {self.table_name} (
-    key BINARY                    COMMENT 'Key',
-    value BINARY                  COMMENT 'Kafka Value Binary',   
-    partition INT                 COMMENT 'Kafka Message Partition',
-    offset LONG                   COMMENT 'Kafka Message Offset',
-    timestamp TIMESTAMP           COMMENT 'Kafka Message Timestamp',
-    topic STRING                  COMMENT 'Partition Field Kafka Topic',
-    ohour STRING                  COMMENT 'Partition Field with Date and hour')
-    USING ICEBERG 
-    PARTITIONED BY (topic, ohour)
-      TBLPROPERTIES (
-        'gc.enabled' = 'true',
-        'write.delete.mode' = 'copy-on-write',
-        'write.update.mode' = 'merge-on-read',
-        'write.merge.mode' = 'merge-on-read',
-        'write.metadata.delete-after-commit.enabled' = true,
-        'write.metadata.previous-versions-max' = 3,
-        'write.parquet.compression-codec' = 'snappy'
-      )""").show()
+    query = f"""
+      CREATE TABLE IF NOT EXISTS {self.table_name} (
+        key BINARY                    COMMENT 'Key',
+        value BINARY                  COMMENT 'Kafka Value Binary',   
+        partition INT                 COMMENT 'Kafka Message Partition',
+        offset LONG                   COMMENT 'Kafka Message Offset',
+        ingestion_time TIMESTAMP      COMMENT 'Kafka Message Timestamp',
+        topic STRING                  COMMENT 'Partition Field Kafka Topic',
+        dat_ref STRING                COMMENT 'Partition Field with Date')
+      USING ICEBERG 
+      PARTITIONED BY (dat_ref, topic)
+      """
+    query += self.get_iceberg_table_properties()
+    self.spark.sql(query).show()
     print(f"Table {self.table_name} created successfully!")
     self.table_exists = True
     return self

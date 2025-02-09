@@ -1,7 +1,7 @@
 x-conf-dev-onchain-stream-txs: &conf_dev_onchain_stream_txs
   restart: on-failure
   env_file:
-    - ./conf/dev.secrets.conf
+    - ./conf/swarm.secrets.conf
     - ./conf/dev.kafka.conf
     - ./conf/dev.redis.conf
   networks:

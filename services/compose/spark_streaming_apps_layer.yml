@@ -3,6 +3,11 @@ x-conf-dev-spark-job: &conf_dev_spark_streaming_job
   networks:
     - vpc_dm
   build: ../../docker/app_layer/spark-streaming-jobs
+  env_file:
+    - ./conf/swarm.secrets.conf
+    - ./conf/dev.kafka.conf
+    - ./conf/dev.redis.conf
+    - ./conf/dev.lakehouse.conf
   volumes:
     - ../../docker/app_layer/spark-streaming-jobs/src:/app
     - ../../docker/app_layer/spark-streaming-jobs/conf/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
@@ -13,11 +18,6 @@ services:
     <<: *conf_dev_spark_streaming_job
     container_name: spark-app-apk-comsumption
     entrypoint: "sh /app/entrypoint.sh /app/1_api_key_monitor.py"
-    env_file:
-      - ./conf/dev.secrets.conf
-      - ./conf/dev.kafka.conf
-      - ./conf/dev.redis.conf
-      - ./conf/dev.lakehouse.conf
     environment:
       TOPIC_LOGS: mainnet.0.application.logs
       CONSUMER_GROUP: cg_logs_processor
@@ -28,12 +28,10 @@ services:
   spark-app-multiplex-bronze:
     <<: *conf_dev_spark_streaming_job
     container_name: spark-app-multiplex-bronze
-    entrypoint: "sh /app/entrypoint.sh /app/2_job_bronze_multiplex.py"
-    env_file:
-      - ./conf/swarm.secrets.conf
-      - ./conf/dev.kafka.conf
-      - ./conf/dev.lakehouse.conf
+    entrypoint: "sh /app/entrypoint.sh /app/pyspark/2_job_bronze_multiplex.py"
     environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/kafka_topics_multiplexed"
+      TOPICS: "mainnet.1.mined_blocks.data,mainnet.2.orphan_blocks.data,mainnet.4.mined.txs.raw_data"
       CONSUMER_GROUP: cg_bronze_1
       STARTING_OFFSETS: earliest
       MAX_OFFSETS_PER_TRIGGER: 10000
@@ -43,12 +41,9 @@ services:
   spark-app-silver-blocks:
     <<: *conf_dev_spark_streaming_job
     container_name: spark-app-silver-blocks
-    entrypoint: "sh /app/entrypoint.sh /app/3_job_silver_blocks.py"
-    env_file:
-      - ./conf/swarm.secrets.conf
-      - ./conf/dev.kafka.conf
-      - ./conf/dev.lakehouse.conf
+    entrypoint: "sh /app/entrypoint.sh /app/pyspark/3_job_silver_blocks.py"
     environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/blocks"
       TOPIC_BLOCKS: "mainnet.1.mined_blocks.data"
       TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
       TABLE_SILVER_BLOCKS: "nessie.silver.blocks"
@@ -58,15 +53,18 @@ services:
   spark-app-silver-txs:
     <<: *conf_dev_spark_streaming_job
     container_name: spark-app-silver-txs
-    entrypoint: "sh /app/entrypoint.sh /app/4_job_silver_transactions.py"
-    env_file:
-      - ./conf/swarm.secrets.conf
-      - ./conf/dev.kafka.conf
-      - ./conf/dev.lakehouse.conf
+    #entrypoint: "sh /app/entrypoint.sh /app/pyspark/4_job_silver_transactions.py"
     environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions"
       TOPIC_TXS: "mainnet.4.mined.txs.raw_data"
       TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
+      SILVER_TXS_P2P: "nessie.silver.transactions_p2p"
+      SILVER_TXS_CONTRACTS: "nessie.silver.transactions_contracts"
       TABLE_SILVER_TXS: "nessie.silver.transactions"
+      EXEC_MEMORY: 1g
+      NUM_EXECUTORS: 2
+      TOTAL_EXEC_CORES: 2
+
 
 
 networks:

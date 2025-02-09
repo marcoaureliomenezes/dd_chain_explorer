@@ -13,6 +13,8 @@ COMMON_ENV_VARS = {
   "AZURE_CLIENT_SECRET": os.getenv("AZURE_CLIENT_SECRET"),
   "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
   "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+  "DYNAMODB_URL": os.getenv("DYNAMODB_URL"),
+  "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
   "S3_URL": os.getenv("S3_URL"),
   "SR_URL": os.getenv("SCHEMA_REGISTRY_URL"),
   "KAFKA_BROKERS": os.getenv("KAFKA_BROKERS"),
@@ -45,7 +47,7 @@ with DAG(
   schedule_interval="@hourly",
   default_args=default_args,
   max_active_runs=2,
-  catchup=True
+  catchup=False
   ) as dag:
 
     starting_process = BashOperator(
@@ -62,15 +64,23 @@ with DAG(
 
     capture_and_ingest_popular_contracts_addresses_txs = DockerOperator(
       **COMMON_DOCKER_OP,
-      network_mode="vpc_kafka",
+      network_mode="vpc_dm",
       task_id="capture_and_ingest_popular_contracts_addresses_txs",
-      entrypoint="python /app/job_data_capture.py",
+      entrypoint="python /app/1_capture_and_ingest_contracts_txs.py",
       environment= {
       **COMMON_ENV_VARS,
+      "TOPIC_LOGS": "mainnet.0.application.logs",
+      "AKV_NAME": "DMEtherscanAsAService",
       "APK_NAME": "etherscan-api-key-2",
       "ADDRESS": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
-      "END_DATE": "{{ execution_date }}"                      
+      "S3_BUCKET": "raw-data",
+      "S3_BUCKET_PREFIX": "contracts_transactions",
+      "ADDRESS": "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D",
+      "EXEC_DATE": "{{ execution_date }}"          
       }
+
+            
+
     )
     
     silver_popular_contracts_addresses_txs = BashOperator(
@@ -79,11 +89,4 @@ with DAG(
     )
 
 
-    end_process = BashOperator(
-      task_id="end_process",
-      bash_command="""sleep 2"""
-    )
-
-
-
-    starting_process >> capture_uniswap_v2_txs >> end_process
+    starting_process >> get_popular_contracts_addresses >> capture_and_ingest_popular_contracts_addresses_txs >> silver_popular_contracts_addresses_txs

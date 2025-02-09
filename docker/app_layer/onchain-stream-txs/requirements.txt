@@ -2,9 +2,9 @@ aiohttp
 azure-identity
 azure-keyvault
 fastavro
-confluent-kafka
+confluent-kafka==2.6.0
 hexbytes
-kafka-python
+kafka-python-ng
 python-dotenv==0.16.0
 redis
 requests==2.28.1

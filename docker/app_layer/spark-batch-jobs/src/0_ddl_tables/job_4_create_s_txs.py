@@ -8,9 +8,9 @@ class CreateIcebergSilverTxs(TableCreator):
 
   def create_table(self):
     self.create_namespace()
-    self.spark.sql(f"""
+    query = f"""
     CREATE TABLE IF NOT EXISTS {self.table_name} (
-      ingestion_timestamp TIMESTAMP     COMMENT 'Kafka timestamp',  
+      ingestion_time TIMESTAMP          COMMENT 'Kafka timestamp',  
       block_number LONG                 COMMENT 'Block number',
       hash STRING                       COMMENT 'Block hash',   
       transaction_index LONG            COMMENT 'Transaction index',      
@@ -21,18 +21,11 @@ class CreateIcebergSilverTxs(TableCreator):
       gas LONG                          COMMENT 'Gas',
       gas_price LONG                    COMMENT 'Gas price',
       nonce LONG                        COMMENT 'Nonce',
-      dt_hour_ref STRING                COMMENT 'Partition Field with Date and hour based on block_timestamp') 
+      dat_ref STRING                    COMMENT 'Partition Field with Date based on block_timestamp') 
     USING ICEBERG
-    PARTITIONED BY (dt_hour_ref)
-    TBLPROPERTIES (
-      'gc.enabled' = 'true',
-      'write.delete.mode' = 'copy-on-write',
-      'write.update.mode' = 'merge-on-read',
-      'write.merge.mode' = 'merge-on-read',
-      'write.metadata.delete-after-commit.enabled' = true,
-      'write.metadata.previous-versions-max' = 3,
-      'write.parquet.compression-codec' = 'snappy'
-    )""").show()
+    PARTITIONED BY (dat_ref)"""
+    query += self.get_iceberg_table_properties()
+    self.spark.sql(query).show()
     print(f"Table {self.table_name} created successfully!")
     self.table_exists = True
     return self
@@ -43,9 +36,10 @@ if __name__ == "__main__":
     APP_NAME = "Create_Table_Silver_Transactions"
     TABLE_NAME = os.getenv("TABLE_FULLNAME")
     spark = SparkUtils.get_spark_session(APP_NAME)
-    ddl_actor = CreateIcebergSilverTxs(spark, table_name=TABLE_NAME)
-    ddl_actor.create_table()
-    ddl_actor.get_table_info()
+    for table_name in [f"{TABLE_NAME}_contracts", f"{TABLE_NAME}_p2p"]:
+        ddl_actor = CreateIcebergSilverTxs(spark, table_name=table_name)
+        ddl_actor.create_table()
+        ddl_actor.get_table_info()
 
 
 

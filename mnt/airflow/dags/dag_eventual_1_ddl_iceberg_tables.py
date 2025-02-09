@@ -51,7 +51,7 @@ with DAG(
     create_table_bronze_multiplexed = DockerOperator(
       **COMMON_KWARGS_DOCKER_OPERATOR,
       task_id="create_table_bronze_multiplexed",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh job_1_create_b_multiplex.py",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_1_create_b_multiplex.py",
       environment= {
         "TABLE_FULLNAME": "nessie.bronze.kafka_topics_multiplexed",
         **COMMON_SPARK_VARS
@@ -61,7 +61,7 @@ with DAG(
     create_table_silver_blocks = DockerOperator(
       **COMMON_KWARGS_DOCKER_OPERATOR,
       task_id="create_table_silver_blocks",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh job_2_create_s_blocks.py",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_2_create_s_blocks.py",
       environment= {
         "TABLE_FULLNAME": "nessie.silver.blocks",
         **COMMON_SPARK_VARS
@@ -71,7 +71,7 @@ with DAG(
     create_table_silver_blocks_transactions = DockerOperator(
       **COMMON_KWARGS_DOCKER_OPERATOR,
       task_id="create_table_silver_blocks_transactions",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh job_3_create_s_blocks_txs.py",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_3_create_s_blocks_txs.py",
       environment= {
         "TABLE_FULLNAME": "nessie.silver.blocks_transactions",
         **COMMON_SPARK_VARS
@@ -81,7 +81,7 @@ with DAG(
     create_table_silver_transactions = DockerOperator(
       **COMMON_KWARGS_DOCKER_OPERATOR,
       task_id="create_table_silver_transactions",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh job_4_create_s_txs.py",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_4_create_s_txs.py",
       environment= {
         "TABLE_FULLNAME": "nessie.silver.transactions",
         **COMMON_SPARK_VARS

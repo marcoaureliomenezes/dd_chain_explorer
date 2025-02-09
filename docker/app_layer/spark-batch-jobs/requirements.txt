@@ -1,6 +1,2 @@
-fastparquet
-pandas
-pyarrow
-pyiceberg[s3fs,hive]
 pyspark
 requests
