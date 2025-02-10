@@ -143,7 +143,7 @@ if __name__ == "__main__":
 
   sc_client = SchemaRegistryUtils.get_schema_registry_client(SR_URL)
   schema_blocks = SchemaRegistryUtils.get_avro_schema(sc_client, f"{TOPIC_BLOCKS}-value")
-  spark = SparkUtils.get_spark_session(APP_NAME)
+  
 
   tables_output = {"silver_blocks": os.getenv("TABLE_SILVER_BLOCKS"), "silver_blocks_txs": os.getenv("TABLE_SILVER_BLOCKS_TXS") }
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_BLOCKS, "topic_schema": schema_blocks, "max_files_per_trigger": "1"}
@@ -153,6 +153,7 @@ if __name__ == "__main__":
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
   LOGGER.addHandler(ConsoleLoggingHandler())
+  spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
 
   _ = (
     SilverBlocks(logger=LOGGER, spark=spark)

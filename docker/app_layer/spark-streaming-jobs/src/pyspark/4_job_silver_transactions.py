@@ -117,7 +117,6 @@ if __name__ == "__main__":
 
   sc_client = SchemaRegistryUtils.get_schema_registry_client(SR_URL)
   schema_txs = SchemaRegistryUtils.get_avro_schema(sc_client, f"{TOPIC_TXS}-value")
-  spark = SparkUtils.get_spark_session(APP_NAME)
   
   tables_output = {"silver_txs_p2p": SILVER_TXS_P2P, "silver_txs_contracts": SILVER_TXS_CONTRACTS }
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_TXS, "topic_schema": schema_txs, "max_files_per_trigger": "1"}
@@ -127,6 +126,7 @@ if __name__ == "__main__":
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
   LOGGER.addHandler(ConsoleLoggingHandler())
+  spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
 
   engine = (
     SilverBlocks(LOGGER, spark)

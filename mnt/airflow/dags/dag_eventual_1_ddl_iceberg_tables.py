@@ -6,7 +6,7 @@ from airflow.operators.bash import BashOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 
 
-COMMON_KWARGS_DOCKER_OPERATOR = dict(
+COMMON_DOCKER_OP = dict(
   image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
   network_mode="vpc_dm",
   docker_url="unix:/var/run/docker.sock",
@@ -49,7 +49,7 @@ with DAG(
 
 
     create_table_bronze_multiplexed = DockerOperator(
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="create_table_bronze_multiplexed",
       entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_1_create_b_multiplex.py",
       environment= {
@@ -59,7 +59,7 @@ with DAG(
     )
 
     create_table_silver_blocks = DockerOperator(
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="create_table_silver_blocks",
       entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_2_create_s_blocks.py",
       environment= {
@@ -69,7 +69,7 @@ with DAG(
     )
 
     create_table_silver_blocks_transactions = DockerOperator(
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="create_table_silver_blocks_transactions",
       entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_3_create_s_blocks_txs.py",
       environment= {
@@ -79,7 +79,7 @@ with DAG(
     )
 
     create_table_silver_transactions = DockerOperator(
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="create_table_silver_transactions",
       entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_4_create_s_txs.py",
       environment= {

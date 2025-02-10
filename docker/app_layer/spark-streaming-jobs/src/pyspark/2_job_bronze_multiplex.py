@@ -106,10 +106,8 @@ if __name__ == "__main__":
   }
   sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 minutes", "output_mode": "append"}
   sink_tables = { "table_output": TABLE_BRONZE }
-
-
-
-  spark = SparkUtils.get_spark_session(APP_NAME)
+  spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
+  
   _ = (
     KafkaIngestorMultiplexed(LOGGER, spark)
       .config_source(src_properties=src_properties)

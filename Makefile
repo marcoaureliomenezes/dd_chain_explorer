@@ -29,7 +29,7 @@ build_airflow:
 	docker build -t marcoaureliomenezes/airflow:$(current_branch) ./docker/customized/airflow
 
 build_app:
-	docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
+	# docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
 	docker build -t marcoaureliomenezes/spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
 	# docker build -t marcoaureliomenezes/onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
 	# docker build -t marcoaureliomenezes/spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
@@ -64,8 +64,8 @@ publish_apps:
 deploy_dev_all:
 	docker compose -f services/compose/airflow_orchestration_layer.yml up -d
 	docker compose -f services/compose/python_streaming_apps_layer.yml up -d
-	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d
-	docker compose -f services/compose/batch_apps_layer.yml up -d
+	# docker compose -f services/compose/spark_streaming_apps_layer.yml up -d
+	docker compose -f services/compose/batch_apps_layer.yml up -d --build
 
 deploy_dev_batch:
 	docker compose -f services/compose/batch_apps_layer.yml up -d --build
@@ -76,8 +76,8 @@ deploy_dev_airflow:
 deploy_dev_python_streaming:
 	docker compose -f services/compose/python_streaming_apps_layer.yml up -d  --build
 
-deploy_dev_spark_streaming:
-	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
+# deploy_dev_spark_streaming:
+# 	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
 
 ####################################################################################################
 ################################    STOP COMPOSE SERVICES    #######################################
@@ -85,7 +85,7 @@ deploy_dev_spark_streaming:
 stop_dev_all:
 	docker compose -f services/compose/airflow_orchestration_layer.yml down
 	docker compose -f services/compose/python_streaming_apps_layer.yml down
-	docker compose -f services/compose/spark_streaming_apps_layer.yml down
+	#docker compose -f services/compose/spark_streaming_apps_layer.yml down
 	docker compose -f services/compose/batch_apps_layer.yml down
 
 stop_dev_batch:
@@ -129,8 +129,14 @@ deploy_prod_observability:
 
 deploy_prod_orchestration:
 	docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
+
+deploy_prod_spark_apps:
+	docker stack deploy -c services/swarm/spark_apps_layer.yml layer_spark_apps
 ####################################################################################################
 ##################################    STOP SWARM STACKS    #########################################
+
+stop_prod_spark_apps:
+	docker stack rm layer_spark_apps
 
 stop_prod_processing:
 	docker stack rm layer_processing

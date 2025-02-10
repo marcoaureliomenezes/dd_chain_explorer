@@ -18,8 +18,13 @@ if __name__ == "__main__":
 
   TABLE_NAME = os.getenv("TABLE_FULLNAME")
   APP_NAME = f"Iceberg_Maintenance_Streaming_Table_{TABLE_NAME}"
-  LOGGER = get_logger(APP_NAME)
-  spark = SparkUtils.get_spark_session(APP_NAME)
+
+  # CONFIGURING LOGGING
+  LOGGER = logging.getLogger(APP_NAME)
+  LOGGER.setLevel(logging.INFO)
+  LOGGER.addHandler(ConsoleLoggingHandler())
+  
+  spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   maintainer = IceStreamMaintainer(LOGGER, spark, table=TABLE_NAME)
   maintainer.rewrite_manifests()
   maintainer.rewrite_position_delete_files()

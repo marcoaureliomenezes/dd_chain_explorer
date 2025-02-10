@@ -1,6 +1,8 @@
 import os
+import logging
 
-from spark_utils import SparkUtils
+from utils.spark_utils import SparkUtils
+from utils.logger_utils import ConsoleLoggingHandler
 from table_creator import TableCreator
 
 
@@ -41,9 +43,16 @@ class CreateIcebergSilverBlocks(TableCreator):
 
 if __name__ == "__main__":
 
-    APP_NAME = "Create_Table_Silver_Blocks"
-    TABLE_NAME = os.getenv("TABLE_FULLNAME")
-    spark = SparkUtils.get_spark_session(APP_NAME)
-    ddl_actor = CreateIcebergSilverBlocks(spark, table_name=TABLE_NAME)
-    ddl_actor.create_table()
-    ddl_actor.get_table_info()
+  APP_NAME = "Create_Table_Silver_Blocks"
+  TABLE_NAME = os.getenv("TABLE_FULLNAME")
+
+  # CONFIGURING LOGGING
+  LOGGER = logging.getLogger(APP_NAME)
+  LOGGER.setLevel(logging.INFO)
+  LOGGER.addHandler(ConsoleLoggingHandler())
+
+
+  spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
+  ddl_actor = CreateIcebergSilverBlocks(spark, table_name=TABLE_NAME)
+  ddl_actor.create_table()
+  ddl_actor.get_table_info()

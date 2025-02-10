@@ -15,6 +15,8 @@ x-airflow-common: &airflow-common
     - conf/swarm.secrets.conf
     - conf/dev.kafka.conf
     - conf/dev.lakehouse.conf
+    - conf/dev.redis.conf
+    
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
     - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs

@@ -1,24 +1,24 @@
 services:
 
-  notebook:
-    build: ../../docker/customized/jupyterlab
-    container_name: notebook
-    restart: on-failure
-    networks:
-      - vpc_dm
-    env_file:
-      - ./conf/swarm.secrets.conf
-      - ./conf/dev.kafka.conf
-      - ./conf/dev.redis.conf
-      - ./conf/dev.lakehouse.conf
-    volumes:
-      - ../../mnt/jupyterlab/spark-notebooks:/app/spark-notebooks
-      - ../../docker/customized/jupyterlab/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
-    ports:
-      - 8888:8888
-    environment:
-      NESSIE_URI: http://nessie:19120/api/v1
-      MINIO_HOST: http://minio:9000
+  # notebook:
+  #   build: ../../docker/customized/jupyterlab
+  #   container_name: notebook
+  #   restart: on-failure
+  #   networks:
+  #     - vpc_dm
+  #   env_file:
+  #     - ./conf/swarm.secrets.conf
+  #     - ./conf/dev.kafka.conf
+  #     - ./conf/dev.redis.conf
+  #     - ./conf/dev.lakehouse.conf
+  #   volumes:
+  #     - ../../mnt/jupyterlab/spark-notebooks:/app/spark-notebooks
+  #     - ../../docker/customized/jupyterlab/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+  #   ports:
+  #     - 8888:8888
+  #   environment:
+  #     NESSIE_URI: http://nessie:19120/api/v1
+  #     MINIO_HOST: http://minio:9000
 
 
   python-batch:
@@ -36,8 +36,7 @@ services:
     environment:
       TOPIC_LOGS: mainnet.0.application.logs
       AKV_NAME: "DMEtherscanAsAService"
-      APK_NAME: "etherscan-api-key-2"
-      ADDRESS: "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
+      APK_NAME: "etherscan-api-key-1"
       EXEC_DATE: "2025-02-01 00:00:00+00:00"
       S3_BUCKET: "raw-data"
       S3_BUCKET_PREFIX: "contracts_transactions"
@@ -46,15 +45,18 @@ services:
     build: ../../docker/app_layer/spark-batch-jobs
     container_name: spark-batch
     restart: on-failure
-    #entrypoint: ""
+    #entrypoint: "sh /app/2_batch_contracts_transactions/entrypoint.sh /app/2_batch_contracts_transactions/get_popular_contracts.py"
     networks:
       - vpc_dm
     env_file:
       - ./conf/swarm.secrets.conf
       - ./conf/dev.lakehouse.conf
+      - ./conf/dev.redis.conf
     volumes:
       - ../../docker/app_layer/spark-batch-jobs/src:/app
       - ../../docker/app_layer/spark-batch-jobs/conf/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
+    environment:
+      TABLE_NAME: "nessie.silver.transactions_contracts"
 
 
 networks:
