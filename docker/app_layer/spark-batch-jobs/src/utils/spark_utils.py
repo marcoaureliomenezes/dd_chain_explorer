@@ -7,11 +7,15 @@ from pyspark.sql import SparkSession
 class SparkUtils:
 
   @staticmethod
-  def get_spark_session(app_name):
+  def get_spark_session(logger, app_name):
 
-    print("Environment Variables:")
-    print(os.getenv("S3_URL"))
-    print(os.getenv("NESSIE_URI"))
+    logger.info("Environment Variables:")
+    logger.info(f"SPARK_MASTER: {os.getenv('SPARK_MASTER')}")
+    logger.info(f"S3_URL: {os.getenv('S3_URL')}")
+    logger.info(f"NESSIE_URI: {os.getenv('NESSIE_URI')}")
+    logger.info(f"AWS_ACCESS_KEY_ID: {os.getenv('AWS_ACCESS_KEY_ID')[:4]}")
+    logger.info(f"AWS_SECRET_ACCESS_KEY: {os.getenv('AWS_SECRET_ACCESS_KEY')[:4]}")
+    
     conf = (
       pyspark.SparkConf()
       .setAppName(app_name)
@@ -25,7 +29,7 @@ class SparkUtils:
       .set("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem")
         
     )
-    spark = SparkSession.builder.config(conf=conf).getOrCreate()
+    spark = SparkSession.builder.master(os.getenv("SPARK_MASTER")).config(conf=conf).getOrCreate()
     spark.sparkContext.setLogLevel("ERROR")
     return spark
 

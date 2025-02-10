@@ -53,8 +53,14 @@ with DAG(
       task_id="maintenance_bronze_multiplexed",
       entrypoint="sh /app/1_iceberg_maintenance/entrypoint.sh /app/1_iceberg_maintenance/maintenance_ice_tables.py",
       environment= {
+        "S3_URL": os.getenv("S3_URL"),
+        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
+        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "AWS_REGION": os.getenv("AWS_REGION"),
         "TABLE_FULLNAME": "nessie.bronze.kafka_topics_multiplexed",
-        **COMMON_SPARK_VARS
       }
     )
 
@@ -63,8 +69,14 @@ with DAG(
       task_id="maintenance_silver_blocks",
       entrypoint="sh /app/1_iceberg_maintenance/entrypoint.sh /app/1_iceberg_maintenance/maintenance_ice_tables.py",
       environment= {
+        "S3_URL": os.getenv("S3_URL"),
+        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
+        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "AWS_REGION": os.getenv("AWS_REGION"),
         "TABLE_FULLNAME": "nessie.silver.blocks",
-        **COMMON_SPARK_VARS
       }
     )
 
@@ -73,17 +85,49 @@ with DAG(
       task_id="maintenance_silver_blocks_transactions",
       entrypoint="sh /app/1_iceberg_maintenance/entrypoint.sh /app/1_iceberg_maintenance/maintenance_ice_tables.py",
       environment= {
+        "S3_URL": os.getenv("S3_URL"),
+        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
+        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "AWS_REGION": os.getenv("AWS_REGION"),
         "TABLE_FULLNAME": "nessie.silver.blocks_transactions",
         **COMMON_SPARK_VARS
       }
     )
 
-    maintenance_silver_transactions = DockerOperator(
+    maintenance_silver_txs_contracts = DockerOperator(
       **COMMON_KWARGS_DOCKER_OPERATOR,
-      task_id="maintenance_silver_transactions",
+      task_id="maintenance_silver_txs_contracts",
       entrypoint="sh /app/1_iceberg_maintenance/entrypoint.sh /app/1_iceberg_maintenance/maintenance_ice_tables.py",
       environment= {
-        "TABLE_FULLNAME": "nessie.silver.transactions",
+        "S3_URL": os.getenv("S3_URL"),
+        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
+        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "AWS_REGION": os.getenv("AWS_REGION"),
+        "TABLE_FULLNAME": "nessie.silver.transactions_contracts",
+        **COMMON_SPARK_VARS
+      }
+    )
+
+
+    maintenance_silver_txs_p2p = DockerOperator(
+      **COMMON_KWARGS_DOCKER_OPERATOR,
+      task_id="maintenance_silver_txs_p2p",
+      entrypoint="sh /app/1_iceberg_maintenance/entrypoint.sh /app/1_iceberg_maintenance/maintenance_ice_tables.py",
+      environment= {
+        "S3_URL": os.getenv("S3_URL"),
+        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
+        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "AWS_REGION": os.getenv("AWS_REGION"),
+        "TABLE_FULLNAME": "nessie.silver.transactions_p2p",
         **COMMON_SPARK_VARS
       }
     )
@@ -94,4 +138,7 @@ with DAG(
     )
 
 
-    starting_process >> maintenance_bronze_multiplexed >> maintenance_silver_blocks >> maintenance_silver_blocks_transactions >> maintenance_silver_transactions >> end_process
+    starting_process >> maintenance_bronze_multiplexed >> maintenance_silver_blocks >> maintenance_silver_blocks_transactions 
+    
+    
+    maintenance_silver_blocks_transactions >> maintenance_silver_txs_p2p >> maintenance_silver_txs_contracts >> end_process

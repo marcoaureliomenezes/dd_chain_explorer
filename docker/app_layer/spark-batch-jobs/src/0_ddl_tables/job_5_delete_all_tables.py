@@ -1,7 +1,9 @@
 import os
 import logging
-from typing import List
+
 from utils.spark_utils import SparkUtils
+from utils.logger_utils import ConsoleLoggingHandler
+from typing import List
 
 class TablesDestroyer:
 
@@ -20,19 +22,22 @@ class TablesDestroyer:
 
 if __name__ == "__main__":
 
-    APP_NAME = "Create_Table_Silver_Transactions"
-    spark = SparkUtils.get_spark_session(APP_NAME)
-    tables_to_drop = [
-      "nessie.silver.blocks_transactions",
-      "nessie.silver.transactions",
-      "nessie.silver.blocks",
-      "nessie.bronze.kafka_topics_multiplexed"
-    ]
+  APP_NAME = "Delete_All_Tables"
+  spark = SparkUtils.get_spark_session(APP_NAME)
+  tables_to_drop = [
+    "nessie.silver.blocks_transactions",
+    "nessie.silver.transactions",
+    "nessie.silver.blocks",
+    "nessie.bronze.kafka_topics_multiplexed"
+  ]
 
-    LOGGER = logging.getLogger(__name__)
+  # CONFIGURING LOGGING
+  LOGGER = logging.getLogger(APP_NAME)
+  LOGGER.setLevel(logging.INFO)
+  LOGGER.addHandler(ConsoleLoggingHandler())
 
-    ddl_actor = TablesDestroyer(LOGGER, spark)
-    ddl_actor.drop_tables(tables=tables_to_drop)
+  ddl_actor = TablesDestroyer(LOGGER, spark)
+  ddl_actor.drop_tables(tables=tables_to_drop)
 
 
 

@@ -1,7 +1,7 @@
 import boto3
 import logging
 import os
-
+import redis
 import json
 
 from datetime import datetime as dt, timedelta
@@ -16,16 +16,15 @@ from utils.kafka_utils import KafkaUtils
 
 class ContractTransactionsCrawler:
 
-  def __init__(self, logger, contract_address):
+  def __init__(self, logger):
     self.logger = logger
-    self.contract_address_default = contract_address
     self.timestamp_interval = None
     self.block_interval = None
     self.paths = None
     self.__configure_pagination()
 
 
-  def __configure_pagination(self, page=1, offset=100, sort='asc'):
+  def __configure_pagination(self, page=1, offset=1000, sort='asc'):
     self.page = page
     self.offset = offset
     self.sort = sort
@@ -37,6 +36,11 @@ class ContractTransactionsCrawler:
     self.dynamodb_client = dynamodb_client
     return self
   
+  def get_contracts(self):
+    data = map(lambda key: (key, redis_client.get(key)), redis_client.keys())
+    contracts_sorted = sorted(data, key=lambda x: int(x[1]), reverse=True)
+    contracts_sorted = list(map(lambda x: x[0], contracts_sorted))
+    return contracts_sorted
 
   def write_config(self, s3_client, bucket, bucket_prefix, overwrite=False):
     self.s3_client = s3_client
@@ -55,7 +59,8 @@ class ContractTransactionsCrawler:
     return self
   
   def __config_file_name(self, contract_addr):
-    blocks_interval = f"blocks_from_{self.block_interval[0]}_to_{self.block_interval[1]}"
+    dat_hour = dt.fromtimestamp(self.timestamp_interval[0])
+    blocks_interval = f"year={dat_hour.year}/month={dat_hour.month}/day={dat_hour.day}/hour={dat_hour.hour}"
     file_path = f"{blocks_interval}/{contract_addr}/transactions.json"
     self.paths = {"local": f"./tmp/{file_path}", "s3": f"{self.s3_bucket_prefix}/{file_path}"}
     local_path_dir = os.path.dirname(self.paths["local"])
@@ -99,49 +104,28 @@ class ContractTransactionsCrawler:
     try: self.s3.head_object(Bucket=self.bucket, Key=path) ; return True
     except: return False
 
-  def run(self):
-    all_contract_data = []
-    self.__config_file_name(self.contract_address_default)
-    for data in self.__get_transactions(self.contract_address_default):
-      all_contract_data.extend(data)
+  def write_to_s3(self, data):
     if self.check_file_exists(self.paths['s3']):
       self.logger.info(f"File {self.paths['s3']} already exists in S3. Skipping...")
       return
     os.remove(self.paths['local']) if os.path.exists(self.paths['local']) else None
     with open(self.paths['local'], 'w') as f:
-      f.write(json.dumps(all_contract_data))
+      f.write(json.dumps(data))
     self.s3_client.upload_file(self.paths['local'], Bucket=self.bucket, Key=self.paths['s3'])
 
 
-
-    # def config_file_prefix(self, s3_path, server, execution_date):
-    #   partitioned_path = dt.strftime(execution_date, 'year=%Y/month=%m/day=%d')
-    #   self.paths = {"local": f"/tmp/{server}/{partitioned_path}", "s3": f"{s3_path}/{server}/{partitioned_path}"}
-    #   _ = os.makedirs(self.paths["local"], exist_ok=True)
-    #   self.logger.info(f"local_path:{self.paths['local']};lake_path:{self.paths['s3']}")
-    #   return self
-      # if not self.overwrite: 
-      #   hdfs_file_exists = self.check_hdfs_file_exists(block_before)
-      #   if hdfs_file_exists:
-      #     self.logger.info(f"file_exists:{hdfs_file_exists}")
-      #     block_before = hdfs_file_exists.split("_")[-1].split(".")[0]
-      #     if block_before != block_after:
-      #       continue   
+  def run(self):
+    contracts = self.get_contracts()
+    
+    for contract in contracts:
+      all_contract_data = []
+      self.__config_file_name(contract)
+      for data in self.__get_transactions(contract):
+        all_contract_data.extend(data)
+      print(f"Contract {contract} has {len(all_contract_data)} transactions")
+      self.write_to_s3(all_contract_data)
 
 
-
-  # def __run_config_checks(self):
-  #   assert self.etherscan_client is not None, "Etherscan client not configured"
-  #   assert self.s3 is not None, "S3 client not configured"
-  #   assert self.timestamp_interval is not None, "Timestamp interval not configured"
-  #   assert self.contract_address is not None, "Contract address not configured"
-  #   assert self.basepath is not None, "Basepath not configured"
-
-
-  # def __write_compressed_parquet(self, json_data, path):
-  #   df_data = pd.DataFrame(json_data)
-  #   table = pa.Table.from_pandas(df_data)
-  #   pq.write_table(table, path, compression='SNAPPY')
 
 
     
@@ -149,10 +133,14 @@ class ContractTransactionsCrawler:
 if __name__ == "__main__":
   
   APP_NAME = "CONTRACT_TRANSACTIONS_CRAWLER"
-  TOPIC_LOGS = os.getenv("TOPIC_LOGS")
   KAFKA_BROKERS = os.getenv("KAFKA_BROKERS")
-  SR_URL = os.getenv("SR_URL")
-  CONTRACT_ADDRESS = os.getenv("CONTRACT_ADDRESS", "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D")
+  SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
+  TOPIC_LOGS = os.getenv("TOPIC_LOGS")
+  REDIS_HOST = os.getenv("REDIS_HOST", "redis")
+  REDIS_PORT = os.getenv("REDIS_PORT", "6379")
+  REDIS_SECRET = os.getenv("REDIS_PASS", "secret")
+  REDIS_DB = os.getenv("REDIS_DB", 3)
+
   AKV_URL = f"https://{os.getenv('AKV_NAME')}.vault.azure.net/"
   S3_BUCKET = os.getenv("S3_BUCKET")
   S3_BUCKET_PREFIX = os.getenv("S3_BUCKET_PREFIX")
@@ -173,30 +161,20 @@ if __name__ == "__main__":
   LOGGER.addHandler(kafka_handler)
 
   # CONFIGURING AWS CLIENT FOR S3. Purpose: Save the raw data in S3
-  s3_client = boto3.client('s3',
-      endpoint_url=os.getenv("S3_URL"),
-      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
+  s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_URL")
   )
 
-  # CONFIGURING AWS CLIENT FOR DYNAMODB. Purpose: Get popular smart contracts to crawl
-  dynamodb_client = boto3.client('dynamodb',
-      endpoint_url=os.getenv("DYNAMODB_URL"),
-      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
-  )
+  redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, password=REDIS_SECRET, decode_responses=True)
+  # List all hashes in the Redis database
+  #print(redis_client.keys())
 
   # CONFIGURING ETHERSCAN CLIENT. Purpose: Get transactions from smart contracts.
   etherscan_client = EthercanAPI(LOGGER, akv_client, os.getenv("APK_NAME"), os.getenv("NETWORK"))
 
   crawler = (
-    ContractTransactionsCrawler(LOGGER, CONTRACT_ADDRESS)
-      .read_config(dynamodb_client, etherscan_client)
+    ContractTransactionsCrawler(LOGGER)
+      .read_config(redis_client, etherscan_client)
       .write_config(s3_client, bucket=S3_BUCKET, bucket_prefix=S3_BUCKET_PREFIX, overwrite=False)
       .interval_config(os.getenv("EXEC_DATE"))
       .run()
   )
-
-
-  # example of date format '%Y-%m-%d %H:%M:%S%z'
-  date = "2021-09-01 00:00:00+00:00"

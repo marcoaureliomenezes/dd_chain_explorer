@@ -38,9 +38,10 @@ with DAG(
     command='/bin/sleep 45',
     auto_remove=True,
     tty=True,
+    force_pull=True,
     networks=["layer_batch_prod"],
-    docker_url="unix:/var/run/docker.sock",
-    enable_logging=True
+    docker_url="unix:/var/run/docker.sock"
+    #enable_logging=True
   )
 
   test_docker_operator = DockerOperator(
