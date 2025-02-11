@@ -4,7 +4,7 @@ import logging
 import os
 from redis import Redis
 
-from web3.exceptions import TransactionNotFound
+
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 

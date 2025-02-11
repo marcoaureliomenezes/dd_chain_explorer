@@ -37,3 +37,4 @@ class KafkaLoggingHandler(logging.Handler):
     }
     self.producer.produce(self.topic, key=record.filename, value=msg)
     self.producer.flush()
+  
