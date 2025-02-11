@@ -101,7 +101,7 @@ stop_dev_spark_streaming:
 	docker compose -f services/compose/spark_streaming_apps_layer.yml down
 
 watch_dev_compose:
-	watch docker compose -f services/compose/spark_streaming_apps_layer.yml ps
+	watch docker compose -f services/compose/python_streaming_apps_layer.yml ps
 
 
 ####################################################################################################

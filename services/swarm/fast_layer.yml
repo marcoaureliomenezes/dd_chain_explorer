@@ -142,7 +142,6 @@ services:
       KAFKA_REST_SCHEMA_REGISTRY_URL: 'http://schema-registry:8081'
     <<: *common_deploy_worker_1
     
-
   redis: 
     image: redis:7.2
     networks:
@@ -153,19 +152,6 @@ services:
     <<: *common_deploy_worker_1
 
 
-  # topics_creator:
-  #   image: marcoaureliomenezes/dm-onchain-stream-txs:1.0.0
-  #   entrypoint: "python -u 0_topics_creator.py configs/topics_prd.ini"
-  #   env_file:
-  #     - ./conf/.secrets.conf
-  #   environment:
-  #     KAFKA_CLUSTER: 'broker-1:29092,broker-2:29093,broker-3:29094'
-  #     NETWORK: mainnet
-  #   depends_on:
-  #     - broker-1
-  #     - broker-2
-  #     - broker-3
-  #   <<: *common_deploy_master
       
 volumes:
   swarm_zookeeper_data:
