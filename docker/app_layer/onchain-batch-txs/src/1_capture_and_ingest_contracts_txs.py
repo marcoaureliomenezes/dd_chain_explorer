@@ -9,8 +9,8 @@ from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
 from utils.etherscan_utils import EthercanAPI
-from utils.logging_utils import ConsoleLoggingHandler, KafkaLoggingHandler
-from utils.schema_registry_utils import SchemaRegistryUtils
+from utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
+from utils.schema_reg_utils import SchemaRegistryUtils
 from utils.kafka_utils import KafkaUtils
 
 

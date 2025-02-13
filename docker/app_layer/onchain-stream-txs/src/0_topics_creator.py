@@ -68,11 +68,12 @@ if __name__ == "__main__":
 
     print(f"KAFKA BROKER = {KAFKA_BROKER}")
     topics_maker = TopicCreator(NETWORK, config, KAFKA_BROKER)
-    topics_maker.make_topic_from_configs('topic.mined_blocks', overwrite=overwrite)
-    topics_maker.make_topic_from_configs('topic.orphan_blocks', overwrite=overwrite)
-    topics_maker.make_topic_from_configs('topic.hash_txs_ids', overwrite=overwrite)
+    topics_maker.make_topic_from_configs('topic.application.logs', overwrite=overwrite)
+    topics_maker.make_topic_from_configs('topic.batch.logs', overwrite=overwrite)
+    topics_maker.make_topic_from_configs('topic.mined_blocks.events', overwrite=overwrite)
+    topics_maker.make_topic_from_configs('topic.blocks_data', overwrite=overwrite)
+    topics_maker.make_topic_from_configs('topic.block_txs.hash_ids', overwrite=overwrite)
     topics_maker.make_topic_from_configs('topic.txs.raw_data', overwrite=overwrite)
     topics_maker.make_topic_from_configs('topic.txs.input_decoded', overwrite=overwrite)
-    topics_maker.make_topic_from_configs('topic.application.logs', overwrite=overwrite)
 
 

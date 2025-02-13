@@ -56,36 +56,34 @@ services:
       AKV_SECRET_NAME: 'alchemy-api-key-2'
       TOPIC_LOGS: mainnet.0.application.logs
       TOPIC_MINED_BLOCKS_EVENTS: mainnet.1.mined_blocks.events
-      CONSUMER_GROUP_ID: cg_block_data_crawler
-      TOPIC_MINED_BLOCKS: mainnet.1.mined_blocks.data
-      TOPIC_TXS_HASH_IDS: 'mainnet.3.mined.txs.hash_id'
+      CONSUMER_GROUP: cg_block_data_crawler
+      TOPIC_MINED_BLOCKS: mainnet.2.blocks.data
+      TOPIC_TXS_HASH_IDS: 'mainnet.3.block.txs.hash_id'
       TOPIC_TXS_HASH_IDS_PARTITIONS: 8
       CLOCK_FREQUENCY: 1
-      TXS_PER_BLOCK: 40
+      TXS_PER_BLOCK: 60
 
 
+  python-job-transactions_crawler:
+    <<: *conf_dev_onchain_stream_txs
+    #container_name: python-job-transactions_crawler
+    entrypoint: "python -u 4_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
+    environment:
+      AKV_NODE_NAME: DataMasterNodeAsAService
+      AKV_SECRET_NAMES: 'infura-api-key-1-12'
+      TOPIC_LOGS: mainnet.0.application.logs
+      TOPIC_TXS_HASH_IDS: mainnet.3.block.txs.hash_id
+      TOPIC_TXS_DATA: mainnet.4.transactions.data
+      CONSUMER_GROUP: 'cg_mined_raw_txs'
+    deploy:
+      replicas: 8
 
-
-#   python-job-mined-txs:
-#     <<: *conf_dev_onchain_stream_txs
-#     #container_name: python-job-mined-txs
-#     entrypoint: "python -u 3_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
-#     environment:
-#       AKV_NODE_NAME: DataMasterNodeAsAService
-#       AKV_SECRET_NAMES: 'infura-api-key-1-12'
-#       TOPIC_LOGS: mainnet.0.application.logs
-#       TOPIC_TXS_HASH_IDS: mainnet.3.mined.txs.hash_id
-#       TOPIC_TXS_RAW_DATA: mainnet.4.mined.txs.raw_data
-#       CONSUMER_GROUP: 'cg_mined_raw_txs'
-#     deploy:
-#       replicas: 8
-
-#   python-job-redis-collector:
-#     <<: *conf_dev_onchain_stream_txs
-#     container_name: python-job-redis-collector
-#     entrypoint: "python -u n_semaphore_collect.py"
-#     environment:
-#       FREQUENCY: 0.5
+  python-job-redis-collector:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: python-job-redis-collector
+    entrypoint: "python -u n_semaphore_collect.py"
+    environment:
+      FREQUENCY: 0.5
 
 
 #   # # txs_input_decoder:

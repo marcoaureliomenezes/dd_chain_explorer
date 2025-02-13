@@ -6,12 +6,15 @@ from utils.logger_utils import ConsoleLoggingHandler
 from table_creator import TableCreator
 
 
-class CreateIcebergSilverBlocks(TableCreator):
+class DDLSilverTables:
 
-  def create_table(self):
-    self.create_namespace()
+  def __init__(self, logger):
+    self.logger = logger
+
+
+  def build_create_table_query_silver_blocks(self, table_name, tbl_properties):
     query = f"""
-    CREATE TABLE IF NOT EXISTS {self.table_name} (
+    CREATE TABLE IF NOT EXISTS {table_name} (
       ingestion_time TIMESTAMP            COMMENT 'Kafka ingestion_time',
       block_timestamp TIMESTAMP           COMMENT 'Block timestamp',
       number LONG                         COMMENT 'Block number', 
@@ -33,26 +36,46 @@ class CreateIcebergSilverBlocks(TableCreator):
       dat_ref STRING                      COMMENT 'Partition Field with Date based on block_timestamp') 
     USING ICEBERG
     PARTITIONED BY (dat_ref)"""
-    query += self.get_iceberg_table_properties()
-    self.spark.sql(query).show()
-    print(f"Table {self.table_name} created successfully!")
-    self.table_exists = True
-    return self
+    query += tbl_properties
+    return query
 
+
+  def build_create_table_query_silver_blocks_txs(self, table_name, tbl_properties):
+    query = f"""
+    CREATE TABLE IF NOT EXISTS {table_name} (
+      block_timestamp TIMESTAMP           COMMENT 'Block timestamp',
+      ingestion_time TIMESTAMP            COMMENT 'Kafka ingestion_time',
+      block_number LONG                   COMMENT 'Block number',
+      transaction_id STRING               COMMENT 'Number of transactions',
+      dat_ref STRING                      COMMENT 'Partition Field with Date of Kafka Message')
+    USING ICEBERG
+    PARTITIONED BY (dat_ref)"""
+    query += tbl_properties
+    return query
 
 
 if __name__ == "__main__":
 
-  APP_NAME = "Create_Table_Silver_Blocks"
-  TABLE_NAME = os.getenv("TABLE_FULLNAME")
+
+  APP_NAME = "Create_Silver_tables"
+  table_silver_blocks = "nessie.silver.blocks"
+  table_silver_blocks_transactions= "nessie.silver.blocks_transactions"
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
   LOGGER.addHandler(ConsoleLoggingHandler())
-
-
+  
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
-  ddl_actor = CreateIcebergSilverBlocks(spark, table_name=TABLE_NAME)
-  ddl_actor.create_table()
-  ddl_actor.get_table_info()
+  tables_creator = TableCreator(LOGGER, spark)
+  tables_creator.create_namespace("nessie.silver")
+  
+  table_properties = tables_creator.get_iceberg_table_properties()
+  ddl_actor = DDLSilverTables(LOGGER)
+  ddl_query = ddl_actor.build_create_table_query_silver_blocks(table_silver_blocks, table_properties)
+  spark.sql(ddl_query)
+  tables_creator.get_table_info(table_silver_blocks)
+
+  ddl_query = ddl_actor.build_create_table_query_silver_blocks_txs(table_silver_blocks_transactions, table_properties)
+  spark.sql(ddl_query)
+  tables_creator.get_table_info(table_silver_blocks_transactions)

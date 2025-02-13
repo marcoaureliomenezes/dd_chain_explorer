@@ -5,6 +5,8 @@ from logging import Logger
 from requests import HTTPError
 from typing import Dict, Optional
 
+from utils.dm_utils import DataMasterUtils
+
 class Web3Handler:
 
   def __init__(self, logger: Logger, akv_client: SecretClient, network: str):
@@ -60,5 +62,29 @@ class Web3Handler:
     try: tx_data = self.web3.eth.get_transaction(tx_id)
     except TransactionNotFound:
       self.logger.error(f"Transaction not found: {tx_id}") ; return
-    self.logger.info(f"API_request;{self.actual_api_key}")
+    self.logger.info(f"API_request;{self.api_key_name}")
     return tx_data
+  
+
+  def parse_transaction_data(self, tx_data):
+    tx_data_parsed = DataMasterUtils.convert_hexbytes_to_str(dict(tx_data))
+    return {
+      "blockHash": tx_data_parsed["blockHash"],
+      "blockNumber": tx_data_parsed["blockNumber"],
+      "hash": tx_data_parsed["hash"],
+      "transactionIndex": tx_data_parsed["transactionIndex"],
+      "from": tx_data_parsed["from"],
+      "to": tx_data_parsed["to"] if tx_data_parsed["to"] else "",
+      "value": str(tx_data_parsed["value"]),
+      "input": tx_data_parsed["input"],
+      "gas": tx_data_parsed["gas"],
+      "gasPrice": tx_data_parsed["gasPrice"],
+      "maxFeePerGas": tx_data_parsed.get("maxFeePerGas"),
+      "maxPriorityFeePerGas": tx_data_parsed.get("maxPriorityFeePerGas"),
+      "nonce": tx_data_parsed["nonce"],
+      "v": tx_data_parsed["v"],
+      "r": tx_data_parsed["r"],
+      "s": tx_data_parsed["s"],
+      "type": tx_data_parsed["type"],
+      "accessList": tx_data_parsed.get("accessList", [])
+    }

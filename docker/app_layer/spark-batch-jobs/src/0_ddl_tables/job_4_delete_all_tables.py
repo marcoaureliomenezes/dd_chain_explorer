@@ -23,18 +23,20 @@ class TablesDestroyer:
 if __name__ == "__main__":
 
   APP_NAME = "Delete_All_Tables"
-  spark = SparkUtils.get_spark_session(APP_NAME)
   tables_to_drop = [
     "nessie.silver.blocks_transactions",
-    "nessie.silver.transactions",
+    "nessie.silver.transactions_p2p",
+    "nessie.silver.transactions_contracts",
     "nessie.silver.blocks",
-    "nessie.bronze.kafka_topics_multiplexed"
+    "nessie.bronze.kafka_topics_multiplexed",
+    "nessie.bronze.popular_contracts_txs"
   ]
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
   LOGGER.addHandler(ConsoleLoggingHandler())
+  spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
 
   ddl_actor = TablesDestroyer(LOGGER, spark)
   ddl_actor.drop_tables(tables=tables_to_drop)

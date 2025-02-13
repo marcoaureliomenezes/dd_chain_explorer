@@ -8,7 +8,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 
 COMMON_DOCKER_OP = dict(
   docker_url="unix:/var/run/docker.sock",
-  auto_remove=True,
+  auto_remove="force",
   mount_tmp_dir=False,
   tty=False,
 )

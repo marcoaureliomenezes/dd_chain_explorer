@@ -1,7 +1,4 @@
 from confluent_kafka.schema_registry import SchemaRegistryClient
-from confluent_kafka.schema_registry.avro import AvroDeserializer, AvroSerializer
-from confluent_kafka.serialization import StringSerializer, StringDeserializer
-from confluent_kafka import DeserializingConsumer, SerializingProducer
 import json
 
 class SchemaRegistryUtils:

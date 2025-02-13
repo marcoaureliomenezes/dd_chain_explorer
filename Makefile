@@ -29,8 +29,8 @@ build_airflow:
 	docker build -t marcoaureliomenezes/airflow:$(current_branch) ./docker/customized/airflow
 
 build_app:
-	# docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
-	docker build -t marcoaureliomenezes/spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
+	docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
+	#docker build -t marcoaureliomenezes/spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
 	# docker build -t marcoaureliomenezes/onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
 	# docker build -t marcoaureliomenezes/spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
 
@@ -76,8 +76,8 @@ deploy_dev_airflow:
 deploy_dev_python_streaming:
 	docker compose -f services/compose/python_streaming_apps_layer.yml up -d  --build
 
-# deploy_dev_spark_streaming:
-# 	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
+deploy_dev_spark_streaming:
+	docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
 
 ####################################################################################################
 ################################    STOP COMPOSE SERVICES    #######################################
@@ -113,7 +113,7 @@ deploy_prod_all:
 	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
 	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
 	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
-	docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
+	# docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
 
 deploy_prod_fast:
 	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
