@@ -9,7 +9,7 @@ from airflow.providers.docker.operators.docker import DockerOperator
 COMMON_KWARGS_DOCKER_OPERATOR = dict(
   network_mode="vpc_dm",
   docker_url="unix:/var/run/docker.sock",
-  auto_remove=True,
+  auto_remove="force",
   mount_tmp_dir=False,
   tty=False,
 )
@@ -64,7 +64,15 @@ with DAG(
       **COMMON_KWARGS_DOCKER_OPERATOR,
       task_id="delete_iceberg_tables_metadata",
       entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_5_delete_all_tables.py",
-      environment= COMMON_SPARK_VARS
+      environment= {
+        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
+        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "AWS_REGION": os.getenv("AWS_DEFAULT_REGION"),
+        "S3_URL": os.getenv("S3_URL"),
+        "NESSIE_URI": os.getenv("NESSIE_URI"),
+      }
     )
 
 

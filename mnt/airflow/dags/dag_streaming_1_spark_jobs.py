@@ -18,7 +18,7 @@ default_args ={
 DOCKER_OP_COMMON_PARMS = dict(
   image="marcoaureliomenezes/spark-streaming-jobs:1.0.0",
   docker_url="unix:/var/run/docker.sock",
-  auto_remove=True,
+  auto_remove="force",
   tty=False,
   network_mode="vpc_dm",
 )
@@ -30,7 +30,7 @@ DOCKER_SWARM_DEFAULT = dict(
   docker_url="unix:/var/run/docker.sock",
   tty=False,
   enable_logging=True,
-  auto_remove=True,
+  auto_remove="force",
   force_pull=True,
   configs=["restart"],
 

@@ -1,16 +1,16 @@
 from abc import ABC, abstractmethod
-from iceberg_utils import IcebergUtils
+from utils.iceberg_utils import IcebergUtils
 import json
 
-class TableCreator(ABC):
+class TableCreator:
     
-    def __init__(self, spark):
+    def __init__(self, logger, spark):
+        self.logger = logger
         self.spark = spark
 
-    def create_namespace(self, table_name):
-      namespace = ".".join(table_name.split(".")[:2])
+    def create_namespace(self, namespace):
       self.spark.sql(f"CREATE NAMESPACE IF NOT EXISTS {namespace}")
-      print(f"Namespace {namespace} created successfully!")
+      self.logger.info(f"Namespace {namespace} created successfully!")
       self.spark.sql(f"SHOW NAMESPACES IN {namespace.split(".")[0]}").show()
       return
 
@@ -34,6 +34,3 @@ class TableCreator(ABC):
       return properties
     
     
-    @abstractmethod
-    def create_table(self):
-        pass

@@ -10,7 +10,7 @@ COMMON_KWARGS_DOCKER_OPERATOR = dict(
   image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
   network_mode="vpc_dm",
   docker_url="unix:/var/run/docker.sock",
-  auto_remove=True,
+  auto_remove="force",
   mount_tmp_dir=False,
   tty=False,
 )
@@ -37,7 +37,7 @@ default_args ={
 with DAG(
   "pipeline_hourly_1_maintenance_ice_streaming", 
   start_date=datetime(year=2025,month=2,day=2,hour=19),
-  schedule_interval="@hourly",
+  schedule_interval="0 */6 * * *",
   default_args=default_args,
   max_active_runs=1,
   catchup=False) as dag:
