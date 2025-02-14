@@ -11,12 +11,14 @@ from azure.keyvault.secrets import SecretClient
 
 from configparser import ConfigParser
 
-from utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
-from utils.web3_utils import Web3Handler
-from utils.kafka_utils import KafkaHandler
-from utils.schema_reg_utils import SchemaRegistryHandler
+
+from dm_33_utils.web3_utils import Web3Handler
+from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
+from dm_33_utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
+from dm_33_utils.kafka_utils import KafkaHandler
+
+
 from utils.api_keys_manager import APIKeysManager
-from utils.dm_utils import DataMasterUtils
 from chain_extractor import ChainExtractor
 
 

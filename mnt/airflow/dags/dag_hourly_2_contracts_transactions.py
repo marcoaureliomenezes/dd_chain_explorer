@@ -84,7 +84,7 @@ with DAG(
       "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
       "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
       "S3_URL": os.getenv("S3_URL"),
-      "SR_URL": os.getenv("SCHEMA_REGISTRY_URL"),
+      "SCHEMA_REGISTRY_URL": os.getenv("SCHEMA_REGISTRY_URL"),
       "KAFKA_BROKERS": os.getenv("KAFKA_BROKERS"),
       "S3_BUCKET": "raw-data",
       "S3_BUCKET_PREFIX": "contracts_transactions",
@@ -113,7 +113,8 @@ with DAG(
         "REDIS_HOST": os.getenv("REDIS_HOST"),
         "REDIS_PORT": os.getenv("REDIS_PORT"),
         "REDIS_PASS": os.getenv("REDIS_PASS"),
-        "REDIS_DB": "3"
+        "REDIS_DB": "3",
+        "EXEC_DATE": "{{ execution_date }}"    
       }
     )
 

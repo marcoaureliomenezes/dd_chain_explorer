@@ -21,7 +21,7 @@ class RawToBronzePopularContracts:
   def config_source(self, src_configs):
     self.date = src_configs["date"]
     full_path = f"s3a://{src_configs["bucket"]}/{src_configs["prefix"]}"
-    full_path += f"/year={self.date.year}/month={self.date.month}/day={self.date.day}/hour={self.date.hour}/*/*"
+    full_path += f"/year={self.date.year}/month={self.date.month}/day={self.date.day}/hour={self.date.hour}/*"
     self.path_input = full_path
     self.logger.info(f"Reading data from {full_path}")
     return self
@@ -62,11 +62,14 @@ if __name__ == "__main__":
   LOGGER.addHandler(ConsoleLoggingHandler())
   BUCKET_RAW_DATA = "raw-data"
   BUCKET_PREFIX = "contracts_transactions"
-  DATE = dt.strptime("2025-01-31-23", "%Y-%m-%d-%H")
+  EXEC_DATE = os.getenv("EXEC_DATE")
+  print(EXEC_DATE)
+  exec_date = dt.strptime(EXEC_DATE, "%Y-%m-%d %H:%M:%S%z")
+  print(exec_date)
   TABLE_BRONZE = "nessie.bronze.popular_contracts_txs"
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   
-  src_configs = {"bucket": BUCKET_RAW_DATA, "prefix": BUCKET_PREFIX, "date": DATE}
+  src_configs = {"bucket": BUCKET_RAW_DATA, "prefix": BUCKET_PREFIX, "date": exec_date}
   
   _ = (
     RawToBronzePopularContracts(LOGGER, spark)

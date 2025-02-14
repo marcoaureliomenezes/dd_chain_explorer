@@ -28,6 +28,7 @@ if __name__ == "__main__":
     "nessie.silver.transactions_p2p",
     "nessie.silver.transactions_contracts",
     "nessie.silver.blocks",
+    "nessie.silver.mined_blocks_events",
     "nessie.bronze.kafka_topics_multiplexed",
     "nessie.bronze.popular_contracts_txs"
   ]

@@ -42,10 +42,10 @@ with DAG(
     )
 
 
-    create_table_bronze_multiplexed = DockerOperator(
+    create_table_bronze_tables = DockerOperator(
       **COMMON_DOCKER_OP,
-      task_id="create_table_bronze_multiplexed",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_1_create_b_multiplex.py",
+      task_id="create_table_bronze_tables",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_1_create_bronze_tables.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "S3_URL": os.getenv("S3_URL"),
@@ -59,8 +59,8 @@ with DAG(
 
     create_tables_silver_blocks = DockerOperator(
       **COMMON_DOCKER_OP,
-      task_id="create_table_silver_blocks",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_2_create_s_blocks.py",
+      task_id="create_tables_silver_blocks",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_2_create_silver_tables_blocks.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "S3_URL": os.getenv("S3_URL"),
@@ -76,7 +76,7 @@ with DAG(
     create_table_silver_transactions = DockerOperator(
       **COMMON_DOCKER_OP,
       task_id="create_table_silver_transactions",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_3_create_s_txs.py",
+      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_3_create_silver_tables_txs.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "S3_URL": os.getenv("S3_URL"),
@@ -94,4 +94,4 @@ with DAG(
     )
 
 
-    starting_process >> create_table_bronze_multiplexed >> create_tables_silver_blocks >> create_table_silver_transactions >> end_process 
+    starting_process >> create_table_bronze_tables >> create_tables_silver_blocks >> create_table_silver_transactions >> end_process 

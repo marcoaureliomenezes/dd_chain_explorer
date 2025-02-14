@@ -10,10 +10,11 @@ from requests import HTTPError
 
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-from utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
-from utils.kafka_utils import KafkaHandler
-from utils.schema_reg_utils import SchemaRegistryHandler
-from utils.web3_utils import Web3Handler
+
+from dm_33_utils.web3_utils import Web3Handler
+from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
+from dm_33_utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
+from dm_33_utils.kafka_utils import KafkaHandler
 
 
 class MinedBlocksWatcher:

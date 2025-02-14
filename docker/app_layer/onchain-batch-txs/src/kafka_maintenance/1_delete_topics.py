@@ -1,0 +1,39 @@
+import os
+import logging
+from argparse import ArgumentParser, FileType
+from configparser import ConfigParser
+from kafka_admin_client import DMClusterAdmin
+
+
+if __name__ == "__main__":
+
+    NETWORK = os.environ["NETWORK"]
+    KAFKA_BROKER = os.getenv("KAFKA_BROKERS")
+    parser = ArgumentParser(description=f'Stream transactions network')
+    parser.add_argument('config_file', type=FileType('r'), help='Config file')
+    parser.add_argument('--overwrite', type=bool, default=False, help='Network')
+    args = parser.parse_args()
+    config = ConfigParser()
+    config.read_file(args.config_file)
+    overwrite = args.overwrite
+    logger = logging.getLogger("KAFKA_ADMIN")
+    kafka_conf = {"bootstrap.servers": "broker-1:29092"}
+    kafka_admin = DMClusterAdmin(logger, kafka_conf)
+
+    topics = [
+      "topic.application.logs",
+      "topic.batch.logs",
+      "topic.mined_blocks.events",
+      "topic.blocks_data",
+      "topic.block_txs.hash_ids",
+      "topic.txs.raw_data",
+      "topic.txs.input_decoded"
+    ]
+
+    topic_configs = config["topic.general.config"]
+    for topic in topics:
+      custom_configs = {**topic_configs, **config[topic]}
+      topic_name, num_partitions, replication_factor = topic, int(custom_configs["num_partitions"]), int(custom_configs["replication_factor"])
+      kafka_admin.create_topic(topic_name, num_partitions, replication_factor, custom_configs, overwrite=overwrite)
+
+

@@ -1,8 +1,2 @@
-azure-identity
-azure-keyvault
-confluent-kafka==2.6.0
-fastavro
-boto3
 pandas
-requests
-redis
+dm-33-utils==0.0.4
