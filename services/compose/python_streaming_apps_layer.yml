@@ -19,7 +19,7 @@ services:
   #   <<: *conf_dev_onchain_stream_txs
   #   container_name: topics_creator
   #   restart: on-failure
-  #   entrypoint: "python -u 0_topics_creator.py configs/topics_dev.ini"
+  #   entrypoint: "python -u 0_topics_creator.py conf/topics_dev.ini"
   #   environment:
   #     NETWORK: mainnet
 
@@ -78,12 +78,12 @@ services:
     deploy:
       replicas: 8
 
-  python-job-redis-collector:
-    <<: *conf_dev_onchain_stream_txs
-    container_name: python-job-redis-collector
-    entrypoint: "python -u n_semaphore_collect.py"
-    environment:
-      FREQUENCY: 0.5
+  # python-job-redis-collector:
+  #   <<: *conf_dev_onchain_stream_txs
+  #   container_name: python-job-redis-collector
+  #   entrypoint: "python -u n_semaphore_collect.py"
+  #   environment:
+  #     FREQUENCY: 0.5
 
 
 #   # # txs_input_decoder:

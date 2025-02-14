@@ -1,9 +1,0 @@
-{
-  "namespace": "io.streamr.onchain",
-  "type": "record",
-  "name": "transactions_hash_ids",
-  "fields": [
-    {"name": "number", "type": "string"},
-    {"name": "hash", "type": "string"}
-  ]
-}

@@ -101,6 +101,18 @@ services:
     <<: *spark_worker_common
     <<: *common_deploy_worker_2
 
+  spark-worker-6:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_1
+
+
+  spark-worker-7:
+    image: marcoaureliomenezes/spark:1.0.0
+    <<: *spark_worker_common
+    <<: *common_deploy_worker_2
+
+
   trino:
     image: trinodb/trino
     networks:
