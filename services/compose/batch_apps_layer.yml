@@ -1,24 +1,24 @@
 services:
 
-  # notebook:
-  #   build: ../../docker/customized/jupyterlab
-  #   container_name: notebook
-  #   restart: on-failure
-  #   networks:
-  #     - vpc_dm
-  #   env_file:
-  #     - ./conf/swarm.secrets.conf
-  #     - ./conf/dev.kafka.conf
-  #     - ./conf/dev.redis.conf
-  #     - ./conf/dev.lakehouse.conf
-  #   volumes:
-  #     - ../../mnt/jupyterlab/spark-notebooks:/app/spark-notebooks
-  #     - ../../docker/customized/jupyterlab/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
-  #   ports:
-  #     - 8888:8888
-  #   environment:
-  #     NESSIE_URI: http://nessie:19120/api/v1
-  #     MINIO_HOST: http://minio:9000
+  notebook:
+    build: ../../docker/customized/jupyterlab
+    container_name: notebook
+    restart: on-failure
+    networks:
+      - vpc_dm
+    env_file:
+      - ./conf/swarm.secrets_prod.conf
+      - ./conf/dev.kafka.conf
+      - ./conf/dev.redis.conf
+      - ./conf/dev.lakehouse.conf
+    volumes:
+      - ../../mnt/jupyterlab/spark-notebooks:/app/spark-notebooks
+      - ../../docker/customized/jupyterlab/conf/spark-defaults.conf:/opt/spark/conf/spark-defaults.conf
+    ports:
+      - 8888:8888
+    environment:
+      NESSIE_URI: http://nessie:19120/api/v1
+      MINIO_HOST: http://minio:9000
 
 
   python-batch:
@@ -56,7 +56,7 @@ services:
       - ../../docker/app_layer/spark-batch-jobs/src:/app
       - ../../docker/app_layer/spark-batch-jobs/conf/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf
     environment:
-      TABLE_NAME: "nessie.silver.transactions_contracts"
+      TABLE_NAME: "silver.transactions_contracts"
 
 
 networks:

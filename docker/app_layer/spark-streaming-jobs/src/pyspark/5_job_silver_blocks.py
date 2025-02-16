@@ -7,9 +7,9 @@ from pyspark.sql.functions import col, expr, explode, array_size, to_timestamp
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.types import *
 
-from utils.schema_registry_utils import SchemaRegistryUtils
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
 from utils.spark_utils import SparkUtils
-from utils.logging_utils import ConsoleLoggingHandler
 from i_dm_streaming import IDmStreaming
 
 
@@ -138,16 +138,16 @@ if __name__ == "__main__":
   SR_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
   TOPIC_BLOCKS = os.getenv("TOPIC_BLOCKS")
   TABLE_SILVER_BLOCKS_TXS = os.getenv("TABLE_SILVER_BLOCKS_TXS")
-  CHECKPOINT_BLOCKS = "s3a://spark/checkpoints/iceberg/silver_blocks"
+  CHECKPOINT_PATH = "s3a://spark/checkpoints/iceberg/silver_blocks"
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
 
-  sc_client = SchemaRegistryUtils.get_schema_registry_client(SR_URL)
-  schema_blocks = SchemaRegistryUtils.get_avro_schema(sc_client, f"{TOPIC_BLOCKS}-value")
+  sc_client = SchemaRegistryHandler(SR_URL)
+  schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_BLOCKS}-value")
   
 
   tables_output = {"silver_blocks": os.getenv("TABLE_SILVER_BLOCKS"), "silver_blocks_txs": os.getenv("TABLE_SILVER_BLOCKS_TXS") }
-  src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_BLOCKS, "topic_schema": schema_blocks, "max_files_per_trigger": "1"}
-  sink_properties = { "checkpoint_path": CHECKPOINT_BLOCKS, "trigger_time": "2 seconds", "output_mode": "append"}
+  src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_BLOCKS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 seconds", "output_mode": "append"}
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)

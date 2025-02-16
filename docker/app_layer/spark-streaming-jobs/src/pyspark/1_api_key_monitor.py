@@ -10,8 +10,8 @@ from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.types import StringType, IntegerType
 
 from utils.spark_utils import SparkUtils
-from utils.logging_utils import ConsoleLoggingHandler
-from utils.schema_registry_utils import SchemaRegistryUtils
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
 from i_dm_streaming import IDmStreaming
 
 
@@ -133,8 +133,8 @@ if __name__ == "__main__":
 
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=1, password=REDIS_PASS)
-  sc_client = SchemaRegistryUtils.get_schema_registry_client(SCHEMA_REGISTRY_URL)
-  avro_schema_logs = SchemaRegistryUtils.get_avro_schema(sc_client, SCHEMA_REGISTRY_SUBJECT)
+  sc_client = SchemaRegistryHandler(SCHEMA_REGISTRY_URL)
+  avro_schema_logs = sc_client.get_schema_by_subject(SCHEMA_REGISTRY_SUBJECT)
  
   src_properties = {
     "topic_schema": avro_schema_logs,

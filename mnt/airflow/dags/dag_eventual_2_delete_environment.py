@@ -6,7 +6,7 @@ from airflow.operators.bash import BashOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 
 
-COMMON_KWARGS_DOCKER_OPERATOR = dict(
+COMMON_DOCKER_OP = dict(
   network_mode="vpc_dm",
   docker_url="unix:/var/run/docker.sock",
   auto_remove="force",
@@ -33,8 +33,7 @@ default_args ={
 }
 
 
-with DAG(
-  "pipeline_eventual_2_delete_environment", 
+with DAG("pipeline_eventual_2_delete_environment", 
   start_date=datetime.now(),
   schedule_interval="@once",
   default_args=default_args,
@@ -47,11 +46,11 @@ with DAG(
       bash_command="""sleep 2"""
     )
 
-    kafka_topics_creator = DockerOperator(
-      image="marcoaureliomenezes/onchain-stream-txs:1.0.0",
-      **COMMON_KWARGS_DOCKER_OPERATOR,
-      task_id="topics_creator",
-      entrypoint="python -u 0_topics_creator.py configs/topics_dev.ini",
+    delete_kafka_topics = DockerOperator(
+      image="marcoaureliomenezes/onchain-batch-txs:1.0.0",
+      **COMMON_DOCKER_OP,
+      task_id="delete_kafka_topics",
+      entrypoint="python -u /app/kafka_maintenance/1_delete_topics.py /app/kafka_maintenance/conf/topics_dev.ini --dry-run true",
       environment = {
         "NETWORK": os.getenv("NETWORK"),
         "KAFKA_BROKERS": os.getenv("KAFKA_BROKERS")
@@ -61,7 +60,7 @@ with DAG(
 
     delete_iceberg_tables_metadata = DockerOperator(
       image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="delete_iceberg_tables_metadata",
       entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_5_delete_all_tables.py",
       environment= {
@@ -78,9 +77,9 @@ with DAG(
 
     delete_iceberg_tables_data = DockerOperator(
       image="marcoaureliomenezes/onchain-batch-txs:1.0.0",
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="delete_iceberg_tables_data",
-      entrypoint="python 4_delete_keys_s3.py --bucket lakehouse",
+      entrypoint="python /app/s3_maintenance/1_delete_s3_objects.py --bucket lakehouse",
       environment= {
         "TOPIC_LOGS": "mainnet.0.application.logs",
         "MODE": "ALL",
@@ -91,9 +90,9 @@ with DAG(
 
     delete_spark_streaming_checkpoints = DockerOperator(
       image="marcoaureliomenezes/onchain-batch-txs:1.0.0",
-      **COMMON_KWARGS_DOCKER_OPERATOR,
+      **COMMON_DOCKER_OP,
       task_id="delete_spark_streaming_checkpoints",
-      entrypoint="python 4_delete_keys_s3.py --bucket spark",
+      entrypoint="python /app/s3_maintenance/1_delete_s3_objects.py --bucket spark",
       environment= {
         "TOPIC_LOGS": "mainnet.0.application.logs",
         "MODE": "ALL",
@@ -101,7 +100,5 @@ with DAG(
       }
     )
 
-
-
-    starting_process >> kafka_topics_creator
+    starting_process >> delete_kafka_topics
     starting_process >>  delete_iceberg_tables_metadata >> delete_iceberg_tables_data >> delete_spark_streaming_checkpoints

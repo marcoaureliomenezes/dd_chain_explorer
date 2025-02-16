@@ -2,10 +2,9 @@ import os
 import logging
 from datetime import datetime as dt
 
-
-from ice_stream_maintainer import IceStreamMaintainer
-from spark_utils import SparkUtils
-from logger_utils import ConsoleLoggingHandler
+from iceberg_maintenance import IceStreamMaintainer
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
+from utils.spark_utils import SparkUtils
 
 
 def get_logger(app_name):
@@ -27,7 +26,4 @@ if __name__ == "__main__":
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   maintainer = IceStreamMaintainer(LOGGER, spark, table=TABLE_NAME)
   maintainer.rewrite_manifests()
-  maintainer.rewrite_position_delete_files()
-  maintainer.rewrite_data_files()
-  #maintainer.remove_orphan_files()
   maintainer.expire_snapshots()

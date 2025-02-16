@@ -7,8 +7,7 @@ from pyspark.sql.streaming import StreamingQuery
 from logging import Logger
 
 from utils.spark_utils import SparkUtils
-from utils.logging_utils import ConsoleLoggingHandler
-from utils.dm_schemas import DMSchemas
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
 from i_dm_streaming import IDmStreaming
 
 

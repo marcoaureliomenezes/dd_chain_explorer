@@ -74,6 +74,7 @@ services:
   airflow-scheduler:
     container_name: airflow_scheduler
     command: scheduler
+    restart: always
     <<: *airflow-common
     environment:
       <<: *airflow-common-env

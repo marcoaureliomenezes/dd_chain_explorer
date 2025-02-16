@@ -7,7 +7,7 @@ import redis
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, concat_ws, lpad
 from utils.spark_utils import SparkUtils
-from utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
 
 
 class RawToBronzeBlocksEngine:

@@ -1,5 +1,5 @@
 x-conf-dev-spark-job: &conf_dev_spark_streaming_job
-  restart: on-failure
+  restart: always
   networks:
     - vpc_dm
   build: ../../docker/app_layer/spark-streaming-jobs
@@ -23,8 +23,8 @@ services:
       CONSUMER_GROUP: "cg_logs_processor"
       STARTING_OFFSETS: "earliest"
       MAX_OFFSETS_PER_TRIGGER: 3000
-      EXEC_MEMORY: 1g
-      TOTAL_EXEC_CORES: 1
+      EXEC_MEMORY: 2g
+      TOTAL_EXEC_CORES: 2
 
   spark-app-multiplex-bronze:
     <<: *conf_dev_spark_streaming_job
@@ -32,36 +32,59 @@ services:
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/2_job_bronze_multiplex.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/kafka_topics_multiplexed"
-      TOPICS: "mainnet.1.mined_blocks.events,mainnet.2.blocks.data,mainnet.4.transactions.data"
+      TOPICS: "mainnet.0.application.logs,mainnet.0.batch.logs,mainnet.1.mined_blocks.events,mainnet.2.blocks.data,mainnet.4.transactions.data"
       CONSUMER_GROUP: "cg_bronze_1"
       STARTING_OFFSETS: "earliest"
       MAX_OFFSETS_PER_TRIGGER: 10000
-      TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
+      TABLE_BRONZE: "bronze.kafka_topics_multiplexed"
+      EXEC_MEMORY: 1g
+      TOTAL_EXEC_CORES: 1
+      NUM_EXECUTORS: 2
+
+  spark-app-silver-logs:
+    <<: *conf_dev_spark_streaming_job
+    container_name: spark-app-silver-logs
+    entrypoint: "sh /app/entrypoint.sh /app/pyspark/3_job_silver_apps_logs.py"
+    environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions"
+      TOPIC_LOGS: "mainnet.0.application.logs"
+      TABLE_BRONZE: "bronze.kafka_topics_multiplexed"
+      SILVER_APP_LOGS: "nessie.silver.app_logs_fast"
+      EXEC_MEMORY: 1g
+      NUM_EXECUTORS: 1
+
+  spark-app-silver-mined-blocks-events:
+    <<: *conf_dev_spark_streaming_job
+    container_name: spark-app-silver-mined-blocks-events
+    entrypoint: "sh /app/entrypoint.sh /app/pyspark/4_job_silver_blocks_events.py"
+    environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/mined_blocks_events"
+      TOPIC_BLOCKS_EVENTS: "mainnet.1.mined_blocks.events"
+      TABLE_BRONZE: "bronze.kafka_topics_multiplexed"
+      TABLE_SILVER_MINED_BLOCKS: "silver.mined_blocks_events"
 
 
   spark-app-silver-blocks:
     <<: *conf_dev_spark_streaming_job
     container_name: spark-app-silver-blocks
-    entrypoint: "sh /app/entrypoint.sh /app/pyspark/3_job_silver_blocks.py"
+    entrypoint: "sh /app/entrypoint.sh /app/pyspark/5_job_silver_blocks.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/blocks"
       TOPIC_BLOCKS: "mainnet.2.blocks.data"
-      TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
-      TABLE_SILVER_BLOCKS: "nessie.silver.blocks"
-      TABLE_SILVER_BLOCKS_TXS: "nessie.silver.blocks_transactions"
+      TABLE_BRONZE: "bronze.kafka_topics_multiplexed"
+      TABLE_SILVER_BLOCKS: "silver.blocks"
+      TABLE_SILVER_BLOCKS_TXS: "silver.blocks_transactions"
 
 
   spark-app-silver-txs:
     <<: *conf_dev_spark_streaming_job
     container_name: spark-app-silver-txs
-    entrypoint: "sh /app/entrypoint.sh /app/pyspark/4_job_silver_transactions.py"
+    entrypoint: "sh /app/entrypoint.sh /app/pyspark/6_job_silver_transactions.py"
     environment:
-      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions"
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions_fast"
       TOPIC_TXS: "mainnet.4.transactions.data"
-      TABLE_BRONZE: "nessie.bronze.kafka_topics_multiplexed"
-      SILVER_TXS_P2P: "nessie.silver.transactions_p2p"
-      SILVER_TXS_CONTRACTS: "nessie.silver.transactions_contracts"
-      TABLE_SILVER_TXS: "nessie.silver.transactions"
+      TABLE_BRONZE: "bronze.kafka_topics_multiplexed"
+      SILVER_TXS_FAST: "silver.transactions_fast"
       EXEC_MEMORY: 1g
       NUM_EXECUTORS: 1
 

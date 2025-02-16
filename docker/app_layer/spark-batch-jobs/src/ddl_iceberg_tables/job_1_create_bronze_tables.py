@@ -1,15 +1,12 @@
-import os
 import logging
 
 from utils.spark_utils import SparkUtils
-from utils.logger_utils import ConsoleLoggingHandler
 from table_creator import TableCreator
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
 
 
 class DDLBronzeTables:
 
-  def __init__(self, logger):
-    self.logger = logger
 
   def build_create_table_query_bronze_multiplexed(self, table_name, tbl_properties):
     query = f"""
@@ -59,31 +56,34 @@ class DDLBronzeTables:
       """
     query += tbl_properties
     return query
-  
-
 
 
 if __name__ == "__main__":
 
   APP_NAME = "Create_Bronze_tables"
-  table_bronze_kafka_multiplexed = "nessie.bronze.kafka_topics_multiplexed"
-  table_bronze_transactions_batch = "nessie.bronze.popular_contracts_txs"
+  table_bronze_kafka_multiplexed = "bronze.kafka_topics_multiplexed"
+  table_bronze_transactions_batch = "bronze.popular_contracts_txs"
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
   LOGGER.addHandler(ConsoleLoggingHandler())
   
+
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   tables_creator = TableCreator(LOGGER, spark)
-  tables_creator.create_namespace("nessie.bronze")
+  tables_creator.create_namespace("bronze")
   
+
   table_properties = tables_creator.get_iceberg_table_properties()
-  ddl_actor = DDLBronzeTables(LOGGER)
+  ddl_actor = DDLBronzeTables()
   ddl_query = ddl_actor.build_create_table_query_bronze_txs(table_bronze_transactions_batch, table_properties)
   spark.sql(ddl_query)
+  LOGGER.info(f"Table {table_bronze_transactions_batch} created.")
   tables_creator.get_table_info(table_bronze_transactions_batch)
+
 
   ddl_query = ddl_actor.build_create_table_query_bronze_multiplexed(table_bronze_kafka_multiplexed, table_properties)
   spark.sql(ddl_query)
+  LOGGER.info(f"Table {table_bronze_kafka_multiplexed} created.")
   tables_creator.get_table_info(table_bronze_kafka_multiplexed)

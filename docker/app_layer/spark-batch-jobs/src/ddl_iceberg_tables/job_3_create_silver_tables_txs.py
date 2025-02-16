@@ -2,14 +2,11 @@ import os
 import logging
 
 from utils.spark_utils import SparkUtils
-from utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
 from table_creator import TableCreator
 
 
 class CreateIcebergSilverTxs:
-
-  def __init__(self, logger):
-    self.logger = logger
 
 
   def create_table_transactions(self, table_name, tbl_properties):
@@ -17,7 +14,8 @@ class CreateIcebergSilverTxs:
     CREATE TABLE IF NOT EXISTS {table_name} (
       ingestion_time TIMESTAMP          COMMENT 'Kafka timestamp',  
       block_number LONG                 COMMENT 'Block number',
-      hash STRING                       COMMENT 'Block hash',   
+      hash STRING                       COMMENT 'Block hash',
+      transaction_type STRING           COMMENT 'Transaction type can be P2P, CONTRACT_CALL or CONTRACT_CREATION',  
       transaction_index LONG            COMMENT 'Transaction index',      
       from_address STRING               COMMENT 'From address',
       to_address STRING                 COMMENT 'To address',
@@ -36,9 +34,7 @@ class CreateIcebergSilverTxs:
 if __name__ == "__main__":
 
   APP_NAME = "Create_Tables_Silver_Transactions"
-  TABLE_SILVER_TXS_P2P = "nessie.silver.transactions_p2p"
-  TABLE_SILVER_TXS_CONTRACTS = "nessie.silver.transactions_contracts"
-
+  TABLE_SILVER_TXS_FAST = "silver.transactions_fast"
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
@@ -48,13 +44,12 @@ if __name__ == "__main__":
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   tables_creator = TableCreator(LOGGER, spark)
   tbl_properties = tables_creator.get_iceberg_table_properties()
-  tables_creator.create_namespace("nessie.silver")
+  tables_creator.create_namespace("silver")
 
-  for table_name in [TABLE_SILVER_TXS_P2P, TABLE_SILVER_TXS_CONTRACTS]:
-    ddl_actor = CreateIcebergSilverTxs(spark)
-    query = ddl_actor.create_table_transactions(table_name, tbl_properties)
-    spark.sql(query)
-    tables_creator.get_table_info(table_name)
+  ddl_actor = CreateIcebergSilverTxs()
+  query = ddl_actor.create_table_transactions(TABLE_SILVER_TXS_FAST, tbl_properties)
+  spark.sql(query)
+  tables_creator.get_table_info(TABLE_SILVER_TXS_FAST)
 
 
 

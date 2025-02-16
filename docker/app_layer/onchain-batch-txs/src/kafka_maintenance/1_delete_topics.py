@@ -4,6 +4,8 @@ from argparse import ArgumentParser, FileType
 from configparser import ConfigParser
 from kafka_admin_client import DMClusterAdmin
 
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
+
 
 if __name__ == "__main__":
 
@@ -11,18 +13,22 @@ if __name__ == "__main__":
     KAFKA_BROKER = os.getenv("KAFKA_BROKERS")
     parser = ArgumentParser(description=f'Stream transactions network')
     parser.add_argument('config_file', type=FileType('r'), help='Config file')
-    parser.add_argument('--overwrite', type=bool, default=False, help='Network')
+    parser.add_argument('--dry-run', type=str, default="true", help='Dry Run')
     args = parser.parse_args()
     config = ConfigParser()
     config.read_file(args.config_file)
-    overwrite = args.overwrite
+    dry_run = args.dry_run
+
     logger = logging.getLogger("KAFKA_ADMIN")
+    logger.setLevel(logging.INFO)
+    ConsoleLoggingHandler = ConsoleLoggingHandler()
+    logger.addHandler(ConsoleLoggingHandler)
     kafka_conf = {"bootstrap.servers": "broker-1:29092"}
     kafka_admin = DMClusterAdmin(logger, kafka_conf)
 
     topics = [
-      "topic.application.logs",
-      "topic.batch.logs",
+      # "topic.application.logs",
+      # "topic.batch.logs",
       "topic.mined_blocks.events",
       "topic.blocks_data",
       "topic.block_txs.hash_ids",
@@ -30,10 +36,10 @@ if __name__ == "__main__":
       "topic.txs.input_decoded"
     ]
 
+    print(dry_run)
     topic_configs = config["topic.general.config"]
     for topic in topics:
-      custom_configs = {**topic_configs, **config[topic]}
-      topic_name, num_partitions, replication_factor = topic, int(custom_configs["num_partitions"]), int(custom_configs["replication_factor"])
-      kafka_admin.create_topic(topic_name, num_partitions, replication_factor, custom_configs, overwrite=overwrite)
+      topic_name = f"{NETWORK}.{config[topic]['name']}"
+      kafka_admin.delete_topic(topic_name, dry_run=dry_run)
 
 

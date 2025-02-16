@@ -1,4 +1,5 @@
 pyspark
 requests
 redis
-boto3
+botocore
+dm-33-utils==0.0.5

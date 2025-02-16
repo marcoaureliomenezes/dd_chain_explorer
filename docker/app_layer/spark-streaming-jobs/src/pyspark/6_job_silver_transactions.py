@@ -2,15 +2,15 @@ import os
 import logging
 from logging import Logger
 from typing import Dict
-from pyspark.sql.functions import col, expr, explode, array_size, to_timestamp
+from pyspark.sql.functions import col, expr, when
 from pyspark.sql.avro.functions import from_avro
 from pyspark.sql.types import *
 from pyspark.sql import SparkSession
 
 
-from utils.schema_registry_utils import SchemaRegistryUtils
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
 from utils.spark_utils import SparkUtils
-from utils.logging_utils import ConsoleLoggingHandler
 from i_dm_streaming import IDmStreaming
 
 
@@ -34,12 +34,11 @@ class SilverBlocks(IDmStreaming):
   
 
   def config_sink( self, tables_output: Dict[str, str],  sink_properties: Dict[str, str]):
-    self.silver_txs_p2p = tables_output["silver_txs_p2p"]
-    self.silver_txs_contracts = tables_output["silver_txs_contracts"]
+    self.silver_txs_fast = tables_output["silver_txs_fast"]
     self.checkpoint_path = sink_properties.get("checkpoint_path")
     self.trigger_time = sink_properties.get("trigger_time")
     self.output_mode = sink_properties.get("output_mode")
-    self.logger.info(f"Sink configured with tables {self.silver_txs_p2p}, {self.silver_txs_contracts}")
+    self.logger.info(f"Sink configured with tables {self.silver_txs_fast}")
     self.logger.info(f"Checkpoint path: {self.checkpoint_path}, trigger time: {self.trigger_time}, output mode: {self.output_mode}")
     return self
 
@@ -70,28 +69,28 @@ class SilverBlocks(IDmStreaming):
         .withColumnRenamed("gasPrice", "gas_price")
         .withColumnRenamed("from", "from_address")
         .withColumnRenamed("to", "to_address")
+        .withColumn("transaction_type", 
+                      when(col("input") == "", "P2P")
+                      .when((col("input") != "") & (col("to_address").isNotNull()), "CONTRACT_CALL")
+                      .otherwise("CONTRACT_CREATION"))
         .withColumn("dat_ref", expr("date_format(ingestion_time, 'yyyy-MM-dd')"))
-        .select("ingestion_time", "block_number", "hash", "transaction_index", "from_address", "to_address", "value", "input", "gas", "gas_price", "nonce", "dat_ref"))
+        .select("ingestion_time", "block_number", "hash", "transaction_type", "transaction_index", "from_address",
+                "to_address", "value", "input", "gas", "gas_price", "nonce", "dat_ref"))
+    self.df_streaming.printSchema()
+    self.spark.table(self.silver_txs_fast).printSchema()
     return self
 
 
-  def __microbatch_write(self, df, epoch_id):
-    df_txs_p2p = df.filter(col("input") == "")
-    df_txs_contracts = df.filter((col("input") != "") & (col("to_address").isNotNull()))
-    df_txs_p2p.writeTo(self.silver_txs_p2p).append()
-    df_txs_contracts.writeTo(self.silver_txs_contracts).append()
-
-
-  def load(self):
+  def load(self) -> None:
     return (
-      self.df_streaming.writeStream
-        .foreachBatch(self.__microbatch_write)
+      self.df_streaming
+        .writeStream
+        .format("iceberg")
         .outputMode(self.output_mode)
         .option("checkpointLocation", self.checkpoint_path)
         .trigger(processingTime=self.trigger_time)
-        .start()
+        .toTable(self.silver_txs_fast)
         .awaitTermination())
-
   
 
   def load_to_console(self):
@@ -111,16 +110,15 @@ if __name__ == "__main__":
   SR_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
   TOPIC_TXS = os.getenv("TOPIC_TXS")
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
-  SILVER_TXS_P2P = os.getenv("SILVER_TXS_P2P")
-  SILVER_TXS_CONTRACTS = os.getenv("SILVER_TXS_CONTRACTS")
-  CHECKPOINT_TXS = os.getenv("CHECKPOINT_PATH")
+  SILVER_TXS_FAST = os.getenv("SILVER_TXS_FAST")
+  CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
 
-  sc_client = SchemaRegistryUtils.get_schema_registry_client(SR_URL)
-  schema_txs = SchemaRegistryUtils.get_avro_schema(sc_client, f"{TOPIC_TXS}-value")
+  sc_client = SchemaRegistryHandler(SR_URL)
+  schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_TXS}-value")
   
-  tables_output = {"silver_txs_p2p": SILVER_TXS_P2P, "silver_txs_contracts": SILVER_TXS_CONTRACTS }
-  src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_TXS, "topic_schema": schema_txs, "max_files_per_trigger": "1"}
-  sink_properties = { "checkpoint_path": CHECKPOINT_TXS, "trigger_time": "2 seconds", "output_mode": "append"}
+  tables_output = { "silver_txs_fast": SILVER_TXS_FAST }
+  src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_TXS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 seconds", "output_mode": "append"}
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)

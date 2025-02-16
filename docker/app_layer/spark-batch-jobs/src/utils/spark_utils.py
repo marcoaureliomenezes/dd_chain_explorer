@@ -1,13 +1,14 @@
 import os
 import pyspark
 
+from logging import Logger
 from pyspark.sql import SparkSession
 
 
 class SparkUtils:
 
   @staticmethod
-  def get_spark_session(logger, app_name):
+  def get_spark_session(logger: Logger, app_name: str) -> SparkSession:
 
     logger.info("Environment Variables:")
     logger.info(f"SPARK_MASTER: {os.getenv('SPARK_MASTER')}")
@@ -35,3 +36,18 @@ class SparkUtils:
 
 
   
+  def glue_catalog_exists(self, catalog_name):
+    os.getenv("AWS_REGION", "us-east-1")
+    os.getenv("AWS_ACCESS_KEY_ID")
+    os.getenv("AWS_SECRET_ACCESS_KEY")
+
+    conf = (
+      pyspark.SparkConf()
+      .setAppName("GLUE_CATALOG_CHECK")
+      .set("spark.jars_packages", "org.apache.iceberg:iceberg-spark-runtime-3.5_2.12:1.8.0,org.apache.iceberg:iceberg-aws-bundle:1.8.0")
+      .set("sparl.sql.extensions", "org.apache.iceberg.spark.extensions.IcebergSparkSessionExtensions")
+      .set("spark.sql.catalog.glue", "org.apache.iceberg.spark.SparkSessionCatalog")
+      .set("spark.sql.catalog.glue.catalog-impl", "org.apache.iceberg.aws.glue.catalog.GlueCatalog")
+      .set("spark.sql.catalog.warehouse", "s3a://lakehouse/warehouse")
+      .set("spark.sql.catalog.glue.io-impl", "org.apache.iceberg.aws.s3.S3FileIO")
+    )

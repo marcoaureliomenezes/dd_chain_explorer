@@ -15,18 +15,11 @@ services:
   ################################################################################################
   ############################    PYTHON APPLICATIONS    #########################################
 
-  # topics_creator:
-  #   <<: *conf_dev_onchain_stream_txs
-  #   container_name: topics_creator
-  #   restart: on-failure
-  #   entrypoint: "python -u 0_topics_creator.py conf/topics_dev.ini"
-  #   environment:
-  #     NETWORK: mainnet
 
   python-job-mined-blocks-watcher:
     <<: *conf_dev_onchain_stream_txs
     container_name: python-job-mined-blocks-watcher
-    entrypoint: "python -u 1_mined_blocks_watcher.py configs/producers.ini"
+    entrypoint: "python -u /app/1_mined_blocks_watcher.py /app/configs/producers.ini"
     environment:
       AKV_NODE_NAME: DataMasterNodeAsAService
       AKV_SECRET_NAME: 'alchemy-api-key-3'
@@ -61,7 +54,7 @@ services:
       TOPIC_TXS_HASH_IDS: 'mainnet.3.block.txs.hash_id'
       TOPIC_TXS_HASH_IDS_PARTITIONS: 8
       CLOCK_FREQUENCY: 1
-      TXS_PER_BLOCK: 60
+      TXS_PER_BLOCK: 140
 
 
   python-job-transactions_crawler:
@@ -78,31 +71,31 @@ services:
     deploy:
       replicas: 8
 
-  # python-job-redis-collector:
-  #   <<: *conf_dev_onchain_stream_txs
-  #   container_name: python-job-redis-collector
-  #   entrypoint: "python -u n_semaphore_collect.py"
-  #   environment:
-  #     FREQUENCY: 0.5
+  python-job-redis-collector:
+    <<: *conf_dev_onchain_stream_txs
+    container_name: python-job-redis-collector
+    entrypoint: "python -u n_semaphore_collect.py"
+    environment:
+      FREQUENCY: 0.5
 
 
-#   # # txs_input_decoder:
-#   # #   <<: *conf_dev_onchain_stream_txs
-#   # #   container_name: txs_input_decoder
-#   # #   entrypoint: "python -u 3_txs_input_decoder.py configs/producers.ini configs/consumers.ini"
-#   # #   env_file:
-#   # #     - ../../conf/.secrets.conf
-#   # #     - ./conf/kafka.conf
-#   # #     - ../../conf/job.3.txs.input.decoder.conf
-#   # #   environment:
-#   # #     AKV_SCAN_NAME: DMEtherscanAsAService
-#   # #     AKV_NODE_NAME: DataMasterNodeAsAService
-#   # #     AKV_NODE_SECRET_NAME: infura-api-key-16
-#   # #     AKV_SCAN_SECRET_NAME: etherscan-api-key-2
-#   # #     TOPIC_LOGS: mainnet.0.application.logs
-#   # #     TOPIC_TXS_RAW_DATA: mainnet.4.mined.txs.raw_data
-#   # #     TOPIC_TXS_INPUT_DECODED: mainnet.5.mined.txs.input_decoded
-#   # #     KAFKA_CG_INPUT_DECODER: cg_txs_input_decoder
+  # # txs_input_decoder:
+  # #   <<: *conf_dev_onchain_stream_txs
+  # #   container_name: txs_input_decoder
+  # #   entrypoint: "python -u 3_txs_input_decoder.py configs/producers.ini configs/consumers.ini"
+  # #   env_file:
+  # #     - ../../conf/.secrets.conf
+  # #     - ./conf/kafka.conf
+  # #     - ../../conf/job.3.txs.input.decoder.conf
+  # #   environment:
+  # #     AKV_SCAN_NAME: DMEtherscanAsAService
+  # #     AKV_NODE_NAME: DataMasterNodeAsAService
+  # #     AKV_NODE_SECRET_NAME: infura-api-key-16
+  # #     AKV_SCAN_SECRET_NAME: etherscan-api-key-2
+  # #     TOPIC_LOGS: mainnet.0.application.logs
+  # #     TOPIC_TXS_RAW_DATA: mainnet.4.mined.txs.raw_data
+  # #     TOPIC_TXS_INPUT_DECODED: mainnet.5.mined.txs.input_decoded
+  # #     KAFKA_CG_INPUT_DECODER: cg_txs_input_decoder
 
 networks:
   vpc_dm:
