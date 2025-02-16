@@ -6,7 +6,6 @@ PYFILES_SPARK_PATH="/app/utils/spark_utils.py"
 PYFILES_SC_PATH="/app/utils/schema_registry_utils.py"
 PYFILES_LOGGING_PATH="/app/utils/logging_utils.py"
 
-# get an environment variable called EXEC_MEMORY with default value 1G
 
 NUM_EXECUTORS=${NUM_EXECUTORS:-1}
 EXEC_MEMORY=${EXEC_MEMORY:-1G}
@@ -30,5 +29,5 @@ spark-submit                                                                    
 --total-executor-cores $TOTAL_EXEC_CORES                                        \
 --executor-memory $EXEC_MEMORY                                                  \
 --num-executors ${NUM_EXECUTORS}                                                \
---py-files ${PYFILES_SPARK_PATH},${PYFILES_SC_PATH},${PYFILES_LOGGING_PATH}     \
+--py-files ${PYFILES_SPARK_PATH}        \
 ${PYSPARK_SCRIPT}

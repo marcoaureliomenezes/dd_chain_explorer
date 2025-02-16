@@ -10,24 +10,22 @@ class DataLakeExpurgator:
   def __init__(self, logger, bucket: str):
     self.bucket = bucket
     self.logger = logger
-    self.s3_client = boto3.client('s3',
-      endpoint_url=os.getenv("S3_URL"),
-      aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
-      aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY")
-    )
+    self.s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_URL"))
+    self.s3 = boto3.resource('s3', endpoint_url=os.getenv("S3_URL"))
 
 
   def delete_objects(self, prefix: str):
+    
     response = self.s3_client.list_objects_v2(Bucket=self.bucket, Prefix=prefix)
-    print(response)
-    if not response.get("Contents"):
-      self.logger.info(f"No objects found with prefix {prefix}")
-      return
-    keys = [obj["Key"] for obj in response["Contents"]]
-    self.logger.info(f"Deleting objects from {self.bucket} with prefix {prefix}")
-    for key in keys:
-      self.s3_client.delete_object(Bucket=self.bucket, Key=key)
-      self.logger.info(f"Object {key} deleted")
+    while response.get("Contents"):
+      objects_to_delete =[{ "Key": obj["Key"] } for obj in response["Contents"]]
+      for obj in objects_to_delete:
+        self.logger.info(f"Deleting object {obj['Key']} from {self.bucket}")
+        self.s3_client.delete_object(Bucket=self.bucket, Key=obj["Key"])
+      if response.get("NextContinuationToken"):
+        response = self.s3_client.list_objects_v2(Bucket=self.bucket, Prefix=prefix, ContinuationToken=response["NextContinuationToken"])
+      else: break
+
 
 
 if __name__ == "__main__":

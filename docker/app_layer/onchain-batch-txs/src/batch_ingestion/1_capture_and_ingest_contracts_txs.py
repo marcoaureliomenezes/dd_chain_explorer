@@ -8,7 +8,7 @@ from datetime import datetime as dt, timedelta
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-from utils.etherscan_utils import EthercanAPI
+from etherscan_utils import EthercanAPI
 
 from dm_33_utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
 from dm_33_utils.kafka_utils import KafkaHandler

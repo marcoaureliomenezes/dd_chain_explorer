@@ -2,7 +2,7 @@ import os
 import logging
 
 from utils.spark_utils import SparkUtils
-from utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
 from typing import List
 
 class TablesDestroyer:
@@ -24,13 +24,13 @@ if __name__ == "__main__":
 
   APP_NAME = "Delete_All_Tables"
   tables_to_drop = [
-    "nessie.silver.blocks_transactions",
-    "nessie.silver.transactions_p2p",
-    "nessie.silver.transactions_contracts",
-    "nessie.silver.blocks",
-    "nessie.silver.mined_blocks_events",
-    "nessie.bronze.kafka_topics_multiplexed",
-    "nessie.bronze.popular_contracts_txs"
+    #"bronze.kafka_topics_multiplexed",
+    #"bronze.popular_contracts_txs"
+    "silver.mined_blocks_events",
+    "silver.blocks",
+    "silver.blocks_transactions",
+    "silver.transactions_fast",
+    "silver.app_logs_fast"
   ]
 
   # CONFIGURING LOGGING

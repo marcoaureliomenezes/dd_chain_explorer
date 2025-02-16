@@ -24,11 +24,11 @@ default_args ={
 
 with DAG(
   f"pipeline_hourly_2_contracts_transactions",
-  start_date=datetime(year=2025,month=2,day=3,hour=2),
-  schedule_interval="@once",
+  start_date=datetime(year=2025,month=2,day=13,hour=15),
+  schedule_interval="@hourly",
   default_args=default_args,
   max_active_runs=2,
-  catchup=False
+  catchup=True
   ) as dag:
 
     starting_process = BashOperator(
@@ -43,7 +43,7 @@ with DAG(
       **COMMON_DOCKER_OP,
       network_mode="vpc_dm",
       task_id="get_popular_contracts_addresses",
-      entrypoint="sh /app/2_batch_contracts_transactions/entrypoint.sh /app/2_batch_contracts_transactions/1_get_popular_contracts.py",
+      entrypoint="sh /app/entrypoint.sh /app/periodic_spark_processing/1_get_popular_contracts.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
@@ -52,7 +52,7 @@ with DAG(
         "AWS_REGION": os.getenv("AWS_DEFAULT_REGION"),
         "S3_URL": os.getenv("S3_URL"),
         "NESSIE_URI": os.getenv("NESSIE_URI"),
-        "TABLE_NAME": "nessie.silver.transactions_contracts",
+        "TABLE_NAME": "silver.transactions_fast",
         "REDIS_HOST": os.getenv("REDIS_HOST"),
         "REDIS_PORT": os.getenv("REDIS_PORT"),
         "REDIS_PASS": os.getenv("REDIS_PASS"),
@@ -66,7 +66,7 @@ with DAG(
       **COMMON_DOCKER_OP,
       network_mode="vpc_dm",
       task_id="capture_and_ingest_popular_contracts_addresses_txs",
-      entrypoint="python /app/1_capture_and_ingest_contracts_txs.py",
+      entrypoint="python /app/batch_ingestion/1_capture_and_ingest_contracts_txs.py",
       environment= {
       "NETWORK": os.getenv("NETWORK"),
       "TOPIC_LOGS": "mainnet.0.application.logs",
@@ -100,7 +100,7 @@ with DAG(
       **COMMON_DOCKER_OP,
       network_mode="vpc_dm",
       task_id="bronze_popular_contracts_addresses_txs",
-      entrypoint="sh /app/2_batch_contracts_transactions/entrypoint.sh /app/2_batch_contracts_transactions/2_ingest_txs_data_to_bronze.py",
+      entrypoint="sh /app/entrypoint.sh /app/periodic_spark_processing/2_ingest_txs_data_to_bronze.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
@@ -109,11 +109,11 @@ with DAG(
         "AWS_REGION": os.getenv("AWS_DEFAULT_REGION"),
         "S3_URL": os.getenv("S3_URL"),
         "NESSIE_URI": os.getenv("NESSIE_URI"),
-        "TABLE_NAME": "nessie.silver.transactions_contracts",
         "REDIS_HOST": os.getenv("REDIS_HOST"),
         "REDIS_PORT": os.getenv("REDIS_PORT"),
         "REDIS_PASS": os.getenv("REDIS_PASS"),
         "REDIS_DB": "3",
+        "TABLE_NAME": "bronze.popular_contracts_txs",
         "EXEC_DATE": "{{ execution_date }}"    
       }
     )

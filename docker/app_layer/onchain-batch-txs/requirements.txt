@@ -1,2 +1,2 @@
 pandas
-dm-33-utils==0.0.4
+dm-33-utils==0.0.5

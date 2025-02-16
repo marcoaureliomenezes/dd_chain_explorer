@@ -21,7 +21,7 @@ x-common-deploy-worker-1: &common_deploy_worker_1
 x-common-deploy-worker-2: &common_deploy_worker_2
   deploy:
     restart_policy:
-      condition: on-failure
+      condition: any
     placement:
       constraints: [node.hostname == dadaia-server-2]
 

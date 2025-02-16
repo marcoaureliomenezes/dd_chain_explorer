@@ -47,7 +47,7 @@ class BlockDataCrawler(ChainExtractor):
 
   def batch_txs_hash_ids(self, txs_list: List[str]):
     txs_list = txs_list[:self.txs_threshold] if self.txs_threshold else txs_list
-    txs_partition_list = [(txs_list[i], i % self.num_partitions_hash_ids) for i in range(self.num_partitions_hash_ids)]
+    txs_partition_list = [(txs_list[i], i % self.num_partitions_hash_ids) for i in range(len(txs_list))]
     for hash_id, partition in txs_partition_list:
       key, value = hash_id, {"tx_hash": hash_id}
       self.producer_txs_hash_ids.produce(topic=self.topic_txs_hash_ids, key=key, value=value, partition=partition)

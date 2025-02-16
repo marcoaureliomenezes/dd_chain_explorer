@@ -3,7 +3,7 @@ import logging
 from argparse import ArgumentParser, FileType
 from configparser import ConfigParser
 from kafka_admin_client import DMClusterAdmin
-from utils.logger_utils import ConsoleLoggingHandler
+from dm_33_utils.logger_utils import ConsoleLoggingHandler
 
 
 if __name__ == "__main__":
@@ -12,7 +12,7 @@ if __name__ == "__main__":
     KAFKA_BROKER = os.getenv("KAFKA_BROKERS")
     parser = ArgumentParser(description=f'Stream transactions network')
     parser.add_argument('config_file', type=FileType('r'), help='Config file')
-    parser.add_argument('--overwrite', type=bool, default=False, help='Network')
+    parser.add_argument('--overwrite', type=str, default="false", help='Network')
     args = parser.parse_args()
     config = ConfigParser()
     config.read_file(args.config_file)
@@ -35,9 +35,12 @@ if __name__ == "__main__":
     ]
 
     topic_configs = config["topic.general.config"]
+    print(overwrite)
     for topic in topics:
       custom_configs = {**topic_configs, **config[topic]}
-      topic_name, num_partitions, replication_factor = topic, int(custom_configs["num_partitions"]), int(custom_configs["replication_factor"])
-      kafka_admin.create_topic(f"aaaaaa{topic_name}a", num_partitions, replication_factor, custom_configs, overwrite=overwrite)
-
+      topic_name, num_partitions, replication_factor = f"{NETWORK}.{custom_configs['name']}", int(custom_configs["num_partitions"]), int(custom_configs["replication_factor"])
+      del custom_configs["name"]
+      del custom_configs["num_partitions"]
+      del custom_configs["replication_factor"]
+      kafka_admin.create_topic(topic_name, num_partitions, replication_factor, custom_configs, overwrite=overwrite)
 
