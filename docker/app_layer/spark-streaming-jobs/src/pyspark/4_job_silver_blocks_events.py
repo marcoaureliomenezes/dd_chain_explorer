@@ -4,7 +4,7 @@ from logging import Logger
 from typing import Dict
 from pyspark.sql.functions import col, expr, date_format, to_timestamp
 from pyspark.sql.avro.functions import from_avro
-from pyspark.sql.types import *
+from pyspark.sql.types import LongType, StringType
 from pyspark.sql import SparkSession
 
 
@@ -68,7 +68,7 @@ class SilverBlocksEvents(IDmStreaming):
         .withColumn("dat_ref", date_format(col("block_timestamp"), "yyyy-MM-dd"))
         .select("block_number", "ingestion_time", "block_timestamp", "block_type", "block_hash", "dat_ref"))
     self.df_streaming.printSchema()
-    self.spark.table("silver.mined_blocks_events").printSchema()
+    self.spark.table(self.silver_mined_blocks).printSchema()
     return self
 
 
@@ -97,19 +97,21 @@ class SilverBlocksEvents(IDmStreaming):
 
 if __name__ == "__main__":
 
-  APP_NAME = "Silver_Mined_blocks_Events"
+  APP_NAME = "STREAMING_3_SILVER_MINED_BLOCKS_EVENTS"
   SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
   TOPIC_BLOCKS_EVENTS = os.getenv("TOPIC_BLOCKS_EVENTS")
   TABLE_SILVER_MINED_BLOCKS = os.getenv("TABLE_SILVER_MINED_BLOCKS")
   CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
+  TRIGGER_TIME = os.getenv("TRIGGER_TIME")
+
 
   sc_client = SchemaRegistryHandler(SR_URL)
   schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_BLOCKS_EVENTS}-value")
   
   tables_output = {"silver_mined_blocks": TABLE_SILVER_MINED_BLOCKS}
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_BLOCKS_EVENTS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
-  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 seconds", "output_mode": "append"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)

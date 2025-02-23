@@ -25,6 +25,10 @@ dev.secrets.conf
 
 z_old/
 z_understanding.md
-z_old
+z_doc/
+z_lib/
 
 swarm.secrets_prod.conf
+scripts/2_setup_firewall.sh
+z_OLD_README.md
+z_test.py

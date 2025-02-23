@@ -1,8 +1,9 @@
 #!/bin/bash
 
-IP_MANAGER=192.168.15.101
+IP_MANAGER=192.168.15.10
 HOST_WORKER_1=dadaia@192.168.15.88
 HOST_WORKER_2=dadaia@192.168.15.8
+HOST_WORKER_3=dadaia-server@192.168.15.83
 
 
 init_docker_swarm() {
@@ -43,4 +44,4 @@ echo $join_cluster_command
 
 join_node "$HOST_WORKER_1" "$join_cluster_command"
 join_node "$HOST_WORKER_2" "$join_cluster_command"
-#join_node "$HOST_WORKER_3" "$join_cluster_command"
+join_node "$HOST_WORKER_3" "$join_cluster_command"

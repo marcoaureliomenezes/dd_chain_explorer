@@ -93,6 +93,7 @@ class APIKeyMonitor(IDmStreaming):
       self.df_streaming.writeStream
         .outputMode("update")
         .foreachBatch(self.__batch_to_redis)
+        .trigger(processingTime=self.trigger_time)
         .start()
         .awaitTermination())
 
@@ -110,17 +111,15 @@ class APIKeyMonitor(IDmStreaming):
 
 if __name__ == "__main__":
     
-  APP_NAME = "api_keys_consume_monitoring"
+  APP_NAME = "STREAMING_0_API_KEYS_WATCHER"
   SPARK_URL = os.getenv("SPARK_MASTER_URL")
-
   KAFKA_CLUSTER = os.getenv("KAFKA_BROKERS")
   TOPIC_SUBSCRIBE = os.getenv("TOPIC_LOGS")
   CONSUMER_GROUP = os.getenv("CONSUMER_GROUP")
   STARTING_OFFSETS = os.getenv("STARTING_OFFSETS")
   MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER")
   SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
-  
-  SCHEMA_REGISTRY_SUBJECT = f"{TOPIC_SUBSCRIBE}-value"
+  TRIGGER_TIME = os.getenv("TRIGGER_TIME")
 
   REDIS_HOST = os.getenv("REDIS_HOST")
   REDIS_PORT = os.getenv("REDIS_PORT")
@@ -134,7 +133,7 @@ if __name__ == "__main__":
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   redis_client = redis.StrictRedis(host=REDIS_HOST, port=REDIS_PORT, db=1, password=REDIS_PASS)
   sc_client = SchemaRegistryHandler(SCHEMA_REGISTRY_URL)
-  avro_schema_logs = sc_client.get_schema_by_subject(SCHEMA_REGISTRY_SUBJECT)
+  avro_schema_logs = sc_client.get_schema_by_subject(f"{TOPIC_SUBSCRIBE}-value")
  
   src_properties = {
     "topic_schema": avro_schema_logs,
@@ -149,7 +148,7 @@ if __name__ == "__main__":
 
   sink_properties = {
     "redis_client": redis_client,
-    "trigger_time": "2 seconds",
+    "trigger_time": TRIGGER_TIME,
     "output_mode": "update"
   }
   

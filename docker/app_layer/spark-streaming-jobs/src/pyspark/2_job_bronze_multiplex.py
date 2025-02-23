@@ -80,7 +80,7 @@ class KafkaIngestorMultiplexed(IDmStreaming):
 
 if __name__ == "__main__":
     
-  APP_NAME = "bronze_kafka_topics_multiplexed"
+  APP_NAME = "STREAMING_1_BRONZE_KAFKA_TOPICS_MULTIPLEXED"
   KAFKA_BROKERS = os.getenv("KAFKA_BROKERS")
   CONSUMER_GROUP = os.getenv("CONSUMER_GROUP")
   STARTING_OFFSETS = os.getenv("STARTING_OFFSETS")
@@ -88,6 +88,7 @@ if __name__ == "__main__":
   TABLE_BRONZE = os.getenv("TABLE_BRONZE")
   CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
   TOPICS = os.getenv("TOPICS")
+  TRIGGER_TIME = os.getenv("TRIGGER_TIME")
   
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
@@ -100,10 +101,10 @@ if __name__ == "__main__":
   "subscribe": TOPICS,
   "startingOffsets": STARTING_OFFSETS,
   "group.id": CONSUMER_GROUP,
-  "maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER,
+  #"maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER,
   'failOnDataLoss': 'false'
   }
-  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 minutes", "output_mode": "append"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}
   sink_tables = { "table_output": TABLE_BRONZE }
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   

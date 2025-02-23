@@ -4,26 +4,21 @@ version: "3"
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-deploy-master: &common_deploy_master
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-desktop]
+x-swarm-master-node: &swarm_master_node
+  placement:
+    constraints: [node.hostname == dadaia-desktop]
 
-x-common-deploy-worker-1: &common_deploy_worker_1
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+x-swarm-worker-1: &swarm_worker_1
+  placement:
+    constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
-x-common-deploy-worker-2: &common_deploy_worker_2
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-server-2]
+x-swarm-worker-2: &swarm_worker_2
+  placement:
+    constraints: [node.hostname == dadaia-server-2]
+
+x-swarm-worker-3: &swarm_worker_3
+  placement:
+    constraints: [node.hostname == dadaia-server-3]
 
 ####################################################################################
 ####################################################################################
@@ -39,8 +34,8 @@ x-spark-worker-common: &spark_worker_common
   environment:
     - SPARK_MODE=worker
     - SPARK_MASTER_URL=spark://spark-master:7077
-    - SPARK_WORKER_MEMORY=2G
-    - SPARK_WORKER_CORES=2
+    - SPARK_WORKER_MEMORY=4G
+    - SPARK_WORKER_CORES=4
     - SPARK_RPC_AUTHENTICATION_ENABLED=no
     - SPARK_RPC_ENCRYPTION_ENABLED=no
     - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
@@ -70,61 +65,54 @@ services:
     ports:
       - '18080:8080'
       - '7077:7077'
-    <<: *common_deploy_worker_1
+    deploy:
+      <<: *swarm_master_node
 
 
   spark-worker-1:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_2
-
+    deploy:
+      <<: *swarm_worker_1
 
   spark-worker-2:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_1
-
+    deploy:
+      <<: *swarm_worker_1
 
   spark-worker-3:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_2
+    deploy:
+      <<: *swarm_worker_2
+
 
   spark-worker-4:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_1
-
+    deploy:
+      <<: *swarm_worker_2
 
   spark-worker-5:
     image: marcoaureliomenezes/spark:1.0.0
     <<: *spark_worker_common
-    <<: *common_deploy_worker_2
-
-  spark-worker-6:
-    image: marcoaureliomenezes/spark:1.0.0
-    <<: *spark_worker_common
-    <<: *common_deploy_worker_1
+    deploy:
+      <<: *swarm_worker_2
 
 
-  spark-worker-7:
-    image: marcoaureliomenezes/spark:1.0.0
-    <<: *spark_worker_common
-    <<: *common_deploy_worker_2
-
-
-  trino:
-    image: trinodb/trino
-    networks:
-      - vpc_dm
-    <<: *common_deploy_worker_2
-    environment:
-      - DISCOVERY_SERVER_ENABLED=true
-      - HTTP_PORT=8080
-    # volumes:
-    #   - ../mnt/trino/conf:/etc/trino/catalog
-    ports:
-      - "7080:8080"
+  # trino:
+  #   image: trinodb/trino
+  #   networks:
+  #     - vpc_dm
+  #   <<: *common_deploy_worker_2
+  #   environment:
+  #     - DISCOVERY_SERVER_ENABLED=true
+  #     - HTTP_PORT=8080
+  #   # volumes:
+  #   #   - ../mnt/trino/conf:/etc/trino/catalog
+  #   ports:
+  #     - "7080:8080"
 networks:
   vpc_dm:
     external: true
