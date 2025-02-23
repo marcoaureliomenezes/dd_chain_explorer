@@ -17,3 +17,4 @@
 4. Alimentar tabela silver de eventos de blocos.
 5. Fazer Job silver de logs.
 6. Dividir Jobs de manutenção em 2.
+

@@ -10,10 +10,12 @@ RUN /opt/bitnami/spark/bin/spark-shell --packages "org.projectnessie.nessie-inte
 RUN /opt/bitnami/spark/bin/spark-shell --packages "org.apache.iceberg:iceberg-aws-bundle:1.6.1"                                   --repositories https://repo1.maven.org/maven2
 
 
+COPY requirements.txt /app/requirements.txt
+RUN pip install -r requirements.txt
+
+
 COPY conf/spark-defaults.conf /opt/bitnami/spark/conf/spark-defaults.conf
 COPY ./src /app
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install -r requirements.txt
 
 ENTRYPOINT [ "sleep", "infinity" ]

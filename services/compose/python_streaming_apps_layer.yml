@@ -54,7 +54,7 @@ services:
       TOPIC_TXS_HASH_IDS: 'mainnet.3.block.txs.hash_id'
       TOPIC_TXS_HASH_IDS_PARTITIONS: 8
       CLOCK_FREQUENCY: 1
-      TXS_PER_BLOCK: 140
+      TXS_PER_BLOCK: 50
 
 
   python-job-transactions_crawler:

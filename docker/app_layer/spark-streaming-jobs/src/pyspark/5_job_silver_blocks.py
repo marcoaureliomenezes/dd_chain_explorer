@@ -134,12 +134,13 @@ class SilverBlocks(IDmStreaming):
 
 if __name__ == "__main__":
 
-  APP_NAME = "Silver_Blocks"
-  SR_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
+  APP_NAME = "STREAMING_4_SILVER_BLOCKS_DATA"
+  SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_BLOCKS = os.getenv("TOPIC_BLOCKS")
   TABLE_SILVER_BLOCKS_TXS = os.getenv("TABLE_SILVER_BLOCKS_TXS")
-  CHECKPOINT_PATH = "s3a://spark/checkpoints/iceberg/silver_blocks"
+  CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
+  TRIGGER_TIME = os.getenv("TRIGGER_TIME")
 
   sc_client = SchemaRegistryHandler(SR_URL)
   schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_BLOCKS}-value")
@@ -147,7 +148,7 @@ if __name__ == "__main__":
 
   tables_output = {"silver_blocks": os.getenv("TABLE_SILVER_BLOCKS"), "silver_blocks_txs": os.getenv("TABLE_SILVER_BLOCKS_TXS") }
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_BLOCKS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
-  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 seconds", "output_mode": "append"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)

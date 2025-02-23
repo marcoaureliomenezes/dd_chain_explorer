@@ -60,9 +60,9 @@ class DDLBronzeTables:
 
 if __name__ == "__main__":
 
-  APP_NAME = "Create_Bronze_tables"
-  table_bronze_kafka_multiplexed = "bronze.kafka_topics_multiplexed"
-  table_bronze_transactions_batch = "bronze.popular_contracts_txs"
+  APP_NAME = "CREATE_BRONZE_TABLES"
+  table_bronze_kafka_multiplexed = "b_fast.kafka_topics_multiplexed"
+  table_bronze_transactions_batch = "b_batch.popular_contracts_txs"
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
@@ -72,8 +72,8 @@ if __name__ == "__main__":
 
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   tables_creator = TableCreator(LOGGER, spark)
-  tables_creator.create_namespace("bronze")
-  
+  tables_creator.create_namespace("b_batch")
+  tables_creator.create_namespace("b_fast")
 
   table_properties = tables_creator.get_iceberg_table_properties()
   ddl_actor = DDLBronzeTables()

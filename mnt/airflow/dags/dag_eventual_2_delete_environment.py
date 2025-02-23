@@ -62,7 +62,7 @@ with DAG("pipeline_eventual_2_delete_environment",
       image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
       **COMMON_DOCKER_OP,
       task_id="delete_iceberg_tables_metadata",
-      entrypoint="sh /app/0_ddl_tables/entrypoint.sh /app/0_ddl_tables/job_5_delete_all_tables.py",
+      entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_4_delete_all_tables.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
@@ -70,9 +70,7 @@ with DAG("pipeline_eventual_2_delete_environment",
         "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
         "AWS_REGION": os.getenv("AWS_DEFAULT_REGION"),
         "S3_URL": os.getenv("S3_URL"),
-        "NESSIE_URI": os.getenv("NESSIE_URI"),
-      }
-    )
+        "NESSIE_URI": os.getenv("NESSIE_URI")})
 
 
     delete_iceberg_tables_data = DockerOperator(
@@ -83,9 +81,7 @@ with DAG("pipeline_eventual_2_delete_environment",
       environment= {
         "TOPIC_LOGS": "mainnet.0.application.logs",
         "MODE": "ALL",
-        **COMMON_SPARK_VARS
-      }
-    )
+        **COMMON_SPARK_VARS})
 
 
     delete_spark_streaming_checkpoints = DockerOperator(
@@ -96,9 +92,7 @@ with DAG("pipeline_eventual_2_delete_environment",
       environment= {
         "TOPIC_LOGS": "mainnet.0.application.logs",
         "MODE": "ALL",
-        **COMMON_SPARK_VARS
-      }
-    )
+        **COMMON_SPARK_VARS})
 
     starting_process >> delete_kafka_topics
     starting_process >>  delete_iceberg_tables_metadata >> delete_iceberg_tables_data >> delete_spark_streaming_checkpoints

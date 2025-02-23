@@ -95,19 +95,20 @@ class SilverBlocks(IDmStreaming):
 
 if __name__ == "__main__":
 
-  APP_NAME = "Silver_Application_Logs"
+  APP_NAME = "STREAMING_2_SILVER_APPLICATION_LOGS"
   SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_LOGS = os.getenv("TOPIC_LOGS")
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
   SILVER_APP_LOGS = os.getenv("SILVER_APP_LOGS")
   CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
+  TRIGGER_TIME = os.getenv("TRIGGER_TIME")
 
   sc_client = SchemaRegistryHandler(SR_URL)
   schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_LOGS}-value")
   
   tables_output = {"silver_app_logs": SILVER_APP_LOGS}
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_LOGS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
-  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 seconds", "output_mode": "append"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)

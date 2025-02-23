@@ -1,5 +1,3 @@
-version: '3'
-
 ##########################################################################################
 ################    DEFAULT CONFIG FOR NODE EXPORTER AND CADVISOR    #####################
 
@@ -30,26 +28,21 @@ x-common-cadvisor-default: &cadvisor_commons
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-deploy-master: &common_deploy_master
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-desktop]
+x-swarm-master-node: &swarm_master_node
+  placement:
+    constraints: [node.hostname == dadaia-desktop]
 
-x-common-deploy-worker-1: &common_deploy_worker_1
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+x-swarm-worker-1: &swarm_worker_1
+  placement:
+    constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
-x-common-deploy-worker-2: &common_deploy_worker_2
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-server-2]
+x-swarm-worker-2: &swarm_worker_2
+  placement:
+    constraints: [node.hostname == dadaia-server-2]
+
+x-swarm-worker-3: &swarm_worker_3
+  placement:
+    constraints: [node.hostname == dadaia-server-3]
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################
@@ -59,7 +52,6 @@ services:
   # PROMETHEUS UI -> http://192.168.15.101:9090
   prometheus:
     image: marcoaureliomenezes/prometheus:1.0.0
-    <<: *common_deploy_worker_1
     networks:
       - vpc_dm
     ports:
@@ -68,29 +60,32 @@ services:
       - swarm_vol_prometheus:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
-
+    deploy:
+      <<: *swarm_worker_1
         
   # GRAFANA UI -> http://192.168.15.101:13000
   grafana:
     image: grafana/grafana
-    <<: *common_deploy_worker_1
     networks:
       - vpc_dm
     ports:
       - 3000:3000
     volumes:
       - swarm_vol_grafana:/var/lib/grafana
+    deploy:
+      <<: *swarm_master_node
     
 
   # VISUALIZER SWARM -> http://192.168.15.101:28080/
   visualizer:
     image: dockersamples/visualizer:stable
-    <<: *common_deploy_master
     ports:
       - "28080:8080"
     stop_grace_period: 1m30s
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
+    deploy:
+      <<: *swarm_master_node
 
   ########################################################################################
 
@@ -100,10 +95,10 @@ services:
     command: ["--kafka.server=broker-1:29092"]
     networks:
       - vpc_dm
-    <<: *common_deploy_worker_1
     ports:
       - 9308:9308
-
+    deploy:
+      <<: *swarm_worker_1
 
   ########################################################################################
   #####################    MONITORING DOCKER WITH CADVISOR    ############################
@@ -112,47 +107,55 @@ services:
     <<: *cadvisor_commons
     ports:
       - 38080:8080
-    <<: *common_deploy_master
+    deploy:
+      <<: *swarm_master_node
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 1
   cadvisor_worker_1:
     <<: *cadvisor_commons
     ports:
       - 38081:8080
-    <<: *common_deploy_worker_1
+    deploy:
+      <<: *swarm_worker_1
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 2
   cadvisor_worker_2:
     <<: *cadvisor_commons
     ports:
       - 38082:8080
-    <<: *common_deploy_worker_2
+    deploy:
+      <<: *swarm_worker_2
 
   # MONITORING DOCKER SWARM CLUSTER ---> WORKER 3
-  # cadvisor_worker_3:
-  #   <<: *cadvisor_commons
-  #   ports:
-  #     - 38083:8080
-  #   <<: *common_deploy_worker_3
+  cadvisor_worker_3:
+    <<: *cadvisor_commons
+    ports:
+      - 38083:8080
+    deploy:
+      <<: *swarm_worker_3
 
   ########################################################################################
   #####################    MONITORING SERVERS SWARM CLUSTER    ###########################
 
   node_exporter_master:
     <<: *node_exporter_commons
-    <<: *common_deploy_master
+    deploy:
+      <<: *swarm_master_node
 
   node_exporter_worker_1:
     <<: *node_exporter_commons
-    <<: *common_deploy_worker_1
+    deploy:
+      <<: *swarm_worker_1
 
   node_exporter_worker_2:
     <<: *node_exporter_commons
-    <<: *common_deploy_worker_2
+    deploy:
+      <<: *swarm_worker_2
 
-  # node_exporter_worker_3:
-  #   <<: *node_exporter_commons
-  #   <<: *common_deploy_worker_3
+  node_exporter_worker_3:
+    <<: *node_exporter_commons
+    deploy:
+      <<: *swarm_worker_3
 
 ############################    END OF SERVICES CONFIG    ################################
 ##########################################################################################

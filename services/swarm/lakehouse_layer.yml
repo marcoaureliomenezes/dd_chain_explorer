@@ -4,26 +4,21 @@ version: "3"
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
-x-common-deploy-master: &common_deploy_master
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-desktop]
+x-swarm-master-node: &swarm_master_node
+  placement:
+    constraints: [node.hostname == dadaia-desktop]
 
-x-common-deploy-worker-1: &common_deploy_worker_1
-  deploy:
-    restart_policy:
-      condition: on-failure
-    placement:
-      constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
+x-swarm-worker-1: &swarm_worker_1
+  placement:
+    constraints: [node.hostname == dadaia-HP-ZBook-15-G2]
 
-x-common-deploy-worker-2: &common_deploy_worker_2
-  deploy:
-    restart_policy:
-      condition: any
-    placement:
-      constraints: [node.hostname == dadaia-server-2]
+x-swarm-worker-2: &swarm_worker_2
+  placement:
+    constraints: [node.hostname == dadaia-server-2]
+
+x-swarm-worker-3: &swarm_worker_3
+  placement:
+    constraints: [node.hostname == dadaia-server-3]
 
 ##########################################################################################
 #############################    SERVICES    #############################################
@@ -41,7 +36,8 @@ services:
       - swarm_minio_data:/bitnami/minio/data
     ports:
       - 9001:9001
-    <<: *common_deploy_worker_2
+    deploy:
+      <<: *swarm_worker_2
 
 
   nessie_pg:
@@ -54,7 +50,11 @@ services:
       POSTGRES_DB: ${PG_NESSIE_DB-nessie}
     volumes:
       - swarm_pg_nessie:/var/lib/postgresql/data
-    <<: *common_deploy_worker_2
+    #entrypoint: ["sleep", "infinity"]
+    deploy:
+      <<: *swarm_worker_2
+
+
 
   nessie:
     image: bitnami/nessie:0.99.0
@@ -67,7 +67,8 @@ services:
       - QUARKUS_DATASOURCE_PASSWORD=${PG_NESSIE_PASSWORD-nessie}
     ports:
       - 19120:19120
-    <<: *common_deploy_worker_2
+    deploy:
+      <<: *swarm_worker_1
 
 
   dremio:
@@ -78,24 +79,15 @@ services:
       - 9047:9047
     volumes:
       - swarm_vol_dremio:/opt/dremio/data
-    <<: *common_deploy_worker_2
+    deploy:
+      <<: *swarm_worker_2
 
-  dynamodb-local:
-    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath ./data"
-    image: "amazon/dynamodb-local:latest"
-    ports:
-      - "8000:8000"
-    volumes:
-      - "swarm_vol_dynamodb:/home/dynamodblocal/data"
-    working_dir: /home/dynamodblocal
-    <<: *common_deploy_worker_2
 
 
 volumes:
   swarm_pg_nessie:
   swarm_vol_dremio:
   swarm_minio_data:
-  swarm_vol_dynamodb:
 
 
 networks:

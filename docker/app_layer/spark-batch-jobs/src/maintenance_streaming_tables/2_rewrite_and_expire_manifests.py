@@ -16,8 +16,9 @@ def get_logger(app_name):
 if __name__ == "__main__":
 
   TABLE_NAME = os.getenv("TABLE_FULLNAME")
-  APP_NAME = f"Iceberg_Maintenance_Streaming_Table_{TABLE_NAME}"
-
+  HOURS_RETAIN = int(os.getenv("HOURS_RETAIN"))
+  MIN_SNAPSHOTS = int(os.getenv("MIN_SNAPSHOTS"))
+  APP_NAME = f"PERIODIC_MAINTENANCE_REWRITE_EXPIRE_MANIFESTS_{TABLE_NAME.upper()}"
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
@@ -25,5 +26,4 @@ if __name__ == "__main__":
   
   spark = SparkUtils.get_spark_session(LOGGER, APP_NAME)
   maintainer = IceStreamMaintainer(LOGGER, spark, table=TABLE_NAME)
-  maintainer.rewrite_manifests()
-  maintainer.expire_snapshots()
+  maintainer.expire_snapshots(hours_retained=24, min_snapshots_to_retain=5)

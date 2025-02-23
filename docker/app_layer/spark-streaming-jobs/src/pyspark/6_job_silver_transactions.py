@@ -71,7 +71,7 @@ class SilverBlocks(IDmStreaming):
         .withColumnRenamed("to", "to_address")
         .withColumn("transaction_type", 
                       when(col("input") == "", "P2P")
-                      .when((col("input") != "") & (col("to_address").isNotNull()), "CONTRACT_CALL")
+                      .when((col("input") != "") & (col("to_address") != ""), "CONTRACT_CALL")
                       .otherwise("CONTRACT_CREATION"))
         .withColumn("dat_ref", expr("date_format(ingestion_time, 'yyyy-MM-dd')"))
         .select("ingestion_time", "block_number", "hash", "transaction_type", "transaction_index", "from_address",
@@ -106,19 +106,20 @@ class SilverBlocks(IDmStreaming):
 
 if __name__ == "__main__":
 
-  APP_NAME = "Silver_Transactions"
-  SR_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
+  APP_NAME = "STREAMING_5_SILVER_TRANSACTIONS"
+  SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_TXS = os.getenv("TOPIC_TXS")
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
   SILVER_TXS_FAST = os.getenv("SILVER_TXS_FAST")
   CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
+  TRIGGER_TIME = os.getenv("TRIGGER_TIME")
 
   sc_client = SchemaRegistryHandler(SR_URL)
   schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_TXS}-value")
   
   tables_output = { "silver_txs_fast": SILVER_TXS_FAST }
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_TXS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
-  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": "2 seconds", "output_mode": "append"}
+  sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}
 
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)

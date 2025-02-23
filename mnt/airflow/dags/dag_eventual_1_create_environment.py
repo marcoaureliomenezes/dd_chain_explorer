@@ -66,15 +66,7 @@ with DAG(
     image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
     **COMMON_DOCKER_OP,
     task_id="CREATE_SILVER_BLOCKS_FAST",
-    entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_2_create_silver_tables_blocks.py",
-    environment= LAKE_ENV_VARS)
-
-
-  CREATE_SILVER_TXS_FAST = DockerOperator(
-    image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
-    **COMMON_DOCKER_OP,
-    task_id="CREATE_SILVER_TXS_FAST",
-    entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_3_create_silver_tables_txs.py",
+    entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_2_create_silvers_s_apps.py",
     environment= LAKE_ENV_VARS)
 
 
@@ -82,13 +74,12 @@ with DAG(
     image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
     **COMMON_DOCKER_OP,
     task_id="CREATE_SILVER_LOGS_FAST",
-    entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_4_create_silver_table_logs.py",
+    entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_3_create_silver_table_logs.py",
     environment= LAKE_ENV_VARS)
   
 
   FINAL_TASK = BashOperator( task_id="FINAL_TASK", bash_command="""sleep 2""")
 
 
-  STARTING_TASK >> CREATE_BRONZE_TABLES >> CREATE_SILVER_BLOCKS_FAST >> FINAL_TASK
-  STARTING_TASK >> CREATE_SILVER_TXS_FAST >> CREATE_SILVER_LOGS_FAST >> FINAL_TASK
+  STARTING_TASK >> CREATE_BRONZE_TABLES >> CREATE_SILVER_BLOCKS_FAST >> CREATE_SILVER_LOGS_FAST >> FINAL_TASK
   STARTING_TASK >> CREATE_KAFKA_TOPICS
