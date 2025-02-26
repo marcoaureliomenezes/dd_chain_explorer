@@ -1,4 +1,5 @@
 import requests, logging
+from typing import List
 from requests.exceptions import InvalidSchema, ConnectionError
 
 class EthercanAPI:
@@ -9,6 +10,13 @@ class EthercanAPI:
         self.api_key_secret = akv_client.get_secret(self.api_key_name).value
         self.akv_client = akv_client
         self.url = f"https://{self.get_network_url(network)}/api"
+        self.setup_pagination()
+
+
+    def setup_pagination(self, page=1, offset=1000, sort='asc'):
+        self.page = page
+        self.offset = offset
+        self.sort = sort
 
     def get_network_url(self, network):
         dict_networks = {
@@ -19,9 +27,12 @@ class EthercanAPI:
         return dict_networks.get(network, None)
 
 
-    def get_account_balance(self, address):
+
+
+    def get_accounts_balance(self, addresses: List):
+        addresses = ','.join(addresses)
         base_uri = "module=account&action=balance"
-        url = f"{self.url}?{base_uri}&address={address}&tag=latest&apikey={self.api_key_secret}"
+        url = f"{self.url}?{base_uri}&address={addresses}&tag=latest&apikey={self.api_key_secret}"
         response = self.make_request_to_etherscan(url)
         return response
 
@@ -33,22 +44,30 @@ class EthercanAPI:
         return response
 
 
-    def get_contract_logs_by_block_interval(self, address, fromblock, toblock, page=1, offset=100):
+    def get_contract_logs_by_block_interval(self, address, fromblock, toblock):
         base_uri = "module=logs&action=getLogs"
         url = f"{self.url}?{base_uri}&address={address}&" + \
-            f"fromBlock={fromblock}&toBlock={toblock}&page={page}&offset={offset}&apikey={self.api_key_secret}"
+            f"fromBlock={fromblock}&toBlock={toblock}&page={self.page}&" + \
+            f"offset={self.offset}&apikey={self.api_key_secret}"
         response = self.make_request_to_etherscan(url)
         return response
     
 
-    def get_contract_tx_by_block_interval(self, address, startblock, endblock, page=1, offset=100, sort='asc'):
+    def get_contract_txs_by_block_interval(self, address, startblock, endblock):
         base_uri = "module=account&action=txlist"
         url = f"{self.url}?{base_uri}&address={address}" + \
-            f"&startblock={startblock}&endblock={endblock}&page={page}" + \
-            f"&offset={offset}&sort={sort}&apikey={self.api_key_secret}"
+            f"&startblock={startblock}&endblock={endblock}&page={self.page}" + \
+            f"&offset={self.offset}&sort={self.sort}&apikey={self.api_key_secret}"
         response = self.make_request_to_etherscan(url)
         return response
 
+    def get_internal_txs_by_block_interval(self, address, startblock, endblock):
+        base_uri = "module=account&action=txlistinternal"
+        url = f"{self.url}?{base_uri}&address={address}" + \
+            f"&startblock={startblock}&endblock={endblock}&page={self.page}" + \
+            f"&offset={self.offset}&sort={self.sort}&apikey={self.api_key_secret}"
+        response = self.make_request_to_etherscan(url)
+        return response
 
     def get_contract_abi(self, address):
         base_uri = "module=contract&action=getabi"

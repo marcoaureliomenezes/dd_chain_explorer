@@ -4,3 +4,4 @@ apache-airflow-providers-jdbc
 apache-airflow-providers-docker
 azure-identity
 azure-keyvault
+redis

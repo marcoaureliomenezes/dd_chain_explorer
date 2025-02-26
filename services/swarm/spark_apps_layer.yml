@@ -42,13 +42,14 @@ services:
     <<: *conf_dev_spark_streaming_job
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/1_api_key_monitor.py"
     environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/kafka-redis/api_keys_consumption"
       TOPIC_LOGS: "mainnet.0.application.logs"
-      TRIGGER_TIME: "10 seconds"
+      TRIGGER_TIME: "2 seconds"
       CONSUMER_GROUP: "cg_logs_processor"
       STARTING_OFFSETS: "earliest"
-      MAX_OFFSETS_PER_TRIGGER: 10000
-      EXEC_MEMORY: 2g
-      TOTAL_EXEC_CORES: 2
+      MAX_OFFSETS_PER_TRIGGER: 30000
+      EXEC_MEMORY: 1g
+      TOTAL_EXEC_CORES: 1
     deploy:
       <<: *swarm_worker_1
 
@@ -60,28 +61,28 @@ services:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/kafka_topics_multiplexed"
       TRIGGER_TIME: "2 minutes"
       TOPICS: "mainnet.0.application.logs,mainnet.0.batch.logs,mainnet.1.mined_blocks.events,mainnet.2.blocks.data,mainnet.4.transactions.data"
-      CONSUMER_GROUP: "cg_bronze_1"
+      CONSUMER_GROUP: "cg_bronze"
       STARTING_OFFSETS: "earliest"
-      MAX_OFFSETS_PER_TRIGGER: 10000
+      MAX_OFFSETS_PER_TRIGGER: 30000
       TABLE_BRONZE: "b_fast.kafka_topics_multiplexed"
-      EXEC_MEMORY: 2g
-      TOTAL_EXEC_CORES: 2
+      EXEC_MEMORY: 1g
+      NUM_EXECUTORS: 2
     deploy:
-      <<: *swarm_worker_1
+      <<: *swarm_worker_2
 
   spark-app-silver-logs:
     <<: *conf_dev_spark_streaming_job
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/3_job_silver_apps_logs.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions"
-      TRIGGER_TIME: "2 minute"
+      TRIGGER_TIME: "2 second"
       TOPIC_LOGS: "mainnet.0.application.logs"
       TABLE_BRONZE: "b_fast.kafka_topics_multiplexed"
       SILVER_APP_LOGS: "s_logs.apps_logs_fast"
-      EXEC_MEMORY: 2g
+      EXEC_MEMORY: 1g
       TOTAL_EXEC_CORES: 2
     deploy:
-      <<: *swarm_worker_1
+      <<: *swarm_worker_2
 
 
   spark-app-silver-mined-blocks-events:
@@ -89,10 +90,12 @@ services:
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/4_job_silver_blocks_events.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/mined_blocks_events"
-      TRIGGER_TIME: "2 minute"
+      TRIGGER_TIME: "2 seconds"
       TOPIC_BLOCKS_EVENTS: "mainnet.1.mined_blocks.events"
       TABLE_BRONZE: "b_fast.kafka_topics_multiplexed"
       TABLE_SILVER_MINED_BLOCKS: "s_apps.mined_blocks_events"
+      EXEC_MEMORY: 1g
+      TOTAL_EXEC_CORES: 2
     deploy:
       <<: *swarm_worker_1
     
@@ -102,24 +105,26 @@ services:
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/5_job_silver_blocks.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/blocks"
-      TRIGGER_TIME: "2 minute"
+      TRIGGER_TIME: "2 seconds"
       TOPIC_BLOCKS: "mainnet.2.blocks.data"
       TABLE_BRONZE: "b_fast.kafka_topics_multiplexed"
       TABLE_SILVER_BLOCKS: "s_apps.blocks_fast"
       TABLE_SILVER_BLOCKS_TXS: "s_apps.blocks_txs_fast"
+      EXEC_MEMORY: 1g
+      TOTAL_EXEC_CORES: 2
     deploy:
-      <<: *swarm_master_node
+      <<: *swarm_worker_2
 
   spark-app-silver-txs:
     <<: *conf_dev_spark_streaming_job
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/6_job_silver_transactions.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions_fast"
-      TRIGGER_TIME: "2 minute"
+      TRIGGER_TIME: "2 seconds"
       TOPIC_TXS: "mainnet.4.transactions.data"
       TABLE_BRONZE: "b_fast.kafka_topics_multiplexed"
       SILVER_TXS_FAST: "s_apps.transactions_fast"
-      EXEC_MEMORY: 1g
+      EXEC_MEMORY: 2g
       TOTAL_EXEC_CORES: 1
     deploy:
       <<: *swarm_worker_2

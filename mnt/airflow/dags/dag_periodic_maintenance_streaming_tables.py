@@ -45,11 +45,11 @@ def should_run_full_process(job, dummy, **kwargs):
 
 with DAG(
   "pipeline_periodic_maintenance_streaming_tables.py", 
-  start_date=datetime(year=2025,month=2,day=22,hour=12),
+  start_date=datetime(year=2025,month=2,day=24,hour=12),
   schedule_interval="0 */12 * * *",
   default_args=default_args,
   max_active_runs=1,
-  catchup=False) as dag:
+  catchup=True) as dag:
 
   STARTING_TASK = BashOperator( task_id="STARTING_TASK", bash_command="""sleep 2""")
 

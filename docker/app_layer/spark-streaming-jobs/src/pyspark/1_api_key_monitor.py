@@ -35,6 +35,7 @@ class APIKeyMonitor(IDmStreaming):
     self.redis_client = sink_properties.get("redis_client")
     self.trigger_time = sink_properties.get("trigger_time")
     self.output_mode = sink_properties.get("output_mode")
+    self.checkpoint_path = sink_properties.get("checkpoint_path")
     self.logger.info(f"Trigger time: {self.trigger_time}, output mode: {self.output_mode}")
     return self
   
@@ -93,6 +94,7 @@ class APIKeyMonitor(IDmStreaming):
       self.df_streaming.writeStream
         .outputMode("update")
         .foreachBatch(self.__batch_to_redis)
+        .option("checkpointLocation", self.checkpoint_path)
         .trigger(processingTime=self.trigger_time)
         .start()
         .awaitTermination())
@@ -120,6 +122,7 @@ if __name__ == "__main__":
   MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER")
   SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TRIGGER_TIME = os.getenv("TRIGGER_TIME")
+  CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
 
   REDIS_HOST = os.getenv("REDIS_HOST")
   REDIS_PORT = os.getenv("REDIS_PORT")
@@ -147,6 +150,7 @@ if __name__ == "__main__":
   }
 
   sink_properties = {
+    "checkpoint_path": CHECKPOINT_PATH,
     "redis_client": redis_client,
     "trigger_time": TRIGGER_TIME,
     "output_mode": "update"

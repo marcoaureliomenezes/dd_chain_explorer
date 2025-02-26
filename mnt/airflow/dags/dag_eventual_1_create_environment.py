@@ -28,7 +28,7 @@ default_args ={
   "email_on_retry": False,
   "email": "marco_aurelio_reis@yahoo.com.br",
   "retries": 1,
-  "retry_delay": timedelta(minutes=5) 
+  "retry_delay": timedelta(minutes=5)
 }
 
 
@@ -77,9 +77,15 @@ with DAG(
     entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_3_create_silver_table_logs.py",
     environment= LAKE_ENV_VARS)
   
+  CREATE_GOLD_VIEWS = DockerOperator(
+    image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
+    **COMMON_DOCKER_OP,
+    task_id="CREATE_GOLD_VIEWS",
+    entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_4_create_gold_views.py",
+    environment= LAKE_ENV_VARS)
 
   FINAL_TASK = BashOperator( task_id="FINAL_TASK", bash_command="""sleep 2""")
 
 
-  STARTING_TASK >> CREATE_BRONZE_TABLES >> CREATE_SILVER_BLOCKS_FAST >> CREATE_SILVER_LOGS_FAST >> FINAL_TASK
+  STARTING_TASK >> CREATE_BRONZE_TABLES >> CREATE_SILVER_BLOCKS_FAST >> CREATE_SILVER_LOGS_FAST >> CREATE_GOLD_VIEWS >> FINAL_TASK
   STARTING_TASK >> CREATE_KAFKA_TOPICS
