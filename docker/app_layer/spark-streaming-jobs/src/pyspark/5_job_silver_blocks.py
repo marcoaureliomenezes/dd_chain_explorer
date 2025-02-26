@@ -138,6 +138,7 @@ if __name__ == "__main__":
   SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_BLOCKS = os.getenv("TOPIC_BLOCKS")
   TABLE_SILVER_BLOCKS_TXS = os.getenv("TABLE_SILVER_BLOCKS_TXS")
+  TABLE_SILVER_BLOCKS = os.getenv("TABLE_SILVER_BLOCKS")
   CHECKPOINT_PATH = os.getenv("CHECKPOINT_PATH")
   BRONZE_TABLE = os.getenv("TABLE_BRONZE")
   TRIGGER_TIME = os.getenv("TRIGGER_TIME")
@@ -146,7 +147,7 @@ if __name__ == "__main__":
   schema_avro_topic = sc_client.get_schema_by_subject(f"{TOPIC_BLOCKS}-value")
   
 
-  tables_output = {"silver_blocks": os.getenv("TABLE_SILVER_BLOCKS"), "silver_blocks_txs": os.getenv("TABLE_SILVER_BLOCKS_TXS") }
+  tables_output = {"silver_blocks": TABLE_SILVER_BLOCKS, "silver_blocks_txs": TABLE_SILVER_BLOCKS_TXS }
   src_properties = {"table_input": BRONZE_TABLE, "topic": TOPIC_BLOCKS, "topic_schema": schema_avro_topic, "max_files_per_trigger": "1"}
   sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}
 

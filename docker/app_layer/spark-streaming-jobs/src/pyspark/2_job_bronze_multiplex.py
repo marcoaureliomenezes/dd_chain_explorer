@@ -101,7 +101,7 @@ if __name__ == "__main__":
   "subscribe": TOPICS,
   "startingOffsets": STARTING_OFFSETS,
   "group.id": CONSUMER_GROUP,
-  #"maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER,
+  "maxOffsetsPerTrigger": MAX_OFFSETS_PER_TRIGGER,
   'failOnDataLoss': 'false'
   }
   sink_properties = { "checkpoint_path": CHECKPOINT_PATH, "trigger_time": TRIGGER_TIME, "output_mode": "append"}

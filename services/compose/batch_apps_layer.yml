@@ -7,7 +7,7 @@ services:
     networks:
       - vpc_dm
     env_file:
-      - ./conf/swarm.secrets_prod.conf
+      - ./conf/swarm.secrets.conf
       - ./conf/dev.kafka.conf
       - ./conf/dev.redis.conf
       - ./conf/dev.lakehouse.conf

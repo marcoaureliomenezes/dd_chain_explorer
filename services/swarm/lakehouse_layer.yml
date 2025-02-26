@@ -68,7 +68,7 @@ services:
     ports:
       - 19120:19120
     deploy:
-      <<: *swarm_worker_1
+      <<: *swarm_worker_2
 
 
   dremio:

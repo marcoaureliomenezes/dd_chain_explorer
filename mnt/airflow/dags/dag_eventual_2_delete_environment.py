@@ -62,7 +62,7 @@ with DAG("pipeline_eventual_2_delete_environment",
       image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
       **COMMON_DOCKER_OP,
       task_id="delete_iceberg_tables_metadata",
-      entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_4_delete_all_tables.py",
+      entrypoint="sh /app/entrypoint.sh /app/ddl_iceberg_tables/job_5_delete_all_tables.py",
       environment= {
         "SPARK_MASTER": os.getenv("SPARK_MASTER"),
         "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),

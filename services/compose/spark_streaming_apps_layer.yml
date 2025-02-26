@@ -19,10 +19,11 @@ services:
     container_name: spark-app-apk-comsumption
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/1_api_key_monitor.py"
     environment:
+      CHECKPOINT_PATH: "s3a://spark/checkpoints/kafka-redis/api_keys_consumption"
       TOPIC_LOGS: "mainnet.0.application.logs"
       CONSUMER_GROUP: "cg_logs_processor"
       STARTING_OFFSETS: "earliest"
-      MAX_OFFSETS_PER_TRIGGER: 3000
+      MAX_OFFSETS_PER_TRIGGER: 50000
       EXEC_MEMORY: 2g
       TOTAL_EXEC_CORES: 2
 
@@ -35,9 +36,9 @@ services:
       TOPICS: "mainnet.0.application.logs,mainnet.0.batch.logs,mainnet.1.mined_blocks.events,mainnet.2.blocks.data,mainnet.4.transactions.data"
       CONSUMER_GROUP: "cg_bronze_1"
       STARTING_OFFSETS: "earliest"
-      MAX_OFFSETS_PER_TRIGGER: 10000
+      MAX_OFFSETS_PER_TRIGGER: 30000
       TABLE_BRONZE: "bronze.kafka_topics_multiplexed"
-      EXEC_MEMORY: 1g
+      EXEC_MEMORY: 2g
       TOTAL_EXEC_CORES: 1
       NUM_EXECUTORS: 2
 
