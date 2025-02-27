@@ -40,15 +40,14 @@ class RawToBronzeBlocksEngine:
     assert self.df_batch, "No data to transform."
     self.df_batch  = (
       self.df_batch
-        .groupBy("to_address").count()
-        .orderBy(col("count").desc())
-        .limit(30))
+    )
+    self.df_batch.show()
     self.logger.info(f"Data transformed")
     return self
 
 
   def load(self):
-    list_of_popular_contract_addresses = [{"address": row["to_address"], "count": row["count"]} for row in self.df_batch.collect()]
+    list_of_popular_contract_addresses = [{"address": row["contract_address"], "count": row["num_transactions"]} for row in self.df_batch.collect()]
     for contract in list_of_popular_contract_addresses:
       self.redis_client.set(contract["address"], contract["count"])
     self.logger.info(f"Data loaded.")
@@ -58,11 +57,11 @@ class RawToBronzeBlocksEngine:
 if __name__ == "__main__":
     
   APP_NAME = os.getenv("APP_NAME")
-  TABLE_NAME = "nessie.silver.transactions_contracts"
+  TABLE_NAME = os.getenv("TABLE_NAME")
+  TABLE_NAME = "g_chain.popular_contracts_1d"
   REDIS_HOST = os.getenv("REDIS_HOST")
   REDIS_PORT = os.getenv("REDIS_PORT")
   REDIS_PASS = os.getenv("REDIS_PASS")
-  TABLE_NAME = os.getenv("TABLE_NAME")
   REDIS_DB = 3
 
   # CONFIGURING LOGGING

@@ -16,7 +16,7 @@ def get_logger(app_name):
 if __name__ == "__main__":
 
   TABLE_NAME = os.getenv("TABLE_FULLNAME", "test")
-  APP_NAME = f"PERIODIC_MAINTENANCE_REWRITE_EXPIRE_MANIFESTS_{TABLE_NAME.upper()}"
+  APP_NAME = f"PERIODIC_MONITORING_STREAMING_TABLES_JOBS"
   REDIS_HOST = os.getenv("REDIS_HOST")
   REDIS_PORT = os.getenv("REDIS_PORT")
   REDIS_PASS = os.getenv("REDIS_PASS")
