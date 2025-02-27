@@ -22,8 +22,7 @@ echo "    Script: ${PYSPARK_FILEPATH},                                          
 
 
 spark-submit                                                                            \
---deploy-mode cluster                                                                   \
---supervise                                                                             \
+--deploy-mode client                                                                    \
 --driver-memory ${DRIVER_MEMORY}                                                        \
 --executor-memory ${EXEC_MEMORY}                                                        \
 --total-executor-cores ${TOTAL_EXEC_CORES}                                              \

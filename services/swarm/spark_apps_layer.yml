@@ -75,14 +75,14 @@ services:
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/3_job_silver_apps_logs.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/transactions"
-      TRIGGER_TIME: "2 second"
+      TRIGGER_TIME: "2 seconds"
       TOPIC_LOGS: "mainnet.0.application.logs"
       TABLE_BRONZE: "b_fast.kafka_topics_multiplexed"
       SILVER_APP_LOGS: "s_logs.apps_logs_fast"
       EXEC_MEMORY: 1g
       TOTAL_EXEC_CORES: 2
     deploy:
-      <<: *swarm_worker_2
+      <<: *swarm_worker_1
 
 
   spark-app-silver-mined-blocks-events:
@@ -127,7 +127,7 @@ services:
       EXEC_MEMORY: 2g
       TOTAL_EXEC_CORES: 1
     deploy:
-      <<: *swarm_worker_2
+      <<: *swarm_worker_1
 
 
 networks:

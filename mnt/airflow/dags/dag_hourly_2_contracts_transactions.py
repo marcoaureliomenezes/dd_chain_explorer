@@ -4,6 +4,14 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 
+LAKE_ENV_VARS = dict(
+  SPARK_MASTER = os.getenv("SPARK_MASTER"),
+  AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID"),
+  AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY"),
+  AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION"),
+  AWS_REGION = os.getenv("AWS_REGION"),
+  S3_URL = os.getenv("S3_URL"),
+  NESSIE_URI = os.getenv("NESSIE_URI"))
 
 
 COMMON_DOCKER_OP = dict(
@@ -36,8 +44,6 @@ with DAG(
       bash_command="""sleep 2"""
     )
 
-
-
     get_popular_contracts_addresses = DockerOperator(
       image="marcoaureliomenezes/spark-batch-jobs:1.0.0",
       **COMMON_DOCKER_OP,
@@ -45,13 +51,7 @@ with DAG(
       task_id="get_popular_contracts_addresses",
       entrypoint="sh /app/entrypoint.sh /app/periodic_spark_processing/1_get_popular_contracts.py",
       environment= {
-        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
-        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
-        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
-        "AWS_REGION": os.getenv("AWS_DEFAULT_REGION"),
-        "S3_URL": os.getenv("S3_URL"),
-        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        **LAKE_ENV_VARS,
         "TABLE_NAME": "silver.transactions_fast",
         "REDIS_HOST": os.getenv("REDIS_HOST"),
         "REDIS_PORT": os.getenv("REDIS_PORT"),
@@ -68,8 +68,11 @@ with DAG(
       task_id="capture_and_ingest_popular_contracts_addresses_txs",
       entrypoint="python /app/batch_ingestion/1_capture_and_ingest_contracts_txs.py",
       environment= {
+      "S3_URL": os.getenv("S3_URL"),
+      "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
+      "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
+      "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
       "NETWORK": os.getenv("NETWORK"),
-      "TOPIC_LOGS": "mainnet.0.application.logs",
       "AZURE_SUBSCRIPTION_ID": os.getenv("AZURE_SUBSCRIPTION_ID"),
       "AZURE_TENANT_ID": os.getenv("AZURE_TENANT_ID"),
       "AZURE_CLIENT_ID": os.getenv("AZURE_CLIENT_ID"),
@@ -80,19 +83,14 @@ with DAG(
       "REDIS_PORT": os.getenv("REDIS_PORT"),
       "REDIS_PASS": os.getenv("REDIS_PASS"),
       "REDIS_DB": "3",
-      "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
-      "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-      "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
-      "S3_URL": os.getenv("S3_URL"),
       "SCHEMA_REGISTRY_URL": os.getenv("SCHEMA_REGISTRY_URL"),
       "KAFKA_BROKERS": os.getenv("KAFKA_BROKERS"),
+      "TOPIC_LOGS": "mainnet.0.application.logs",
       "S3_BUCKET": "raw-data",
       "S3_BUCKET_PREFIX": "contracts_transactions",
       "EXEC_DATE": "{{ execution_date }}"          
       }
     )
-
-        
 
 
     bronze_popular_contracts_addresses_txs = DockerOperator(
@@ -102,13 +100,7 @@ with DAG(
       task_id="bronze_popular_contracts_addresses_txs",
       entrypoint="sh /app/entrypoint.sh /app/periodic_spark_processing/2_ingest_txs_data_to_bronze.py",
       environment= {
-        "SPARK_MASTER": os.getenv("SPARK_MASTER"),
-        "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID"),
-        "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY"),
-        "AWS_DEFAULT_REGION": os.getenv("AWS_DEFAULT_REGION"),
-        "AWS_REGION": os.getenv("AWS_DEFAULT_REGION"),
-        "S3_URL": os.getenv("S3_URL"),
-        "NESSIE_URI": os.getenv("NESSIE_URI"),
+        **LAKE_ENV_VARS,
         "REDIS_HOST": os.getenv("REDIS_HOST"),
         "REDIS_PORT": os.getenv("REDIS_PORT"),
         "REDIS_PASS": os.getenv("REDIS_PASS"),
