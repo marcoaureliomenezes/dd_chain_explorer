@@ -41,16 +41,16 @@ with DAG(
   catchup=True
   ) as dag:
 
+
     STARTING_TASK = BashOperator(
       task_id="STARTING_TASK",
       bash_command="""sleep 2"""
     )
 
-
     VALIDATE_CACHE = BranchPythonOperator(
       task_id='VALIDATE_CACHE',
-      python_callable=PopularContractsCacheValidator().run,
-      op_args=["GET_POPULAR_CONTRACTS_AND_CACHE_IT", "BY_PASS"],
+      python_callable=lambda: "GET_POPULAR_CONTRACTS_AND_CACHE_IT" if True else "BY_PASS",
+      #op_args=["GET_POPULAR_CONTRACTS_AND_CACHE_IT", "BY_PASS"],
       provide_context=True)
 
     GET_POPULAR_CONTRACTS_AND_CACHE_THEM = DockerOperator(

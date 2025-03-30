@@ -51,6 +51,8 @@ class SparkStreamingJobsHandler:
     redis_client = redis.Redis(os.getenv("REDIS_HOST"), os.getenv("REDIS_PORT"), 2, os.getenv("REDIS_PASS"), decode_responses=True)
     data = redis_client.get("semaphore_2")
     data = json.loads(data)
+    if not data:
+      return {}
     last_req = max([i["last_req"] for i in data.values()])
     last_req = datetime.strptime(last_req, "%Y-%m-%d %H:%M:%S.%f")
     return {"newst_api_key_consumption_watcher": last_req}

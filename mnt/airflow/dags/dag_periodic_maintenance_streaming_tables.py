@@ -25,7 +25,7 @@ LAKE_ENV_VARS = dict(
   AWS_DEFAULT_REGION = os.getenv("AWS_DEFAULT_REGION"),
   AWS_REGION = os.getenv("AWS_REGION"),
   EXEC_MEMORY= "2g",
-  TOTAL_EXEC_CORES= "2")
+  TOTAL_EXEC_CORES= "4")
 
 
 

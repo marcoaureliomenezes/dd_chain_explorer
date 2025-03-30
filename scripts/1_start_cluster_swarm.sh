@@ -1,10 +1,15 @@
 #!/bin/bash
 
-IP_MANAGER=192.168.15.10
-HOST_WORKER_1=dadaia@192.168.15.88
-HOST_WORKER_2=dadaia@192.168.15.8
-HOST_WORKER_3=dadaia-server@192.168.15.83
 
+# IP_MANAGER=192.168.0.8
+# HOST_DESKTOP_WORKER_1=dadaia@192.168.0.9
+# HOST_NOTE_HP_WORKER_2=dadaia@192.168.0.190
+# HOST_NLENOVO_WORKER_3=dadaia@192.168.0.10
+
+IP_MANAGER=192.168.15.10
+HOST_NOTE_HP_WORKER_2=dadaia@192.168.15.88
+HOST_NLENOVO_WORKER_3=dadaia@192.168.15.8
+#HOST_WORKER_3=dadaia-server@192.168.15.83
 
 init_docker_swarm() {
   join_cluster_command=$(docker swarm init --advertise-addr ${IP_MANAGER} 2>/dev/null | grep "docker swarm join --token")
@@ -24,8 +29,6 @@ init_docker_swarm() {
 }
 
 
-
-
 join_node() {
   HOST_WORKER=$1
   COMMAND=$2
@@ -42,6 +45,8 @@ echo $join_cluster_command
 
 
 
-join_node "$HOST_WORKER_1" "$join_cluster_command"
-join_node "$HOST_WORKER_2" "$join_cluster_command"
-join_node "$HOST_WORKER_3" "$join_cluster_command"
+#join_node "$HOST_DESKTOP_WORKER_1" "$join_cluster_command"
+join_node "$HOST_NOTE_HP_WORKER_2" "$join_cluster_command"
+join_node "$HOST_NLENOVO_WORKER_3" "$join_cluster_command"
+
+docker network create -d overlay --attachable vpc_dm

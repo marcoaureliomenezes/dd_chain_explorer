@@ -9,4 +9,6 @@ class PopularContractsCacheValidator:
 
     
     def run(self, **kwargs):
-        return False
+        print("VALIDATING CACHE HEY OK!")
+        
+        return "GET_POPULAR_CONTRACTS_AND_CACHE_IT" if False else "BY_PASS"

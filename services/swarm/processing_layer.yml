@@ -6,7 +6,7 @@ version: "3"
 
 x-swarm-master-node: &swarm_master_node
   placement:
-    constraints: [node.hostname == dadaia-desktop]
+    constraints: [node.hostname == marco-Inspiron-15-3511]
 
 x-swarm-worker-1: &swarm_worker_1
   placement:
