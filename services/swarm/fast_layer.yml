@@ -3,12 +3,14 @@ version: "3"
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
+
+
 x-common-deploy-master: &common_deploy_master
   deploy:
     restart_policy:
       condition: on-failure
     placement:
-      constraints: [node.hostname == dadaia-desktop]
+      constraints: [node.hostname == marco-Inspiron-15-3511]
 
 x-common-deploy-worker-1: &common_deploy_worker_1
   deploy:

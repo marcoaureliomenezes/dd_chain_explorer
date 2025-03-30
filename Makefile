@@ -46,16 +46,16 @@ publish_customized:
 publish_apps:
 	# docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
 	# docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
-	# docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
+	docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
 	# docker push marcoaureliomenezes/spark-streaming-jobs:$(current_branch)
 
 ####################################################################################################
 ####################################################################################################
 ###############################    DEPLOY COMPOSE SERVICES    ######################################
 
-deploy_dev_services:
-	docker compose -f services/compose/python_streaming_apps_layer.yml up -d --build
-	# docker compose -f services/compose/airflow_orchestration_layer.yml up -d --build
+deploy_dev_all:
+	# docker compose -f services/compose/python_streaming_apps_layer.yml up -d --build
+	docker compose -f services/compose/airflow_orchestration_layer.yml up -d --build
 	# docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
 
 deploy_test_batch:

@@ -28,9 +28,11 @@ x-common-cadvisor-default: &cadvisor_commons
 ##########################################################################################
 #########################    DEPLOYMENT CONFIGS FOR NODES    #############################
 
+
 x-swarm-master-node: &swarm_master_node
   placement:
-    constraints: [node.hostname == dadaia-desktop]
+    constraints: [node.hostname == marco-Inspiron-15-3511]
+
 
 x-swarm-worker-1: &swarm_worker_1
   placement:
@@ -42,7 +44,7 @@ x-swarm-worker-2: &swarm_worker_2
 
 x-swarm-worker-3: &swarm_worker_3
   placement:
-    constraints: [node.hostname == dadaia-server-3]
+    constraints: [node.hostname == dadaia-desktop]
 
 ##########################################################################################
 ################################    SERVICES CONFIG    ###################################

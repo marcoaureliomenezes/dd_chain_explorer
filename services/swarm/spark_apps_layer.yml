@@ -6,7 +6,7 @@ version: "3"
 
 x-swarm-master-node: &swarm_master_node
   placement:
-    constraints: [node.hostname == dadaia-desktop]
+    constraints: [node.hostname == marco-Inspiron-15-3511]
 
 x-swarm-worker-1: &swarm_worker_1
   placement:
@@ -47,9 +47,9 @@ services:
       TRIGGER_TIME: "2 seconds"
       CONSUMER_GROUP: "cg_logs_processor"
       STARTING_OFFSETS: "earliest"
-      MAX_OFFSETS_PER_TRIGGER: 30000
+      MAX_OFFSETS_PER_TRIGGER: 50000
       EXEC_MEMORY: 1g
-      TOTAL_EXEC_CORES: 1
+      TOTAL_EXEC_CORES: 2
     deploy:
       <<: *swarm_worker_1
 
@@ -59,7 +59,7 @@ services:
     entrypoint: "sh /app/entrypoint.sh /app/pyspark/2_job_bronze_multiplex.py"
     environment:
       CHECKPOINT_PATH: "s3a://spark/checkpoints/iceberg/kafka_topics_multiplexed"
-      TRIGGER_TIME: "2 minutes"
+      TRIGGER_TIME: "1 minute"
       TOPICS: "mainnet.0.application.logs,mainnet.0.batch.logs,mainnet.1.mined_blocks.events,mainnet.2.blocks.data,mainnet.4.transactions.data"
       CONSUMER_GROUP: "cg_bronze"
       STARTING_OFFSETS: "earliest"
