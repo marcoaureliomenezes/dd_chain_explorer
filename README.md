@@ -55,7 +55,7 @@ Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados,
 
 Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e armazena todas as transações realizadas na mesma.
 
-#### Dados de blocos
+#### 1.1.1. Dados de blocos
 
 - **Header**: Dados de cabeçãlho de um bloco, tais como:
   - `Número do bloco`: Identificador único do bloco.
@@ -67,7 +67,7 @@ Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e 
 
 <img src="./img/intro/1_blockchain_data_structure.png" alt="1_blockchain_data_structure.png" width="100%"/>
 
-#### Frequência de mineração
+#### 1.1.2. Frequência de mineração
 
 Em uma rede novos blocos são minerados contendo `n transações` a cada `X segundos`. 
 No âmbito do case, as seguintes características de uma blockchain tem grande relevância, pois impactam diretamente no volume e velocidade de dados a serem capturados:
@@ -78,7 +78,7 @@ No âmbito do case, as seguintes características de uma blockchain tem grande r
 
 Uma rede blockchain é uma rede de topologia Peer-to-Peer onde cada nó da rede possui uma cópia da estrutura de dados de blocos encadeados.
 
-Esses nós podem exercer função de:
+Esses nós podem exercer papel de:
 - **Mineradores**: Nós que mineram novos blocos, validando as transações e garantindo a integridade da rede.
 - **Nós validadores**: Nós que validam transações e blocos minerados na rede.
 - **Nós comuns**: Podem submeter transações e consultar dados da rede, mas não mineram blocos.
@@ -87,8 +87,10 @@ Portanto, o acesso a um nó da rede é suficiente para se obter dados da rede, p
 
 #### 1.3. Tipos de rede blockchain
 As redes blockchain podem ser classificadas em 2 tipos: públicas e privadas.
-- **Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. **Exemplo**: Bitcoin, Ethereum, Solana, etc.
-- **Privadas**: Existem restrições de quem pode fazer parte da rede. **Exemplo**: Hyperledger, Corda, etc.
+
+**Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. **Exemplo**: Bitcoin, Ethereum, Solana, etc.
+
+**Privadas**: Existem restrições de quem pode fazer parte da rede. **Exemplo**: Hyperledger, Corda, etc.
 
 Logo, blockchains pública apresenta as características ideais, pois:
 
