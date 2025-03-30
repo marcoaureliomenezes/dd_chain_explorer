@@ -1,6 +1,6 @@
 # dd_chain_explorer System
 
-Blockchains públicas são redes Peer-to-peer nas quais circula uma grande quantidade de capital. Essa troca se dá por usuários trocando tokens entre si ou interagindo com contratos inteligentes dos mais diversos tipos. Pela arquitetura da rede, os dados dessas transações são públicos, visto que qualquer nó pode fazer parte da rede, e todo nó tem uma cópia sincronizada da blockchain.
+**Abstract**: Blockchains públicas são redes Peer-to-peer nas quais circula uma grande quantidade de capital. Essa troca se dá por usuários trocando tokens entre si ou interagindo com contratos inteligentes dos mais diversos tipos. Pela arquitetura da rede, os dados dessas transações são públicos, visto que qualquer nó pode fazer parte da rede, e todo nó tem uma cópia sincronizada da blockchain.
 
 Então uma plataforma de dados, usando essa origem, tem potencial de fornecer valiosos insights.
 
@@ -51,16 +51,19 @@ A tecnologia blockchain é baseada em 2 pilares, a estrutura de dados e a rede P
 
 ### 1.1. Estrutura de dados
 
-Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, e ligados um com o outro através do campo hash do bloco anterior.
+Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, sendo conectados através do campo hash do bloco anterior.
 
 Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e armazena todas as transações realizadas na mesma.
 
-#### Dados presentes em blocos
+#### Dados de blocos
 
-- **Metadados do bloco**: Dados de um bloco como o número, timestamp em que foi minerado, endereço de quem o minerou, etc.
-- **Lista de transações**: Lista de ids para transações contidas no bloco.                                                 |
-- **Hash do bloco anterior**: Campo que faz o encadeamento entre os blocos.                                                   |
-- **Hash do bloco atual**   É a saída um algoritmo de hash aplicado sobre dados do bloco mencionados.
+- **Header**: Dados de cabeçãlho de um bloco, tais como:
+  - `Número do bloco`: Identificador único do bloco.
+  - `Timestamp`: Data e hora em que o bloco foi minerado.
+  - `Miner`: Endereço do minerador que minerou o bloco. 
+  - `Hash do bloco anterior`: Hash do bloco anterior, que conecta os blocos.
+  - `Hash do bloco atual`: Hash do bloco atual, que conecta os blocos.
+- **Lista de transações**: Lista de ids para transações contidas no bloco.
 
 <img src="./img/intro/1_blockchain_data_structure.png" alt="1_blockchain_data_structure.png" width="100%"/>
 
@@ -82,42 +85,29 @@ Esses nós podem exercer função de:
 
 Portanto, o acesso a um nó da rede é suficiente para se obter dados da rede, pois esse nó terá uma cópia sincronizada da blockchain da rede.
 
-### 1.3. Tipos de rede blockchain
+#### 1.3. Tipos de rede blockchain
+As redes blockchain podem ser classificadas em 2 tipos: públicas e privadas.
+- **Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. **Exemplo**: Bitcoin, Ethereum, Solana, etc.
+- **Privadas**: Existem restrições de quem pode fazer parte da rede. **Exemplo**: Hyperledger, Corda, etc.
 
-Blockchains podem ser classificadas de acordo com o critério para um nó fazer parte da rede.
+Logo, blockchains pública apresenta as características ideais, pois:
 
-#### 1.3.1. Redes públicas
-
-- Permitem que qualquer nó possa fazer parte na rede, possibilitando que qualquer pessoa, desde que com requisitos de hardware, software e rede satisfeitos, possa compôr a rede.
-
-**Exemplo**: Bitcoin, Ethereum, Solana, etc.
-
-#### 1.3.2. Redes Privadas
-
-- Existe uma restrição de quem pode se tornar um membro da rede.
-- São construídas usando tecnologias open-source como Hyperledger, Corda, etc. 
-
-**Exemplo**: DREX onde nós são de instituições financeiras autorizadas pelo Banco Central.
-
-#### 1.3.3. Conclusão
-
-Dadas essas características, para esse trabalho, o uso de uma blockchain pública apresenta as características ideais, pois:
 1. Redes públicas não possuem restrições para fazer parte da rede.
-2. Se um nó da rede é acessível e este possui uma cópia sincrinizada dos blocos da rede, então essa pode ser a fonte onde os dados são capturados. 
+2. Nós da rede possuem uma cópia sincrinizada dos blocos da rede.
 
+E por consequência, com acesso a um nó da rede, é possível capturar dados de transações e blocos minerados.
 
 #### 1.1. Ethereum Virtual Machine
 
-A Ethereum Virtual Machine é uma máquina virtual distribuída rodando no topo da rede, seja Ethereum ou DREX. Essa VM tem por objetivo calcular o estado da rede.
-
+A Ethereum Virtual Machine é uma máquina virtual distribuída rodando no topo da rede, seja Ethereum ou DREX.
 
 Uma máquina Virtual como a EVM tem o propósito de calcular estados da rede e contratos inteligentes, bem como fornece o framework para o desenvolvimento dos contratos inteligentes na rede.
 
-Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas características de padronização, entre redes que usam a EVM, são relevantes para esse trabalho, dado que:
+Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas características de padronização, entre redes que usam a EVM, são relevantes para esse trabalho, dado que compartilham:
 
-1. Redes que usam a EVM compartilham o mesmo padrão de dados (schema) para transações e blocos.
-2. Redes que usam a EVM compartilham o mesmo padrão de API para captura de dados.
-3. Redes que usam a EVM compartilham o mesmo padrão de linguagem de programação para desenvolvimento de contratos inteligentes.
+1. Mesmo padrão de dados (schema) para transações e blocos.
+2. Mesmo padrão de API para captura de dados.
+3. Mesmo padrão de linguagem de programação para desenvolvimento de contratos inteligentes.
 
 Por consequência, a forma como os dados são capturados é independente da rede, desde que essa rede use a EVM como máquina virtual, o que torna o método de captura desse trabalho agnóstico a redes EVM.
 
