@@ -1,6 +1,8 @@
 # dd_chain_explorer System
 
-Blockchains públicas são redes P2P onde circula uma grande quantidade de capital, na forma de usuários trocando tokens entre si ou interagindo com contratos inteligentes. Por serem redes públicas os dados de transações dentro dessas redes também são de certa forma públicos e podem ser explorados. O sistema aqui implementado é uma plataforma de dados com o intuito de capturar, processar, armazenar e disponibilizar dados de redes blockchain públicas com suporte a contratos inteligentes e do tipo EVM.
+Blockchains públicas são redes Peer-to-peer nas quais circula uma grande quantidade de capital. Essa troca se dá por usuários trocando tokens entre si ou interagindo com contratos inteligentes dos mais diversos tipos. Pela arquitetura da rede, os dados dessas transações são públicos, visto que qualquer nó pode fazer parte da rede, e todo nó tem uma cópia sincronizada da blockchain.
+
+Então uma plataforma de dados, usando essa origem, tem potencial de fornecer valiosos insights.
 
 ## Sumário
 
@@ -37,9 +39,41 @@ Blockchains públicas são redes P2P onde circula uma grande quantidade de capit
   - [8.3. Troca do uso de provedores Blockchain Node-as-a-Service](#83-troca-do-uso-de-provedores-blockchain-node-as-a-service)
   - [8.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#84-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
 
+
+## 1. Introdução
+
+Por definição uma blockchain é uma rede decentralizada na qual usuários conseguem transacionar entre si, e em muitas redes também com contratos inteligentes, sem a necessidade de uma entidade mediadora.
+
+Para limitar o escopo desse trabalho, a rede blockchain Ethereum é tida como caso de uso. Contudo, vale ressaltar que diversas redes, públicas ou privadas, são baseadas na EVM, incluíndo a rede do DREX.
+
+A tecnologia blockchain é baseada em 2 pilares, a estrutura de dados e a rede Peer-to-Peer.´
+
+
+### 1.1. Estrutura de dados
+
+Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, e ligados um com o outro através do campo hash do bloco anterior. Cada bloco contém informações como
+- **Metadados do bloco**: Dados de um bloco como o número, timestamp em que foi minerado, endereço de quem o minerou, etc.
+- **Lista de transações**: Lista de ids para transações contidas no bloco.
+- **Hash do bloco anterior**: Campo que faz o encadeamento entre os blocos.
+- **Hash do bloco atual**: É a saída um algoritmo de hash tendo como entradas os metadados do bloco, lista de transações e o hash do bloco anterior.
+
+Essa construção, permite uma verificação simples de de integridade das informações de blocos passados. Se um digito de uma transação é alterado, o hash muda e não bate mais com o hash anterior do bloco seguinte.
+
+No âmbito do case, as seguintes características de uma blockchain tem relevância.
+- Frequência de mineração: A cada X segundos, 1 novo bloco é minerado.
+- Tamanho do bloco: Cada bloco têm um limite de tamanho em bytes.
+
+#### 1.1. Ethereum Virtual Machine
+
+  A Ethereum Virtual Machine é uma máquina virtual distribuída rodando em todos os nós darede, seja Ethereum ou DREX. É importante mencioná-la, pois ela define o padrão dos dados na rede blockchain, origens desse trabalho, assim como define uma padronização que torna o método de captura desse trabalho agnóstico a redes EVM.
+
+  Uma máquina Virtual como a EVM tem o propósito de calcular estados da rede e contratos inteligentes, bem como fornece o framework para o desenvolvimento dos contratos inteligentes na rede.
+
+
+
 ## 2. Objetivo desse trabalho
 
-**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas.
+**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas compatíveis com a máquina virtual EVM.
 
 ### Escopo do trabalho
 
