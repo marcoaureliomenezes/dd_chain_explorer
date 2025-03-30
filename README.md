@@ -51,24 +51,116 @@ A tecnologia blockchain é baseada em 2 pilares, a estrutura de dados e a rede P
 
 ### 1.1. Estrutura de dados
 
-Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, e ligados um com o outro através do campo hash do bloco anterior. Cada bloco contém informações como
+Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, e ligados um com o outro através do campo hash do bloco anterior.
+
+Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e armazena todas as transações realizadas na mesma.
+
+#### Dados presentes em blocos
+
 - **Metadados do bloco**: Dados de um bloco como o número, timestamp em que foi minerado, endereço de quem o minerou, etc.
-- **Lista de transações**: Lista de ids para transações contidas no bloco.
-- **Hash do bloco anterior**: Campo que faz o encadeamento entre os blocos.
-- **Hash do bloco atual**: É a saída um algoritmo de hash tendo como entradas os metadados do bloco, lista de transações e o hash do bloco anterior.
+- **Lista de transações**: Lista de ids para transações contidas no bloco.                                                 |
+- **Hash do bloco anterior**: Campo que faz o encadeamento entre os blocos.                                                   |
+- **Hash do bloco atual**   É a saída um algoritmo de hash aplicado sobre dados do bloco mencionados.
 
-Essa construção, permite uma verificação simples de de integridade das informações de blocos passados. Se um digito de uma transação é alterado, o hash muda e não bate mais com o hash anterior do bloco seguinte.
+<img src="./img/intro/1_blockchain_data_structure.png" alt="1_blockchain_data_structure.png" width="100%"/>
 
-No âmbito do case, as seguintes características de uma blockchain tem relevância.
-- Frequência de mineração: A cada X segundos, 1 novo bloco é minerado.
-- Tamanho do bloco: Cada bloco têm um limite de tamanho em bytes.
+#### Frequência de mineração
+
+Em uma rede novos blocos são minerados contendo `n transações` a cada `X segundos`. 
+No âmbito do case, as seguintes características de uma blockchain tem grande relevância, pois impactam diretamente no volume e velocidade de dados a serem capturados:
+- **Frequência de mineração**: A cada X segundos, 1 novo bloco é minerado.
+- **Tamanho do bloco**: Cada bloco têm um limite de tamanho em bytes.
+
+### 1.2. Rede Peer-to-Peer
+
+Uma rede blockchain é uma rede de topologia Peer-to-Peer onde cada nó da rede possui uma cópia da estrutura de dados de blocos encadeados.
+
+Esses nós podem exercer função de:
+- **Mineradores**: Nós que mineram novos blocos, validando as transações e garantindo a integridade da rede.
+- **Nós validadores**: Nós que validam transações e blocos minerados na rede.
+- **Nós comuns**: Podem submeter transações e consultar dados da rede, mas não mineram blocos.
+
+Portanto, o acesso a um nó da rede é suficiente para se obter dados da rede, pois esse nó terá uma cópia sincronizada da blockchain da rede.
+
+### 1.3. Tipos de rede blockchain
+
+Blockchains podem ser classificadas de acordo com o critério para um nó fazer parte da rede.
+
+#### 1.3.1. Redes públicas
+
+- Permitem que qualquer nó possa fazer parte na rede, possibilitando que qualquer pessoa, desde que com requisitos de hardware, software e rede satisfeitos, possa compôr a rede.
+
+**Exemplo**: Bitcoin, Ethereum, Solana, etc.
+
+#### 1.3.2. Redes Privadas
+
+- Existe uma restrição de quem pode se tornar um membro da rede.
+- São construídas usando tecnologias open-source como Hyperledger, Corda, etc. 
+
+**Exemplo**: DREX onde nós são de instituições financeiras autorizadas pelo Banco Central.
+
+#### 1.3.3. Conclusão
+
+Dadas essas características, para esse trabalho, o uso de uma blockchain pública apresenta as características ideais, pois:
+1. Redes públicas não possuem restrições para fazer parte da rede.
+2. Se um nó da rede é acessível e este possui uma cópia sincrinizada dos blocos da rede, então essa pode ser a fonte onde os dados são capturados. 
+
 
 #### 1.1. Ethereum Virtual Machine
 
-  A Ethereum Virtual Machine é uma máquina virtual distribuída rodando em todos os nós darede, seja Ethereum ou DREX. É importante mencioná-la, pois ela define o padrão dos dados na rede blockchain, origens desse trabalho, assim como define uma padronização que torna o método de captura desse trabalho agnóstico a redes EVM.
+A Ethereum Virtual Machine é uma máquina virtual distribuída rodando no topo da rede, seja Ethereum ou DREX. Essa VM tem por objetivo calcular o estado da rede.
 
-  Uma máquina Virtual como a EVM tem o propósito de calcular estados da rede e contratos inteligentes, bem como fornece o framework para o desenvolvimento dos contratos inteligentes na rede.
 
+Uma máquina Virtual como a EVM tem o propósito de calcular estados da rede e contratos inteligentes, bem como fornece o framework para o desenvolvimento dos contratos inteligentes na rede.
+
+Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas características de padronização, entre redes que usam a EVM, são relevantes para esse trabalho, dado que:
+
+1. Redes que usam a EVM compartilham o mesmo padrão de dados (schema) para transações e blocos.
+2. Redes que usam a EVM compartilham o mesmo padrão de API para captura de dados.
+3. Redes que usam a EVM compartilham o mesmo padrão de linguagem de programação para desenvolvimento de contratos inteligentes.
+
+Por consequência, a forma como os dados são capturados é independente da rede, desde que essa rede use a EVM como máquina virtual, o que torna o método de captura desse trabalho agnóstico a redes EVM.
+
+
+### 1.4. Transações e contratos inteligentes
+
+Conforme o objetivo desse trabalho é usar como fonte de dados blocos e transações para fazer analytics de uma rede blockchain, é importante compreender o que são as transações.
+
+
+Em transaçõess 4 campos a seguir são os mais relevantes para esse trabalho:
+
+- **From**: Endereço de origem da transação.
+- **To**: Endereço de destino da transação.
+- **Value**: Quantidade de token nativo transferido na transação.
+- **Input**: Contém o bytecode da função chamada e os parâmetros passados para ela.
+
+
+#### 1.4.1. Troca de Token Nativo
+
+A Ethereum, bem como a maioria das blockchains, possui um token nativo, que é criado na mineração de blocos. Esse token nativo, para além da especulação de criptomoedas, tem a função de pagar taxas de transação na rede. Para a Ethereum, esse token nativo é o Ether (ETH).
+
+- Nós da ethereum podem criar carteiras na rede.
+- Carteiras são constituídas basicamente de um endereço um saldo em token nativo da rede. 
+
+**Exemplo**: Posso criar uma carteira na ethereum e terei um endereço para armazenar e transacionar Ether.
+
+Portanto, ao explorar esse tipo de transação é possível obter insights de como endereços estão trocando tokens nativos.
+
+#### 1.4.2. Deploy e interação com contratos inteligentes
+
+Contratos inteligentes são programas desenvolvidos através de uma linguagem de programação e deployados numa blockchain.
+
+Características dos contratos inteligentes:
+- São programas desenvolvidos em uma linguagem de programação específica para a blockchain.
+- Esses programas são compilados em bytecode e armazenados na blockchain.
+- Esses programas são deployados em blockchains por meio de uma transação.
+- Após o deploy, eles ficam disponíveis para serem chamados clientes que podem ser outros contratos inteligentes ou usuários.
+
+
+Toda transação possui um campo input que contém:
+    • No caso do deploy de um contrato inteligente o bytecode do código do contrato.
+    • No caso da interação com um contrato inteligente já existente, o bytecode da função chamada e seus parâmetros. 
+Mais adiante essas transações poderão ser melhor visualizadas.
 
 
 ## 2. Objetivo desse trabalho
