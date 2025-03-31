@@ -5,10 +5,10 @@
 ## Sumário
 
 - [1. Introdução](#1-introdução)
-  - [1.1. Introdução sobre blockchain](#11-introdução-sobre-blockchain)
-  - [1.2. Oportunidades em Redes Blockchain](#12-oportunidades-em-redes-blockchain)
-  - [1.3. Estudo de caso com 2 contratos inteligentes](#13-estudo-de-caso-com-2-contratos-inteligentes)
-  - [1.4. Nota sobre a introdução acima e esse trabalho](#14-nota-sobre-a-introdução-acima-e-esse-trabalho)
+  - [1.1. Blockchain como Estrutura de Dados](#11-blockchain-como-estrutura-de-dados)
+  - [1.2. Blockchain como Rede P2P](#12-blockchain-como-rede-p2p)
+  - [1.3. Tipos de Rede Blockchain](#13-tipos-de-rede-blockchain)
+  - [1.4. Transações e Contratos Inteligentes](#14-transações-e-contratos-inteligentes)
 - [2. Objetivos deste trabalho](#2-objetivos-deste-trabalho)
   - [2.1. Objetivos de negócio](#21-objetivos-de-negócio)
   - [2.2. Objetivos técnicos](#22-objetivos-técnicos)
@@ -47,7 +47,7 @@ Para limitar o escopo desse trabalho, a rede blockchain Ethereum é tida como ca
 A tecnologia blockchain é baseada em 2 pilares, a estrutura de dados e a rede Peer-to-Peer.´
 
 
-### 1.1. Estrutura de dados
+### 1.1. Blockchain como Estrutura de Dados
 
 Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, sendo conectados através do campo hash do bloco anterior.
 
@@ -55,24 +55,30 @@ Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e 
 
 #### 1.1.1. Dados de blocos
 
-- **Header**: Dados de cabeçãlho de um bloco, tais como:
-  - `Número do bloco`: Identificador único do bloco.
-  - `Timestamp`: Data e hora em que o bloco foi minerado.
-  - `Miner`: Endereço do minerador que minerou o bloco. 
-  - `Hash do bloco anterior`: Hash do bloco anterior, que conecta os blocos.
-  - `Hash do bloco atual`: Hash do bloco atual, que conecta os blocos.
-- **Lista de transações**: Lista de ids para transações contidas no bloco.
+**Header**: Dados de cabeçãlho de um bloco, tais como:
+
+| **Campo**                | **Descrição**                                                          |
+|--------------------------|------------------------------------------------------------------------|
+| `Número do bloco`        | Identificador único do bloco.                                          |
+| `Timestamp`              | Data e hora em que o bloco foi minerado.                               |
+| `Miner`                  | Endereço do minerador que minerou o bloco.                             |
+| `Hash do bloco anterior` | Hash do bloco anterior, que conecta os blocos.                         |
+| `Hash do bloco atual`    | Hash do bloco atual, que conecta os blocos.
+
+**Lista de transações**: Lista de ids para transações contidas no bloco.
 
 <img src="./img/intro/1_blockchain_data_structure.png" alt="1_blockchain_data_structure.png" width="100%"/>
 
 #### 1.1.2. Frequência de mineração
 
 Em uma rede novos blocos são minerados contendo `n transações` a cada `X segundos`. 
-No âmbito do case, as seguintes características de uma blockchain tem grande relevância, pois impactam diretamente no volume e velocidade de dados a serem capturados:
+Portanto os 2 parâmetros mencionados abaixo influenciam diretamente no volume e velocidade de dados a serem capturados:
 - **Frequência de mineração**: A cada X segundos, 1 novo bloco é minerado.
 - **Tamanho do bloco**: Cada bloco têm um limite de tamanho em bytes.
 
-### 1.2. Rede Peer-to-Peer
+Cada rede tem sua especificação relativa a esses 2 parâmetros, o que ditará características fundamentais da rede, como por exemplo o número de transações por segundo (TPS).
+
+### 1.2. Blockchain como Rede P2P
 
 Uma rede blockchain é uma rede de topologia Peer-to-Peer onde cada nó da rede possui uma cópia da estrutura de dados de blocos encadeados.
 
@@ -83,7 +89,7 @@ Esses nós podem exercer papel de:
 
 Portanto, o acesso a um nó da rede é suficiente para se obter dados da rede, pois esse nó terá uma cópia sincronizada da blockchain da rede.
 
-#### 1.3. Tipos de rede blockchain
+### 1.3. Tipos de Rede Blockchain
 As redes blockchain podem ser classificadas em 2 tipos: públicas e privadas.
 
 - **Redes Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. `Exemplo`: Bitcoin, Ethereum, Solana, etc.
@@ -96,7 +102,7 @@ Logo, blockchains pública apresenta as características ideais, pois:
 
 E por consequência, com acesso a um nó da rede, é possível capturar dados de transações e blocos minerados.
 
-#### 1.4. Ethereum Virtual Machine
+#### 1.3.1. Ethereum Virtual Machine
 
 A Ethereum Virtual Machine é uma máquina virtual distribuída rodando no topo da rede, seja Ethereum ou DREX.
 
@@ -108,7 +114,7 @@ Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas c
 
 Por consequência, a forma como os dados são capturados é independente da rede, desde que essa rede use a EVM como máquina virtual, o que torna o método de captura desse trabalho agnóstico a redes EVM.
 
-### 1.5. Transações e contratos inteligentes
+### 1.4. Transações e Contratos Inteligentes
 
 Conforme o objetivo desse trabalho é usar como fonte de dados blocos (headers) e e dados transações para fazer analytics de uma rede blockchain, é importante compreender o que são as transações.
 
@@ -138,10 +144,10 @@ Para diferentes tipos de transações os 4 campos a seguir são os mais relevant
 
 | Campo     | Descrição                                                              |
 |-----------|------------------------------------------------------------------------|
-| **From**  | Endereço de origem da transação.                                       |
-| **To**    | Endereço de destino da transação.                                      |
-| **Value** | Quantidade de token nativo transferido na transação.                   |
-| **Input** | Contém o bytecode da função chamada e os parâmetros passados para ela. |
+| `From`    | Endereço de origem da transação.                                       |
+| `To`      | Endereço de destino da transação.                                      |
+| `Value`   | Quantidade de token nativo transferido na transação.                   |
+| `Input`   | Contém o bytecode da função chamada e os parâmetros passados para ela. |
 
 Isso porque:
 
