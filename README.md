@@ -44,26 +44,26 @@ Por definição uma blockchain é uma rede decentralizada na qual usuários cons
 
 Para limitar o escopo desse trabalho, a rede blockchain Ethereum é tida como caso de uso. Contudo, vale ressaltar que diversas redes, públicas ou privadas, são baseadas na EVM, incluíndo a rede do DREX.
 
-A tecnologia blockchain é baseada em 2 pilares, a estrutura de dados e a rede Peer-to-Peer.´
+A tecnologia blockchain é baseada em 2 pilares, a `estrutura de dados` e a `rede Peer-to-Peer`.
 
 
 ### 1.1. Blockchain como Estrutura de Dados
 
-Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, sendo conectados através do campo hash do bloco anterior.
+Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, sendo conectados através do uso de um mecanismo de hash, como uso do `hash atual` e `hash do bloco anterior`.
 
 Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e armazena todas as transações realizadas na mesma.
 
 #### 1.1.1. Dados de blocos
 
-**Header**: Dados de cabeçãlho de um bloco, tais como:
+**Header**: Dados de cabeçalho de um bloco, tais como:
 
-| **Campo**                | **Descrição**                                                          |
-|--------------------------|------------------------------------------------------------------------|
-| *Número do bloco*        | Identificador único do bloco                                           |
-| *Timestamp*              | Data e hora em que o bloco foi minerado                                |
-| *Miner*                  | Endereço do minerador que minerou o bloco                              |
-| *Hash do bloco anterior* | Hash do bloco anterior, que conecta os blocos                          |
-| *Hash do bloco atual*    | Hash do bloco atual, que conecta os blocos 
+| **Campo**                  | **Descrição**                                                          |
+|----------------------------|------------------------------------------------------------------------|
+| *`Número do bloco`*        | Identificador único do bloco                                           |
+| *`Timestamp`*              | Data e hora em que o bloco foi minerado                                |
+| *`Miner`*                  | Endereço do minerador que minerou o bloco                              |
+| *`Hash do bloco anterior`* | Hash do bloco anterior, que conecta os blocos                          |
+| *`Hash do bloco atual`*    | Hash do bloco atual, que conecta os blocos 
 
 **Lista de transações**: Lista de ids para transações contidas no bloco.
 
@@ -71,12 +71,11 @@ Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e 
 
 #### 1.1.2. Frequência de mineração
 
-Em uma rede novos blocos são minerados contendo `n transações` a cada `X segundos`. 
-Portanto os 2 parâmetros mencionados abaixo influenciam diretamente no volume e velocidade de dados a serem capturados:
+Em uma rede novos blocos são minerados contendo `n transações` a cada `X segundos`. Os 2 parâmetros mencionados abaixo influenciam diretamente no volume e velocidade de dados a serem capturados:
 - **Frequência de mineração**: A cada X segundos, 1 novo bloco é minerado.
 - **Tamanho do bloco**: Cada bloco têm um limite de tamanho em bytes.
 
-Cada rede tem sua especificação relativa a esses 2 parâmetros, o que ditará características fundamentais da rede, como por exemplo o número de transações por segundo (TPS).
+Cada rede tem sua especificação, o que ditará características fundamentais da rede, como o número de transações por segundo (TPS).
 
 ### 1.2. Blockchain como Rede P2P
 
