@@ -38,19 +38,22 @@
 
 ## 1. Objetivo desse trabalho
 
-**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas compatíveis com a máquina virtual EVM.
+**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas compatíveis EVM para análises da rede em tempo real.
 
 ### 1.1. Escopo do trabalho
 
 - Captura de dados restrito a redes blockchain públicas do tipo EVM;
-- Uso da rede Ethereum como rede piloto, devido às características mencionadas na introdução (baixo TPS e alto valor de capital alocado);
+- Uso da rede Ethereum como origem, devido às características de:
+  - Baixo número de transações por segundo TPS.
+  - Alto valor de capital alocado.
+  - Compatibilidade com outras blockchains que também usam a EVM.
 - Uso de provedores de Node-as-a-Service para captura de dados;
 - Ingestão dos dados em ambiente analitico do tipo Lakehouse;
 - Aplicação de arquitetura Medalhão para ingestão e enriquecimento dos dados em ambiente analítico.
 
 ### 1.2. Objetivos específicos
 
-- Criar um sistema de captura de dados deve ser agnóstico à rede de blockchain, desde que usem a EVM como máquina virtual;
+- Criar um sistema de captura de dados deve ser agnóstico à rede de blockchain, compatível com EVM;
 - Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema;
 - Criar uma plataforma preparada para escalar a captura de dados em redes mais rápidas e escaláveis;
 - Criar mecanismos para gerenciamento do consumo de API Keys dos provedores NaaS entre os Jobs que as usam;
@@ -180,95 +183,116 @@ Isso porque:
 
 ## 3. Explicação sobre o case desenvolvido
 
-Conforme visto na introdução, para se obter dados de uma rede blockchain diretamente, é necessário possuir acesso a um nó pertencente a tal rede.
+Essa sessão é dedicada a descrição do case desenvolvido. aqui são apresentados os detalhes técnicos do sistema desenvolvido.
 
-Com isso, 2 possibilidades se apresentam: **(1)** possuir um nó próprio e **(2)** usar um nó de terceiros.
+### 3.1. Captura de dados
 
-Devido aos requisitos de hardware, software e rede necessários para deploy de um nó, seja on-premises ou em cloud, foi escolhido nesse trabalho o uso de **provedores de Node-as-a-Service ou NaaS**.
+Conforme mencionado nas sessão de objetivos, esse trabalho tem os dados com origem na rede Ethereum. Para se ter acesso aos dados de blocos e transações é necessário acessar um nó da rede. Existem 2 formas de se fazer isso:
 
-## 3.1. Provedores de Node-as-a-Service
+**Deploy de um nó próprio**: Dado que a rede é pública, qualquer pessoa pode associar um nó rede. Porém, isso requer investimento em hardware, software e rede. Para sistemas produtivos, essa é a abordagem mais comum. Porém, para fins de desenvolvimento e teste, essa abordagem não é viável.
 
-Provedores de NaaS são empresas que fornecem acesso a nós de redes blockchain públicas. Alguns exemplos são **Infura** e **Alchemy**. Como modelo de negócio, fornecem API keys para interação com os nós.
+**Uso de nós de terceiros**: Devido a dificuldade de se manter um nó próprio, existem empresas que disponibilizam nós de blockchain como serviço. Esses nós podem ser acessados por meio de uma API Keys. Essa opção é mais viável, pois não requer investimento em hardware e software.
+
+Alguns exemplos de empresas do tipo são [**infura.io**](https://www.infura.io/) e [**Alchemy**](https://www.alchemy.com/). Como modelo de negócio, fornecem API keys para interação com os nodes gerenciados por eles. Em contrapartida, oferecem planos com diferentes limites de requisições.
 
 <img src="./img/intro/4_bnaas_vendor_plans.png" alt="4_bnaas_vendor_plans.png" width="100%"/>
 
-Porém, esses provedores restringem a quantidade de requests, de acordo com planos estabelacidos (gratuito, premium, etc.) que variam o preço e o limite de requisições diárias ou por segundo permitidas.
-
 Foi optado pelo **uso de provedores NaaS**. Contudo, devido às limitações de requisições, é preciso um mecanismo para captura de todas as transações em tempo real usando tais provedores. Por se tratar um desafio técnico, reduzir o custo para captura desses dados a zero virtualmente, satisfazendo os objetivos mencionados se mostra um caminho interessante.
 
-### 3.1.1. Restrições de API keys
+#### 3.1.1. Restrições de API keys
 
-As requisições em nós disponibilizados por um provedores NaaS são controladas por meio de API Keys. Para o provedor infura as restrições para 1 API Key gratuita são:
+Para o provedor infura as restrições para uma API Key gratuita são:
 
 - Máximo de **10 requests por segundo**;
 - Máximo de  **100.000 requests por dia**.
 
-Na rede Ethereum, um bloco tem tamanho em bytes limitado e é minerado em média a cada 8 segundos. Cada bloco contém em média 200 transações. Isso resulta em:
+Na rede Ethereum, um bloco é minerado em média a cada 8 segundos e contém em média 170 transações, o que resulta em resulta em:
+- 21 transações por segundo - TPS;
+- 1.836.000 transações por dia.
 
-- **2,7 milhões de transações por dia**;
-- **31 transações por segundo**.
+A relação de proporção para captura de transações para Requests de API Keys é de `1 -> 1`. Portanto, sistema de captura, usando o plano gratuito, requer algumas API Keys.
 
-As limitações acima impõem um desafio. Como será visto a diante, o mecanismo **para se capturar n transações de um bloco recém-minerado** exige que sejam feitas em média **n requisições** sejam feitas. Usando o plano gratuito, claramente é necessário o uso de várias API Keys.
+#### 3.1.2. Armazenamento e Consumo de API Keys
 
-Porém o gerenciamento de uso dessas API Keys, buscando aumentar a disponibilidade e confiabilidade do sistema traz a necessidade de um mecanismo projetado para tal.
+Para o armazenamento e recuperação de API Keys, foi utilizado o **Azure Key Vault**. As API Keys são armazenadas como segredos, e o acesso a esses segredos é controlado por meio de permissões. Dessa forma, o sistema pode acessar as API Keys de forma segura.
 
-## 3.2. Captura de dados de blocos e transações
+<img src="./img/development/2_chave_de_API.png" alt="2_chave_de_API.png" width="80%"/>
 
-Para capturar dados de blocos e transações da rede em tempo real é usada a [Biblioteca Web3.py](https://web3py.readthedocs.io/en/stable/). Ela fornece uma interface para interação com nós de redes blockchain compatíveis com EVM. Entre as várias funções disponíveis, 2 são de interesse para esse trabalho:
+Para autenticação e autorização, foi criado um **Service Principal** com permissões mínimas necessárias para acessar os segredos. Esse Service Principal é usado pelos jobs para acessar as API Keys. As credenciais do Service Principal são armazenadas em variáveis de ambiente, garantindo a segurança das credenciais.
 
-**get_block(block_number|'latest')**: 
-- Recebe como parâmetro o número do bloco ou a string 'latest' para o bloco mais recente minerado.
-- Retorna um dicionário com os **dados e metadados do bloco** e uma **lista de hash_ids** de transações pertencentes ao último bloco minerado.
+Dessa forma os Jobs podem acessar as API Keys de forma segura e controlada.
+
+#### 3.1.3. Interfaces para Captura de Dados
+
+Para capturar dados de blocos e transações da rede em tempo real é usada a [Biblioteca Web3.py](https://web3py.readthedocs.io/en/stable/). Ela fornece uma interface para interação com nós de redes blockchain compatíveis com EVM através de IPC (Inter-Process Communication) ou HTTP.
+Entre as várias funções disponíveis, 2 são de interesse para esse trabalho:
+
+**get_block(block_number)**: Retorna dados do bloco. Entre esses dados estão:
+- Informações de header do bloco, como o número do bloco, timestamp, minerador e a
+- Lista de IDs de transações contidas no bloco.
 
 ```python
+def get_block(block_number) -> block_data:
+  """
+  @param block_number: Número do bloco ou 'latest' para o bloco mais recente
+  @return: Estrutura em formato dicionário com os dados do bloco.
+  """
 block_data = web3.eth.get_block('latest')
 ```
 
-<img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="80%"/>
-
-Assim é possível identificar novos blocos minerados, ao se perceber que o número do bloco foi incrementado. E então disparar um evento com os dados do bloco.
-
-**get_transaction(tx_hash)**: Retorna um dicionário com os dados da transação referente ao `tx_hash_id` passado como parâmetro.
+**get_transaction(tx_hash)**: Retorna um dicionário com os dados da transação apartir de um ID de transação passado.
 
 ```python
-tx_data = web3.eth.get_transaction('tx_hash_id')
+def get_transaction(tx_hash_id: str) -> transaction_data:
+  """
+  @param tx_hash_id: ID de uma transação, na forma de hash.
+  @return: Estrutura em formato dicionário com os dados da transação.
+  """
+tx_data = web3.eth.get_transaction(tx_hash_id)
 ```
 
-<img src="./img/intro/5_get_latest_block.png" alt="Get latest Block mined" width="80%"/>
+Com o uso de API Keys mais essas 2 funções, é possível capturar dados de blocos e transações da rede Ethereum. Porém para que se otimize o consumo das API Keys e maximize a disponibilidade do sistema é necessário um design de solução voltado para isso.
 
-As 2 funções mencionadas trabalhando em conjunto são suficientes para obter dados de transações recém mineradas. Porém, é necessário que as rotinas que se utilizem delas trabalhem de forma integrada.
+### 3.4. Mecanismo para Captura de Dados
 
-Cada chamada nas funções acima consome 1 requisição de uma API Key. Logo, um mecanismo que otimize o uso dessas chaves, minimizando o número de requisições e maximizando a disponibilidade do sistema é necessário.
+Nessa seção estão descritos os componentes e mecanismos que compõem o sistema de captura de dados.
 
-## 3.4. Mecanismo para Captura de Dados
+Para o uso sistêmico das funções **get_block(block_number)** e **get_transaction(tx_hash_id)**, foram implementados jobs em python, usando a biblioteca `Web3.py`. Esses jobs estão encapsulados em uma imagem docker, no repositório desse projeto em `docker/app_layer/onchain-stream-txs`.
 
-Conforme mencionado, as 2 funções são suficientes para capturar dados em tempo real de uma rede EVM. Porém, eles precisam atuar em conjunto.
+Para atingir o objetivo de captura de dados em tempo real dos blocos e transações, os jobs trabalham em conjunto, de forma assíncrona.
+A arquitetura do sistema é baseada em um padrão de **Pub/Sub** (Publicador/Assinante), onde os dados são publicados em tópicos e consumidos por diferentes jobs. 
 
-1. O método **get_block('latest')** fornece uma lista de tx_hash_id para transações pertencentes àquele bloco.
-2. O método **get_transaction(tx_hash_id)** usa os **tx_hash_id** obtidos do 1º método para capturar os dados de cada transação.
+### 3.4.1. Apache Kafka
 
-Para que essa cooperação mutua ocorra, são necessários alguns componentes para o sistema.
+Nesse trabalho foi utilizado o **Apache Kafka** como sistema de mensageria. O Kafka é uma plataforma de streaming distribuída que permite publicar e consumir mensagens em tópicos. É altamente escalável e tolerante a falhas.
 
-### 3.4.1. Sistema Pub / Sub
+Nesse trabalho, o Kafka nesse trabalho pode ser visualizada ao analizarmos os tópicos publicados e consumidos pelos jobs.
 
-Para a captura dos dados em tempo real, é necessário que 2 jobs cooperem entre si de forma assíncrona. Para alcançar tal finalidade, a inclusão de um componente do tipo  **fila** ou **mensageria do tipo Publisher-Subscriber** se faz necessária.
+<img src="./img/development/3_kafka_topics.png" alt="Kafka Topics" width="80%"/>
 
-Uma fila, como por exemplo o **RabbitMQ**, poderia satisfazer os requisitos de comunicação entre os Jobs de forma assíncrona.
+Os tópicos são:
 
-- O 1º job captura a lista de **tx_hash_id** e publica em uma fila.
-- O 2º job que pode ter réplicas consome essa fila e executa o método **get_transaction(tx_hash_id)** para obter os dados da transação.
+- **mainnet.0.application.logs**: Tópico de logs do sistema, onde são publicadas mensagens de log das aplicações.
+- **mainnet.1.mined_blocks.events**: Tópico onde são publicadas mensagens de eventos de blocos minerados.
+- **mainnet.2.blocks.data**: Tópico onde são publicadas mensagens de dados de blocos, saída da função `get_block(block_number)`.
+- **mainnet.3.block.txs.hash_ids**: Tópico onde são publicadas mensagens de IDs de transações contidas no bloco, saída da função `get_block(block_number)`.
+- **mainnet.4.transactions.data**: Tópico onde são publicadas mensagens de dados de transações, saída da função `get_transaction(tx_hash_id)`.
 
-Porém, caso se deseje utilizar uma plataforma mais robusta, o uso de um sistema de mensageria do tipo Pub/Sub como o **Apache Kafka** é mais adequado. Ele oferece:
+Esses tópicos são utilizados para:
 
-- Comunicação inter processos através de tópicos;
-- Sistema robusto e escalável de forma horizontal;
-- Capacidade de processar e armazenar grandes volumes de dados, atuando como um **backbone de dados**.
+- Comunicação assíncrona entre os jobs python que capturam os dados da rede Ethereum.
+- Origem dos dados para aplicações downstream. São ingestados para o Lakehouse com o uso de Spark Streaming usando a técnica de **Multiplex Ingestion**.
 
-<img src="./img/intro/7_kafka_backbone.png" alt="Kafka Backbone" width="80%"/>
+Além do Kafka, foram usados os seguintes componentes de seu ecosistema:
 
-O sistema **dm_v3_chain_explorer** deve estar preparado para capturar e ingestar dados de redes blockchain do tipo EVM, não estando restrito a Ethereum.
+### Schema Registry
 
-A Ethereum é a rede mais lenta e menos escalável entre as redes EVM. Por isso, o sistema deve estar preparado para capturar dados de redes mais rápidas , o que se traduz em volumes maiores, alta throughput de dados que esse componente deve suportar. Logo, a plataforma de mensageria escolhida deve ser capaz de suportar workloads de bigdata.
+Usado para armazenar os schemas dos dados publicados nos tópicos. Garante a compatibilidade dos dados entre os produtores e consumidores.
+
+Cada tópico tem seu próprio schema, que é registrado no Schema Registry e pode estar em formato Avro, JSON ou Protobuf.
+
+<img src="./img/development/4_schema-registry.png" alt="Schema Avro Example" width="70%"/>
+
 
 Portanto, pelos requisitos apresentados de escalabilidade, resiliência e robustez. O **Apache Kafka** se mostrou o componente ideal para a finalidade apresentada.
 
