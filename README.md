@@ -1,8 +1,6 @@
 # dd_chain_explorer System
 
-**Abstract**: Blockchains públicas são redes Peer-to-peer nas quais circula uma grande quantidade de capital. Essa troca se dá por usuários trocando tokens entre si ou interagindo com contratos inteligentes dos mais diversos tipos. Pela arquitetura da rede, os dados dessas transações são públicos, visto que qualquer nó pode fazer parte da rede, e todo nó tem uma cópia sincronizada da blockchain.
-
-Então uma plataforma de dados, usando essa origem, tem potencial de fornecer valiosos insights.
+**Abstract**: Blockchains públicas são redes Peer-to-peer nas quais circula uma grande quantidade de capital. Essa troca se dá por usuários trocando tokens entre si ou interagindo com contratos inteligentes dos mais diversos tipos. Pela arquitetura da rede, dados dessas transações são públicos. Então uma plataforma de dados, usando essa origem, tem potencial de fornecer valiosos insights.
 
 ## Sumário
 
@@ -88,9 +86,8 @@ Portanto, o acesso a um nó da rede é suficiente para se obter dados da rede, p
 #### 1.3. Tipos de rede blockchain
 As redes blockchain podem ser classificadas em 2 tipos: públicas e privadas.
 
-**Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. **Exemplo**: Bitcoin, Ethereum, Solana, etc.
-
-**Privadas**: Existem restrições de quem pode fazer parte da rede. **Exemplo**: Hyperledger, Corda, etc.
+- **Redes Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. `Exemplo`: Bitcoin, Ethereum, Solana, etc.
+- **Redes Privadas**: Existem restrições de quem pode fazer parte da rede. `Exemplo`: Hyperledger, Corda, etc.
 
 Logo, blockchains pública apresenta as características ideais, pois:
 
@@ -99,11 +96,9 @@ Logo, blockchains pública apresenta as características ideais, pois:
 
 E por consequência, com acesso a um nó da rede, é possível capturar dados de transações e blocos minerados.
 
-#### 1.1. Ethereum Virtual Machine
+#### 1.4. Ethereum Virtual Machine
 
 A Ethereum Virtual Machine é uma máquina virtual distribuída rodando no topo da rede, seja Ethereum ou DREX.
-
-Uma máquina Virtual como a EVM tem o propósito de calcular estados da rede e contratos inteligentes, bem como fornece o framework para o desenvolvimento dos contratos inteligentes na rede.
 
 Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas características de padronização, entre redes que usam a EVM, são relevantes para esse trabalho, dado que compartilham:
 
@@ -113,18 +108,9 @@ Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas c
 
 Por consequência, a forma como os dados são capturados é independente da rede, desde que essa rede use a EVM como máquina virtual, o que torna o método de captura desse trabalho agnóstico a redes EVM.
 
+### 1.5. Transações e contratos inteligentes
 
-### 1.4. Transações e contratos inteligentes
-
-Conforme o objetivo desse trabalho é usar como fonte de dados blocos e transações para fazer analytics de uma rede blockchain, é importante compreender o que são as transações.
-
-
-Em transaçõess 4 campos a seguir são os mais relevantes para esse trabalho:
-
-- **From**: Endereço de origem da transação.
-- **To**: Endereço de destino da transação.
-- **Value**: Quantidade de token nativo transferido na transação.
-- **Input**: Contém o bytecode da função chamada e os parâmetros passados para ela.
+Conforme o objetivo desse trabalho é usar como fonte de dados blocos (headers) e e dados transações para fazer analytics de uma rede blockchain, é importante compreender o que são as transações.
 
 
 #### 1.4.1. Troca de Token Nativo
@@ -148,12 +134,24 @@ Características dos contratos inteligentes:
 - Esses programas são deployados em blockchains por meio de uma transação.
 - Após o deploy, eles ficam disponíveis para serem chamados clientes que podem ser outros contratos inteligentes ou usuários.
 
+Para diferentes tipos de transações os 4 campos a seguir são os mais relevantes para esse trabalho:
 
-Toda transação possui um campo input que contém:
-    • No caso do deploy de um contrato inteligente o bytecode do código do contrato.
-    • No caso da interação com um contrato inteligente já existente, o bytecode da função chamada e seus parâmetros. 
-Mais adiante essas transações poderão ser melhor visualizadas.
+| Campo     | Descrição                                                              |
+|-----------|------------------------------------------------------------------------|
+| **From**  | Endereço de origem da transação.                                       |
+| **To**    | Endereço de destino da transação.                                      |
+| **Value** | Quantidade de token nativo transferido na transação.                   |
+| **Input** | Contém o bytecode da função chamada e os parâmetros passados para ela. |
 
+Isso porque:
+
+- Para transações de troca de token nativo entre endereços, o campo `input` é vazio.
+- Para transações de deploy de contratos inteligentes:
+  - O campo `to` é vazio
+  - O campo `input` contém o bytecode do contrato.
+- Para transações de interação com contratos inteligentes:
+  - O campo `to` contém o endereço do contrato
+  - O campo `input` contém o bytecode da função chamada e os parâmetros passados para ela.
 
 ## 2. Objetivo desse trabalho
 
