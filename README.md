@@ -197,7 +197,7 @@ Alguns exemplos de empresas do tipo são [**infura.io**](https://www.infura.io/)
 
 <img src="./img/intro/4_bnaas_vendor_plans.png" alt="4_bnaas_vendor_plans.png" width="100%"/>
 
-Foi optado pelo **uso de provedores NaaS**. Contudo, devido às limitações de requisições, é preciso um mecanismo para captura de todas as transações em tempo real usando tais provedores. Por se tratar um desafio técnico, reduzir o custo para captura desses dados a zero virtualmente, satisfazendo os objetivos mencionados se mostra um caminho interessante.
+Foi optado pelo **uso de provedores NaaS**. Contudo, devido às limitações de requisições, é preciso um mecanismo para captura de todas as transações em tempo real usando tais provedores. A relação de proporção para captura de transações para Requests de API Keys é de `1 para 1`. Portanto são necessárias algumas API Keys para tanto.
 
 #### 3.1.1. Restrições de API keys
 
@@ -209,8 +209,6 @@ Para o provedor infura as restrições para uma API Key gratuita são:
 Na rede Ethereum, um bloco é minerado em média a cada 8 segundos e contém em média 170 transações, o que resulta em resulta em:
 - 21 transações por segundo - TPS;
 - 1.836.000 transações por dia.
-
-A relação de proporção para captura de transações para Requests de API Keys é de `1 -> 1`. Portanto, sistema de captura, usando o plano gratuito, requer algumas API Keys.
 
 #### 3.1.2. Armazenamento e Consumo de API Keys
 
@@ -253,14 +251,14 @@ tx_data = web3.eth.get_transaction(tx_hash_id)
 
 Com o uso de API Keys mais essas 2 funções, é possível capturar dados de blocos e transações da rede Ethereum. Porém para que se otimize o consumo das API Keys e maximize a disponibilidade do sistema é necessário um design de solução voltado para isso.
 
-### 3.4. Mecanismo para Captura de Dados
+### 3.4. Sistema para Captura de Dados
 
 Nessa seção estão descritos os componentes e mecanismos que compõem o sistema de captura de dados.
 
-Para o uso sistêmico das funções **get_block(block_number)** e **get_transaction(tx_hash_id)**, foram implementados jobs em python, usando a biblioteca `Web3.py`. Esses jobs estão encapsulados em uma imagem docker, no repositório desse projeto em `docker/app_layer/onchain-stream-txs`.
+Para o uso sistêmico das funções `get_block(block_number)` e `get_transaction(tx_hash_id)`, ambos da biblioteca `Web3.py`, foram implementados jobs em python. Esses jobs estão encapsulados em uma imagem docker, no repositório desse projeto em `docker/app_layer/onchain-stream-txs`.
 
-Para atingir o objetivo de captura de dados em tempo real dos blocos e transações, os jobs trabalham em conjunto, de forma assíncrona.
-A arquitetura do sistema é baseada em um padrão de **Pub/Sub** (Publicador/Assinante), onde os dados são publicados em tópicos e consumidos por diferentes jobs. 
+Para atingir o objetivo de captura de dados em tempo real, os jobs trabalham em conjunto, de forma assíncrona.
+A arquitetura do sistema é baseada em um padrão de **Pub/Sub**, onde os dados são publicados em tópicos e consumidos por diferentes jobs. 
 
 ### 3.4.1. Apache Kafka
 
@@ -272,11 +270,11 @@ Nesse trabalho, o Kafka nesse trabalho pode ser visualizada ao analizarmos os t�
 
 Os tópicos são:
 
-- **mainnet.0.application.logs**: Tópico de logs do sistema, onde são publicadas mensagens de log das aplicações.
-- **mainnet.1.mined_blocks.events**: Tópico onde são publicadas mensagens de eventos de blocos minerados.
-- **mainnet.2.blocks.data**: Tópico onde são publicadas mensagens de dados de blocos, saída da função `get_block(block_number)`.
-- **mainnet.3.block.txs.hash_ids**: Tópico onde são publicadas mensagens de IDs de transações contidas no bloco, saída da função `get_block(block_number)`.
-- **mainnet.4.transactions.data**: Tópico onde são publicadas mensagens de dados de transações, saída da função `get_transaction(tx_hash_id)`.
+- **mainnet.0.application.logs**: Tópico para mensagens de log das aplicações.
+- **mainnet.1.mined_blocks.events**: Tópico para mensagens de eventos de blocos minerados.
+- **mainnet.2.blocks.data**: Tópico para mensagens de dados de blocos, output de `get_block(block_number)`.
+- **mainnet.3.block.txs.hash_ids**: Tópico para mensagens de IDs de transações contidas no bloco, saída da função `get_block(block_number)`.
+- **mainnet.4.transactions.data**: Tópico para mensagens de dados de transações, saída da função `get_transaction(tx_hash_id)`.
 
 Esses tópicos são utilizados para:
 
@@ -285,18 +283,30 @@ Esses tópicos são utilizados para:
 
 Além do Kafka, foram usados os seguintes componentes de seu ecosistema:
 
-### Schema Registry
+#### Schema Registry
 
-Usado para armazenar os schemas dos dados publicados nos tópicos. Garante a compatibilidade dos dados entre os produtores e consumidores.
+- Deployado por meio de imagem docker da Confluent em cluster Swarm.
+- Usado para armazenar os schemas dos dados publicados nos tópicos.
+- Garante a compatibilidade dos dados entre os produtores e consumidores.
+- Schema podem ser registrados nos formatos Avro, JSON ou Protobuf.
 
-Cada tópico tem seu próprio schema, que é registrado no Schema Registry e pode estar em formato Avro, JSON ou Protobuf.
+Todos os tópicos mencionados tem schema em formato Avro, definidos em `docker/app_layer/onchain-stream-txs/src/schemas`.
 
 <img src="./img/development/4_schema-registry.png" alt="Schema Avro Example" width="70%"/>
 
+#### Confluent Control Center
 
-Portanto, pelos requisitos apresentados de escalabilidade, resiliência e robustez. O **Apache Kafka** se mostrou o componente ideal para a finalidade apresentada.
+- Deployado por meio de imagem docker da Confluent em cluster Swarm.
+- Interface web para monitoramento do Kafka.
+- Permite visualizar Cluster Kafka, tópicos, Cluster Connect, e mais.
 
-### 3.4.2. Captura dos dados do bloco recém minerados (Mined Blocks Crawler)
+<img src="./img/development/5_confluent_Control_center.png" alt="Confluent Control Center" width="90%"/>
+
+#### 3.4.2. Jobs Python Onchain-Stream-Txs
+
+A seguir estão descritos os jobs python que compõem o sistema de captura de dados.
+
+
 
 O job **mined_blocks_crawler** que encapsula a chamada da função **get_block('latest')**, já mencionada. Ele opera da seguinte forma:
 
