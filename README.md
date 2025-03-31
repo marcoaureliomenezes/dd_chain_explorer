@@ -59,11 +59,11 @@ Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e 
 
 | **Campo**                | **Descrição**                                                          |
 |--------------------------|------------------------------------------------------------------------|
-| `Número do bloco`        | Identificador único do bloco.                                          |
-| `Timestamp`              | Data e hora em que o bloco foi minerado.                               |
-| `Miner`                  | Endereço do minerador que minerou o bloco.                             |
-| `Hash do bloco anterior` | Hash do bloco anterior, que conecta os blocos.                         |
-| `Hash do bloco atual`    | Hash do bloco atual, que conecta os blocos.
+| *Número do bloco*        | Identificador único do bloco                                           |
+| *Timestamp*              | Data e hora em que o bloco foi minerado                                |
+| *Miner*                  | Endereço do minerador que minerou o bloco                              |
+| *Hash do bloco anterior* | Hash do bloco anterior, que conecta os blocos                          |
+| *Hash do bloco atual*    | Hash do bloco atual, que conecta os blocos 
 
 **Lista de transações**: Lista de ids para transações contidas no bloco.
 
