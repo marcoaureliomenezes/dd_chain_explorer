@@ -4,15 +4,14 @@
 
 ## Sumário
 
-- [1. Introdução](#1-introdução)
-  - [1.1. Blockchain como Estrutura de Dados](#11-blockchain-como-estrutura-de-dados)
-  - [1.2. Blockchain como Rede P2P](#12-blockchain-como-rede-p2p)
-  - [1.3. Tipos de Rede Blockchain](#13-tipos-de-rede-blockchain)
-  - [1.4. Transações e Contratos Inteligentes](#14-transações-e-contratos-inteligentes)
-- [2. Objetivos deste trabalho](#2-objetivos-deste-trabalho)
-  - [2.1. Objetivos de negócio](#21-objetivos-de-negócio)
-  - [2.2. Objetivos técnicos](#22-objetivos-técnicos)
-  - [2.3. Observação sobre o tema escolhido](#23-observação-sobre-o-tema-escolhido)
+- [1. Objetivos deste trabalho](#2-objetivos-deste-trabalho)
+  - [1.1. Escopo do trabalho](#11-escopo-do-trabalho)
+  - [1.2. Objetivos específicos](#12-objetivos-específicos)
+- [2. Introdução](#2-introdução)
+  - [2.1. Blockchain como Estrutura de Dados](#21-blockchain-como-estrutura-de-dados)
+  - [2.2. Blockchain como Rede P2P](#22-blockchain-como-rede-p2p)
+  - [2.3. Tipos de Rede Blockchain](#23-tipos-de-rede-blockchain)
+  - [2.4. Transações e Contratos Inteligentes](#24-transações-e-contratos-inteligentes)
 - [3. Explicação sobre o case desenvolvido](#3-explicação-sobre-o-case-desenvolvido)
   - [3.1. Provedores de Node-as-a-Service](#31-provedores-de-node-as-a-service)
   - [3.2. Restrições de API keys](#32-restrições-de-api-keys)
@@ -37,8 +36,28 @@
   - [8.3. Troca do uso de provedores Blockchain Node-as-a-Service](#83-troca-do-uso-de-provedores-blockchain-node-as-a-service)
   - [8.4. Evolução dos serviços de um ambiente local para ambiente produtivo](#84-evolução-dos-serviços-de-um-ambiente-local-para-ambiente-produtivo)
 
+## 1. Objetivo desse trabalho
 
-## 1. Introdução
+**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas compatíveis com a máquina virtual EVM.
+
+### 1.1. Escopo do trabalho
+
+- Captura de dados restrito a redes blockchain públicas do tipo EVM;
+- Uso da rede Ethereum como rede piloto, devido às características mencionadas na introdução (baixo TPS e alto valor de capital alocado);
+- Uso de provedores de Node-as-a-Service para captura de dados;
+- Ingestão dos dados em ambiente analitico do tipo Lakehouse;
+- Aplicação de arquitetura Medalhão para ingestão e enriquecimento dos dados em ambiente analítico.
+
+### 1.2. Objetivos específicos
+
+- Criar um sistema de captura de dados deve ser agnóstico à rede de blockchain, desde que usem a EVM como máquina virtual;
+- Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema;
+- Criar uma plataforma preparada para escalar a captura de dados em redes mais rápidas e escaláveis;
+- Criar mecanismos para gerenciamento do consumo de API Keys dos provedores NaaS entre os Jobs que as usam;
+- Criar mecanismos para observabilidade do sistema como um todo.
+
+
+## 2. Introdução
 
 Por definição uma blockchain é uma rede decentralizada na qual usuários conseguem transacionar entre si, e em muitas redes também com contratos inteligentes, sem a necessidade de uma entidade mediadora.
 
@@ -47,13 +66,13 @@ Para limitar o escopo desse trabalho, a rede blockchain Ethereum é tida como ca
 A tecnologia blockchain é baseada em 2 pilares, a `estrutura de dados` e a `rede Peer-to-Peer`.
 
 
-### 1.1. Blockchain como Estrutura de Dados
+### 2.1. Blockchain como Estrutura de Dados
 
 Uma blockchain, como estrutura de dados, é uma sequência de blocos encadeados, sendo conectados através do uso de um mecanismo de hash, como uso do `hash atual` e `hash do bloco anterior`.
 
 Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e armazena todas as transações realizadas na mesma.
 
-#### 1.1.1. Dados de blocos
+#### 2.1.1. Dados de blocos
 
 **Header**: Dados de cabeçalho de um bloco, tais como:
 
@@ -69,7 +88,7 @@ Essa estrutura de dados é persistida em todos os nós de uma rede blockchain e 
 
 <img src="./img/intro/1_blockchain_data_structure.png" alt="1_blockchain_data_structure.png" width="100%"/>
 
-#### 1.1.2. Frequência de mineração
+#### 2.1.2. Frequência de mineração
 
 Em uma rede novos blocos são minerados contendo `n transações` a cada `X segundos`. Os 2 parâmetros mencionados abaixo influenciam diretamente no volume e velocidade de dados a serem capturados:
 - **Frequência de mineração**: A cada X segundos, 1 novo bloco é minerado.
@@ -77,7 +96,7 @@ Em uma rede novos blocos são minerados contendo `n transações` a cada `X segu
 
 Cada rede tem sua especificação, o que ditará características fundamentais da rede, como o número de transações por segundo (TPS).
 
-### 1.2. Blockchain como Rede P2P
+### 2.2. Blockchain como Rede P2P
 
 Uma rede blockchain é uma rede de topologia Peer-to-Peer onde cada nó da rede possui uma cópia da estrutura de dados de blocos encadeados.
 
@@ -88,7 +107,7 @@ Esses nós podem exercer papel de:
 
 Portanto, o acesso a um nó da rede é suficiente para se obter dados da rede, pois esse nó terá uma cópia sincronizada da blockchain da rede.
 
-### 1.3. Tipos de Rede Blockchain
+### 2.3. Tipos de Rede Blockchain
 As redes blockchain podem ser classificadas em 2 tipos: públicas e privadas.
 
 - **Redes Públicas**: Qualquer nó pode fazer parte da rede, e qualquer pessoa pode criar um nó. `Exemplo`: Bitcoin, Ethereum, Solana, etc.
@@ -101,7 +120,7 @@ Logo, blockchains pública apresenta as características ideais, pois:
 
 E por consequência, com acesso a um nó da rede, é possível capturar dados de transações e blocos minerados.
 
-#### 1.3.1. Ethereum Virtual Machine
+#### 2.3.1. Ethereum Virtual Machine
 
 A Ethereum Virtual Machine é uma máquina virtual distribuída rodando no topo da rede, seja Ethereum ou DREX.
 
@@ -113,12 +132,12 @@ Uma exploração a fundo da EVM foge do escopo desse trabalho. Porém, algumas c
 
 Por consequência, a forma como os dados são capturados é independente da rede, desde que essa rede use a EVM como máquina virtual, o que torna o método de captura desse trabalho agnóstico a redes EVM.
 
-### 1.4. Transações e Contratos Inteligentes
+### 2.4. Transações e Contratos Inteligentes
 
 Conforme o objetivo desse trabalho é usar como fonte de dados blocos (headers) e e dados transações para fazer analytics de uma rede blockchain, é importante compreender o que são as transações.
 
 
-#### 1.4.1. Troca de Token Nativo
+#### 2.4.1. Troca de Token Nativo
 
 A Ethereum, bem como a maioria das blockchains, possui um token nativo, que é criado na mineração de blocos. Esse token nativo, para além da especulação de criptomoedas, tem a função de pagar taxas de transação na rede. Para a Ethereum, esse token nativo é o Ether (ETH).
 
@@ -129,7 +148,7 @@ A Ethereum, bem como a maioria das blockchains, possui um token nativo, que é c
 
 Portanto, ao explorar esse tipo de transação é possível obter insights de como endereços estão trocando tokens nativos.
 
-#### 1.4.2. Deploy e interação com contratos inteligentes
+#### 2.4.2. Deploy e interação com contratos inteligentes
 
 Contratos inteligentes são programas desenvolvidos através de uma linguagem de programação e deployados numa blockchain.
 
@@ -158,25 +177,6 @@ Isso porque:
   - O campo `to` contém o endereço do contrato
   - O campo `input` contém o bytecode da função chamada e os parâmetros passados para ela.
 
-## 2. Objetivo desse trabalho
-
-**Principal objetivo**: Concepção e implementação de plataforma de dados, entitulada `dd_chain_explorer`, com propósito de capturar, ingestar, processar, armazenar e disponibilizar dados de redes blockchain públicas compatíveis com a máquina virtual EVM.
-
-### Escopo do trabalho
-
-- Captura de dados restrito a redes blockchain públicas do tipo EVM;
-- Uso da rede Ethereum como rede piloto, devido às características mencionadas na introdução (baixo TPS e alto valor de capital alocado);
-- Uso de provedores de Node-as-a-Service para captura de dados;
-- Ingestão dos dados em ambiente analitico do tipo Lakehouse;
-- Aplicação de arquitetura Medalhão para ingestão e enriquecimento dos dados em ambiente analítico.
-
-### Objetivos específicos
-
-- Criar um sistema de captura de dados deve ser agnóstico à rede de blockchain, desde que usem a EVM como máquina virtual;
-- Minimizar latência e números de requisições, e maximizar a disponibilidade do sistema;
-- Criar uma plataforma preparada para escalar a captura de dados em redes mais rápidas e escaláveis;
-- Criar mecanismos para gerenciamento do consumo de API Keys dos provedores NaaS entre os Jobs que as usam;
-- Criar mecanismos para observabilidade do sistema como um todo.
 
 ## 3. Explicação sobre o case desenvolvido
 
