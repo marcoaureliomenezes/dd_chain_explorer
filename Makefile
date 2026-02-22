@@ -1,144 +1,139 @@
-current_branch = 1.0.0
+################################################################################
+# dd-chain-explorer — Makefile
+# Atalhos para operações de desenvolvimento e deploy.
+################################################################################
 
-####################################################################################################
-####################################################################################################
-#####################    COMANDOS PARA CONFIGURAÇÃO DO AMBIENTE    #################################
+################################################################################
+# DEV: Infraestrutura local (Kafka + DynamoDB)
+# Arquivo: services/compose/local_services.yml
+################################################################################
 
-start_cluster_swarm:
-	sh scripts/1_start_cluster_swarm.sh
+deploy_dev_infra:
+	@docker network create vpc_dm 2>/dev/null || true
+	@docker compose -f services/local_services.yml up -d
 
-start_prod_cluster:
-	sh scripts/1_start_cluster_swarm.sh
+# Cria o alias local/spark:3.5 a partir da imagem Spark pre-buildada localmente.
+# Necessário antes de subir os serviços Spark (spark-master, spark-worker-1, spark-app-*).
+# Execute uma vez por máquina: make setup_spark
+setup_spark:
+	@docker tag services-spark-master:latest local/spark:3.5 && echo "local/spark:3.5 pronto."
+stop_dev_infra:
+	@docker compose -f services/local_services.yml down
 
-####################################################################################################
-#################################    BUILD DE IMAGENS DOCKER    ####################################
-####################################################################################################
-
-build_customized:
-	docker build -t marcoaureliomenezes/spark:$(current_branch) ./docker/customized/spark
-	docker build -t marcoaureliomenezes/rosemberg:$(current_branch) ./docker/customized/jupyterlab
-
-build_prometheus:
-	# sh scripts/cp_prometheus_conf.sh
-	docker build -t marcoaureliomenezes/prometheus:$(current_branch) ./docker/customized/prometheus
-
-build_airflow:
-	sh scripts/cp_airflow_dags.sh
-	docker build -t marcoaureliomenezes/airflow:$(current_branch) ./docker/customized/airflow
-
-build_apps:
-	# docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/app_layer/onchain-batch-txs
-	# docker build -t marcoaureliomenezes/onchain-stream-txs:$(current_branch) ./docker/app_layer/onchain-stream-txs
-	docker build -t marcoaureliomenezes/spark-batch-jobs:$(current_branch) ./docker/app_layer/spark-batch-jobs
-	# docker build -t marcoaureliomenezes/spark-streaming-jobs:$(current_branch) ./docker/app_layer/spark-streaming-jobs
-
-####################################################################################################
-####################################################################################################
-############################	   PUSH DOCKER IMAGES TO DOCKER-HUB    ###############################
-
-publish_customized:
-	docker push marcoaureliomenezes/spark:$(current_branch)
-	docker push marcoaureliomenezes/rosemberg:$(current_branch)
-	docker push marcoaureliomenezes/prometheus:$(current_branch)
-	docker push marcoaureliomenezes/airflow:$(current_branch)
+watch_dev_infra:
+	watch docker compose -f services/local_services.yml ps
 
 
-publish_apps:
-	# docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
-	# docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
-	docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
-	# docker push marcoaureliomenezes/spark-streaming-jobs:$(current_branch)
+################################################################################
+# DEV: Aplicações Python de captura on-chain
+# Arquivo: services/app_services.yml
+################################################################################
 
-####################################################################################################
-####################################################################################################
-###############################    DEPLOY COMPOSE SERVICES    ######################################
+deploy_dev_stream:
+	@docker compose -f services/app_services.yml up -d --build
 
-deploy_dev_all:
-	# docker compose -f services/compose/python_streaming_apps_layer.yml up -d --build
-	docker compose -f services/compose/airflow_orchestration_layer.yml up -d --build
-	# docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
+stop_dev_stream:
+	@docker compose -f services/app_services.yml down
 
-deploy_test_batch:
-	docker compose -f services/compose/batch_apps_layer.yml up -d --build
+watch_dev_stream:
+	watch docker compose -f services/app_services.yml ps
 
-####################################################################################################
-################################    STOP COMPOSE SERVICES    #######################################
+################################################################################
+# DEV: Jobs Batch Python (kafka maintenance, test api keys)
+# Arquivo: services/batch_services.yml
+################################################################################
 
-stop_test_batch:
-	docker compose -f services/compose/batch_apps_layer.yml down
-
-stop_dev_all:
-	docker compose -f services/compose/python_streaming_apps_layer.yml down
-	# docker compose -f services/compose/airflow_orchestration_layer.yml down
-	# docker compose -f services/compose/spark_streaming_apps_layer.yml down
+deploy_dev_batch:
+	@docker compose -f services/batch_services.yml up --build
 
 stop_dev_batch:
-	docker compose -f services/compose/batch_apps_layer.yml down
+	@docker compose -f services/batch_services.yml down
 
-watch_dev_compose:
-	watch docker compose -f services/compose/python_streaming_apps_layer.yml ps
+# Deploy para DEV (Databricks Free Edition)
+dabs_deploy_dev:
+	cd dabs && databricks bundle deploy --target dev
 
-####################################################################################################
-####################################################################################################
-#################################    DEPLOY SWARM STACKS    ########################################
+# Deploy para PROD (normalmente feito via CI/CD)
+dabs_deploy_prod:
+	cd dabs && databricks bundle deploy --target prod
 
-deploy_prod_all:
-	docker stack deploy -c services/swarm/observability_layer.yml layer_observability
-	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
-	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
-	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
-	# docker stack deploy -c services/swarm/orchestration_layer.yml layer_orchestration
+# Executar um workflow em DEV
+# Uso: make dabs_run_dev JOB=dm-ddl-setup
+# Jobs disponíveis: dm-ddl-setup, dm-periodic-processing, dm-iceberg-maintenance, dm-teardown
+dabs_run_dev:
+	cd dabs && databricks bundle run --target dev $(JOB)
 
-deploy_prod_observability:
-	docker stack deploy -c services/swarm/observability_layer.yml layer_observability
+# Ver status dos recursos deployados em DEV
+dabs_status_dev:
+	cd dabs && databricks bundle summary --target dev
 
-deploy_prod_lakehouse:
-	docker stack deploy -c services/swarm/lakehouse_layer.yml layer_lakehouse
+################################################################################
+# Terraform — atalhos para módulos individuais
+# Diretório: terraform/
+################################################################################
 
-deploy_prod_fast:
-	docker stack deploy -c services/swarm/fast_layer.yml layer_fast
+tf_init_all:
+	@for dir in terraform/0_remote_state terraform/1_vpc terraform/2_iam terraform/3_msk terraform/4_s3 terraform/5_dynamodb terraform/6_ecs terraform/7_databricks; do \
+	echo "=== terraform init: $$dir ==="; \
+	cd $$dir && terraform init -input=false && cd ../..; \
+done
 
-deploy_prod_processing:
-	docker stack deploy -c services/swarm/processing_layer.yml layer_processing
+tf_plan_vpc:
+	cd terraform/1_vpc && terraform plan
 
+tf_apply_vpc:
+	cd terraform/1_vpc && terraform apply
 
-deploy_prod_spark_apps:
-	docker stack deploy -c services/swarm/spark_apps_layer.yml layer_spark_apps
-####################################################################################################
-##################################    STOP SWARM STACKS    #########################################
+tf_plan_iam:
+	cd terraform/2_iam && terraform plan
 
+tf_apply_iam:
+	cd terraform/2_iam && terraform apply
 
-stop_prod_all:
-	docker stack rm layer_observability
-	docker stack rm layer_processing
-	docker stack rm layer_fast
-	docker stack rm layer_lakehouse
-	docker stack rm layer_app
-	docker stack rm layer_orchestration
+tf_plan_msk:
+	cd terraform/3_msk && terraform plan
 
-stop_prod_observability:
-	docker stack rm layer_observability
+tf_apply_msk:
+	cd terraform/3_msk && terraform apply
 
-stop_prod_lakehouse:
-	docker stack rm layer_lakehouse
+tf_plan_s3:
+	cd terraform/4_s3 && terraform plan
 
-stop_prod_spark_apps:
-	docker stack rm layer_spark_apps
+tf_apply_s3:
+	cd terraform/4_s3 && terraform apply
 
-stop_prod_fast:
-	docker stack rm layer_fast
+tf_plan_dynamodb:
+	cd terraform/5_dynamodb && terraform plan
 
-stop_prod_processing:
-	docker stack rm layer_processing
+tf_apply_dynamodb:
+	cd terraform/5_dynamodb && terraform apply
 
-stop_prod_app:
-	docker stack rm layer_app
+tf_plan_ecs:
+	cd terraform/6_ecs && terraform plan
 
-####################################################################################################
-###############################    WATCH SWARM SERVICES    #########################################
+tf_apply_ecs:
+	cd terraform/6_ecs && terraform apply
 
-watch_prod_services:
-	watch docker service ls
+tf_plan_databricks:
+	cd terraform/7_databricks && terraform plan
 
-open_services_in_browser:
-	@python scripts/lazy_helper.py
+tf_apply_databricks:
+	cd terraform/7_databricks && terraform apply
+
+################################################################################
+# Build e push de imagens Docker (uso manual; CI/CD faz isso automaticamente)
+################################################################################
+
+current_branch = latest
+
+build_stream:
+	docker build -t marcoaureliomenezes/onchain-stream-txs:$(current_branch) ./docker/onchain-stream-txs
+
+build_batch:
+	docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/onchain-batch-txs
+
+push_stream:
+	docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
+
+push_batch:
+	docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)

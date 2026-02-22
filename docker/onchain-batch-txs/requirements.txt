@@ -1,0 +1,5 @@
+pandas
+dm-33-utils==0.0.5
+boto3
+web3
+requests

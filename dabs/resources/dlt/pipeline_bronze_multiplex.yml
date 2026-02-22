@@ -1,0 +1,31 @@
+resources:
+  pipelines:
+    pipeline_bronze_multiplex:
+      name: "[${bundle.target}] dm-bronze-multiplex"
+      description: >
+        DLT pipeline que consome todos os tópicos Kafka (logs, blocos, transações)
+        e grava os dados crus na camada Bronze (b_fast.kafka_topics_multiplexed).
+        Equivalente ao spark-streaming-jobs/2_job_bronze_multiplex.py no AS-IS.
+
+      catalog: ${var.catalog}
+      target: b_fast
+
+      libraries:
+        - notebook:
+            path: ../src/streaming/2_pipeline_bronze_multiplex.py
+
+      configuration:
+        kafka.bootstrap.servers: ${var.kafka_bootstrap_servers}
+        kafka.msk.iam.auth: "true"
+        spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+        spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+
+      clusters:
+        - label: default
+          num_workers: 1
+          spark_version: "15.4.x-scala2.12"
+          node_type_id: "i3.xlarge"
+
+      development: ${bundle.target == 'dev'}
+      continuous: true
+      channel: CURRENT

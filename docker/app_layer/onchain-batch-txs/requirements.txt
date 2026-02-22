@@ -1,2 +1,0 @@
-pandas
-dm-33-utils==0.0.5

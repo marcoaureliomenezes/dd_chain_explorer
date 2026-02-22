@@ -1,0 +1,97 @@
+resources:
+  pipelines:
+    pipeline_silver_apps_logs:
+      name: "[${bundle.target}] dm-silver-apps-logs"
+      description: >
+        DLT pipeline que consome b_fast.kafka_topics_multiplexed (logs)
+        e grava na camada Silver (s_logs.apps_logs_fast).
+        Equivalente ao spark-streaming-jobs/3_job_silver_apps_logs.py no AS-IS.
+
+      catalog: ${var.catalog}
+      target: s_logs
+
+      libraries:
+        - notebook:
+            path: ../src/streaming/3_pipeline_silver_apps_logs.py
+
+      configuration:
+        spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+
+      clusters:
+        - label: default
+          num_workers: 1
+          spark_version: "15.4.x-scala2.12"
+          node_type_id: "i3.xlarge"
+
+      development: ${bundle.target == 'dev'}
+      continuous: true
+      channel: CURRENT
+
+    pipeline_silver_blocks_events:
+      name: "[${bundle.target}] dm-silver-blocks-events"
+      description: >
+        DLT pipeline para Silver de eventos de blocos minerados.
+        Equivalente ao spark-streaming-jobs/4_job_silver_blocks_events.py no AS-IS.
+
+      catalog: ${var.catalog}
+      target: s_apps
+
+      libraries:
+        - notebook:
+            path: ../src/streaming/4_pipeline_silver_blocks_events.py
+
+      clusters:
+        - label: default
+          num_workers: 1
+          spark_version: "15.4.x-scala2.12"
+          node_type_id: "i3.xlarge"
+
+      development: ${bundle.target == 'dev'}
+      continuous: true
+      channel: CURRENT
+
+    pipeline_silver_blocks:
+      name: "[${bundle.target}] dm-silver-blocks"
+      description: >
+        DLT pipeline para Silver de dados completos dos blocos Ethereum.
+        Equivalente ao spark-streaming-jobs/5_job_silver_blocks.py no AS-IS.
+
+      catalog: ${var.catalog}
+      target: s_apps
+
+      libraries:
+        - notebook:
+            path: ../src/streaming/5_pipeline_silver_blocks.py
+
+      clusters:
+        - label: default
+          num_workers: 1
+          spark_version: "15.4.x-scala2.12"
+          node_type_id: "i3.xlarge"
+
+      development: ${bundle.target == 'dev'}
+      continuous: true
+      channel: CURRENT
+
+    pipeline_silver_transactions:
+      name: "[${bundle.target}] dm-silver-transactions"
+      description: >
+        DLT pipeline para Silver de transações Ethereum completas.
+        Equivalente ao spark-streaming-jobs/6_job_silver_transactions.py no AS-IS.
+
+      catalog: ${var.catalog}
+      target: s_apps
+
+      libraries:
+        - notebook:
+            path: ../src/streaming/6_pipeline_silver_transactions.py
+
+      clusters:
+        - label: default
+          num_workers: 2
+          spark_version: "15.4.x-scala2.12"
+          node_type_id: "i3.xlarge"
+
+      development: ${bundle.target == 'dev'}
+      continuous: true
+      channel: CURRENT

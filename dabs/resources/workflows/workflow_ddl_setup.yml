@@ -1,0 +1,64 @@
+resources:
+  jobs:
+    workflow_ddl_setup:
+      name: "[${bundle.target}] dm-ddl-setup"
+      description: >
+        Workflow de setup inicial do ambiente Databricks.
+        Cria os namespaces, tabelas Delta e views Gold no Unity Catalog.
+        Equivalente aos jobs DDL do AS-IS (spark-batch-jobs/ddl_iceberg_tables).
+
+      tasks:
+        - task_key: create_bronze_tables
+          description: "Cria tabelas Bronze (b_fast, bronze)"
+          notebook_task:
+            notebook_path: ../src/batch/ddl/1_create_bronze_tables.py
+            source: WORKSPACE
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+
+        - task_key: create_silver_apps_tables
+          description: "Cria tabelas Silver (s_apps)"
+          depends_on:
+            - task_key: create_bronze_tables
+          notebook_task:
+            notebook_path: ../src/batch/ddl/2_create_silver_apps_tables.py
+            source: WORKSPACE
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+
+        - task_key: create_silver_logs_table
+          description: "Cria tabela Silver logs (s_logs)"
+          depends_on:
+            - task_key: create_bronze_tables
+          notebook_task:
+            notebook_path: ../src/batch/ddl/3_create_silver_logs_table.py
+            source: WORKSPACE
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+
+        - task_key: create_gold_views
+          description: "Cria views Gold (gold.*)"
+          depends_on:
+            - task_key: create_silver_apps_tables
+            - task_key: create_silver_logs_table
+          notebook_task:
+            notebook_path: ../src/batch/ddl/4_create_gold_views.py
+            source: WORKSPACE
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"
+            node_type_id: "i3.xlarge"
+            num_workers: 1
+
+      email_notifications:
+        on_failure:
+          - marco@example.com
+
+      tags:
+        layer: ddl
+        project: dd-chain-explorer

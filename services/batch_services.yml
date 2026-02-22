@@ -1,0 +1,40 @@
+x-conf-dev-onchain-batch-txs: &conf_dev_onchain_batch_txs
+  restart: "no"
+  env_file:
+    - ./conf/local.kafka.conf
+  networks:
+    - vpc_dm
+  build: ../docker/onchain-batch-txs
+  volumes:
+    - ../docker/onchain-batch-txs/src:/app
+    - ~/.aws:/root/.aws:ro
+
+services:
+
+  # batch-job-kafka-create-topics:
+  #   <<: *conf_dev_onchain_batch_txs
+  #   container_name: batch-job-kafka-create-topics
+  #   entrypoint: >-
+  #     bash -c "cd /app/kafka_maintenance && python 0_create_topics.py conf/topics_dev.ini"
+
+
+  # batch-job-kafka-delete-topics:
+  #   <<: *conf_dev_onchain_batch_txs
+  #   container_name: batch-job-kafka-delete-topics
+  #   depends_on:
+  #     batch-job-kafka-create-topics:
+  #       condition: service_completed_successfully
+  #   entrypoint: >-
+  #     bash -c "cd /app/kafka_maintenance && python 1_delete_topics.py conf/topics_dev.ini --dry-run false"
+
+
+  batch-job-test-api-keys:
+    <<: *conf_dev_onchain_batch_txs
+    container_name: batch-job-test-api-keys
+    entrypoint: "python -m chain_utilities.dm_test_api_keys"
+
+
+
+networks:
+  vpc_dm:
+    external: true

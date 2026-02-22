@@ -1,0 +1,70 @@
+bundle:
+  name: dd-chain-explorer
+
+include:
+  - resources/dlt/*.yml
+  - resources/workflows/*.yml
+
+variables:
+  dev_workspace_host:
+    description: "Databricks workspace URL for DEV (Free Edition)"
+    default: "https://your-dev-workspace.azuredatabricks.net"
+
+  prod_workspace_host:
+    description: "Databricks workspace URL for PROD (AWS workspace)"
+
+  catalog:
+    description: "Unity Catalog name"
+    default: "dd_chain_explorer"
+
+  raw_s3_bucket:
+    description: "S3 bucket for raw ingestion data"
+    default: "dm-chain-explorer-raw-data"
+
+  lakehouse_s3_bucket:
+    description: "S3 bucket for lakehouse (Bronze/Silver/Gold)"
+    default: "dm-chain-explorer-lakehouse"
+
+  kafka_bootstrap_servers:
+    description: "Kafka MSK bootstrap brokers (IAM auth)"
+
+  dynamodb_semaphore_table:
+    description: "DynamoDB table for API key semaphore"
+    default: "dm-api-key-semaphore"
+
+  dynamodb_consumption_table:
+    description: "DynamoDB table for API key consumption"
+    default: "dm-api-key-consumption"
+
+  dynamodb_popular_contracts_table:
+    description: "DynamoDB table for popular contracts cache"
+    default: "dm-popular-contracts"
+
+targets:
+  # ----------------------------------------------------------------
+  # DEV: Databricks Free Edition
+  # Use `databricks bundle deploy --target dev` to deploy
+  # ----------------------------------------------------------------
+  dev:
+    mode: development
+    workspace:
+      host: ${var.dev_workspace_host}
+      root_path: "/Workspace/Users/dev/.bundle/${bundle.name}/dev"
+    variables:
+      catalog: "dd_chain_explorer_dev"
+      kafka_bootstrap_servers: "localhost:9092"  # local Kafka in docker-compose
+      dynamodb_semaphore_table: "dm-api-key-semaphore"
+      dynamodb_consumption_table: "dm-api-key-consumption"
+      dynamodb_popular_contracts_table: "dm-popular-contracts"
+
+  # ----------------------------------------------------------------
+  # PROD: Databricks on AWS (created via terraform/7_databricks)
+  # Deploy is triggered by CI/CD pipeline on merge to main
+  # ----------------------------------------------------------------
+  prod:
+    mode: production
+    workspace:
+      host: ${var.prod_workspace_host}
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"
+    variables:
+      catalog: "dd_chain_explorer"
