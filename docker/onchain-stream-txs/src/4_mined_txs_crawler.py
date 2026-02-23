@@ -7,6 +7,7 @@ from configparser import ConfigParser
 from logging import Logger
 from typing import Any, Dict
 
+from requests import HTTPError
 from utils.dm_redis import DMRedis
 from utils.web3_utils import Web3Handler
 from utils.schema_registry_utils import get_schema
@@ -38,17 +39,50 @@ class RawTransactionsProcessor(ChainExtractor):
     self.producer_txs_data = sink_properties['producer_txs_data']
     self.topic_txs_data = sink_properties['topic_txs_data']
     return self
+
+  def _rotate_api_key(self, old_api_key: str) -> str:
+    """Libera a key atual, elege uma nova e reconecta o Web3. Retorna a nova key."""
+    self.api_keys_manager.release_api_key_from_semaphore(old_api_key)
+    new_api_key = self.api_keys_manager.elect_new_api_key()
+    if not new_api_key:
+      raise RuntimeError("Nenhuma API key Infura disponivel para rotacao.")
+    self.web3.get_node_connection(new_api_key, 'infura')
+    self.api_keys_manager.check_api_key_request(new_api_key)
+    return new_api_key
+
+  def _fetch_tx_with_rotation(self, tx_hash: str, actual_api_key: str):
+    """Busca dados de transacao com retry automatico em caso de 429 (rate limit).
+
+    Tenta cada key disponivel antes de desistir. Retorna (tx_data, actual_api_key).
+    """
+    max_retries = len(self.api_keys_manager.api_keys)
+    for attempt in range(max_retries):
+      try:
+        tx_data = self.web3.extract_tx_data(tx_hash)
+        return tx_data, actual_api_key
+      except HTTPError as err:
+        status = err.response.status_code if err.response is not None else None
+        if status == 429:
+          self.logger.warning(f"Rate limit (429) na key {actual_api_key}, tentativa {attempt + 1}/{max_retries}. Rotacionando.")
+          actual_api_key = self._rotate_api_key(actual_api_key)
+        else:
+          self.logger.error(f"HTTPError inesperado buscando tx {tx_hash}: {err}")
+          return None, actual_api_key
+    self.logger.error(f"Todas as API keys rate-limited. Descartando tx {tx_hash}.")
+    return None, actual_api_key
   
 
   def run(self, callback: Any) -> None:
-    self.api_keys_manager.free_api_keys()
+    # Limpa TODO o semáforo na inicialização para remover entradas obsoletas
+    # (ex: formato antigo de chave, réplicas mortas sem TTL expirado).
+    self.api_keys_manager.free_api_keys(free_timeout=0)
     actual_api_key = self.api_keys_manager.elect_new_api_key()
     self.web3.get_node_connection(actual_api_key, 'infura')
     self.api_keys_manager.check_api_key_request(actual_api_key)
     counter = 1
     self.txs_threshold = 100
     for msg in self.consuming_topic(self.consumer_txs_hash_ids):
-      raw_transaction_data = self.web3.extract_tx_data(msg['value']['tx_hash'])
+      raw_transaction_data, actual_api_key = self._fetch_tx_with_rotation(msg['value']['tx_hash'], actual_api_key)
       self.api_keys_manager.check_api_key_request(actual_api_key)
       if not raw_transaction_data: continue
       cleaned_transaction_data = self.web3.parse_transaction_data(raw_transaction_data)

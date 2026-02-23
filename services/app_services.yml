@@ -123,6 +123,37 @@ services:
       EXEC_MEMORY: 1g
       TOTAL_EXEC_CORES: 1
 
+  # --------------------------------------------------------------------------
+  # Spark job: Kafka → S3 multiplex ingestion
+  # Lê 5 tópicos Kafka e escreve no S3 como Parquet particionado por topic_name.
+  # Os dados ficam prontos para leitura pelo Databricks Free Edition (DLT).
+  #
+  # Pré-requisitos:
+  #   1. Bucket S3 criado: make dev_tf_apply
+  #   2. Credenciais em services/conf/dev.s3.conf (ver dev.s3.conf.example)
+  #   3. Kafka + dados fluindo: make deploy_dev_infra && make deploy_dev_stream
+  #
+  # Subir isoladamente: docker compose -f services/app_services.yml up -d spark-app-kafka-s3
+  # --------------------------------------------------------------------------
+  spark-app-kafka-s3:
+    <<: *conf_dev_spark_stream_txs
+    image: local/spark-stream-txs:latest
+    container_name: spark-app-kafka-s3
+    user: root
+    entrypoint: >-
+      bash -c "sh /app/entrypoint.sh /app/pyspark/2_kafka_to_s3_multiplex.py"
+    environment:
+      SPARK_MASTER: spark://spark-master:7077
+      S3_BUCKET: dm-chain-explorer-dev-ingestion
+      AWS_REGION: sa-east-1
+      CONSUMER_GROUP: cg_kafka_s3_multiplex
+      STARTING_OFFSETS: earliest
+      MAX_OFFSETS_PER_TRIGGER: 50000
+      TRIGGER_TIME: "60 seconds"
+      CHECKPOINT_PATH: /tmp/checkpoints/kafka_s3_multiplex
+      EXEC_MEMORY: 1g
+      TOTAL_EXEC_CORES: 1
+
 
 networks:
   vpc_dm:

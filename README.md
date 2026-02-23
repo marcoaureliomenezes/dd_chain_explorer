@@ -96,8 +96,11 @@ dd_chain_explorer/
 │   ├── python_streaming_apps_layer.yml  # Apps Python em DEV
 │   └── conf/                    # Variáveis de ambiente DEV
 │
-├── terraform/                   # 7 módulos: S3 state → VPC → IAM → MSK →
-│   └── [0-7]_*/                 #             S3 → DynamoDB → ECS → Databricks
+├── terraform_prd/               # Infra PRD: 9 módulos (S3 state → VPC → IAM → MSK → S3 → ElastiCache → ECS → Databricks → Glue)
+│   └── [0-9]_*/                 #   Destruir tudo: make prod_destroy_infra
+│
+├── terraform_dev/               # Infra DEV: Databricks Free Edition
+│   └── *.tf                     #   Criar: make dev_tf_apply | Destruir: make dev_tf_destroy
 │
 ├── docs/to-be/                  # Documentação técnica completa ← ver abaixo
 └── Makefile                     # Atalhos para todas as operações
@@ -154,7 +157,7 @@ O deploy em PROD é automatizado via **GitHub Actions** com aprovação manual o
 
 | Workflow | Trigger | O que faz |
 |----------|---------|-----------|
-| `deploy_infrastructure.yml` | Push em `terraform/**` | `terraform plan` + `terraform apply` por módulo |
+| `deploy_infrastructure.yml` | Push em `terraform_prd/**` | `terraform plan` + `terraform apply` por módulo |
 | `deploy_databricks.yml` | Push em `dabs/**` | `databricks bundle validate` + `bundle deploy --target prod` |
 | `deploy_apps.yml` | Push em `docker/**` | Build das imagens → push DockerHub → update ECS task definitions |
 

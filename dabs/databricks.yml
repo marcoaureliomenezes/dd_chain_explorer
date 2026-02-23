@@ -8,10 +8,11 @@ include:
 variables:
   dev_workspace_host:
     description: "Databricks workspace URL for DEV (Free Edition)"
-    default: "https://your-dev-workspace.azuredatabricks.net"
+    default: "https://dbc-409f1007-5779.cloud.databricks.com"
 
   prod_workspace_host:
     description: "Databricks workspace URL for PROD (AWS workspace)"
+    default: ""
 
   catalog:
     description: "Unity Catalog name"
@@ -24,6 +25,10 @@ variables:
   lakehouse_s3_bucket:
     description: "S3 bucket for lakehouse (Bronze/Silver/Gold)"
     default: "dm-chain-explorer-lakehouse"
+
+  dev_ingestion_s3_bucket:
+    description: "S3 bucket for DEV ingestion (Kafka → Parquet → Databricks Free Edition)"
+    default: "dm-chain-explorer-dev-ingestion"
 
   kafka_bootstrap_servers:
     description: "Kafka MSK bootstrap brokers (IAM auth)"
@@ -40,6 +45,22 @@ variables:
     description: "DynamoDB table for popular contracts cache"
     default: "dm-popular-contracts"
 
+  source_type:
+    description: "DLT bronze source: 'kafka' (prod) or 's3' (dev)"
+    default: "kafka"
+
+  dlt_num_workers:
+    description: "Number of DLT workers (0 = single-node for DEV)"
+    default: 1
+
+  dlt_development:
+    description: "DLT development mode flag (true for dev, false for prod)"
+    default: false
+
+  dlt_continuous:
+    description: "DLT continuous mode flag (true for prod, false for dev)"
+    default: false
+
 targets:
   # ----------------------------------------------------------------
   # DEV: Databricks Free Edition
@@ -48,14 +69,19 @@ targets:
   dev:
     mode: development
     workspace:
-      host: ${var.dev_workspace_host}
-      root_path: "/Workspace/Users/dev/.bundle/${bundle.name}/dev"
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
     variables:
-      catalog: "dd_chain_explorer_dev"
+      catalog: "dev"
       kafka_bootstrap_servers: "localhost:9092"  # local Kafka in docker-compose
+      dev_ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
       dynamodb_semaphore_table: "dm-api-key-semaphore"
       dynamodb_consumption_table: "dm-api-key-consumption"
       dynamodb_popular_contracts_table: "dm-popular-contracts"
+      source_type: "s3"
+      dlt_num_workers: 0
+      dlt_development: true
+      dlt_continuous: false
 
   # ----------------------------------------------------------------
   # PROD: Databricks on AWS (created via terraform/7_databricks)
@@ -68,3 +94,7 @@ targets:
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "dd_chain_explorer"
+      source_type: "kafka"
+      dlt_num_workers: 1
+      dlt_development: false
+      dlt_continuous: true

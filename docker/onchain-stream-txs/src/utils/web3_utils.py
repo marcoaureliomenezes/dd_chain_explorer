@@ -62,7 +62,10 @@ class Web3Handler:
   def extract_tx_data(self, tx_id: str) -> Dict:
     try: tx_data = self.web3.eth.get_transaction(tx_id)
     except TransactionNotFound:
-      self.logger.error(f"Transaction not found: {tx_id}") ; return
+      self.logger.error(f"Transaction not found: {tx_id}") ; return None
+    except HTTPError as err:
+      self.logger.error(f"API_request;{self.api_key_name};HTTPError:{str(err)}")
+      raise   # propaga para o caller tratar rotacao de key (ex: 429 rate limit)
     self.logger.info(f"API_request;{self.api_key_name}")
     return tx_data
   

@@ -52,13 +52,19 @@ class APIKeysManager:
                 self.logger.info(f"API KEY FREE: {api_key}")
 
     def get_keys_sorted_by_consumption(self) -> List[str]:
-        """Retorna api_keys da menos para a mais utilizada, priorizando as sem histórico."""
+        """Retorna api_keys da menos para a mais utilizada, priorizando as sem histórico.
+
+        Filtra apenas chaves presentes em self.api_keys, ignorando entradas obsoletas
+        no Redis com formato de nome antigo.
+        """
         consumed_keys = self.redis_counter.keys()
         data = [{"name": k, **self.redis_counter.hgetall(k)} for k in consumed_keys]
-        infura_data = [(x["name"], int(x.get("num_req_1d", 0)), x.get("end", ""))
-                       for x in data if "infura" in x["name"]]
-        infura_sorted = sorted(infura_data, key=lambda x: (x[2], x[1]))
-        known_keys = [k[0] for k in infura_sorted]
+        known_data = [
+            (x["name"], int(x.get("num_req_1d", 0)), x.get("end", ""))
+            for x in data if x["name"] in self.api_keys
+        ]
+        known_sorted = sorted(known_data, key=lambda x: (x[2], x[1]))
+        known_keys = [k[0] for k in known_sorted]
         missing = [k for k in self.api_keys if k not in known_keys]
         return missing + known_keys
 

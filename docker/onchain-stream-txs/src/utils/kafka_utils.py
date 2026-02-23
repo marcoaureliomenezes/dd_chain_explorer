@@ -3,18 +3,37 @@ from confluent_kafka.schema_registry.avro import AvroDeserializer, AvroSerialize
 from confluent_kafka.serialization import StringSerializer, StringDeserializer
 from confluent_kafka import DeserializingConsumer, SerializingProducer
 
+import os
+
+# In prod (APP_ENV=prod) the Schema Registry URL points to the Confluent SR ECS
+# service discovered via AWS Cloud Map DNS. In dev it defaults to the local
+# docker-compose service.  The value is injected via the SCHEMA_REGISTRY_URL
+# env var in both environments.
+_SR_URL = os.getenv("SCHEMA_REGISTRY_URL", "http://schema-registry:8081")
+
 
 class KafkaHandler:
 
   def __init__(self, logger, sc_url=None):
     self.logger = logger
-    self.sc_client = SchemaRegistryClient({'url': sc_url})
+    effective_url = sc_url if sc_url else _SR_URL
+    self.sc_client = SchemaRegistryClient({'url': effective_url})
 
   def create_avro_producer(self, producer_configs, avro_schema) -> SerializingProducer:
-    avro_serializer = AvroSerializer(self.sc_client, avro_schema, lambda msg, ctx: dict(msg))
+    avro_serializer = AvroSerializer(
+      self.sc_client,
+      avro_schema,
+      lambda msg, ctx: dict(msg),
+      # auto.register.schemas=True (default): on first produce the schema fetched
+      # from AWS Glue will be registered in the Confluent SR and the ID cached.
+    )
     producer_configs['key.serializer'] = StringSerializer('utf_8')
     producer_configs['value.serializer'] = avro_serializer
-    return SerializingProducer(producer_configs)
+    producer = SerializingProducer(producer_configs)
+    # Pre-warm the broker metadata so the first produce() doesn't fail with
+    # _UNKNOWN_TOPIC before librdkafka's background metadata fetch completes.
+    producer.list_topics(timeout=15)
+    return producer
   
 
   def create_avro_consumer(self, consumer_configs, avro_schema) -> DeserializingConsumer:

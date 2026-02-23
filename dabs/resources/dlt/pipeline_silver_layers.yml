@@ -12,18 +12,11 @@ resources:
 
       libraries:
         - notebook:
-            path: ../src/streaming/3_pipeline_silver_apps_logs.py
+            path: ../../src/streaming/3_pipeline_silver_apps_logs.py
 
-      configuration:
-        spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
+      serverless: true
 
-      clusters:
-        - label: default
-          num_workers: 1
-          spark_version: "15.4.x-scala2.12"
-          node_type_id: "i3.xlarge"
-
-      development: ${bundle.target == 'dev'}
+      development: ${var.dlt_development}
       continuous: true
       channel: CURRENT
 
@@ -38,15 +31,11 @@ resources:
 
       libraries:
         - notebook:
-            path: ../src/streaming/4_pipeline_silver_blocks_events.py
+            path: ../../src/streaming/4_pipeline_silver_blocks_events.py
 
-      clusters:
-        - label: default
-          num_workers: 1
-          spark_version: "15.4.x-scala2.12"
-          node_type_id: "i3.xlarge"
+      serverless: true
 
-      development: ${bundle.target == 'dev'}
+      development: ${var.dlt_development}
       continuous: true
       channel: CURRENT
 
@@ -61,15 +50,11 @@ resources:
 
       libraries:
         - notebook:
-            path: ../src/streaming/5_pipeline_silver_blocks.py
+            path: ../../src/streaming/5_pipeline_silver_blocks.py
 
-      clusters:
-        - label: default
-          num_workers: 1
-          spark_version: "15.4.x-scala2.12"
-          node_type_id: "i3.xlarge"
+      serverless: true
 
-      development: ${bundle.target == 'dev'}
+      development: ${var.dlt_development}
       continuous: true
       channel: CURRENT
 
@@ -84,14 +69,10 @@ resources:
 
       libraries:
         - notebook:
-            path: ../src/streaming/6_pipeline_silver_transactions.py
+            path: ../../src/streaming/6_pipeline_silver_transactions.py
 
-      clusters:
-        - label: default
-          num_workers: 2
-          spark_version: "15.4.x-scala2.12"
-          node_type_id: "i3.xlarge"
+      serverless: true
 
-      development: ${bundle.target == 'dev'}
+      development: ${var.dlt_development}
       continuous: true
       channel: CURRENT

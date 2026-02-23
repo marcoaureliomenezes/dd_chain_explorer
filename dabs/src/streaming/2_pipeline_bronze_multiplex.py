@@ -1,16 +1,24 @@
 # Databricks notebook source
 # MAGIC %md
 # Bronze Multiplex DLT Pipeline
-# Consome todos os tópicos Kafka e grava na tabela Bronze kafka_topics_multiplexed.
-# Equivalente ao AS-IS: spark-streaming-jobs/src/pyspark/2_job_bronze_multiplex.py
+#
+# Dual-source pipeline:
+#   - **PROD** (`source.type = kafka`): consome Kafka MSK diretamente (streaming)
+#   - **DEV**  (`source.type = s3`): lê Parquet do S3, ingestado pelo job Spark local
+#
+# A tabela de destino é a mesma: `b_fast.kafka_topics_multiplexed`
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, TimestampType, LongType
+from pyspark.sql.types import StringType
 
 
-KAFKA_BOOTSTRAP = spark.conf.get("kafka.bootstrap.servers")
+# ── Configuration ─────────────────────────────────────────────────────────────
+
+SOURCE_TYPE     = spark.conf.get("source.type", "kafka")       # "kafka" or "s3"
+KAFKA_BOOTSTRAP = spark.conf.get("kafka.bootstrap.servers", "")
 MSK_IAM_AUTH    = spark.conf.get("kafka.msk.iam.auth", "false").lower() == "true"
+S3_PATH         = spark.conf.get("s3.ingestion.path", "")
 
 TOPICS = [
     "mainnet.0.application.logs",
@@ -20,6 +28,8 @@ TOPICS = [
     "mainnet.4.transactions.data",
 ]
 
+
+# ── Kafka source (PROD) ──────────────────────────────────────────────────────
 
 def _kafka_reader(topic: str):
     """Retorna um Spark Streaming reader para um tópico Kafka específico."""
@@ -45,6 +55,57 @@ def _kafka_reader(topic: str):
     return spark.readStream.format("kafka").options(**options)
 
 
+def _read_from_kafka():
+    """Lê todos os tópicos Kafka e retorna um único DataFrame unificado (streaming)."""
+    from functools import reduce
+
+    dfs = []
+    for topic in TOPICS:
+        df = (
+            _kafka_reader(topic)
+            .load()
+            .select(
+                F.lit(topic).alias("topic_name"),
+                F.col("partition").alias("kafka_partition"),
+                F.col("offset").alias("kafka_offset"),
+                F.col("timestamp").alias("kafka_timestamp"),
+                F.col("key").cast(StringType()).alias("key"),
+                F.col("value").cast(StringType()).alias("value"),
+            )
+        )
+        dfs.append(df)
+
+    return reduce(lambda a, b: a.union(b), dfs)
+
+
+# ── S3 Parquet source (DEV) ──────────────────────────────────────────────────
+
+def _read_from_s3():
+    """
+    Lê dados Parquet do S3 (gerados pelo job Spark local kafka-to-s3).
+    Usa Auto Loader (cloudFiles) para ingestão incremental.
+    Estrutura esperada: s3://<bucket>/bronze/kafka_multiplex/topic_name=<topic>/...parquet
+    """
+    return (
+        spark.readStream
+        .format("cloudFiles")
+        .option("cloudFiles.format", "parquet")
+        .option("cloudFiles.schemaLocation", f"{S3_PATH}/_schema")
+        .option("cloudFiles.inferColumnTypes", "true")
+        .load(S3_PATH)
+        .select(
+            F.col("topic_name"),
+            F.col("kafka_partition"),
+            F.col("kafka_offset"),
+            F.col("kafka_timestamp"),
+            F.col("key"),
+            F.col("value"),
+        )
+    )
+
+
+# ── DLT table definition ─────────────────────────────────────────────────────
+
 @dlt.table(
     name="kafka_topics_multiplexed",
     comment="Tabela Bronze: todos os tópicos Kafka multiplexados em uma única tabela",
@@ -56,24 +117,11 @@ def _kafka_reader(topic: str):
 )
 def bronze_multiplex():
     """
-    Lê todos os tópicos de interesse do Kafka e unifica em uma única tabela Bronze.
-    Colunas: topic_name, partition, offset, timestamp, key, value (raw bytes → string)
+    Source dinâmico baseado na configuração `source.type`:
+      - kafka: lê dos tópicos Kafka MSK (PROD)
+      - s3:    lê Parquet do S3 via Auto Loader (DEV)
     """
-    dfs = []
-    for topic in TOPICS:
-        df = (
-            _kafka_reader(topic)
-            .load()
-            .select(
-                F.lit(topic).alias("topic_name"),
-                F.col("partition"),
-                F.col("offset"),
-                F.col("timestamp"),
-                F.col("key").cast(StringType()).alias("key"),
-                F.col("value").cast(StringType()).alias("value"),
-            )
-        )
-        dfs.append(df)
-
-    from functools import reduce
-    return reduce(lambda a, b: a.union(b), dfs)
+    if SOURCE_TYPE == "s3":
+        return _read_from_s3()
+    else:
+        return _read_from_kafka()

@@ -60,9 +60,10 @@ def _confluent_get_schema(subject: str, schema_path: str) -> str:
 # PROD — AWS Glue Schema Registry
 # ---------------------------------------------------------------------------
 
-def _glue_get_schema(schema_name: str, registry_name: str = "ChainExplorer-schema-registry") -> str:
+def _glue_get_schema(schema_name: str) -> str:
     """Get schema definition string from AWS Glue Schema Registry."""
     import boto3
+    registry_name = os.getenv("GLUE_REGISTRY_NAME", "ChainExplorer-schema-registry")
     client = boto3.client("glue", region_name="sa-east-1")
     response = client.get_schema_version(
         SchemaId={

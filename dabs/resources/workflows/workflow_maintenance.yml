@@ -2,76 +2,29 @@ resources:
   jobs:
     workflow_maintenance:
       name: "[${bundle.target}] dm-iceberg-maintenance"
-      description: >
-        Workflow de manutenção das tabelas Delta no Databricks.
-        Executa OPTIMIZE + VACUUM nas tabelas Bronze e Silver.
-        Equivalente aos jobs em spark-batch-jobs/maintenance_streaming_tables.
-
-      schedule:
-        quartz_cron_expression: "0 0 2 * * ?"  # daily at 2am São Paulo
-        timezone_id: "America/Sao_Paulo"
-
       tasks:
         - task_key: optimize_bronze
-          description: "OPTIMIZE + ZORDER tabelas Bronze"
           notebook_task:
-            notebook_path: ../src/batch/maintenance/1_optimize_bronze.py
+            notebook_path: ../../src/batch/maintenance/1_optimize_bronze.py
             source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-
         - task_key: optimize_silver
-          description: "OPTIMIZE + ZORDER tabelas Silver"
           depends_on:
             - task_key: optimize_bronze
           notebook_task:
-            notebook_path: ../src/batch/maintenance/2_optimize_silver.py
+            notebook_path: ../../src/batch/maintenance/2_optimize_silver.py
             source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-
         - task_key: vacuum_all
-          description: "VACUUM para remover arquivos órfãos"
           depends_on:
-            - task_key: optimize_bronze
             - task_key: optimize_silver
           notebook_task:
-            notebook_path: ../src/batch/maintenance/3_vacuum_all.py
+            notebook_path: ../../src/batch/maintenance/3_vacuum_all.py
             source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
-              retention_hours: "168"
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-
         - task_key: monitor_tables
-          description: "Monitora métricas das tabelas (row count, size)"
           depends_on:
             - task_key: vacuum_all
           notebook_task:
-            notebook_path: ../src/batch/maintenance/4_monitor_tables.py
+            notebook_path: ../../src/batch/maintenance/4_monitor_tables.py
             source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-
-      email_notifications:
-        on_failure:
-          - marco@example.com
-
       tags:
         layer: maintenance
         project: dd-chain-explorer

@@ -2,25 +2,14 @@ resources:
   jobs:
     workflow_teardown:
       name: "[${bundle.target}] dm-teardown"
-      description: >
-        Workflow de teardown: remove todas as tabelas, views e schemas do catálogo.
-        Equivalente ao Airflow DAG dag_eventual_2_delete_environment.py do AS-IS.
-        ATENÇÃO: usar apenas em DEV. Não deve ser executado em produção via CI/CD.
-
       tasks:
         - task_key: delete_all_tables
-          description: "Remove todas as tabelas e schemas do Unity Catalog"
           notebook_task:
-            notebook_path: ../src/batch/ddl/5_delete_all_tables.py
+            notebook_path: ../../src/batch/ddl/5_delete_all_tables.py
             source: WORKSPACE
             base_parameters:
               catalog: ${var.catalog}
               purge: "true"
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"
-            node_type_id: "i3.xlarge"
-            num_workers: 1
-
       tags:
         layer: ddl
         project: dd-chain-explorer

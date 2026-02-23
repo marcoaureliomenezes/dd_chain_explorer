@@ -4,7 +4,7 @@
 ################################################################################
 
 ################################################################################
-# DEV: Infraestrutura local (Kafka + DynamoDB)
+# DEV: Infraestrutura local (Kafka + Redis)
 # Arquivo: services/compose/local_services.yml
 ################################################################################
 
@@ -49,6 +49,28 @@ deploy_dev_batch:
 stop_dev_batch:
 	@docker compose -f services/batch_services.yml down
 
+# ---- Operações de manutenção (usar na ordem indicada) -------------------------
+
+# 1. Limpa Redis db=0 (semáforo de API keys) e db=1 (contadores de consumo).
+#    Necessario apos migração de nomes de chaves (ex: formato antigo -> hierarquico SSM).
+flush_redis:
+	@docker compose -f services/batch_services.yml run --rm batch-job-flush-redis
+
+# 2. Deleta e recria o topico mainnet.0.application.logs para descartar mensagens
+#    com formato de log obsoleto. Executar apos flush_redis.
+recreate_logs_topic:
+	@docker compose -f services/batch_services.yml run --rm --build batch-job-recreate-logs-topic
+
+# 3. Remove o container do Spark (descarta /tmp/checkpoints) e reinicia-o limpo.
+#    O Spark vai recomecar do offset 'earliest' no topico recriado (vazio).
+reset_spark_checkpoint:
+	@docker rm -f spark-app-apk-consumption 2>/dev/null || true
+	@docker compose -f services/app_services.yml up -d spark-app-apk-consumption
+
+# Sequencia completa de reset do pipeline de monitoramento de API keys.
+# Executar quando houver chaves obsoletas no Redis (ex: pos-migracao SSM).
+reset_api_key_monitor: flush_redis recreate_logs_topic reset_spark_checkpoint
+
 # Deploy para DEV (Databricks Free Edition)
 dabs_deploy_dev:
 	cd dabs && databricks bundle deploy --target dev
@@ -70,70 +92,221 @@ dabs_status_dev:
 ################################################################################
 # Terraform — atalhos para módulos individuais
 # Diretório: terraform/
+#
+# Autenticação:
+#   AWS        → AWS CLI (perfil padrão ou env vars AWS_ACCESS_KEY_ID/SECRET)
+#   Databricks → ~/.databrickscfg (config: scripts/setup_databricks_profiles.sh)
+#                Env vars em CI/CD: DATABRICKS_ACCOUNT_ID, DATABRICKS_CLIENT_ID,
+#                                   DATABRICKS_CLIENT_SECRET
 ################################################################################
 
-tf_init_all:
-	@for dir in terraform/0_remote_state terraform/1_vpc terraform/2_iam terraform/3_msk terraform/4_s3 terraform/5_dynamodb terraform/6_ecs terraform/7_databricks; do \
-	echo "=== terraform init: $$dir ==="; \
-	cd $$dir && terraform init -input=false && cd ../..; \
-done
+TF_ARGS ?=
+TF_DIR  := terraform_prd
 
-tf_plan_vpc:
-	cd terraform/1_vpc && terraform plan
+# =============================================================================
+# GRUPO 1 — Recursos gratuitos: VPC + IAM + S3
+# Sem custo na AWS. Podem ficar sempre ativos.
+# Apply:   make tf_apply_free_resources
+# Destroy: make tf_destroy_free_resources
+# =============================================================================
 
-tf_apply_vpc:
-	cd terraform/1_vpc && terraform apply
+tf_apply_free_resources:
+	@echo ">>> Aplicando recursos gratuitos: VPC + IAM + S3 ..."
+	cd $(TF_DIR)/1_vpc && terraform apply -auto-approve
+	cd $(TF_DIR)/2_iam && terraform apply -auto-approve
+	cd $(TF_DIR)/4_s3  && terraform apply -auto-approve
+	@echo ">>> Recursos gratuitos: OK"
 
-tf_plan_iam:
-	cd terraform/2_iam && terraform plan
+tf_destroy_free_resources:
+	@echo ">>> Destruindo recursos gratuitos: S3 → IAM → VPC ..."
+	cd $(TF_DIR)/4_s3  && terraform destroy -auto-approve
+	cd $(TF_DIR)/2_iam && terraform destroy -auto-approve
+	cd $(TF_DIR)/1_vpc && terraform destroy -auto-approve
+	@echo ">>> Recursos gratuitos destruídos."
 
-tf_apply_iam:
-	cd terraform/2_iam && terraform apply
+# =============================================================================
+# GRUPO 2 — Recursos AWS pagos: MSK + ElastiCache + ECS
+#
+# Ordem de apply (dependências):
+#   1. MSK (kafka)  e ElastiCache (redis) — sem dependência entre si
+#   2. ECS Schema Registry                — precisa do MSK para bootstrapar
+#   3. ECS tasks de captura               — precisam do Schema Registry
+#
+# ATENÇÃO: MSK leva ~20 min para ficar ACTIVE. O apply aguarda automaticamente.
+#
+# Apply:   make tf_apply_aws_resources
+# Destroy: make tf_destroy_aws_resources
+# =============================================================================
 
-tf_plan_msk:
-	cd terraform/3_msk && terraform plan
+tf_apply_aws_resources:
+	@echo ">>> [1/3] MSK e ElastiCache ..."
+	cd $(TF_DIR)/3_msk         && terraform apply -auto-approve
+	cd $(TF_DIR)/8_elasticache && terraform apply -auto-approve
+	@echo ">>> [2/3] ECS: Schema Registry ..."
+	cd $(TF_DIR)/6_ecs && terraform apply -auto-approve \
+	  -target=aws_ecs_cluster.dm \
+	  -target=aws_ecs_cluster_capacity_providers.dm \
+	  -target=aws_cloudwatch_log_group.ecs_apps \
+	  -target=aws_service_discovery_private_dns_namespace.dm \
+	  -target=aws_service_discovery_service.schema_registry \
+	  -target=aws_ecs_task_definition.schema_registry \
+	  -target=aws_ecs_service.schema_registry
+	@echo ">>> [3/3] ECS: Tasks de captura de dados ..."
+	cd $(TF_DIR)/6_ecs && terraform apply -auto-approve
+	@echo ">>> Recursos AWS: OK"
 
-tf_apply_msk:
-	cd terraform/3_msk && terraform apply
+tf_destroy_aws_resources:
+	@echo ">>> Destruindo recursos AWS: ECS → ElastiCache → MSK ..."
+	cd $(TF_DIR)/6_ecs         && terraform destroy -auto-approve
+	cd $(TF_DIR)/8_elasticache && terraform destroy -auto-approve
+	cd $(TF_DIR)/3_msk         && terraform destroy -auto-approve
+	@echo ">>> Recursos AWS destruídos."
 
-tf_plan_s3:
-	cd terraform/4_s3 && terraform plan
-
-tf_apply_s3:
-	cd terraform/4_s3 && terraform apply
-
-tf_plan_dynamodb:
-	cd terraform/5_dynamodb && terraform plan
-
-tf_apply_dynamodb:
-	cd terraform/5_dynamodb && terraform apply
-
-tf_plan_ecs:
-	cd terraform/6_ecs && terraform plan
-
-tf_apply_ecs:
-	cd terraform/6_ecs && terraform apply
-
-tf_plan_databricks:
-	cd terraform/7_databricks && terraform plan
+# =============================================================================
+# GRUPO 3 — Databricks: workspace + Unity Catalog + cluster
+#
+# Autenticação: perfil [prd] em ~/.databrickscfg
+#   Configure com: scripts/setup_databricks_profiles.sh
+#   Ou em CI/CD via env vars (veja .github/workflows/deploy_infrastructure.yml)
+#
+# Apply:   make tf_apply_databricks
+# Destroy: make tf_destroy_databricks
+# =============================================================================
 
 tf_apply_databricks:
-	cd terraform/7_databricks && terraform apply
+	@echo ">>> Aplicando recursos Databricks ..."
+	cd $(TF_DIR)/7_databricks && terraform apply -auto-approve
+	@echo ">>> Databricks: OK"
+
+tf_destroy_databricks:
+	@echo ">>> Destruindo recursos Databricks ..."
+	cd $(TF_DIR)/7_databricks && terraform destroy -auto-approve
+	@echo ">>> Databricks destruído."
+
+# =============================================================================
+# Deploy / Destroy completo de PRD (todos os grupos em sequência)
+# =============================================================================
+
+prod_deploy_infra:
+	@echo "===== Deploy completo PRD ====="
+	$(MAKE) tf_apply_free_resources
+	$(MAKE) tf_apply_aws_resources
+	$(MAKE) tf_apply_databricks
+	@echo "===== Deploy PRD concluído ====="
+
+prod_destroy_infra:
+	@echo "===== Destroy completo PRD ====="
+	$(MAKE) tf_destroy_databricks
+	$(MAKE) tf_destroy_aws_resources
+	$(MAKE) tf_destroy_free_resources
+	@echo "===== Destroy PRD concluído ====="
+
+# ---------------------------------------------------------------------------
+# Inicialização — necessário após clonar o repo ou atualizar providers
+# ---------------------------------------------------------------------------
+
+tf_init_prd:
+	@for dir in $(TF_DIR)/0_remote_state $(TF_DIR)/1_vpc $(TF_DIR)/2_iam \
+	            $(TF_DIR)/3_msk $(TF_DIR)/4_s3 $(TF_DIR)/6_ecs \
+	            $(TF_DIR)/7_databricks $(TF_DIR)/8_elasticache; do \
+	  echo "=== terraform init: $$dir ==="; \
+	  cd $$dir && terraform init -input=false && cd ../..; \
+	done
+
+tf_apply_remote_state:
+	cd $(TF_DIR)/0_remote_state && terraform apply -auto-approve
+
+# =============================================================================
+# TERRAFORM DEV — AWS infra para Databricks Free Edition
+# Diretório: terraform_dev/
+#
+# Cria bucket S3 para ingestão Kafka → S3 → Databricks Free Edition.
+# Autenticação AWS: usa o perfil local (~/.aws/credentials).
+#
+# Apply:   make dev_tf_apply
+# Destroy: make dev_tf_destroy
+# =============================================================================
+
+dev_tf_init:
+	cd terraform_dev && terraform init -input=false
+
+dev_tf_plan:
+	cd terraform_dev && terraform plan
+
+dev_tf_apply:
+	cd terraform_dev && terraform apply -auto-approve
+
+dev_tf_destroy:
+	cd terraform_dev && terraform destroy -auto-approve
+
+dev_tf_output:
+	cd terraform_dev && terraform output
+
+# =============================================================================
+# DEV: Ingestão Kafka → S3 (Spark local)
+#
+# Pré-requisitos:
+#   1. make dev_tf_apply      (cria bucket S3 + IAM)
+#   2. Preencha services/conf/dev.s3.conf com as credenciais
+#   3. make deploy_dev_infra  (Kafka + Redis rodando)
+#   4. make deploy_dev_stream (apps de captura publicando no Kafka)
+#
+# O job spark-app-kafka-s3 lê 5 tópicos Kafka e escreve Parquet no S3.
+# =============================================================================
+
+start_kafka_s3:
+	@echo ">>> Iniciando job Spark: Kafka → S3 multiplex ..."
+	@docker compose -f services/app_services.yml up -d spark-app-kafka-s3
+	@echo ">>> Job iniciado. Logs: docker logs -f spark-app-kafka-s3"
+
+stop_kafka_s3:
+	@docker compose -f services/app_services.yml stop spark-app-kafka-s3
+
+logs_kafka_s3:
+	docker logs -f spark-app-kafka-s3
 
 ################################################################################
 # Build e push de imagens Docker (uso manual; CI/CD faz isso automaticamente)
+# Uso: make build_stream VERSION=1.0.0
+#      make push_stream  VERSION=1.0.0
+#      make build_and_push_stream VERSION=1.0.0
+# Se VERSION não for passado, usa 'latest'.
 ################################################################################
 
-current_branch = latest
+VERSION ?= latest
 
 build_stream:
-	docker build -t marcoaureliomenezes/onchain-stream-txs:$(current_branch) ./docker/onchain-stream-txs
+	docker build -t marcoaureliomenezes/onchain-stream-txs:$(VERSION) ./docker/onchain-stream-txs
 
 build_batch:
-	docker build -t marcoaureliomenezes/onchain-batch-txs:$(current_branch) ./docker/onchain-batch-txs
+	docker build -t marcoaureliomenezes/onchain-batch-txs:$(VERSION) ./docker/onchain-batch-txs
 
 push_stream:
-	docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
+	docker push marcoaureliomenezes/onchain-stream-txs:$(VERSION)
 
 push_batch:
-	docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
+	docker push marcoaureliomenezes/onchain-batch-txs:$(VERSION)
+
+build_and_push_stream: build_stream push_stream
+
+build_and_push_batch: build_batch push_batch
+
+################################################################################
+# PROD: Observabilidade — scripts de monitoramento
+################################################################################
+
+# Últimas 100 linhas de logs de todas as tasks ECS no cluster de prod
+prod_logs_ecs:
+	python scripts/prod_ecs_logs.py --lines 100
+
+# Logs de um único serviço: make prod_logs_ecs_svc SVC=dm-mined-txs-crawler
+prod_logs_ecs_svc:
+	python scripts/prod_ecs_logs.py --lines 100 --service $(SVC)
+
+# Métricas e logs do MSK (janela = 30 min por padrão)
+prod_msk_metrics:
+	python scripts/prod_msk_metrics.py --minutes 30
+
+# Janela maior: make prod_msk_metrics_1h
+prod_msk_metrics_1h:
+	python scripts/prod_msk_metrics.py --minutes 60

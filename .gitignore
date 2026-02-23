@@ -31,4 +31,20 @@ z_lib/
 swarm.secrets_prod.conf
 scripts/2_setup_firewall.sh
 z_OLD_README.md
+
+# Terraform — state local e credenciais
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/.terraform.lock.hcl
+**/secrets.tfvars
+**/*.tfvars.local
+
+# Credenciais nunca devem ser versionadas
+*.pem
+*.key
+*.p12
+*_credentials.json
+services/conf/dev.secrets.conf
+
 z_test.py

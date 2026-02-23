@@ -3,29 +3,30 @@ resources:
     pipeline_bronze_multiplex:
       name: "[${bundle.target}] dm-bronze-multiplex"
       description: >
-        DLT pipeline que consome todos os tópicos Kafka (logs, blocos, transações)
-        e grava os dados crus na camada Bronze (b_fast.kafka_topics_multiplexed).
-        Equivalente ao spark-streaming-jobs/2_job_bronze_multiplex.py no AS-IS.
+        DLT pipeline que consome dados e grava na camada Bronze
+        (b_fast.kafka_topics_multiplexed).
+        - PROD: lê diretamente do Kafka MSK (streaming contínuo).
+        - DEV:  lê do S3 (Parquet) previamente ingestado pelo job local
+                spark-app-kafka-s3.
 
       catalog: ${var.catalog}
       target: b_fast
 
       libraries:
         - notebook:
-            path: ../src/streaming/2_pipeline_bronze_multiplex.py
+            path: ../../src/streaming/2_pipeline_bronze_multiplex.py
 
       configuration:
+        # Fonte de dados: "kafka" (prod) ou "s3" (dev)
+        source.type: ${var.source_type}
+        # Kafka config (usado quando source.type = kafka)
         kafka.bootstrap.servers: ${var.kafka_bootstrap_servers}
         kafka.msk.iam.auth: "true"
-        spark.sql.extensions: "io.delta.sql.DeltaSparkSessionExtension"
-        spark.sql.catalog.spark_catalog: "org.apache.spark.sql.delta.catalog.DeltaCatalog"
+        # S3 config (usado quando source.type = s3)
+        s3.ingestion.path: "s3://${var.dev_ingestion_s3_bucket}/bronze/kafka_multiplex"
 
-      clusters:
-        - label: default
-          num_workers: 1
-          spark_version: "15.4.x-scala2.12"
-          node_type_id: "i3.xlarge"
+      serverless: true
 
-      development: ${bundle.target == 'dev'}
-      continuous: true
+      development: ${var.dlt_development}
+      continuous: ${var.dlt_continuous}
       channel: CURRENT
