@@ -5,8 +5,18 @@
 #
 # ATENÇÃO: use somente em DEV. Irreversível em PROD.
 
-catalog = dbutils.widgets.get("catalog") if "catalog" in [w.name for w in dbutils.widgets.getAll()] else "dd_chain_explorer_dev"
-purge   = dbutils.widgets.get("purge") if "purge" in [w.name for w in dbutils.widgets.getAll()] else "true"
+catalog = "dd_chain_explorer_dev"
+purge   = "true"
+
+try:
+    catalog = dbutils.widgets.get("catalog")
+except Exception:
+    pass
+
+try:
+    purge = dbutils.widgets.get("purge")
+except Exception:
+    pass
 
 purge_clause = "PURGE" if purge.lower() == "true" else ""
 

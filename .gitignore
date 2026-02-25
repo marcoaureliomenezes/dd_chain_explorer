@@ -48,3 +48,13 @@ z_OLD_README.md
 services/conf/dev.secrets.conf
 
 z_test.py
+
+# Databricks CLI bundle cache
+
+# Chaves e segredos locais — nunca versionados
+valid/.env
+valid/*.md
+
+# Airflow runtime config — varia por ambiente e contém credenciais de BD
+mnt/airflow/airflow.cfg
+dabs/.databricks/

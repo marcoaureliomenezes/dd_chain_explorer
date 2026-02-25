@@ -1,31 +1,34 @@
-FROM local/spark:3.5
+FROM apache/spark:3.5.8-scala2.12-java17-python3-ubuntu
 
-WORKDIR /app
 USER root
 
-RUN install_packages curl wget
+RUN apt-get update && apt-get install -y --no-install-recommends curl wget python3-pip && \
+    rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt /app/requirements.txt
-RUN pip install -r requirements.txt
-
-# ── Pré-download dos pacotes Spark (Kafka + Avro) ────────────────────────────
-# Spark 4.0.0 / Scala 2.13 — hadoop-aws + aws-sdk já estão na imagem base.
-# Os JARs são baixados via Ivy para /opt/bitnami/spark/jars/ no build,
-# evitando download a cada spark-submit.
+# ── Pré-download dos pacotes Spark via spark-shell ───────────────────────────
+# Spark 3.5.8 / Scala 2.12 — cada pacote num RUN separado para melhor cache.
+# Os JARs são baixados via Ivy para ~/.ivy2/jars e disponibilizados no classpath.
 # ─────────────────────────────────────────────────────────────────────────────
-ENV SPARK_VERSION=4.0.0
-ENV SCALA_SUFFIX=2.13
 
-RUN echo "import sys; sys.exit(0)" > /tmp/dummy.py \
-    && spark-submit --master local[1] \
-         --packages "org.apache.spark:spark-sql-kafka-0-10_${SCALA_SUFFIX}:${SPARK_VERSION},org.apache.spark:spark-avro_${SCALA_SUFFIX}:${SPARK_VERSION}" \
-         /tmp/dummy.py \
-    && find /root/.ivy2.5.2/jars -name '*.jar' -exec cp {} /opt/bitnami/spark/jars/ \; \
-    && rm -rf /root/.ivy2.5.2 /tmp/dummy.py
+# Kafka connector
+RUN /opt/spark/bin/spark-shell \
+    --packages "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.8" \
+    --repositories https://repo1.maven.org/maven2 \
+    -i /dev/null 2>&1 | tail -5 || true
+
+# Avro support
+RUN /opt/spark/bin/spark-shell \
+    --packages "org.apache.spark:spark-avro_2.12:3.5.8" \
+    --repositories https://repo1.maven.org/maven2 \
+    -i /dev/null 2>&1 | tail -5 || true
+
+WORKDIR /app
+COPY requirements.txt /app/requirements.txt
+RUN pip3 install --no-cache-dir -r /app/requirements.txt
 
 COPY ./src /app
 RUN chmod +x /app/entrypoint.sh
 
-COPY conf/spark-defaults.conf /opt/bitnami/spark/conf/spark-defaults.conf
+COPY conf/spark-defaults.conf /opt/spark/conf/spark-defaults.conf
 
 ENTRYPOINT ["sleep", "infinity"]

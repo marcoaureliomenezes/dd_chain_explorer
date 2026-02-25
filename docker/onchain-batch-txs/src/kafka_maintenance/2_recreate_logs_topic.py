@@ -14,7 +14,7 @@ import time
 from argparse import ArgumentParser, FileType
 from configparser import ConfigParser
 
-from kafka_admin_client import DMClusterAdmin
+from dm_kafka_admin import DMClusterAdmin
 from dm_33_utils.logger_utils import ConsoleLoggingHandler
 
 

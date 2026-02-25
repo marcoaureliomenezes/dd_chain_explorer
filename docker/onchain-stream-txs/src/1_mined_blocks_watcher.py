@@ -7,11 +7,11 @@ from logging import Logger
 from typing import Dict, Generator, Optional, Callable, List, Any
 from configparser import ConfigParser
 
-from utils.web3_utils import Web3Handler
-from utils.schema_registry_utils import get_schema
-from utils.kafka_admin_client import KafkaAdminClient
-from utils.kafka_utils import KafkaHandler
-from utils.logger_utils import KafkaLoggingHandler
+from utils.dm_web3_client import Web3Handler
+from utils.dm_schema_reg_client import get_schema
+from utils.dm_kafka_admin import KafkaAdminClient
+from utils.dm_kafka_client import KafkaHandler
+from utils.dm_logger import KafkaLoggingHandler
 
 
 class MinedBlocksWatcher:

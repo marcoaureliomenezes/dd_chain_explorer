@@ -2,12 +2,6 @@ resources:
   pipelines:
     pipeline_bronze_multiplex:
       name: "[${bundle.target}] dm-bronze-multiplex"
-      description: >
-        DLT pipeline que consome dados e grava na camada Bronze
-        (b_fast.kafka_topics_multiplexed).
-        - PROD: lê diretamente do Kafka MSK (streaming contínuo).
-        - DEV:  lê do S3 (Parquet) previamente ingestado pelo job local
-                spark-app-kafka-s3.
 
       catalog: ${var.catalog}
       target: b_fast

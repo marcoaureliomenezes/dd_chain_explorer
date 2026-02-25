@@ -5,14 +5,12 @@ import redis
 import json
 
 from datetime import datetime as dt, timedelta
-from azure.identity import DefaultAzureCredential
-from azure.keyvault.secrets import SecretClient
 
-from etherscan_utils import EthercanAPI
-
-from dm_33_utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
-from dm_33_utils.kafka_utils import KafkaHandler
-from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
+from utils.dm_etherscan import EtherscanClient
+from utils.dm_parameter_store import ParameterStoreClient
+from utils.dm_logger import KafkaLoggingHandler
+from utils.dm_kafka_client import KafkaHandler
+from utils.dm_schema_reg_client import get_schema
 
 class ContractTransactionsCrawler:
 
@@ -80,9 +78,11 @@ class ContractTransactionsCrawler:
     return block_interval
 
   def get_contract_tx_data(self, contract_addr: str, block_before: int, block_after: int):
-    args = (contract_addr, block_before, block_after, self.page, self.offset, self.sort)
-    tx_data = self.etherscan_client.get_contract_tx_by_block_interval(*args)
-    return tx_data
+    result = self.etherscan_client.get_contract_txs_by_block_interval(
+      contract_addr, block_before, block_after,
+      page=self.page, offset=self.offset, sort=self.sort,
+    )
+    return result
 
   def __get_transactions(self, contract_address):
     data = []
@@ -141,35 +141,39 @@ if __name__ == "__main__":
   REDIS_SECRET = os.getenv("REDIS_PASS", "secret")
   REDIS_DB = os.getenv("REDIS_DB", 3)
 
-  AKV_URL = f"https://{os.getenv('AKV_NAME')}.vault.azure.net/"
   S3_BUCKET = os.getenv("S3_BUCKET")
   S3_BUCKET_PREFIX = os.getenv("S3_BUCKET_PREFIX")
-  akv_client = SecretClient(vault_url=AKV_URL, credential=DefaultAzureCredential())
-   
+  NETWORK = os.getenv("NETWORK", "mainnet")
+  SSM_ETHERSCAN_PATH = os.getenv("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
+
   # CONFIGURING LOGGING
   LOGGER = logging.getLogger(APP_NAME)
   LOGGER.setLevel(logging.INFO)
-  LOGGER.addHandler(ConsoleLoggingHandler())
+  LOGGER.addHandler(logging.StreamHandler())
 
   # CONFIGURING KAFKA PRODUCER FOR LOGGING
-  sc_utils = SchemaRegistryHandler(SR_URL)
   kafka_utils = KafkaHandler(LOGGER, SR_URL)
-  logs_schema = sc_utils.get_schema_by_subject("mainnet.0.application.logs-value")
+  logs_schema = get_schema("application-logs-schema", "schemas/0_application_logs_avro.json")
   producer_conf = {"bootstrap.servers": KAFKA_BROKERS, "client.id": APP_NAME, "acks": 1}
   producer_logs = kafka_utils.create_avro_producer(producer_conf, logs_schema)
-  kafka_handler = KafkaLoggingHandler(producer_logs, TOPIC_LOGS)
-  LOGGER.addHandler(kafka_handler)
+  LOGGER.addHandler(KafkaLoggingHandler(producer_logs, TOPIC_LOGS))
 
   # CONFIGURING AWS CLIENT FOR S3. Purpose: Save the raw data in S3
-  s3_client = boto3.client('s3', endpoint_url=os.getenv("S3_URL")
+  s3_client = boto3.client("s3", endpoint_url=os.getenv("S3_URL"))
+
+  redis_client = redis.Redis(
+    host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB,
+    password=REDIS_SECRET, decode_responses=True,
   )
 
-  redis_client = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB, password=REDIS_SECRET, decode_responses=True)
-  # List all hashes in the Redis database
-  #print(redis_client.keys())
-
-  # CONFIGURING ETHERSCAN CLIENT. Purpose: Get transactions from smart contracts.
-  etherscan_client = EthercanAPI(LOGGER, akv_client, os.getenv("APK_NAME"), os.getenv("NETWORK"))
+  # ETHERSCAN CLIENT — API key from SSM Parameter Store
+  ssm = ParameterStoreClient()
+  etherscan_keys = ssm.get_parameters_by_path(SSM_ETHERSCAN_PATH)
+  if not etherscan_keys:
+    raise SystemExit(f"No Etherscan keys found under {SSM_ETHERSCAN_PATH}")
+  # Use the first key; for rotation consider using MultiKeyEtherscanClient
+  api_key = next(iter(etherscan_keys.values()))
+  etherscan_client = EtherscanClient(LOGGER, api_key, network=NETWORK)
 
   crawler = (
     ContractTransactionsCrawler(LOGGER)

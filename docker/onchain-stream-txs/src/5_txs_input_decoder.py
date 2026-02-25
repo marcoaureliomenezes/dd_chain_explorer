@@ -1,17 +1,21 @@
 """
-Job 5 — Transaction Input Decoder
-==================================
-Consumes `mainnet.4.transactions.data`, decodes the `input` field for ALL
-contract-call transactions (skip deploys and plain ETH transfers), and
-produces the decoded result to `mainnet.5.transactions.input_decoded`.
+Job 5 — Transaction Input Decoder  (v2 — Redis cache + multi-key Etherscan)
+============================================================================
+Consumes ``mainnet.4.transactions.data``, decodes the ``input`` field for ALL
+contract-call transactions and produces the result to
+``mainnet.5.transactions.input_decoded``.
 
-Decode strategy (in order):
-  1. Etherscan ABI lookup → full decode (method name + typed params)
-  2. 4byte.directory fallback → method name only (params left empty)
-  3. Raw 4-byte selector as method → last resort (never silently drops)
+**Decode pipeline (in order):**
 
-ABI results are disk-cached in /tmp/abi_cache/ so Etherscan is hit only
-once per contract address across the job lifetime.
+  1. Redis ABI cache (DB 6)    → hit?  → full decode (method + typed params)
+  2. Etherscan API (6 keys)    → ABI?  → cache + full decode
+  3. 4byte.directory fallback  → sig?  → partial (method name only)
+  4. Raw 4-byte selector       → last resort (never silently drops)
+
+Negative cache: addresses whose ABI is NOT verified on Etherscan are marked in
+Redis with a 24 h TTL so the API is not hammered repeatedly.
+
+See ``decode_inputs.md`` for the full design document.
 """
 
 import argparse
@@ -28,10 +32,12 @@ from typing import Any, Dict, Optional
 from web3 import Web3
 
 from utils.dm_parameter_store import ParameterStoreClient
-from utils.etherscan_utils import EtherscanClient
-from utils.schema_registry_utils import get_schema
-from utils.kafka_utils import KafkaHandler
-from utils.logger_utils import KafkaLoggingHandler
+from utils.dm_schema_reg_client import get_schema
+from utils.dm_kafka_client import KafkaHandler
+from utils.dm_logger import KafkaLoggingHandler
+
+from utils_decode.abi_cache import ABICache
+from utils_decode.etherscan_multi import MultiKeyEtherscanClient
 
 from chain_extractor import ChainExtractor
 
@@ -63,15 +69,29 @@ def _serialize_params(params: dict) -> dict:
 
 class TransactionInputDecoder(ChainExtractor):
     """
-    Streaming job that decodes the `input` field of every non-deploy,
-    non-ETH-transfer transaction and writes the result to Kafka.
+    Streaming job that decodes the ``input`` field of every non-deploy,
+    non-ETH-transfer transaction and publishes the result to Kafka.
+
+    Uses:
+      • ``ABICache``  (Redis DB 6) — persistent, survives container restarts.
+      • ``MultiKeyEtherscanClient`` — round-robin across 6 API keys.
     """
 
-    def __init__(self, logger: Logger, etherscan: EtherscanClient):
-        self.logger     = logger
-        self.etherscan  = etherscan
-        # Web3 instance without a provider — only used for ABI codec (no RPC calls)
+    def __init__(
+        self,
+        logger: Logger,
+        abi_cache: ABICache,
+        etherscan: MultiKeyEtherscanClient,
+    ):
+        self.logger    = logger
+        self._cache    = abi_cache
+        self._etherscan = etherscan
+        # Web3 instance without a provider — only used for ABI codec
         self._w3 = Web3()
+
+        # Running counters for progress logging
+        self._cnt_cache_hit = 0
+        self._cnt_api_call  = 0
 
     # ------------------------------------------------------------------
     # ChainExtractor interface
@@ -91,7 +111,12 @@ class TransactionInputDecoder(ChainExtractor):
         return self
 
     def run(self, callback: Any) -> None:
-        self.logger.info("Transaction Input Decoder started.")
+        cache_stats = self._cache.stats()
+        self.logger.info(
+            f"Decoder started — Redis cache: {cache_stats['cached_abis']} ABIs, "
+            f"{cache_stats['unverified_addresses']} unverified addresses"
+        )
+
         decoded_count  = 0
         skipped_count  = 0
         fallback_count = 0
@@ -102,9 +127,7 @@ class TransactionInputDecoder(ChainExtractor):
             contract_address = tx.get("to", "")
             input_hex        = tx.get("input", "0x")
 
-            # Normalize: dm_utils.convert_hexbytes_to_str uses bytes.hex() which
-            # strips the '0x' prefix. Web3.py decode_function_input and the 4-byte
-            # selector extraction both require the '0x' prefix to work correctly.
+            # Normalize: bytes.hex() strips '0x'; Web3 decode needs it
             if not input_hex.startswith("0x"):
                 input_hex = "0x" + input_hex
 
@@ -143,10 +166,11 @@ class TransactionInputDecoder(ChainExtractor):
             except Exception as exc:
                 self.logger.error(f"Produce error for {tx.get('hash')}: {exc}")
 
-            if decoded_count % 100 == 0 and decoded_count > 0:
+            if decoded_count % 500 == 0 and decoded_count > 0:
                 self.logger.info(
                     f"Progress — decoded: {decoded_count}, "
-                    f"fallback: {fallback_count}, skipped: {skipped_count}"
+                    f"fallback: {fallback_count}, skipped: {skipped_count}, "
+                    f"cache_hit: {self._cnt_cache_hit}, api_call: {self._cnt_api_call}"
                 )
 
     # ------------------------------------------------------------------
@@ -157,35 +181,49 @@ class TransactionInputDecoder(ChainExtractor):
         """
         Attempt to decode *input_hex* for *contract_address*.
 
-        Returns a dict with keys: method, parms, decode_type.
-        Never returns None — always produces at least the raw selector.
+        Pipeline:
+          1. Redis cache → full decode
+          2. Etherscan API (multi-key) → store + full decode
+          3. 4byte.directory → partial
+          4. Raw selector → unknown
         """
         selector = input_hex[:10]  # '0x' + first 4 bytes
+        addr = contract_address.lower()
 
-        # ---- 1. Try Etherscan ABI (full decode) ----
-        abi = self.etherscan.get_contract_abi(contract_address)
+        # ---- 1. Redis cache ----
+        abi = self._cache.get(addr)
         if abi:
-            decoded = self._decode_with_abi(contract_address, abi, input_hex)
+            self._cnt_cache_hit += 1
+            decoded = self._decode_with_abi(addr, abi, input_hex)
             if decoded:
                 return decoded
 
-        # ---- 2. Fallback: 4byte.directory (method name only) ----
-        sig = self.etherscan.get_4byte_signature(selector)
+        # ---- 2. Etherscan API (skip if negative-cached) ----
+        if not self._cache.is_unverified(addr) and abi is None:
+            self._cnt_api_call += 1
+            abi = self._etherscan.fetch_contract_abi(addr)
+            if abi:
+                self._cache.put(addr, abi)
+                decoded = self._decode_with_abi(addr, abi, input_hex)
+                if decoded:
+                    return decoded
+            else:
+                # Mark as unverified → won't hit Etherscan again for 24 h
+                self._cache.mark_unverified(addr)
+
+        # ---- 3. Fallback: 4byte.directory ----
+        sig = self._etherscan.get_4byte_signature(selector)
         if sig:
-            self.logger.debug(
-                f"[decode] 4byte fallback for {contract_address}: {sig}"
-            )
+            self.logger.debug(f"[decode] 4byte fallback for {addr}: {sig}")
             return {"method": sig, "parms": {}, "decode_type": "partial"}
 
-        # ---- 3. Last resort: raw selector ----
-        self.logger.debug(
-            f"[decode] Unknown selector {selector} for {contract_address}"
-        )
+        # ---- 4. Last resort: raw selector ----
+        self.logger.debug(f"[decode] Unknown selector {selector} for {addr}")
         return {"method": selector, "parms": {}, "decode_type": "unknown"}
 
-    @lru_cache(maxsize=2048)
+    @lru_cache(maxsize=4096)
     def _get_contract(self, address: str, abi_json: str):
-        """Cache the web3 contract object (keyed by address + serialized ABI)."""
+        """Cache the web3 Contract object (keyed by address + serialized ABI)."""
         abi = json.loads(abi_json)
         checksum = Web3.to_checksum_address(address)
         return self._w3.eth.contract(address=checksum, abi=abi)
@@ -197,7 +235,6 @@ class TransactionInputDecoder(ChainExtractor):
             abi_json = json.dumps(abi, sort_keys=True)
             contract = self._get_contract(address.lower(), abi_json)
             func_obj, params = contract.decode_function_input(input_hex)
-            # e.g. '<Function swapExactTokensForTokens(uint256,uint256,...)>'
             method_name = str(func_obj).split("<Function ")[1].rstrip(">")
             clean_params = _serialize_params(params)
             return {
@@ -206,9 +243,7 @@ class TransactionInputDecoder(ChainExtractor):
                 "decode_type": "full",
             }
         except Exception as exc:
-            self.logger.debug(
-                f"[decode] ABI decode failed for {address}: {exc}"
-            )
+            self.logger.debug(f"[decode] ABI decode failed for {address}: {exc}")
             return None
 
     # ------------------------------------------------------------------
@@ -244,15 +279,16 @@ class TransactionInputDecoder(ChainExtractor):
 
 if __name__ == "__main__":
 
-    APP_NAME          = "TRANSACTION_INPUT_DECODER"
-    NETWORK           = os.getenv("NETWORK", "mainnet")
-    KAFKA_BROKERS     = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
+    APP_NAME            = "TRANSACTION_INPUT_DECODER"
+    NETWORK             = os.getenv("NETWORK", "mainnet")
+    KAFKA_BROKERS       = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
     SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
-    TOPIC_LOGS           = os.getenv("TOPIC_LOGS")
-    TOPIC_TXS_DATA       = os.getenv("TOPIC_TXS_DATA",       "mainnet.4.transactions.data")
-    TOPIC_TXS_DECODED    = os.getenv("TOPIC_TXS_DECODED",    "mainnet.5.transactions.input_decoded")
-    CONSUMER_GROUP       = os.getenv("CONSUMER_GROUP",       "cg_txs_input_decoder")
-    SSM_ETHERSCAN_KEY    = os.getenv("SSM_ETHERSCAN_KEY")    # SSM param name for Etherscan API key
+    TOPIC_LOGS          = os.getenv("TOPIC_LOGS")
+    TOPIC_TXS_DATA      = os.getenv("TOPIC_TXS_DATA",    "mainnet.4.transactions.data")
+    TOPIC_TXS_DECODED   = os.getenv("TOPIC_TXS_DECODED", "mainnet.5.transactions.input_decoded")
+    CONSUMER_GROUP      = os.getenv("CONSUMER_GROUP",     "cg_txs_input_decoder")
+    SSM_ETHERSCAN_PATH  = os.getenv("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
+    UNVERIFIED_TTL      = int(os.getenv("UNVERIFIED_TTL", "86400"))  # 24 h
 
     PROC_ID = f"job-{str(uuid.uuid4())[:8]}"
 
@@ -280,36 +316,48 @@ if __name__ == "__main__":
 
     handler_kafka = KafkaHandler(logger, sc_url=SCHEMA_REGISTRY_URL)
 
-    # Schemas
+    # ---- Schemas ----
     LOGS_SCHEMA_PATH    = "schemas/0_application_logs_avro.json"
     TXS_SCHEMA_PATH     = "schemas/4_transactions_schema_avro.json"
     DECODED_SCHEMA_PATH = "schemas/txs_contract_call_decoded.json"
 
     schema_app_logs = get_schema(schema_name="application-logs-schema",  schema_path=LOGS_SCHEMA_PATH)
-    schema_txs      = get_schema(schema_name="transactions-schema",       schema_path=TXS_SCHEMA_PATH)
-    schema_decoded  = get_schema(schema_name="input-transaction-schema",  schema_path=DECODED_SCHEMA_PATH)
+    schema_txs      = get_schema(schema_name="transactions-schema",      schema_path=TXS_SCHEMA_PATH)
+    schema_decoded  = get_schema(schema_name="input-transaction-schema", schema_path=DECODED_SCHEMA_PATH)
 
-    # Kafka logging handler
+    # ---- Kafka logging handler ----
     producer_logs = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_app_logs)
     logger.addHandler(KafkaLoggingHandler(producer_logs, TOPIC_LOGS))
     logger.info("Kafka logging handler configured.")
 
-    # Consumers / Producers
+    # ---- Kafka consumer / producer ----
     consumer_txs     = handler_kafka.create_avro_consumer(CONSUMER_CONF, schema_txs)
     producer_decoded = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_decoded)
     logger.info("AVRO consumer/producer configured.")
 
-    # Etherscan client — API key from SSM
-    ssm = ParameterStoreClient()
-    etherscan_api_key = ssm.get_parameter(SSM_ETHERSCAN_KEY) if SSM_ETHERSCAN_KEY else ""
-    if not etherscan_api_key:
-        logger.warning(
-            "No Etherscan API key found — ABI lookups will be rate-limited. "
-            "Set SSM_ETHERSCAN_KEY env var."
-        )
-    etherscan = EtherscanClient(logger, etherscan_api_key, network=NETWORK)
-    logger.info("EtherscanClient configured.")
+    # ---- ABI cache (Redis DB 6) ----
+    abi_cache = ABICache(logger, redis_db=6, unverified_ttl=UNVERIFIED_TTL)
+    if abi_cache.ping():
+        logger.info("ABICache connected (Redis DB 6).")
+    else:
+        logger.error("ABICache — Redis connection FAILED. Exiting.")
+        raise SystemExit(1)
 
+    # ---- Etherscan multi-key client ----
+    ssm = ParameterStoreClient()
+    etherscan_keys_map = ssm.get_parameters_by_path(SSM_ETHERSCAN_PATH)
+    etherscan_keys = list(etherscan_keys_map.values())
+    if not etherscan_keys:
+        logger.error(
+            f"No Etherscan API keys found under SSM path '{SSM_ETHERSCAN_PATH}'. "
+            "Cannot proceed without at least one key."
+        )
+        raise SystemExit(1)
+    logger.info(f"Loaded {len(etherscan_keys)} Etherscan API keys from SSM.")
+
+    etherscan = MultiKeyEtherscanClient(logger, api_keys=etherscan_keys, network=NETWORK)
+
+    # ---- Run ----
     src_properties = {
         "consumer": consumer_txs,
         "topic_in": TOPIC_TXS_DATA,
@@ -320,7 +368,7 @@ if __name__ == "__main__":
     }
 
     _ = (
-        TransactionInputDecoder(logger, etherscan)
+        TransactionInputDecoder(logger, abi_cache, etherscan)
             .src_config(src_properties)
             .sink_config(sink_properties)
             .run(callback=handler_kafka.message_handler)

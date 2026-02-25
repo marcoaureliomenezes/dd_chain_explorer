@@ -1,0 +1,13 @@
+{
+    "namespace": "io.streamr.onchain",
+    "type": "record",
+    "name": "Application_Logs",
+    "fields": [
+        {"name": "timestamp", "type": "int"},
+        {"name": "logger", "type": "string"},
+        {"name": "level", "type": "string"},
+        {"name": "filename", "type": "string"},
+        {"name": "function_name", "type": "string"},
+        {"name": "message", "type": "string"}
+    ]
+}

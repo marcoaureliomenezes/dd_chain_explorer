@@ -54,8 +54,8 @@ AWS_REGION              = os.getenv("AWS_REGION", "sa-east-1")
 CONSUMER_GROUP          = os.getenv("CONSUMER_GROUP", "cg_kafka_s3_multiplex")
 STARTING_OFFSETS        = os.getenv("STARTING_OFFSETS", "earliest")
 MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER", "50000")
-TRIGGER_TIME            = os.getenv("TRIGGER_TIME", "60 seconds")
-CHECKPOINT_PATH         = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints/kafka_s3_multiplex")
+TRIGGER_TIME            = os.getenv("TRIGGER_TIME", "5 minutes")
+CHECKPOINT_PATH         = os.getenv("CHECKPOINT_PATH", f"s3a://{S3_BUCKET}/spark-checkpoints/kafka_s3_multiplex")
 
 TOPICS = [
     "mainnet.0.application.logs",
@@ -120,7 +120,7 @@ def read_kafka_topics(spark: SparkSession):
                 F.col("offset").alias("kafka_offset"),
                 F.col("timestamp").alias("kafka_timestamp"),
                 F.col("key").cast(StringType()).alias("key"),
-                F.col("value").cast(StringType()).alias("value"),
+                F.col("value"),  # keep as binary (Avro with Confluent header)
             )
         )
         dfs.append(df)

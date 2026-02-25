@@ -3,73 +3,95 @@
 # Atalhos para operações de desenvolvimento e deploy.
 ################################################################################
 
+# Faz pull da imagem apache/spark usada pelo spark-master e spark-worker.
+# Execute uma vez por máquina: make setup_spark
+# setup_spark:
+# 	@docker pull apache/spark:3.5.8-scala2.12-java17-python3-ubuntu && echo "apache/spark:3.5.8 pronto."
 ################################################################################
-# DEV: Infraestrutura local (Kafka + Redis)
-# Arquivo: services/compose/local_services.yml
+# DEV: Infraestrutura local (Kafka + Redis + Spark)
+# Arquivo: infra-dev/compose/local_services.yml
 ################################################################################
 
 deploy_dev_infra:
 	@docker network create vpc_dm 2>/dev/null || true
-	@docker compose -f services/local_services.yml up -d
+	@docker compose -f infra-dev/compose/local_services.yml up -d
 
-# Cria o alias local/spark:3.5 a partir da imagem Spark pre-buildada localmente.
-# Necessário antes de subir os serviços Spark (spark-master, spark-worker-1, spark-app-*).
-# Execute uma vez por máquina: make setup_spark
-setup_spark:
-	@docker tag services-spark-master:latest local/spark:3.5 && echo "local/spark:3.5 pronto."
+
 stop_dev_infra:
-	@docker compose -f services/local_services.yml down
+	@docker compose -f infra-dev/compose/local_services.yml down
 
 watch_dev_infra:
-	watch docker compose -f services/local_services.yml ps
+	watch docker compose -f infra-dev/compose/local_services.yml ps
 
 
 ################################################################################
 # DEV: Aplicações Python de captura on-chain
-# Arquivo: services/app_services.yml
+# Arquivo: infra-dev/compose/app_services.yml
 ################################################################################
 
 deploy_dev_stream:
-	@docker compose -f services/app_services.yml up -d --build
+	@docker compose -f infra-dev/compose/app_services.yml up -d --build
 
 stop_dev_stream:
-	@docker compose -f services/app_services.yml down
+	@docker compose -f infra-dev/compose/app_services.yml down
 
 watch_dev_stream:
-	watch docker compose -f services/app_services.yml ps
+	watch docker compose -f infra-dev/compose/app_services.yml ps
 
 ################################################################################
 # DEV: Jobs Batch Python (kafka maintenance, test api keys)
-# Arquivo: services/batch_services.yml
+# Arquivo: infra-dev/compose/batch_services.yml
 ################################################################################
 
 deploy_dev_batch:
-	@docker compose -f services/batch_services.yml up --build
+	@docker compose -f infra-dev/compose/batch_services.yml up --build
 
 stop_dev_batch:
-	@docker compose -f services/batch_services.yml down
+	@docker compose -f infra-dev/compose/batch_services.yml down
 
-# ---- Operações de manutenção (usar na ordem indicada) -------------------------
+################################################################################
+# DEV: Build de imagens locais usadas pelo DockerOperator do Airflow
+# Execute antes de subir o Airflow: make build_local_images
+################################################################################
 
-# 1. Limpa Redis db=0 (semáforo de API keys) e db=1 (contadores de consumo).
-#    Necessario apos migração de nomes de chaves (ex: formato antigo -> hierarquico SSM).
-flush_redis:
-	@docker compose -f services/batch_services.yml run --rm batch-job-flush-redis
+build_local_images:
+	@echo ">>> Buildando local/onchain-batch-txs ..."
+	@docker build -t local/onchain-batch-txs:latest docker/onchain-batch-txs
+	@echo ">>> Build concluído."
 
-# 2. Deleta e recria o topico mainnet.0.application.logs para descartar mensagens
-#    com formato de log obsoleto. Executar apos flush_redis.
-recreate_logs_topic:
-	@docker compose -f services/batch_services.yml run --rm --build batch-job-recreate-logs-topic
+################################################################################
+# DEV: Airflow (LocalExecutor)
+# Arquivo: infra-dev/compose/airflow_services.yml
+# Acesso: http://localhost:8090  (admin / admin)
+################################################################################
 
-# 3. Remove o container do Spark (descarta /tmp/checkpoints) e reinicia-o limpo.
-#    O Spark vai recomecar do offset 'earliest' no topico recriado (vazio).
-reset_spark_checkpoint:
-	@docker rm -f spark-app-apk-consumption 2>/dev/null || true
-	@docker compose -f services/app_services.yml up -d spark-app-apk-consumption
+deploy_dev_airflow:
+	@docker build -t local/airflow:latest docker/customized/airflow
+	@docker compose -f infra-dev/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
+	@docker compose -f infra-dev/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
 
-# Sequencia completa de reset do pipeline de monitoramento de API keys.
-# Executar quando houver chaves obsoletas no Redis (ex: pos-migracao SSM).
-reset_api_key_monitor: flush_redis recreate_logs_topic reset_spark_checkpoint
+stop_dev_airflow:
+	@docker compose -f infra-dev/compose/airflow_services.yml down
+
+logs_dev_airflow:
+	docker compose -f infra-dev/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
+
+################################################################################
+# PRD: Airflow (LocalExecutor)
+# Arquivo: infra-prd/compose/airflow_services.yml
+# Acesso: http://localhost:8091  (admin / <AIRFLOW_ADMIN_PASSWORD>)
+################################################################################
+
+deploy_prd_airflow:
+	@docker build -t local/airflow:latest docker/customized/airflow
+	@docker compose -f infra-prd/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
+	@docker compose -f infra-prd/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
+
+stop_prd_airflow:
+	@docker compose -f infra-prd/compose/airflow_services.yml down
+
+logs_prd_airflow:
+	docker compose -f infra-prd/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
 
 # Deploy para DEV (Databricks Free Edition)
 dabs_deploy_dev:
@@ -101,7 +123,7 @@ dabs_status_dev:
 ################################################################################
 
 TF_ARGS ?=
-TF_DIR  := terraform_prd
+TF_DIR  := infra-prd/terraform
 
 # =============================================================================
 # GRUPO 1 — Recursos gratuitos: VPC + IAM + S3
@@ -218,7 +240,7 @@ tf_apply_remote_state:
 
 # =============================================================================
 # TERRAFORM DEV — AWS infra para Databricks Free Edition
-# Diretório: terraform_dev/
+# Diretório: infra-dev/terraform/
 #
 # Cria bucket S3 para ingestão Kafka → S3 → Databricks Free Edition.
 # Autenticação AWS: usa o perfil local (~/.aws/credentials).
@@ -228,26 +250,26 @@ tf_apply_remote_state:
 # =============================================================================
 
 dev_tf_init:
-	cd terraform_dev && terraform init -input=false
+	cd infra-dev/terraform && terraform init -input=false
 
 dev_tf_plan:
-	cd terraform_dev && terraform plan
+	cd infra-dev/terraform && terraform plan
 
 dev_tf_apply:
-	cd terraform_dev && terraform apply -auto-approve
+	cd infra-dev/terraform && terraform apply -auto-approve
 
 dev_tf_destroy:
-	cd terraform_dev && terraform destroy -auto-approve
+	cd infra-dev/terraform && terraform destroy -auto-approve
 
 dev_tf_output:
-	cd terraform_dev && terraform output
+	cd infra-dev/terraform && terraform output
 
 # =============================================================================
 # DEV: Ingestão Kafka → S3 (Spark local)
 #
 # Pré-requisitos:
 #   1. make dev_tf_apply      (cria bucket S3 + IAM)
-#   2. Preencha services/conf/dev.s3.conf com as credenciais
+#   2. Preencha infra-dev/compose/conf/dev.s3.conf com as credenciais
 #   3. make deploy_dev_infra  (Kafka + Redis rodando)
 #   4. make deploy_dev_stream (apps de captura publicando no Kafka)
 #
@@ -256,11 +278,11 @@ dev_tf_output:
 
 start_kafka_s3:
 	@echo ">>> Iniciando job Spark: Kafka → S3 multiplex ..."
-	@docker compose -f services/app_services.yml up -d spark-app-kafka-s3
+	@docker compose -f infra-dev/compose/app_services.yml up -d spark-app-kafka-s3
 	@echo ">>> Job iniciado. Logs: docker logs -f spark-app-kafka-s3"
 
 stop_kafka_s3:
-	@docker compose -f services/app_services.yml stop spark-app-kafka-s3
+	@docker compose -f infra-dev/compose/app_services.yml stop spark-app-kafka-s3
 
 logs_kafka_s3:
 	docker logs -f spark-app-kafka-s3

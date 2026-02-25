@@ -1,12 +1,14 @@
 # Databricks notebook source
 # MAGIC %md
-# Bronze Multiplex DLT Pipeline
-#
-# Dual-source pipeline:
-#   - **PROD** (`source.type = kafka`): consome Kafka MSK diretamente (streaming)
-#   - **DEV**  (`source.type = s3`): lê Parquet do S3, ingestado pelo job Spark local
-#
-# A tabela de destino é a mesma: `b_fast.kafka_topics_multiplexed`
+# MAGIC # Bronze Multiplex DLT Pipeline
+# MAGIC
+# MAGIC Dual-source pipeline:
+# MAGIC - **PROD** (`source.type = kafka`): consome Kafka MSK diretamente (streaming)
+# MAGIC - **DEV**  (`source.type = s3`): lê Parquet do S3, ingestado pelo job Spark local
+# MAGIC
+# MAGIC A tabela de destino é a mesma: `b_fast.kafka_topics_multiplexed`
+
+# COMMAND ----------
 
 import dlt
 from pyspark.sql import functions as F
@@ -70,7 +72,7 @@ def _read_from_kafka():
                 F.col("offset").alias("kafka_offset"),
                 F.col("timestamp").alias("kafka_timestamp"),
                 F.col("key").cast(StringType()).alias("key"),
-                F.col("value").cast(StringType()).alias("value"),
+                F.col("value"),  # keep as binary (Avro with Confluent header)
             )
         )
         dfs.append(df)

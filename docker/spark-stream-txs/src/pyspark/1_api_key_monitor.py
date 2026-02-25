@@ -115,8 +115,9 @@ if __name__ == "__main__":
     STARTING_OFFSETS      = os.getenv("STARTING_OFFSETS", "latest")
     MAX_OFFSETS_PER_TRIGGER = os.getenv("MAX_OFFSETS_PER_TRIGGER", "1000")
     SCHEMA_REGISTRY_URL   = os.getenv("SCHEMA_REGISTRY_URL")
-    TRIGGER_TIME          = os.getenv("TRIGGER_TIME", "30 seconds")
-    CHECKPOINT_PATH       = os.getenv("CHECKPOINT_PATH", "/tmp/checkpoints/api_key_monitor")
+    TRIGGER_TIME          = os.getenv("TRIGGER_TIME", "5 minutes")
+    S3_BUCKET             = os.getenv("S3_BUCKET", "")
+    CHECKPOINT_PATH       = os.getenv("CHECKPOINT_PATH", f"s3a://{S3_BUCKET}/spark-checkpoints/api_key_monitor")
 
     REDIS_HOST            = os.getenv("REDIS_HOST", "redis")
     REDIS_PORT            = int(os.getenv("REDIS_PORT", 6379))

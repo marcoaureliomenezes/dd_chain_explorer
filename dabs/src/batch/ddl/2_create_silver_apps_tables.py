@@ -63,4 +63,23 @@ spark.sql(f"""
   TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true', 'quality' = 'silver')
 """)
 
+spark.sql(f"""
+  CREATE TABLE IF NOT EXISTS `{catalog}`.s_apps.transactions_batch (
+    contract_address  STRING,
+    tx_hash           STRING,
+    block_number      BIGINT,
+    timestamp         TIMESTAMP,
+    from_address      STRING,
+    to_address        STRING,
+    value             STRING,
+    gas_used          BIGINT,
+    ethereum_value    DOUBLE,
+    ingestion_date    DATE,
+    processed_ts      TIMESTAMP
+  )
+  USING DELTA
+  PARTITIONED BY (ingestion_date)
+  TBLPROPERTIES ('quality' = 'silver')
+""")
+
 print(f"[OK] Silver s_apps tables created in catalog '{catalog}'")
