@@ -6,7 +6,7 @@
 # MAGIC - **PROD** (`source.type = kafka`): consome Kafka MSK diretamente (streaming)
 # MAGIC - **DEV**  (`source.type = s3`): lê Parquet do S3, ingestado pelo job Spark local
 # MAGIC
-# MAGIC A tabela de destino é a mesma: `b_fast.kafka_topics_multiplexed`
+# MAGIC A tabela de destino é a mesma: `b_ethereum.kafka_topics_multiplexed`
 
 # COMMAND ----------
 

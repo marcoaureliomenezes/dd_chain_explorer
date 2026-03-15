@@ -26,7 +26,6 @@ if __name__ == "__main__":
 
     topics = [
       "topic.application.logs",
-      "topic.batch.logs",
       "topic.mined_blocks.events",
       "topic.blocks_data",
       "topic.block_txs.hash_ids",

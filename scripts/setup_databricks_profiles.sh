@@ -24,9 +24,9 @@ echo ""
 
 ###############################################################################
 # Perfil PRD — Account-level (OAuth M2M com Service Principal)
-# Usado por: infra-prd/terraform/7_databricks
+# Usado por: services/prd/terraform/7_databricks
 ###############################################################################
-echo "--- [prd] — Databricks Account Level (para infra-prd/terraform) ---"
+echo "--- [prd] — Databricks Account Level (para services/prd/terraform) ---"
 echo "Host: https://accounts.cloud.databricks.com"
 echo ""
 echo "Credenciais OAuth M2M obtidas em:"
@@ -39,9 +39,9 @@ echo ""
 
 ###############################################################################
 # Perfil DEV — Workspace Free Edition (Personal Access Token)
-# Usado por: infra-dev/terraform
+# Usado por: services/dev/terraform
 ###############################################################################
-echo "--- [dev] — Databricks Free Edition (para infra-dev/terraform) ---"
+echo "--- [dev] — Databricks Free Edition (para services/dev/terraform) ---"
 echo "Host: https://community.cloud.databricks.com"
 echo ""
 echo "Token obtido em:"
@@ -66,8 +66,8 @@ echo ""
 echo "Perfis configurados em: ~/.databrickscfg"
 echo ""
 echo "Para usar no terraform:"
-echo "  cd infra-prd/terraform/7_databricks && terraform apply"
-echo "  cd infra-dev/terraform && terraform apply"
+echo "  cd services/prd/terraform/7_databricks && terraform apply"
+echo "  cd services/dev/terraform && terraform apply"
 echo ""
 echo "IMPORTANTE: ~/.databrickscfg NUNCA deve ser commitado. Verifique seu ~/.gitignore global."
 

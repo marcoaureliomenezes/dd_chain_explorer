@@ -1,7 +1,7 @@
 resources:
   jobs:
     workflow_batch_s3_to_bronze:
-      name: "[${bundle.target}] dm-batch-s3-to-bronze"
+      name: "dm-batch-s3-to-bronze"
       tasks:
         - task_key: s3_to_bronze_contracts_txs
           notebook_task:

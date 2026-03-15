@@ -1,7 +1,7 @@
 resources:
   jobs:
     workflow_batch_bronze_to_silver:
-      name: "[${bundle.target}] dm-batch-bronze-to-silver"
+      name: "dm-batch-bronze-to-silver"
       tasks:
         - task_key: bronze_to_silver_contracts_txs
           notebook_task:

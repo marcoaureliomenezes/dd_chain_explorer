@@ -19,7 +19,10 @@ echo "  --executor-memory ${EXEC_MEMORY}"
 echo "  --total-executor-cores ${TOTAL_EXEC_CORES}"
 echo "  --num-executors ${NUM_EXECUTORS}"
 
-spark-submit                                    \
+SPARK_SUBMIT=${SPARK_HOME:-/opt/spark}/bin/spark-submit
+export PYTHONPATH=/app:${PYTHONPATH}
+
+$SPARK_SUBMIT                                   \
   --deploy-mode client                          \
   --driver-memory    ${DRIVER_MEMORY}           \
   --executor-memory  ${EXEC_MEMORY}             \

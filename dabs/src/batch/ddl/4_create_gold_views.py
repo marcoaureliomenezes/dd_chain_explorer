@@ -2,7 +2,10 @@
 # DDL — Cria views Gold no Unity Catalog
 # Equivalente ao AS-IS: spark-batch-jobs/ddl_iceberg_tables/job_4_create_gold_views.py
 
-catalog = dbutils.widgets.get("catalog") if "catalog" in [w.name for w in dbutils.widgets.getAll()] else "dd_chain_explorer"
+try:
+    catalog = dbutils.widgets.get("catalog")
+except Exception:
+    catalog = "dd_chain_explorer"
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.gold")
 
 spark.sql(f"""

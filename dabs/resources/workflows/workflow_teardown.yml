@@ -1,7 +1,7 @@
 resources:
   jobs:
     workflow_teardown:
-      name: "[${bundle.target}] dm-teardown"
+      name: "dm-teardown"
       tasks:
         - task_key: delete_all_tables
           notebook_task:

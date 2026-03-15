@@ -21,7 +21,7 @@ print(f"[INFO] Processando Bronze → Silver para ingestion_date = {ingestion_da
 
 # ── Ler Bronze filtrado por data ───────────────────────────────────────────────
 df_bronze = (
-    spark.table(f"`{catalog}`.bronze.popular_contracts_txs")
+    spark.table(f"`{catalog}`.b_ethereum.popular_contracts_txs")
     .filter(F.col("ingestion_date") == F.lit(ingestion_date).cast("date"))
 )
 
@@ -32,6 +32,10 @@ if count == 0:
     print("[WARN] Bronze vazio para esta data — pulando Silver")
 else:
     # ── Transformação ──────────────────────────────────────────────────────────
+    # Deduplicate: a mesma tx_hash pode aparecer em várias listas de contratos
+    # (ex: tx envolve dois contratos rastreados). Mantemos uma linha por tx_hash.
+    df_bronze = df_bronze.dropDuplicates(["tx_hash"])
+
     # ethereum_value: converte value (wei string) → ETH  (value / 1e18)
     df_silver = (
         df_bronze

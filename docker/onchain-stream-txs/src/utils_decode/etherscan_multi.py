@@ -42,6 +42,7 @@ class MultiKeyEtherscanClient:
         logger: logging.Logger,
         api_keys: list[str],
         network: str = "mainnet",
+        api_key_names: list[str] = None,
     ):
         if not api_keys:
             raise ValueError("At least one Etherscan API key is required.")
@@ -51,6 +52,13 @@ class MultiKeyEtherscanClient:
         self._index    = 0
         host = _ETHERSCAN_NETWORKS.get(network, "api.etherscan.io")
         self._base_url = f"https://{host}/api"
+
+        # Map api_key_value → api_key_name (parameter store name) for structured logging
+        names = api_key_names or [f"key_{i}" for i in range(len(api_keys))]
+        self._key_names: dict[str, str] = dict(zip(api_keys, names))
+
+        # Per-key call counters
+        self._call_counts: dict[str, int] = {k: 0 for k in api_keys}
 
         # Timestamp do último request por key (para throttle)
         self._last_ts: dict[str, float] = {}
@@ -77,6 +85,7 @@ class MultiKeyEtherscanClient:
         """
         key = self._next_key()
         self._throttle(key)
+        self._track_call(key, action="getabi", status="ok")
 
         params = {
             "module":  "contract",
@@ -96,7 +105,9 @@ class MultiKeyEtherscanClient:
             msg = data.get("result", "")
             # "Max rate limit reached" → log como warning; outros são debug
             if "rate limit" in msg.lower():
-                self.logger.warning(f"[EtherscanMulti] Rate limited on key ...{key[-4:]}")
+                self.logger.warning(
+                    f"[EtherscanMulti] Rate limited on key {self._key_names.get(key, key[-4:])}"
+                )
             else:
                 self.logger.debug(
                     f"[EtherscanMulti] ABI not available for {address}: {msg}"
@@ -147,6 +158,15 @@ class MultiKeyEtherscanClient:
         key = self._api_keys[self._index % len(self._api_keys)]
         self._index += 1
         return key
+
+    def _track_call(self, key: str, action: str, status: str = "ok") -> None:
+        """Incrementa contador por key e loga consumo estruturado."""
+        self._call_counts[key] = self._call_counts.get(key, 0) + 1
+        key_name = self._key_names.get(key, "UNKNOWN_KEY")
+        self.logger.info(
+            f"etherscan;api_call;api_key_name:{key_name};"
+            f"action:{action};status:{status};request_count:{self._call_counts[key]}"
+        )
 
     def _throttle(self, key: str) -> None:
         """

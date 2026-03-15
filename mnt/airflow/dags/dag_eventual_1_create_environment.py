@@ -9,6 +9,7 @@ from airflow.providers.databricks.operators.databricks import DatabricksRunNowOp
 COMMON_DOCKER_OP = dict(
     network_mode="vpc_dm",
     docker_url="unix:/var/run/docker.sock",
+    auto_remove="force",
     mount_tmp_dir=False,
     tty=False,
     force_pull=False,   # imagens locais — não tentar pull de registry
@@ -60,7 +61,7 @@ with DAG(
     CREATE_DATABRICKS_TABLES = DatabricksRunNowOperator(
         task_id="CREATE_DATABRICKS_TABLES",
         databricks_conn_id="databricks_default",
-        job_name=f"{os.getenv('DATABRICKS_JOB_NAME_PREFIX', '')}[dev] dm-ddl-setup",
+        job_name=f"{os.getenv('DATABRICKS_JOB_NAME_PREFIX', '')}dm-ddl-setup",
     )
 
     STARTING_TASK >> CREATE_KAFKA_TOPICS >> CREATE_DATABRICKS_TABLES >> FINAL_TASK

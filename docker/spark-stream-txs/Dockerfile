@@ -22,6 +22,12 @@ RUN /opt/spark/bin/spark-shell \
     --repositories https://repo1.maven.org/maven2 \
     -i /dev/null 2>&1 | tail -5 || true
 
+# S3A (Hadoop AWS) — needed for s3a:// checkpoint paths
+RUN /opt/spark/bin/spark-shell \
+    --packages "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262" \
+    --repositories https://repo1.maven.org/maven2 \
+    -i /dev/null 2>&1 | tail -5 || true
+
 WORKDIR /app
 COPY requirements.txt /app/requirements.txt
 RUN pip3 install --no-cache-dir -r /app/requirements.txt

@@ -1,7 +1,7 @@
 resources:
   jobs:
     workflow_periodic_processing:
-      name: "[${bundle.target}] dm-periodic-processing"
+      name: "dm-periodic-processing"
       schedule:
         quartz_cron_expression: "0 0 */6 * * ?"
         timezone_id: "America/Sao_Paulo"

@@ -2,7 +2,10 @@
 # DDL — Cria tabela Silver s_logs no Unity Catalog
 # Equivalente ao AS-IS: spark-batch-jobs/ddl_iceberg_tables/job_3_create_silver_table_logs.py
 
-catalog = dbutils.widgets.get("catalog") if "catalog" in [w.name for w in dbutils.widgets.getAll()] else "dd_chain_explorer"
+try:
+    catalog = dbutils.widgets.get("catalog")
+except Exception:
+    catalog = "dd_chain_explorer"
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.s_logs")
 
 spark.sql(f"""
@@ -20,5 +23,9 @@ spark.sql(f"""
   PARTITIONED BY (job_name)
   TBLPROPERTIES ('quality' = 'silver')
 """)
+
+# As tabelas abaixo são gerenciadas pelo pipeline DLT dm-ethereum — NÃO criar aqui:
+#   - s_logs.application_logs    (← mainnet.0.application.logs)
+#   - s_logs.api_key_consumption (← extraído dos logs de aplicação)
 
 print(f"[OK] Silver s_logs tables created in catalog '{catalog}'")

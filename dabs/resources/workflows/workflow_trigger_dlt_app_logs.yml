@@ -1,0 +1,9 @@
+resources:
+  jobs:
+    workflow_trigger_dlt_app_logs:
+      name: "dm-trigger-dlt-app-logs"
+      tasks:
+        - task_key: trigger_pipeline_update
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pipeline_app_logs.id}
+            full_refresh: false

@@ -35,8 +35,18 @@ class ContractTransactionsCrawler:
     return self
   
   def get_contracts(self):
-    data = map(lambda key: (key, redis_client.get(key)), redis_client.keys())
-    contracts_sorted = sorted(data, key=lambda x: int(x[1]), reverse=True)
+    data = []
+    for key in redis_client.keys():
+      # Filtrar apenas chaves de contratos (endereços 0x…), ignorar semaphore/metadata
+      if not key.startswith("0x"):
+        continue
+      val = redis_client.get(key)
+      try:
+        data.append((key, int(val)))
+      except (ValueError, TypeError):
+        self.logger.warning(f"Skipping key {key}: value '{val}' is not an integer")
+        continue
+    contracts_sorted = sorted(data, key=lambda x: x[1], reverse=True)
     contracts_sorted = list(map(lambda x: x[0], contracts_sorted))
     return contracts_sorted
 
@@ -116,6 +126,8 @@ class ContractTransactionsCrawler:
 
   def run(self):
     contracts = self.get_contracts()
+    contracts_processed = 0
+    total_txs = 0
     
     for contract in contracts:
       all_contract_data = []
@@ -124,6 +136,16 @@ class ContractTransactionsCrawler:
         all_contract_data.extend(data)
       print(f"Contract {contract} has {len(all_contract_data)} transactions")
       self.write_to_s3(all_contract_data)
+      contracts_processed += 1
+      total_txs += len(all_contract_data)
+
+    # ── Summary: API key consumption log ─────────────────────────────────────
+    self.logger.info(
+      f"etherscan;api_summary;"
+      f"contracts_processed:{contracts_processed};"
+      f"total_transactions:{total_txs};"
+      f"request_count:{self.etherscan_client.call_count}"
+    )
 
 
 
@@ -172,8 +194,8 @@ if __name__ == "__main__":
   if not etherscan_keys:
     raise SystemExit(f"No Etherscan keys found under {SSM_ETHERSCAN_PATH}")
   # Use the first key; for rotation consider using MultiKeyEtherscanClient
-  api_key = next(iter(etherscan_keys.values()))
-  etherscan_client = EtherscanClient(LOGGER, api_key, network=NETWORK)
+  api_key_name, api_key = next(iter(etherscan_keys.items()))
+  etherscan_client = EtherscanClient(LOGGER, api_key, network=NETWORK, api_key_name=api_key_name)
 
   crawler = (
     ContractTransactionsCrawler(LOGGER)

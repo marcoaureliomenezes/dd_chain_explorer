@@ -2,66 +2,20 @@
 # DDL — Cria tabelas Silver s_apps no Unity Catalog
 # Equivalente ao AS-IS: spark-batch-jobs/ddl_iceberg_tables/job_2_create_silvers_s_apps.py
 
-catalog = dbutils.widgets.get("catalog") if "catalog" in [w.name for w in dbutils.widgets.getAll()] else "dd_chain_explorer"
+try:
+    catalog = dbutils.widgets.get("catalog")
+except Exception:
+    catalog = "dd_chain_explorer"
 spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.s_apps")
 
-spark.sql(f"""
-  CREATE TABLE IF NOT EXISTS `{catalog}`.s_apps.mined_blocks_events (
-    block_number        BIGINT  NOT NULL,
-    block_hash          STRING,
-    parent_hash         STRING,
-    block_timestamp     BIGINT,
-    transaction_count   INT,
-    event_time          TIMESTAMP,
-    kafka_timestamp     TIMESTAMP
-  )
-  USING DELTA
-  TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true', 'quality' = 'silver')
-""")
-
-spark.sql(f"""
-  CREATE TABLE IF NOT EXISTS `{catalog}`.s_apps.blocks_fast (
-    number              BIGINT,
-    hash                STRING,
-    parent_hash         STRING,
-    timestamp           BIGINT,
-    miner               STRING,
-    difficulty          BIGINT,
-    total_difficulty    STRING,
-    size                INT,
-    gas_used            BIGINT,
-    gas_limit           BIGINT,
-    transaction_count   INT,
-    base_fee_per_gas    BIGINT,
-    event_time          TIMESTAMP,
-    kafka_timestamp     TIMESTAMP
-  )
-  USING DELTA
-  TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true', 'quality' = 'silver')
-""")
-
-spark.sql(f"""
-  CREATE TABLE IF NOT EXISTS `{catalog}`.s_apps.transactions_fast (
-    hash                    STRING,
-    block_number            BIGINT,
-    block_hash              STRING,
-    transaction_index       INT,
-    from_address            STRING,
-    to_address              STRING,
-    value                   STRING,
-    gas                     BIGINT,
-    gas_price               BIGINT,
-    nonce                   BIGINT,
-    input                   STRING,
-    type                    INT,
-    max_fee_per_gas         BIGINT,
-    max_priority_fee_per_gas BIGINT,
-    kafka_timestamp         TIMESTAMP
-  )
-  USING DELTA
-  PARTITIONED BY (block_number)
-  TBLPROPERTIES ('delta.enableChangeDataFeed' = 'true', 'quality' = 'silver')
-""")
+# As tabelas abaixo são gerenciadas pelo pipeline DLT dm-ethereum — NÃO criar aqui.
+# O DLT precisa ser o dono exclusivo (schema evolution + checkpoints):
+#   - s_apps.mined_blocks_events        (← mainnet.1.mined_blocks.events)
+#   - s_apps.blocks_fast                (← mainnet.2.blocks.data)
+#   - s_apps.transaction_hash_ids       (← mainnet.3.block.txs.hash_id)
+#   - s_apps.transactions_fast          (← mainnet.4 + mainnet.5 JOIN)
+#   - s_apps.popular_contracts_ranking  (gold MV — top 100 contratos)
+#   - s_apps.transactions_lambda        (gold MV — visão Lambda batch+streaming)
 
 spark.sql(f"""
   CREATE TABLE IF NOT EXISTS `{catalog}`.s_apps.transactions_batch (

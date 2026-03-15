@@ -2,7 +2,7 @@
 # MAGIC %md
 # MAGIC # Silver DLT Pipeline — All Topics
 # MAGIC
-# MAGIC Pipeline unificado que lê da Bronze multiplex (`b_fast.kafka_topics_multiplexed`)
+# MAGIC Pipeline unificado que lê da Bronze multiplex (`b_ethereum.kafka_topics_multiplexed`)
 # MAGIC e escreve tabelas Silver individuais (1 por tópico Kafka).
 # MAGIC
 # MAGIC **Solução para o Schema Registry local:**
@@ -26,7 +26,7 @@ from pyspark.sql.avro.functions import from_avro
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 CATALOG       = spark.conf.get("bronze_catalog", "dev")
-BRONZE_SCHEMA = spark.conf.get("bronze_schema", "b_fast")
+BRONZE_SCHEMA = spark.conf.get("bronze_schema", "b_ethereum")
 BRONZE_TABLE  = spark.conf.get("bronze_table", "kafka_topics_multiplexed")
 BRONZE_FQN    = f"{CATALOG}.{BRONZE_SCHEMA}.{BRONZE_TABLE}"
 

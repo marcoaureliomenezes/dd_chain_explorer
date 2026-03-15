@@ -3,15 +3,24 @@
 
 from pyspark.sql import functions as F
 
-catalog = dbutils.widgets.get("catalog")
+try:
+    catalog = dbutils.widgets.get("catalog")
+except Exception:
+    catalog = "dev"
 
 all_tables = [
-    "b_fast.kafka_topics_multiplexed",
-    "bronze.popular_contracts_txs",
+    "b_ethereum.kafka_topics_multiplexed",
+    "b_ethereum.popular_contracts_txs",
     "s_apps.transactions_fast",
     "s_apps.blocks_fast",
     "s_apps.mined_blocks_events",
+    "s_apps.transaction_hash_ids",
+    "s_apps.transactions_batch",
+    "s_apps.popular_contracts_ranking",
+    "s_apps.transactions_lambda",
+    "s_logs.application_logs",
     "s_logs.apps_logs_fast",
+    "s_logs.api_key_consumption",
 ]
 
 metrics = []

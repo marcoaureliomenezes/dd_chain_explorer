@@ -1,0 +1,191 @@
+###############################################################################
+# services/dev/compose/airflow_services.yml
+#
+# Apache Airflow — ambiente DEV (LocalExecutor, componentes mínimos).
+#
+# Função:
+#   Orquestrar Jobs Batch de captura on-chain (ingestão S3) e disparar
+#   Databricks Workflows.
+#
+# Executor: LocalExecutor — tasks rodam no processo do scheduler.
+#           Sem workers separados, sem Celery, sem Redis para o Airflow.
+#
+# Credenciais (nunca hardcoded — montagem de volume read-only):
+#   ~/.aws              → AWS (S3, SSM, ECS)
+#   ~/.databrickscfg    → Databricks Free Edition (perfil [dev])
+#
+# Pré-requisitos:
+#   1. Rede criada: docker network create vpc_dm
+#   2. Arquivos de credencial presentes no host:
+#      ~/.aws/credentials  ~/.aws/config  ~/.databrickscfg
+#
+# Subir:
+#   docker compose -f services/dev/compose/airflow_services.yml up airflow-init
+#   docker compose -f services/dev/compose/airflow_services.yml up -d
+#
+# Parar:
+#   docker compose -f services/dev/compose/airflow_services.yml down
+#
+# Acesso: http://localhost:8090  (admin / admin)
+###############################################################################
+
+###############################################################################
+# Âncora comum a todos os serviços Airflow
+###############################################################################
+x-airflow-common: &airflow-common
+  build: ../../../docker/customized/airflow
+  restart: on-failure
+  user: root   # necessário para docker.sock, ~/.aws e ~/.databrickscfg
+  networks:
+    - vpc_dm
+  environment: &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@airflow-postgres-dev/airflow
+    AIRFLOW__CORE__FERNET_KEY: ''             # vazio → gerado automaticamente no init
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
+    AIRFLOW__WEBSERVER__SECRET_KEY: 'dev-secret-key-change-in-prod'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    # AWS — SDK vai encontrar credenciais em $HOME/.aws/ (HOME=/root aqui)
+    AWS_DEFAULT_REGION: sa-east-1
+    # HOST_HOME: usado pelo DockerOperator para montar ~/.aws do host no container filho
+    # ${HOME} é expandido pelo docker compose a partir do shell do host
+    HOST_HOME: ${HOME}
+    # Databricks — CLI e SDK lêem $HOME/.databrickscfg
+    DATABRICKS_CONFIG_PROFILE: dev
+    # DABS em mode:development prefixa nomes com "[dev <user>] " — ajuste ao mudar usuário
+    DATABRICKS_JOB_NAME_PREFIX: "[dev dd_chain_explorer] "
+    # Kafka / on-chain — usados pelos DockerOperators em DEV
+    NETWORK: mainnet
+    KAFKA_BROKERS: kafka-broker-1:9092
+    SCHEMA_REGISTRY_URL: http://schema-registry:8081
+    # S3 — batch ingestion (acessível via external location no Databricks Dev)
+    DEV_S3_BUCKET: dm-chain-explorer-dev-ingestion
+    S3_BATCH_PREFIX: batch
+    # Redis — contratos populares (sem senha em DEV)
+    REDIS_HOST: redis
+    REDIS_PORT: "6379"
+    REDIS_PASS: ""
+    REDIS_DB_CONTRACTS: "3"
+    # Kafka — topic de logs de aplicação (usado pelo DockerOperator via env pass-through)
+    TOPIC_LOGS: "mainnet.0.application.logs"
+  volumes:
+    - ../../../mnt/airflow/dags:/opt/airflow/dags
+    - ../../../mnt/airflow/airflow.cfg:/opt/airflow/airflow.cfg:ro
+    - airflow_dev_logs:/opt/airflow/logs
+    - airflow_dev_plugins:/opt/airflow/plugins
+    # Docker socket — necessário para DockerOperator
+    - /var/run/docker.sock:/var/run/docker.sock
+    # Credenciais montadas como read-only → NUNCA hardcode aqui
+    - ~/.aws:/root/.aws:ro
+    - ~/.databrickscfg:/root/.databrickscfg:ro
+  depends_on:
+    airflow-postgres-dev:
+      condition: service_healthy
+
+###############################################################################
+# Serviços
+###############################################################################
+
+volumes:
+  airflow_dev_postgres:
+  airflow_dev_logs:
+  airflow_dev_plugins:
+
+networks:
+  vpc_dm:
+    external: true
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # Banco de metadados do Airflow (PostgreSQL)
+  # ---------------------------------------------------------------------------
+  airflow-postgres-dev:
+    image: postgres:16-alpine
+    container_name: airflow-postgres-dev
+    restart: on-failure
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    volumes:
+      - airflow_dev_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 10s
+      retries: 5
+      start_period: 5s
+    networks:
+      - vpc_dm
+
+  # ---------------------------------------------------------------------------
+  # Inicialização única — roda `airflow db migrate` + cria usuário admin
+  # Reinicia com `restart: no` → não fica em loop
+  # ---------------------------------------------------------------------------
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow-init-dev
+    restart: "no"
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin || true
+
+        # ── Configurar conexão databricks_default a partir de ~/.databrickscfg [dev] ──
+        DBRICKS_HOST=$$(python3 -c "import configparser; c=configparser.ConfigParser(); c.read('/root/.databrickscfg'); print(c.get('dev','host',fallback=''))")
+        DBRICKS_TOKEN=$$(python3 -c "import configparser; c=configparser.ConfigParser(); c.read('/root/.databrickscfg'); print(c.get('dev','token',fallback=''))")
+        if [ -n "$$DBRICKS_HOST" ] && [ -n "$$DBRICKS_TOKEN" ]; then
+          airflow connections delete databricks_default 2>/dev/null || true
+          airflow connections add databricks_default \
+            --conn-type databricks \
+            --conn-host "$$DBRICKS_HOST" \
+            --conn-password "$$DBRICKS_TOKEN"
+          echo "[OK] Conexão databricks_default → $$DBRICKS_HOST"
+        else
+          echo "[WARN] ~/.databrickscfg perfil [dev] não encontrado — configure a conexão manualmente."
+        fi
+
+        echo "Airflow DEV initialized."
+
+  # ---------------------------------------------------------------------------
+  # Scheduler — executa tasks (LocalExecutor: no mesmo processo)
+  # ---------------------------------------------------------------------------
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow-scheduler-dev
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # Webserver — UI em http://localhost:8090
+  # ---------------------------------------------------------------------------
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow-webserver-dev
+    command: webserver
+    ports:
+      - "8090:8080"   # 8080 já usado pelo Spark Master UI
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      airflow-scheduler:
+        condition: service_healthy

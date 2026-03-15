@@ -9,45 +9,45 @@
 # 	@docker pull apache/spark:3.5.8-scala2.12-java17-python3-ubuntu && echo "apache/spark:3.5.8 pronto."
 ################################################################################
 # DEV: Infraestrutura local (Kafka + Redis + Spark)
-# Arquivo: infra-dev/compose/local_services.yml
+# Arquivo: services/dev/compose/local_services.yml
 ################################################################################
 
 deploy_dev_infra:
 	@docker network create vpc_dm 2>/dev/null || true
-	@docker compose -f infra-dev/compose/local_services.yml up -d
+	@docker compose -f services/dev/compose/local_services.yml up -d
 
 
 stop_dev_infra:
-	@docker compose -f infra-dev/compose/local_services.yml down
+	@docker compose -f services/dev/compose/local_services.yml down
 
 watch_dev_infra:
-	watch docker compose -f infra-dev/compose/local_services.yml ps
+	watch docker compose -f services/dev/compose/local_services.yml ps
 
 
 ################################################################################
 # DEV: Aplicações Python de captura on-chain
-# Arquivo: infra-dev/compose/app_services.yml
+# Arquivo: services/dev/compose/app_services.yml
 ################################################################################
 
 deploy_dev_stream:
-	@docker compose -f infra-dev/compose/app_services.yml up -d --build
+	@docker compose -f services/dev/compose/app_services.yml up -d --build
 
 stop_dev_stream:
-	@docker compose -f infra-dev/compose/app_services.yml down
+	@docker compose -f services/dev/compose/app_services.yml down
 
 watch_dev_stream:
-	watch docker compose -f infra-dev/compose/app_services.yml ps
+	watch docker compose -f services/dev/compose/app_services.yml ps
 
 ################################################################################
 # DEV: Jobs Batch Python (kafka maintenance, test api keys)
-# Arquivo: infra-dev/compose/batch_services.yml
+# Arquivo: services/dev/compose/batch_services.yml
 ################################################################################
 
 deploy_dev_batch:
-	@docker compose -f infra-dev/compose/batch_services.yml up --build
+	@docker compose -f services/dev/compose/batch_services.yml up --build
 
 stop_dev_batch:
-	@docker compose -f infra-dev/compose/batch_services.yml down
+	@docker compose -f services/dev/compose/batch_services.yml down
 
 ################################################################################
 # DEV: Build de imagens locais usadas pelo DockerOperator do Airflow
@@ -61,37 +61,37 @@ build_local_images:
 
 ################################################################################
 # DEV: Airflow (LocalExecutor)
-# Arquivo: infra-dev/compose/airflow_services.yml
+# Arquivo: services/dev/compose/airflow_services.yml
 # Acesso: http://localhost:8090  (admin / admin)
 ################################################################################
 
 deploy_dev_airflow:
 	@docker build -t local/airflow:latest docker/customized/airflow
-	@docker compose -f infra-dev/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
-	@docker compose -f infra-dev/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
+	@docker compose -f services/dev/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
+	@docker compose -f services/dev/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
 
 stop_dev_airflow:
-	@docker compose -f infra-dev/compose/airflow_services.yml down
+	@docker compose -f services/dev/compose/airflow_services.yml down
 
 logs_dev_airflow:
-	docker compose -f infra-dev/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
+	docker compose -f services/dev/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
 
 ################################################################################
 # PRD: Airflow (LocalExecutor)
-# Arquivo: infra-prd/compose/airflow_services.yml
+# Arquivo: services/prd/compose/airflow_services.yml
 # Acesso: http://localhost:8091  (admin / <AIRFLOW_ADMIN_PASSWORD>)
 ################################################################################
 
 deploy_prd_airflow:
 	@docker build -t local/airflow:latest docker/customized/airflow
-	@docker compose -f infra-prd/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
-	@docker compose -f infra-prd/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
+	@docker compose -f services/prd/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
+	@docker compose -f services/prd/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
 
 stop_prd_airflow:
-	@docker compose -f infra-prd/compose/airflow_services.yml down
+	@docker compose -f services/prd/compose/airflow_services.yml down
 
 logs_prd_airflow:
-	docker compose -f infra-prd/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
+	docker compose -f services/prd/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
 
 # Deploy para DEV (Databricks Free Edition)
 dabs_deploy_dev:
@@ -123,7 +123,7 @@ dabs_status_dev:
 ################################################################################
 
 TF_ARGS ?=
-TF_DIR  := infra-prd/terraform
+TF_DIR  := services/prd/terraform
 
 # =============================================================================
 # GRUPO 1 — Recursos gratuitos: VPC + IAM + S3
@@ -240,7 +240,7 @@ tf_apply_remote_state:
 
 # =============================================================================
 # TERRAFORM DEV — AWS infra para Databricks Free Edition
-# Diretório: infra-dev/terraform/
+# Diretório: services/dev/terraform/
 #
 # Cria bucket S3 para ingestão Kafka → S3 → Databricks Free Edition.
 # Autenticação AWS: usa o perfil local (~/.aws/credentials).
@@ -250,26 +250,26 @@ tf_apply_remote_state:
 # =============================================================================
 
 dev_tf_init:
-	cd infra-dev/terraform && terraform init -input=false
+	cd services/dev/terraform && terraform init -input=false
 
 dev_tf_plan:
-	cd infra-dev/terraform && terraform plan
+	cd services/dev/terraform && terraform plan
 
 dev_tf_apply:
-	cd infra-dev/terraform && terraform apply -auto-approve
+	cd services/dev/terraform && terraform apply -auto-approve
 
 dev_tf_destroy:
-	cd infra-dev/terraform && terraform destroy -auto-approve
+	cd services/dev/terraform && terraform destroy -auto-approve
 
 dev_tf_output:
-	cd infra-dev/terraform && terraform output
+	cd services/dev/terraform && terraform output
 
 # =============================================================================
 # DEV: Ingestão Kafka → S3 (Spark local)
 #
 # Pré-requisitos:
 #   1. make dev_tf_apply      (cria bucket S3 + IAM)
-#   2. Preencha infra-dev/compose/conf/dev.s3.conf com as credenciais
+#   2. Preencha services/dev/compose/conf/dev.s3.conf com as credenciais
 #   3. make deploy_dev_infra  (Kafka + Redis rodando)
 #   4. make deploy_dev_stream (apps de captura publicando no Kafka)
 #
@@ -278,11 +278,11 @@ dev_tf_output:
 
 start_kafka_s3:
 	@echo ">>> Iniciando job Spark: Kafka → S3 multiplex ..."
-	@docker compose -f infra-dev/compose/app_services.yml up -d spark-app-kafka-s3
+	@docker compose -f services/dev/compose/app_services.yml up -d spark-app-kafka-s3
 	@echo ">>> Job iniciado. Logs: docker logs -f spark-app-kafka-s3"
 
 stop_kafka_s3:
-	@docker compose -f infra-dev/compose/app_services.yml stop spark-app-kafka-s3
+	@docker compose -f services/dev/compose/app_services.yml stop spark-app-kafka-s3
 
 logs_kafka_s3:
 	docker logs -f spark-app-kafka-s3

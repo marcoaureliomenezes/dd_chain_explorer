@@ -29,6 +29,7 @@ from functools import lru_cache
 from logging import Logger
 from typing import Any, Dict, Optional
 
+from eth_abi import decode as abi_decode
 from web3 import Web3
 
 from utils.dm_parameter_store import ParameterStoreClient
@@ -61,6 +62,35 @@ def _serialize_value(val: Any) -> Any:
 
 def _serialize_params(params: dict) -> dict:
     return {k: _serialize_value(v) for k, v in params.items()}
+
+
+def _parse_top_level_types(args_str: str) -> list:
+    """Split ABI type list string at top-level commas only.
+
+    Handles nested tuples, e.g.::
+
+        'address,(uint256,bytes),uint256[]'
+        → ['address', '(uint256,bytes)', 'uint256[]']
+    """
+    types: list = []
+    depth = 0
+    current: list = []
+    for ch in args_str:
+        if ch == "(":
+            depth += 1
+        elif ch == ")":
+            depth -= 1
+        if ch == "," and depth == 0:
+            token = "".join(current).strip()
+            if token:
+                types.append(token)
+            current = []
+        else:
+            current.append(ch)
+    token = "".join(current).strip()
+    if token:
+        types.append(token)
+    return types
 
 
 # ---------------------------------------------------------------------------
@@ -146,10 +176,15 @@ class TransactionInputDecoder(ChainExtractor):
                 skipped_count += 1
                 continue
 
-            if result["decode_type"] in ("partial", "unknown"):
+            # Drop truly unknown decodes — no useful data to publish
+            if result["decode_type"] == "unknown":
+                skipped_count += 1
+                continue
+
+            if result["decode_type"] == "partial":
                 fallback_count += 1
 
-            record = self._build_record(tx, contract_address, input_hex, result)
+            record = self._build_record(tx, contract_address, result)
             if record is None:
                 skipped_count += 1
                 continue
@@ -211,13 +246,13 @@ class TransactionInputDecoder(ChainExtractor):
                 # Mark as unverified → won't hit Etherscan again for 24 h
                 self._cache.mark_unverified(addr)
 
-        # ---- 3. Fallback: 4byte.directory ----
+        # ---- 3. Fallback: 4byte.directory — try to decode params from sig ----
         sig = self._etherscan.get_4byte_signature(selector)
         if sig:
             self.logger.debug(f"[decode] 4byte fallback for {addr}: {sig}")
-            return {"method": sig, "parms": {}, "decode_type": "partial"}
+            return self._decode_with_sig(sig, input_hex)
 
-        # ---- 4. Last resort: raw selector ----
+        # ---- 4. Last resort: raw selector — unknown, will be dropped ----
         self.logger.debug(f"[decode] Unknown selector {selector} for {addr}")
         return {"method": selector, "parms": {}, "decode_type": "unknown"}
 
@@ -235,7 +270,12 @@ class TransactionInputDecoder(ChainExtractor):
             abi_json = json.dumps(abi, sort_keys=True)
             contract = self._get_contract(address.lower(), abi_json)
             func_obj, params = contract.decode_function_input(input_hex)
-            method_name = str(func_obj).split("<Function ")[1].rstrip(">")
+            # Extract just the function name (no type signature)
+            raw = str(func_obj)  # e.g. "<Function transfer(address,uint256)>"
+            if "<Function " in raw:
+                method_name = raw.split("<Function ")[1].rstrip(">").split("(")[0]
+            else:
+                method_name = str(func_obj)
             clean_params = _serialize_params(params)
             return {
                 "method": method_name,
@@ -246,6 +286,37 @@ class TransactionInputDecoder(ChainExtractor):
             self.logger.debug(f"[decode] ABI decode failed for {address}: {exc}")
             return None
 
+    def _decode_with_sig(self, sig: str, input_hex: str) -> dict:
+        """
+        Attempt full parameter decode using a 4byte.directory signature.
+
+        Given ``sig = 'transfer(address,uint256)'``:
+          1. Extract method name  → 'transfer'
+          2. Parse param types    → ['address', 'uint256']
+          3. Decode calldata with eth_abi.decode
+
+        Falls back to decode_type='partial' (method name only) if param decode
+        fails (bad calldata, complex tuple that can't be parsed, etc.).
+        """
+        paren = sig.index("(") if "(" in sig else len(sig)
+        method_name = sig[:paren]
+        args_str = sig[paren + 1: -1] if "(" in sig else ""
+
+        if args_str:
+            try:
+                types = _parse_top_level_types(args_str)
+                calldata = bytes.fromhex(input_hex[10:])   # skip 4-byte selector
+                values = abi_decode(types, calldata)
+                clean = {f"arg{i}": _serialize_value(v) for i, v in enumerate(values)}
+                return {"method": method_name, "parms": clean, "decode_type": "full_4byte"}
+            except Exception as exc:
+                self.logger.debug(
+                    f"[decode] 4byte param decode failed for sig '{sig}': {exc}"
+                )
+
+        # method name available but params could not be decoded
+        return {"method": method_name, "parms": {}, "decode_type": "partial"}
+
     # ------------------------------------------------------------------
     # Record builder
     # ------------------------------------------------------------------
@@ -254,20 +325,22 @@ class TransactionInputDecoder(ChainExtractor):
     def _build_record(
         tx: dict,
         contract_address: str,
-        input_hex: str,
         result: dict,
     ) -> Optional[dict]:
+        """
+        Build the output record.
+
+        Only ``tx_hash`` is kept from the source transaction — ``from``,
+        ``block_number`` and ``input`` are already on the source topic and
+        can be joined back using ``tx_hash``.
+        """
         try:
-            parms_with_meta = dict(result["parms"])
-            parms_with_meta["_decode_type"] = result["decode_type"]
             return {
                 "tx_hash":          tx["hash"],
-                "block_number":     tx["blockNumber"],
-                "from":             tx["from"],
                 "contract_address": contract_address,
-                "input":            input_hex,
                 "method":           result["method"],
-                "parms":            json.dumps(parms_with_meta),
+                "parms":            json.dumps(result["parms"]),
+                "decode_type":      result["decode_type"],
             }
         except Exception:
             return None
@@ -355,7 +428,12 @@ if __name__ == "__main__":
         raise SystemExit(1)
     logger.info(f"Loaded {len(etherscan_keys)} Etherscan API keys from SSM.")
 
-    etherscan = MultiKeyEtherscanClient(logger, api_keys=etherscan_keys, network=NETWORK)
+    etherscan = MultiKeyEtherscanClient(
+        logger,
+        api_keys=etherscan_keys,
+        network=NETWORK,
+        api_key_names=list(etherscan_keys_map.keys()),
+    )
 
     # ---- Run ----
     src_properties = {

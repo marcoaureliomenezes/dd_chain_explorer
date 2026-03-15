@@ -29,7 +29,7 @@ with DAG(
     RUN_MAINTENANCE = DatabricksRunNowOperator(
         task_id="RUN_MAINTENANCE",
         databricks_conn_id="databricks_default",
-        job_name=f"{os.getenv('DATABRICKS_JOB_NAME_PREFIX', '')}[dev] dm-iceberg-maintenance",
+        job_name=f"{os.getenv('DATABRICKS_JOB_NAME_PREFIX', '')}dm-iceberg-maintenance",
     )
 
     FINAL_TASK = BashOperator(task_id="FINAL_TASK", bash_command="sleep 2")

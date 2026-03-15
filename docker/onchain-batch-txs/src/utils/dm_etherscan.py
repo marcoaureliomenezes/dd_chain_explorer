@@ -48,12 +48,27 @@ _ABI_CACHE_DIR = Path(os.getenv("ABI_CACHE_DIR", "/tmp/abi_cache"))
 class EtherscanClient:
     """Thin Etherscan API v2 wrapper with disk-backed ABI cache."""
 
-    def __init__(self, logger: Logger, api_key: str, network: str = "mainnet"):
+    def __init__(self, logger: Logger, api_key: str, network: str = "mainnet", api_key_name: str = None):
         self.logger   = logger
         self._api_key = api_key
+        self._api_key_id = api_key_name or "UNKNOWN_KEY"  # parameter store key name for logging
         self._chain_id = _ETHERSCAN_CHAIN_IDS.get(network, 1)
         self._base_url = _ETHERSCAN_V2_BASE
+        self._call_count = 0   # tracks total API calls for consumption monitoring
         _ABI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def call_count(self) -> int:
+        """Total number of Etherscan API calls made since instantiation."""
+        return self._call_count
+
+    def _track_call(self, action: str, status: str = "ok"):
+        """Increment call counter and log structured API consumption info."""
+        self._call_count += 1
+        self.logger.info(
+            f"etherscan;api_call;api_key_name:{self._api_key_id};"
+            f"action:{action};status:{status};request_count:{self._call_count}"
+        )
 
     # ------------------------------------------------------------------
     # Public
@@ -123,8 +138,11 @@ class EtherscanClient:
         try:
             resp = requests.get(self._base_url, params=params, timeout=10)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            self._track_call("getblocknobytime", data.get("message", "UNKNOWN"))
+            return data
         except Exception as exc:
+            self._track_call("getblocknobytime", "ERROR")
             self.logger.warning(f"[Etherscan] get_block_by_timestamp error: {exc}")
             return {"message": "ERROR", "result": None}
 
@@ -170,8 +188,11 @@ class EtherscanClient:
         try:
             resp = requests.get(self._base_url, params=params, timeout=15)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            self._track_call("txlist", data.get("message", "UNKNOWN"))
+            return data
         except Exception as exc:
+            self._track_call("txlist", "ERROR")
             self.logger.warning(
                 f"[Etherscan] get_contract_txs_by_block_interval error for {address}: {exc}"
             )
@@ -202,8 +223,11 @@ class EtherscanClient:
         try:
             resp = requests.get(self._base_url, params=params, timeout=15)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
+            self._track_call("txlistinternal", data.get("message", "UNKNOWN"))
+            return data
         except Exception as exc:
+            self._track_call("txlistinternal", "ERROR")
             self.logger.warning(
                 f"[Etherscan] get_internal_txs_by_block_interval error for {address}: {exc}"
             )
@@ -225,7 +249,9 @@ class EtherscanClient:
             resp = requests.get(self._base_url, params=params, timeout=10)
             resp.raise_for_status()
             data = resp.json()
+            self._track_call("getabi", data.get("message", "UNKNOWN"))
         except Exception as exc:
+            self._track_call("getabi", "ERROR")
             self.logger.warning(f"[Etherscan] HTTP error for {address}: {exc}")
             return None
 

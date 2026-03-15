@@ -10,7 +10,10 @@ from pyspark.sql.types import *
 
 catalog        = dbutils.widgets.get("catalog")
 raw_s3_bucket  = dbutils.widgets.get("raw_s3_bucket")
-dynamodb_table = dbutils.widgets.get("dynamodb_table") if "dynamodb_table" in [w.name for w in dbutils.widgets.getAll()] else "dm-popular-contracts"
+try:
+    dynamodb_table = dbutils.widgets.get("dynamodb_table")
+except Exception:
+    dynamodb_table = "dm-popular-contracts"
 
 # -----------------------------------------------------------------------
 # Lê contratos populares do DynamoDB
@@ -63,8 +66,8 @@ if rows:
         .format("delta")
         .mode("append")
         .partitionBy("ingestion_date")
-        .saveAsTable(f"`{catalog}`.bronze.popular_contracts_txs")
+        .saveAsTable(f"`{catalog}`.b_ethereum.popular_contracts_txs")
     )
-    print(f"[OK] {len(rows)} transactions written to bronze.popular_contracts_txs")
+    print(f"[OK] {len(rows)} transactions written to b_ethereum.popular_contracts_txs")
 else:
     print("[WARN] No transactions fetched")

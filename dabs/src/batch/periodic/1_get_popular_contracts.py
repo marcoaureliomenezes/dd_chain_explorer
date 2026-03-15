@@ -7,7 +7,10 @@ import boto3
 
 catalog               = dbutils.widgets.get("catalog")
 dynamodb_table        = dbutils.widgets.get("dynamodb_table")
-lookback_hours        = int(dbutils.widgets.get("lookback_hours") if "lookback_hours" in [w.name for w in dbutils.widgets.getAll()] else "6")
+try:
+    lookback_hours = int(dbutils.widgets.get("lookback_hours"))
+except Exception:
+    lookback_hours = 6
 top_n                 = 50
 
 # -----------------------------------------------------------------------

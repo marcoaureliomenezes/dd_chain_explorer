@@ -135,7 +135,7 @@ with DAG(
     DELETE_DATABRICKS_TABLES = DatabricksRunNowOperator(
         task_id="DELETE_DATABRICKS_TABLES",
         databricks_conn_id="databricks_default",
-        job_name=f"{os.getenv('DATABRICKS_JOB_NAME_PREFIX', '')}[dev] dm-teardown",
+        job_name=f"{os.getenv('DATABRICKS_JOB_NAME_PREFIX', '')}dm-teardown",
     )
 
     starting_process >> delete_kafka_topics >> FINAL_TASK

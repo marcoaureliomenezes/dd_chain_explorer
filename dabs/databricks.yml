@@ -67,7 +67,8 @@ targets:
   # Use `databricks bundle deploy --target dev` to deploy
   # ----------------------------------------------------------------
   dev:
-    mode: development
+    presets:
+      name_prefix: "[dev dd_chain_explorer] "
     workspace:
       host: "https://dbc-409f1007-5779.cloud.databricks.com"
       root_path: "~/.bundle/${bundle.name}/dev"
