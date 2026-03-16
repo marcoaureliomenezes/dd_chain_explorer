@@ -1,6 +1,0 @@
-pyspark
-pandas
-requests
-redis
-botocore
-dm-33-utils==0.0.5

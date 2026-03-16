@@ -1,0 +1,12 @@
+{
+    "namespace": "io.streamr.onchain",
+    "type": "record",
+    "name": "Input_Transaction",
+    "fields": [
+      {"name": "tx_hash",          "type": "string"},
+      {"name": "contract_address", "type": "string"},
+      {"name": "method",           "type": "string"},
+      {"name": "parms",            "type": "string"},
+      {"name": "decode_type",      "type": "string"}
+    ]
+  }

@@ -1,0 +1,19 @@
+resources:
+  jobs:
+    workflow_trigger_dlt_ethereum:
+      name: "dm-trigger-dlt-ethereum"
+
+      # Sem schedule interno — ativado externamente pelo Airflow a cada 5 minutos.
+      # No Databricks Free Edition, DLT só suporta availableNow; cada run processa
+      # os dados disponíveis no momento e encerra. O Airflow garante a periodicidade.
+
+      tasks:
+        - task_key: trigger_pipeline_update
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pipeline_ethereum.id}
+            full_refresh: false
+
+      tags:
+        layer: streaming
+        project: dd-chain-explorer
+        trigger: airflow

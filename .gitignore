@@ -31,4 +31,42 @@ z_lib/
 swarm.secrets_prod.conf
 scripts/2_setup_firewall.sh
 z_OLD_README.md
+
+# Terraform — state local e credenciais
+**/.terraform/
+**/terraform.tfstate
+**/terraform.tfstate.backup
+**/.terraform.lock.hcl
+**/secrets.tfvars
+**/*.tfvars.local
+
+# Credenciais nunca devem ser versionadas
+*.pem
+*.key
+*.p12
+*_credentials.json
+services/conf/dev.secrets.conf
+
 z_test.py
+
+# Databricks CLI bundle cache
+
+# Chaves e segredos locais — nunca versionados
+valid/.env
+valid/*.md
+**/.env
+**/*.env
+
+# Arquivos de segredos de compose — nunca versionados
+**/dev.secrets.conf
+**/prod.secrets.conf
+services/dev/compose/conf/dev.secrets.conf
+services/prd/compose/conf/prd.secrets.conf
+
+# Relatórios de segurança com exemplos de chaves — nunca versionados
+security.md
+*_security_scan.md
+
+# Airflow runtime config — varia por ambiente e contém credenciais de BD
+mnt/airflow/airflow.cfg
+dabs/.databricks/

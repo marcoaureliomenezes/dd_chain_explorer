@@ -1,0 +1,292 @@
+{
+  "datasets": [
+    {
+      "name": "network_summary_24h",
+      "displayName": "Resumo Rede — 24h",
+      "query": "SELECT\n  SUM(block_count)                             AS blocks_24h,\n  ROUND(AVG(avg_tx_per_block), 2)              AS avg_tx_per_block,\n  ROUND(AVG(avg_base_fee) / 1e9, 4)           AS avg_base_fee_gwei,\n  ROUND(AVG(avg_gas_used) / 1e6, 4)           AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 24 HOURS"
+    },
+    {
+      "name": "hourly_trend",
+      "displayName": "Tendência Horária — 7 dias",
+      "query": "SELECT\n  hour_bucket,\n  block_count,\n  ROUND(avg_tx_per_block, 2)     AS avg_tx_per_block,\n  ROUND(avg_base_fee / 1e9, 4)  AS avg_base_fee_gwei,\n  ROUND(avg_gas_used / 1e6, 4)  AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 168 HOURS\nORDER BY hour_bucket ASC"
+    },
+    {
+      "name": "recent_blocks",
+      "displayName": "Últimos 100 Blocos",
+      "query": "SELECT\n  block_number,\n  miner,\n  gas_used,\n  gas_limit,\n  ROUND(base_fee_per_gas / 1e9, 4) AS base_fee_gwei,\n  transaction_count,\n  event_time\nFROM dev.gold.blocks_with_tx_count\nORDER BY block_number DESC\nLIMIT 100"
+    }
+  ],
+  "pages": [
+    {
+      "name": "network_overview_page",
+      "displayName": "Network Overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "counter_blocks_24h",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "network_summary_24h",
+                  "fields": [
+                    {"name": "blocks_24h", "expression": "blocks_24h"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "blocks_24h",
+                  "displayName": "Blocos (24h)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Blocos (24h)"
+              }
+            }
+          },
+          "position": {"x": 0, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "counter_avg_tx",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "network_summary_24h",
+                  "fields": [
+                    {"name": "avg_tx_per_block", "expression": "avg_tx_per_block"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_tx_per_block",
+                  "displayName": "Avg Tx / Bloco"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Tx / Bloco"
+              }
+            }
+          },
+          "position": {"x": 2, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "counter_base_fee",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "network_summary_24h",
+                  "fields": [
+                    {"name": "avg_base_fee_gwei", "expression": "avg_base_fee_gwei"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "avg_base_fee_gwei",
+                  "displayName": "Avg Base Fee (Gwei)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Base Fee (Gwei)"
+              }
+            }
+          },
+          "position": {"x": 4, "y": 0, "width": 2, "height": 3}
+        },
+        {
+          "widget": {
+            "name": "line_blocks_per_hour",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "hourly_trend",
+                  "fields": [
+                    {"name": "hour_bucket", "expression": "hour_bucket"},
+                    {"name": "block_count", "expression": "block_count"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "xy",
+              "encodings": {
+                "x": {
+                  "fieldName": "hour_bucket",
+                  "scale": {"type": "temporal"},
+                  "displayName": "Hora"
+                },
+                "y": [
+                  {
+                    "fieldName": "block_count",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "Blocos"
+                  }
+                ]
+              },
+              "mark": {"type": "line"},
+              "frame": {
+                "showTitle": true,
+                "title": "Blocos por Hora (7 dias)"
+              }
+            }
+          },
+          "position": {"x": 0, "y": 3, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "line_avg_tx",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "hourly_trend",
+                  "fields": [
+                    {"name": "hour_bucket", "expression": "hour_bucket"},
+                    {"name": "avg_tx_per_block", "expression": "avg_tx_per_block"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "xy",
+              "encodings": {
+                "x": {
+                  "fieldName": "hour_bucket",
+                  "scale": {"type": "temporal"},
+                  "displayName": "Hora"
+                },
+                "y": [
+                  {
+                    "fieldName": "avg_tx_per_block",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "Avg Tx/Bloco"
+                  }
+                ]
+              },
+              "mark": {"type": "line"},
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Tx por Bloco"
+              }
+            }
+          },
+          "position": {"x": 0, "y": 9, "width": 3, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "line_base_fee",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "hourly_trend",
+                  "fields": [
+                    {"name": "hour_bucket", "expression": "hour_bucket"},
+                    {"name": "avg_base_fee_gwei", "expression": "avg_base_fee_gwei"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "xy",
+              "encodings": {
+                "x": {
+                  "fieldName": "hour_bucket",
+                  "scale": {"type": "temporal"},
+                  "displayName": "Hora"
+                },
+                "y": [
+                  {
+                    "fieldName": "avg_base_fee_gwei",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "Base Fee (Gwei)"
+                  }
+                ]
+              },
+              "mark": {"type": "line"},
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Base Fee (Gwei)"
+              }
+            }
+          },
+          "position": {"x": 3, "y": 9, "width": 3, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "table_recent_blocks",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "recent_blocks",
+                  "fields": [
+                    {"name": "block_number",      "expression": "block_number"},
+                    {"name": "miner",             "expression": "miner"},
+                    {"name": "gas_used",          "expression": "gas_used"},
+                    {"name": "gas_limit",         "expression": "gas_limit"},
+                    {"name": "base_fee_gwei",     "expression": "base_fee_gwei"},
+                    {"name": "transaction_count", "expression": "transaction_count"},
+                    {"name": "event_time",        "expression": "event_time"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "table",
+              "encodings": {
+                "columns": [
+                  {"fieldName": "block_number",      "displayName": "Bloco"},
+                  {"fieldName": "miner",             "displayName": "Miner"},
+                  {"fieldName": "gas_used",          "displayName": "Gas Usado"},
+                  {"fieldName": "gas_limit",         "displayName": "Gas Limit"},
+                  {"fieldName": "base_fee_gwei",     "displayName": "Base Fee (Gwei)"},
+                  {"fieldName": "transaction_count", "displayName": "Txs"},
+                  {"fieldName": "event_time",        "displayName": "Timestamp"}
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Últimos 100 Blocos"
+              }
+            }
+          },
+          "position": {"x": 0, "y": 15, "width": 6, "height": 8}
+        }
+      ]
+    }
+  ]
+}

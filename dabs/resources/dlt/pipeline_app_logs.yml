@@ -1,0 +1,24 @@
+resources:
+  pipelines:
+    pipeline_app_logs:
+      name: "dm-app-logs"
+
+      catalog: ${var.catalog}
+      target: s_logs   # schema padrão para tabelas sem prefixo (s_logs.*)
+                       # tabelas gold usam name="g_api_keys.*"
+
+      libraries:
+        - file:
+            path: ../../src/streaming/_avro_schemas.py
+        - notebook:
+            path: ../../src/streaming/5_pipeline_app_logs.py
+
+      configuration:
+        # Catalog name (para referências a tabelas externas ao DLT)
+        catalog: ${var.catalog}
+
+      serverless: true
+
+      development: ${var.dlt_development}
+      continuous: ${var.dlt_continuous}
+      channel: CURRENT

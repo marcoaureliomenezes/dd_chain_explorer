@@ -1,0 +1,33 @@
+resources:
+  pipelines:
+    pipeline_ethereum:
+      name: "dm-ethereum"
+
+      catalog: ${var.catalog}
+      target: b_ethereum   # schema padrão para tabelas sem prefixo (bronze)
+                           # tabelas silver usam name="s_apps.*" / "s_logs.*"
+
+      libraries:
+        - file:
+            path: ../../src/streaming/_avro_schemas.py
+        - notebook:
+            path: ../../src/streaming/4_pipeline_ethereum.py
+
+      configuration:
+        # Fonte de dados: "kafka" (prod) ou "s3" (dev)
+        source.type: ${var.source_type}
+        # Kafka config (usado quando source.type = kafka)
+        kafka.bootstrap.servers: ${var.kafka_bootstrap_servers}
+        kafka.msk.iam.auth: "true"
+        # S3 config (usado quando source.type = s3)
+        s3.ingestion.path: "s3://${var.dev_ingestion_s3_bucket}/bronze/kafka_multiplex"
+        # Catalog name (para spark.table() referências a tabelas externas ao DLT)
+        catalog: ${var.catalog}
+        # S3 export path (para MVs que exportam dados para consumo externo)
+        s3.export.path: "s3://${var.dev_ingestion_s3_bucket}/exports/popular_contracts"
+
+      serverless: true
+
+      development: ${var.dlt_development}
+      continuous: ${var.dlt_continuous}
+      channel: CURRENT

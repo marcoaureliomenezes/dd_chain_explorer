@@ -1,0 +1,53 @@
+resources:
+  jobs:
+    workflow_ddl_setup:
+      name: "dm-ddl-setup"
+      tasks:
+        - task_key: create_bronze_tables
+          notebook_task:
+            notebook_path: ../../src/batch/ddl/1_create_bronze_tables.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+        - task_key: create_silver_apps_tables
+          depends_on:
+            - task_key: create_bronze_tables
+          notebook_task:
+            notebook_path: ../../src/batch/ddl/2_create_silver_apps_tables.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+        - task_key: create_silver_logs_table
+          depends_on:
+            - task_key: create_bronze_tables
+          notebook_task:
+            notebook_path: ../../src/batch/ddl/3_create_silver_logs_table.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+        - task_key: create_gold_views
+          depends_on:
+            - task_key: create_silver_apps_tables
+            - task_key: create_silver_logs_table
+          notebook_task:
+            notebook_path: ../../src/batch/ddl/4_create_gold_views.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+
+        - task_key: create_rls_policies
+          depends_on:
+            - task_key: create_gold_views
+          notebook_task:
+            notebook_path: ../../src/batch/ddl/5_create_rls_policies.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              admin_group: "admins"
+
+      tags:
+        layer: ddl
+        project: dd-chain-explorer
