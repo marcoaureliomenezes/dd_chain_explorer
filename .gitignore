@@ -5,8 +5,6 @@
 __pycache__
 src/.infura_auth.txt
 .history
-.github
-.gitignore
 **/*.pyc
 **/*.pyo
 **.log
