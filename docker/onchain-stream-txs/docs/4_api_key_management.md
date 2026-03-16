@@ -45,18 +45,16 @@ O acesso ao SSM e mediado pelo modulo `dm_parameter_store.py`, que encapsula o c
 
 ---
 
-## Semaforo Distribuido com Redis
+## Semaforo Distribuido com DynamoDB
 
-O Job 4 (Raw Transactions Crawler) opera com multiplas replicas simultaneas (6 em DEV, 8 em PROD), cada uma necessitando de uma API key exclusiva. Para evitar que duas replicas utilizem a mesma key simultaneamente, o modulo `api_keys_manager.py` implementa um mecanismo de semaforo distribuido sobre o Redis.
+O Job 4 (Raw Transactions Crawler) opera com multiplas replicas simultaneas (6 em DEV, 8 em PROD), cada uma necessitando de uma API key exclusiva. Para evitar que duas replicas utilizem a mesma key simultaneamente, o modulo `api_keys_manager.py` implementa um mecanismo de semaforo distribuido sobre o DynamoDB.
 
-### Databases Redis utilizadas
+### Entidades DynamoDB utilizadas
 
-| Database | Finalidade |
-|----------|------------|
-| `db=0` | **Semaforo**: rastreia qual replica detem qual API key |
-| `db=1` | **Contador**: acumula o numero total de requisicoes feitas com cada key |
-| `db=2` | Cache de hashes de blocos (usado pelo Job 2) |
-| `db=3` | Snapshot de estado para monitoramento |
+| Entidade (PK) | SK | Finalidade |
+|----------|----|-----------|
+| `SEMAPHORE` | `{api_key_name}` | Rastreia qual replica detem qual API key (TTL 60s) |
+| `COUNTER` | `{api_key_name}` | Acumula o numero total de requisicoes feitas com cada key |
 
 ### Notacao compactada de API keys
 
@@ -74,13 +72,13 @@ Saida:    ["/web3-api-keys/infura/api-key-1",
 
 ```
   +------------------------------+
-  | get_keys_sorted_by_consumption|  Consulta Redis db=1
+  | get_keys_sorted_by_consumption|  Consulta DynamoDB (COUNTER)
   +------------------------------+  Retorna keys ordenadas por
                |                     numero de requisicoes (menor primeiro)
                v
   +------------------------------+
   | elect_new_api_key            |  Para cada key (menos usada primeiro):
-  +------------------------------+    - Tenta SETNX no semaforo (db=0)
+  +------------------------------+    - Tenta conditional_put no semaforo
                |                       - Se sucesso: key adquirida
                |                       - Se falha: tentar proxima
                v
@@ -90,9 +88,9 @@ Saida:    ["/web3-api-keys/infura/api-key-1",
   +------------------------------+
 ```
 
-**`get_keys_sorted_by_consumption()`**: Consulta o Redis `db=1` para obter os contadores de cada key, ordena por numero de requisicoes em ordem crescente e retorna a lista. Keys que ainda nao existem no contador sao tratadas como tendo zero requisicoes.
+**`get_keys_sorted_by_consumption()`**: Consulta o DynamoDB (entidade `COUNTER`) para obter os contadores de cada key, ordena por numero de requisicoes em ordem crescente e retorna a lista. Keys que ainda nao existem no contador sao tratadas como tendo zero requisicoes.
 
-**`elect_new_api_key()`**: Itera sobre a lista ordenada e tenta adquirir exclusividade via `SETNX` (Set if Not eXists) no Redis `db=0`. O valor armazenado e o identificador da replica (`socket.gethostname()`). Se uma key esta ocupada por outra replica, a proxima e tentada. Retorna a primeira key adquirida com sucesso.
+**`elect_new_api_key()`**: Itera sobre a lista ordenada e tenta adquirir exclusividade via `conditional_put_item()` no DynamoDB (entidade `SEMAPHORE` com TTL de 60s). O valor armazenado e o identificador da replica (`socket.gethostname()`). Se uma key esta ocupada por outra replica, a proxima e tentada. Retorna a primeira key adquirida com sucesso.
 
 ### Rotacao de API keys
 
@@ -134,7 +132,7 @@ Cada requisicao Web3 e registrada via `KafkaLoggingHandler`, que envia logs estr
 API_request;api_key=/web3-api-keys/infura/api-key-5;method=eth_getTransaction
 ```
 
-Esses logs sao consumidos pelo Spark Streaming Job descrito abaixo para agregacao.
+Esses logs sao consumidos pelo pipeline DLT (Gold views `g_api_keys.etherscan_consumption` e `g_api_keys.web3_keys_consumption`) para agregacao de metricas. Um job periodico no Databricks exporta essas metricas para S3, e uma Lambda `gold_to_dynamodb` sincroniza com o DynamoDB (entidade `CONSUMPTION`).
 
 ### Schema do log AVRO
 
@@ -151,66 +149,15 @@ Esses logs sao consumidos pelo Spark Streaming Job descrito abaixo para agregaca
 
 ---
 
-## Monitoramento via Spark Structured Streaming
+## Monitoramento de Consumo de API Keys
 
-O job Spark `1_api_key_monitor.py` (executado em `docker/spark-stream-txs/`) agrega os logs de consumo de API em janelas temporais de 1 dia.
+O monitoramento de consumo de API keys e realizado por meio de Gold DLT views no Databricks, que agregam os logs de consumo em janelas temporais.
 
-### Pipeline de processamento
+As views `g_api_keys.etherscan_consumption` e `g_api_keys.web3_keys_consumption` calculam metricas (requests por janela de 1h, 2h, 12h, 24h, 48h) a partir dos logs Silver. Um job periodico (`4_export_gold_to_s3.py`) exporta essas metricas como JSON para S3, onde uma Lambda funcao (`gold_to_dynamodb`) as sincroniza com o DynamoDB sob a entidade `CONSUMPTION`.
 
-```
-  mainnet.0.application.logs
-           |
-           v
-  [Spark: leitura do topico Kafka]
-           |
-           v
-  [Remocao do header Confluent (5 bytes)]
-           |
-           v
-  [Desserializacao AVRO]
-           |
-           v
-  [Filtro: message.startswith("API_request")]
-           |
-           v
-  [Extracao: api_key do campo message]
-           |
-           v
-  [Janela temporal: 1 dia, watermark 1 dia]
-           |
-           v
-  [Agregacao: count(*) e max(timestamp) por api_key]
-           |
-           v
-  [Escrita no Redis db=1]
-```
+Isso substitui o antigo pipeline Spark Streaming + Redis.
 
-### Dados escritos no Redis
-
-Para cada API key, o job escreve um hash no Redis `db=1`:
-
-```
-Key:    /web3-api-keys/infura/api-key-5
-Fields:
-  start       -> "2024-02-22T00:00:00"    (inicio da janela)
-  end         -> "2024-02-23T00:00:00"    (fim da janela)
-  num_req_1d  -> "4523"                   (total de requisicoes no dia)
-  last_req    -> "2024-02-22T23:59:45"    (ultima requisicao registrada)
-```
-
-Esses dados sao a base para a logica de `get_keys_sorted_by_consumption()`, que prioriza keys com menor numero de requisicoes.
-
----
-
-## Script de Monitoramento: Semaphore Collect
-
-O script `n_semaphore_collect.py` executa periodicamente (configuravel via variavel de ambiente) e coleta o estado atual dos semaforos e contadores do Redis:
-
-- **Redis db=0**: Estado de cada key no semaforo (hostname que detem, timestamp)
-- **Redis db=1**: Contadores acumulados de consumo
-- **Redis db=3**: Grava snapshot consolidado para visualizacao
-
-Isso permite observar em tempo real quais replicas detem quais API keys e qual o consumo acumulado de cada uma.
+> **Nota**: O antigo script `n_semaphore_collect.py` foi eliminado. O estado do semaforo pode ser consultado diretamente no DynamoDB (PK=`SEMAPHORE`) via console AWS ou queries programaticas.
 
 ---
 

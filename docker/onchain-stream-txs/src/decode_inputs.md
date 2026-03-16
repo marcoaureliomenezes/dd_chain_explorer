@@ -8,7 +8,7 @@ O Job 5 (`5_txs_input_decoder.py`) consome transações do tópico Kafka
 `mainnet.5.transactions.input_decoded`.
 
 Este documento descreve a estratégia de decode otimizada, incluindo:
-- Cache de ABIs persistente no Redis (DB 6)
+- Cache de ABIs persistente no DynamoDB (entidades `ABI` e `ABI_NEG`)
 - Rotação de múltiplas chaves Etherscan (6 API keys via SSM)
 - Fallback para 4byte.directory
 - Pipeline interno de decode
@@ -23,13 +23,13 @@ Este documento descreve a estratégia de decode otimizada, incluindo:
 │  topic: 4.txs    │     │                                      │     │   topic: 5.decoded     │
 └──────────────────┘     │  ┌────────────┐  ┌────────────────┐  │     └────────────────────────┘
                          │  │  ABICache   │  │ EtherscanMulti │  │
-                         │  │ (Redis DB6) │  │ (6 API keys)   │  │
+                         │  │ (DynamoDB)  │  │ (6 API keys)   │  │
                          │  └─────┬──────┘  └──────┬─────────┘  │
                          │        │                 │            │
                          │        ▼                 ▼            │
                          │  ┌─────────────────────────────────┐  │
                          │  │     Decode Pipeline              │  │
-                         │  │  1. Redis cache hit → full       │  │
+                         │  │  1. DynamoDB cache hit → full    │  │
                          │  │  2. Etherscan API   → full       │  │
                          │  │  3. 4byte.directory → partial    │  │
                          │  │  4. Raw selector    → unknown    │  │
@@ -39,30 +39,29 @@ Este documento descreve a estratégia de decode otimizada, incluindo:
 
 ---
 
-## 1. Cache de ABIs — Redis DB 6
+## 1. Cache de ABIs — DynamoDB
 
-### Por que Redis ao invés de disco?
+### Por que DynamoDB ao invés de disco?
 
-| Aspecto           | Disco (`/tmp/abi_cache/`)       | Redis DB 6                      |
+| Aspecto           | Disco (`/tmp/abi_cache/`)       | DynamoDB                        |
 |-------------------|---------------------------------|---------------------------------|
 | Persistência      | Perdido ao reiniciar container  | Persiste entre deploys          |
 | Compartilhamento  | Apenas processo local           | Acessível por todos containers  |
-| Desempenho        | I/O de filesystem               | In-memory, sub-millisecond      |
+| Desempenho        | I/O de filesystem               | Single-digit ms latency         |
 | Negative cache    | Não implementado                | TTL nativo de 24h               |
 
-### Estrutura no Redis
+### Estrutura no DynamoDB
 
-| Tipo    | Chave                             | Valor                | TTL      |
-|---------|-----------------------------------|----------------------|----------|
-| Hash    | `contract_abis`                   | `{address: abi_json}`| Sem TTL  |
-| String  | `abi:nv:{address}`                | `"1"`                | 24 horas |
+| Entidade (PK)  | SK                  | Valor                | TTL      |
+|----------------|---------------------|----------------------|----------|
+| `ABI`          | `{address}`         | `abi` = ABI JSON str | Sem TTL  |
+| `ABI_NEG`      | `{address}`         | `value` = `"1"`      | 24 horas |
 
-- **`contract_abis`** — Hash com todas as ABIs. Chave = endereço lowercase, Valor = ABI
-  como JSON string. ABIs nunca mudam, então não precisa de TTL.
-- **`abi:nv:{address}`** — **Negative cache**: endereços que sabemos não ter ABI
+- **`ABI`** — ABIs verificadas. SK = endereço lowercase. ABIs nunca mudam,
+  então não precisa de TTL.
+- **`ABI_NEG`** — **Negative cache**: endereços que sabemos não ter ABI
   verificada no Etherscan. TTL de 24h evita chamadas repetidas para contratos
-  não verificados, mas permite re-tentativa após 24h (caso um dev verifique o
-  contrato depois).
+  não verificados, mas permite re-tentativa após 24h.
 
 ### Módulo: `utils_decode/abi_cache.py`
 
@@ -103,7 +102,7 @@ e fazer round-robin com throttle individual por chave.
 
 - 1 chave: 5 req/seg
 - 6 chaves com round-robin: **~30 req/seg**
-- Com Redis cache warm: **milhares de msg/seg** (a maioria não precisa de API call)
+- Com DynamoDB cache warm: **milhares de msg/seg** (a maioria não precisa de API call)
 
 ### Módulo: `utils_decode/etherscan_multi.py`
 
@@ -152,8 +151,7 @@ Para cada transação consumida do Kafka:
 | `TOPIC_TXS_DECODED`   | Tópico de output (transações decoded)            | `mainnet.5.transactions.input_decoded`    |
 | `CONSUMER_GROUP`       | Consumer group Kafka                             | `cg_txs_input_decoder`                   |
 | `SSM_ETHERSCAN_PATH`  | Path prefix no SSM para as Etherscan API keys    | `/etherscan-api-keys`                     |
-| `REDIS_HOST`          | Hostname do Redis                                | `localhost`                               |
-| `REDIS_PORT`          | Porta do Redis                                   | `6379`                                    |
+| `DYNAMODB_TABLE`      | Nome da tabela DynamoDB                          | `dm-chain-explorer`                       |
 | `APP_ENV`             | Ambiente (`dev` / `prod`)                        | `prod`                                    |
 | `UNVERIFIED_TTL`      | TTL em segundos da negative cache                | `86400` (24h)                             |
 
@@ -167,10 +165,10 @@ src/
 ├── decode_inputs.md          ← Este documento
 ├── utils_decode/
 │   ├── __init__.py
-│   ├── abi_cache.py          ← ABICache (Redis DB6)
+│   ├── abi_cache.py          ← ABICache (DynamoDB)
 │   └── etherscan_multi.py    ← MultiKeyEtherscanClient (6 keys, round-robin)
 └── utils/
-    ├── dm_redis.py           ← DMRedis (existente, reutilizado)
+    ├── dm_dynamodb.py        ← DMDynamoDB (wrapper boto3)
     ├── dm_parameter_store.py ← ParameterStoreClient (existente, reutilizado)
     └── ...
 ```
@@ -188,5 +186,5 @@ Progress — decoded: 1500, fallback: 120, skipped: 80, cache_hit: 1200, api_cal
 - `decoded`: total de mensagens decoded com sucesso (full + partial + unknown)
 - `fallback`: decode via 4byte ou raw selector
 - `skipped`: contract deploy ou ETH transfer
-- `cache_hit`: ABI encontrada no Redis (sem API call)
+- `cache_hit`: ABI encontrada no DynamoDB (sem API call)
 - `api_call`: ABI buscada via Etherscan API

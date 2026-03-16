@@ -63,11 +63,8 @@ x-airflow-common: &airflow-common
     # S3 — batch ingestion (acessível via external location no Databricks Dev)
     DEV_S3_BUCKET: dm-chain-explorer-dev-ingestion
     S3_BATCH_PREFIX: batch
-    # Redis — contratos populares (sem senha em DEV)
-    REDIS_HOST: redis
-    REDIS_PORT: "6379"
-    REDIS_PASS: ""
-    REDIS_DB_CONTRACTS: "3"
+    # DynamoDB — single-table design (substitui ElastiCache Redis)
+    DYNAMODB_TABLE: dm-chain-explorer
     # Kafka — topic de logs de aplicação (usado pelo DockerOperator via env pass-through)
     TOPIC_LOGS: "mainnet.0.application.logs"
   volumes:

@@ -4,9 +4,12 @@ x-conf-dev-onchain-batch-txs: &conf_dev_onchain_batch_txs
     - ./conf/local.kafka.conf
   networks:
     - vpc_dm
-  build: ../../../docker/onchain-batch-txs
+  build:
+    context: ../../../
+    dockerfile: docker/onchain-batch-txs/Dockerfile
   volumes:
     - ../../../docker/onchain-batch-txs/src:/app
+    - ../../../utils/src/dm_chain_utils:/app/dm_chain_utils
     - ~/.aws:/root/.aws:ro
 
 services:
@@ -36,17 +39,6 @@ services:
     container_name: batch-job-recreate-logs-topic
     entrypoint: >-
       bash -c "cd /app/kafka_maintenance && python 2_recreate_logs_topic.py conf/topics_dev.ini"
-
-
-  # Limpa todas as chaves nos databases Redis do semáforo (db=0) e contador (db=1).
-  # Usar quando houver chaves em formato obsoleto que interferem na eleição de API keys.
-  batch-job-flush-redis:
-    image: redis:7-alpine
-    restart: "no"
-    networks:
-      - vpc_dm
-    entrypoint: >-
-      sh -c "redis-cli -h redis -n 0 FLUSHDB && redis-cli -h redis -n 1 FLUSHDB"
 
 
   # batch-job-test-api-keys:

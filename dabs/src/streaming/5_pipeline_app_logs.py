@@ -41,21 +41,10 @@ BATCH_APP_NAMES = [
     "CONTRACT_TRANSACTIONS_CRAWLER",  # 1_capture_and_ingest_contracts_txs.py
 ]
 
-# ── Avro Schema ───────────────────────────────────────────────────────────────
+# COMMAND ----------
+from _avro_schemas import *  # noqa: F401,F403  (defined as DLT file library)
 
-AVRO_SCHEMA_APP_LOGS = """{
-  "type": "record",
-  "name": "Application_Logs",
-  "namespace": "io.streamr.onchain",
-  "fields": [
-    {"name": "timestamp",     "type": "int"},
-    {"name": "logger",        "type": "string"},
-    {"name": "level",         "type": "string"},
-    {"name": "filename",      "type": "string"},
-    {"name": "function_name", "type": "string"},
-    {"name": "message",       "type": "string"}
-  ]
-}"""
+# COMMAND ----------
 
 
 # ── Helper ────────────────────────────────────────────────────────────────────

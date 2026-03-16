@@ -7,7 +7,6 @@
 #   - Apache Kafka (MSK em PROD)           → kafka-broker-1  (KRaft, sem Zookeeper)
 #   - Schema Registry (Confluent)          → schema-registry
 #   - Confluent Control Center             → control-center  (UI de monitoramento)
-#   - Amazon ElastiCache Redis (em PROD)   → redis
 #
 # Como usar:
 #   docker network create vpc_dm
@@ -17,7 +16,6 @@
 #   Kafka broker (externo) : localhost:29092
 #   Schema Registry        : localhost:8081
 #   Control Center UI      : localhost:9021
-#   Redis                  : localhost:6379
 #   Spark Master UI        : localhost:8080
 #   Spark Master port      : localhost:7077
 ###############################################################################
@@ -27,7 +25,6 @@ networks:
     external: true
 
 volumes:
-  redis_data:
   kafka_data:
   spark_m_data:
 
@@ -106,22 +103,6 @@ services:
       CONTROL_CENTER_MONITORING_INTERCEPTOR_TOPIC_PARTITIONS: 1
       CONFLUENT_METRICS_TOPIC_REPLICATION: 1
       PORT: 9021
-    networks:
-      - vpc_dm
-
-  # ---------------------------------------------------------------------------
-  # Redis local — substitui ElastiCache Redis em DEV
-  # ---------------------------------------------------------------------------
-
-  redis:
-    image: redis:7-alpine
-    container_name: redis
-    restart: on-failure
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --save 60 1 --loglevel warning
     networks:
       - vpc_dm
 

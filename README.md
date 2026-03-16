@@ -96,7 +96,7 @@ dd_chain_explorer/
 │   ├── python_streaming_apps_layer.yml  # Apps Python em DEV
 │   └── conf/                    # Variáveis de ambiente DEV
 │
-├── terraform_prd/               # Infra PRD: 9 módulos (S3 state → VPC → IAM → MSK → S3 → ElastiCache → ECS → Databricks → Glue)
+├── terraform_prd/               # Infra PRD: 10 módulos (S3 state → VPC → IAM → MSK → S3 → ECS → Databricks → DynamoDB → Lambda)
 │   └── [0-9]_*/                 #   Destruir tudo: make prod_destroy_infra
 │
 ├── terraform_dev/               # Infra DEV: Databricks Free Edition

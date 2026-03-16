@@ -43,7 +43,7 @@ resource "aws_iam_role_policy" "ecs_task_execution_extras" {
 # -----------------------------------------------------------------------
 # ECS Task Role
 # Used by the application running inside the container
-# Access: MSK (Kafka), ElastiCache (Redis), S3, SSM, Glue Schema Registry
+# Access: MSK (Kafka), DynamoDB, S3, SSM, Glue Schema Registry
 # -----------------------------------------------------------------------
 resource "aws_iam_role" "ecs_task" {
   name               = "dm-chain-explorer-ecs-task-role"
@@ -115,6 +115,23 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "ssm:GetParametersByPath",
     ]
     resources = ["arn:aws:ssm:*:*:parameter/web3-api-keys/*", "arn:aws:ssm:*:*:parameter/etherscan-api-keys/*"]
+  }
+
+  # DynamoDB: read/write to the single-table (dm-chain-explorer)
+  statement {
+    sid = "DynamoDBAccess"
+    actions = [
+      "dynamodb:GetItem",
+      "dynamodb:PutItem",
+      "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:Query",
+      "dynamodb:BatchWriteItem",
+      "dynamodb:BatchGetItem",
+      "dynamodb:Scan",
+      "dynamodb:DescribeTable",
+    ]
+    resources = ["arn:aws:dynamodb:*:*:table/dm-chain-explorer"]
   }
 }
 

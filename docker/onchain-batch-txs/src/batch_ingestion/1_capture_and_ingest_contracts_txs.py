@@ -1,16 +1,16 @@
 import boto3
 import logging
 import os
-import redis
 import json
 
 from datetime import datetime as dt, timedelta
 
-from utils.dm_etherscan import EtherscanClient
-from utils.dm_parameter_store import ParameterStoreClient
-from utils.dm_logger import KafkaLoggingHandler
-from utils.dm_kafka_client import KafkaHandler
-from utils.dm_schema_reg_client import get_schema
+from dm_chain_utils.dm_dynamodb import DMDynamoDB
+from dm_chain_utils.dm_etherscan import EtherscanClient
+from dm_chain_utils.dm_parameter_store import ParameterStoreClient
+from dm_chain_utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_schema_reg_client import get_schema
 
 class ContractTransactionsCrawler:
 
@@ -35,17 +35,12 @@ class ContractTransactionsCrawler:
     return self
   
   def get_contracts(self):
+    items = self.dynamodb_client.query("CONTRACT")
     data = []
-    for key in redis_client.keys():
-      # Filtrar apenas chaves de contratos (endereços 0x…), ignorar semaphore/metadata
-      if not key.startswith("0x"):
-        continue
-      val = redis_client.get(key)
-      try:
-        data.append((key, int(val)))
-      except (ValueError, TypeError):
-        self.logger.warning(f"Skipping key {key}: value '{val}' is not an integer")
-        continue
+    for item in items:
+      address = item.get("sk", "")
+      tx_count = int(item.get("tx_count", 0))
+      data.append((address, tx_count))
     contracts_sorted = sorted(data, key=lambda x: x[1], reverse=True)
     contracts_sorted = list(map(lambda x: x[0], contracts_sorted))
     return contracts_sorted
@@ -64,6 +59,12 @@ class ContractTransactionsCrawler:
     self.timestamp_interval = (start_timestamp, end_timestamp)
     self.logger.info(f"timestamp_start:{start_timestamp};timestamp_end:{end_timestamp}")
     self.block_interval = self.__get_block_interval()
+    if self.block_interval is None:
+      raise RuntimeError(
+        f"Etherscan returned NOTOK for block timestamp lookup — "
+        f"interval={self.timestamp_interval}. "
+        "Check that EXEC_DATE is not in the future and that the API key is valid."
+      )
     return self
   
   def __config_file_name(self, contract_addr):
@@ -96,7 +97,7 @@ class ContractTransactionsCrawler:
 
   def __get_transactions(self, contract_address):
     data = []
-    lower_limit, upper_limit = self.__get_block_interval()
+    lower_limit, upper_limit = self.block_interval
     block_before, block_after = lower_limit, upper_limit
     block_after = str(int(block_after) - 1)
     while block_before < block_after:
@@ -111,7 +112,7 @@ class ContractTransactionsCrawler:
     pass
 
   def check_file_exists(self, path):
-    try: self.s3.head_object(Bucket=self.bucket, Key=path) ; return True
+    try: self.s3_client.head_object(Bucket=self.bucket, Key=path) ; return True
     except: return False
 
   def write_to_s3(self, data):
@@ -158,10 +159,6 @@ if __name__ == "__main__":
   KAFKA_BROKERS = os.getenv("KAFKA_BROKERS")
   SR_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_LOGS = os.getenv("TOPIC_LOGS")
-  REDIS_HOST = os.getenv("REDIS_HOST", "redis")
-  REDIS_PORT = os.getenv("REDIS_PORT", "6379")
-  REDIS_SECRET = os.getenv("REDIS_PASS", "secret")
-  REDIS_DB = os.getenv("REDIS_DB", 3)
 
   S3_BUCKET = os.getenv("S3_BUCKET")
   S3_BUCKET_PREFIX = os.getenv("S3_BUCKET_PREFIX")
@@ -183,10 +180,7 @@ if __name__ == "__main__":
   # CONFIGURING AWS CLIENT FOR S3. Purpose: Save the raw data in S3
   s3_client = boto3.client("s3", endpoint_url=os.getenv("S3_URL"))
 
-  redis_client = redis.Redis(
-    host=REDIS_HOST, port=REDIS_PORT, db=REDIS_DB,
-    password=REDIS_SECRET, decode_responses=True,
-  )
+  dynamodb_client = DMDynamoDB(logger=LOGGER)
 
   # ETHERSCAN CLIENT — API key from SSM Parameter Store
   ssm = ParameterStoreClient()
@@ -199,7 +193,7 @@ if __name__ == "__main__":
 
   crawler = (
     ContractTransactionsCrawler(LOGGER)
-      .read_config(redis_client, etherscan_client)
+      .read_config(dynamodb_client, etherscan_client)
       .write_config(s3_client, bucket=S3_BUCKET, bucket_prefix=S3_BUCKET_PREFIX, overwrite=False)
       .interval_config(os.getenv("EXEC_DATE"))
       .run()

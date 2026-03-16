@@ -38,6 +38,16 @@ resources:
             base_parameters:
               catalog: ${var.catalog}
 
+        - task_key: create_rls_policies
+          depends_on:
+            - task_key: create_gold_views
+          notebook_task:
+            notebook_path: ../../src/batch/ddl/5_create_rls_policies.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              admin_group: "admins"
+
       tags:
         layer: ddl
         project: dd-chain-explorer

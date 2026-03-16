@@ -3,6 +3,7 @@
 # Equivalente ao AS-IS: spark-batch-jobs/periodic_spark_processing/2_ingest_txs_data_to_bronze.py
 
 import boto3
+import boto3.dynamodb.conditions
 import requests
 from datetime import datetime, date
 from pyspark.sql import Row
@@ -16,12 +17,14 @@ except Exception:
     dynamodb_table = "dm-popular-contracts"
 
 # -----------------------------------------------------------------------
-# Lê contratos populares do DynamoDB
+# Lê contratos populares do DynamoDB (single-table: PK=CONTRACT)
 # -----------------------------------------------------------------------
 dynamodb         = boto3.resource("dynamodb")
 table            = dynamodb.Table(dynamodb_table)
-response         = table.scan()
-popular          = [item["contract_address"] for item in response.get("Items", [])]
+response         = table.query(
+    KeyConditionExpression=boto3.dynamodb.conditions.Key("pk").eq("CONTRACT"),
+)
+popular          = [item["sk"] for item in response.get("Items", [])]
 print(f"[INFO] {len(popular)} popular contracts to process")
 
 # -----------------------------------------------------------------------

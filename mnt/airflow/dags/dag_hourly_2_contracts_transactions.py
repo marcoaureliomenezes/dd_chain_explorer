@@ -5,15 +5,17 @@ from airflow.operators.bash import BashOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
 from docker.types import Mount
+from python_scripts.alerts import slack_alert
 
 
 default_args = {
     "owner": "airflow",
-    "email_on_failure": False,
+    "email_on_failure": True,
     "email_on_retry": False,
     "email": "marco_aurelio_reis@yahoo.com.br",
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
+    "on_failure_callback": slack_alert,
 }
 
 JOB_PREFIX     = os.getenv("DATABRICKS_JOB_NAME_PREFIX", "")
@@ -69,11 +71,8 @@ with DAG(
             "KAFKA_BROKERS":        os.getenv("KAFKA_BROKERS"),
             "SCHEMA_REGISTRY_URL":  os.getenv("SCHEMA_REGISTRY_URL"),
             "TOPIC_LOGS":           os.getenv("TOPIC_LOGS", ""),
-            # Redis — contratos populares (DB3, sem senha em DEV)
-            "REDIS_HOST":           os.getenv("REDIS_HOST", "redis"),
-            "REDIS_PORT":           os.getenv("REDIS_PORT", "6379"),
-            "REDIS_PASS":           os.getenv("REDIS_PASS", ""),
-            "REDIS_DB":             os.getenv("REDIS_DB_CONTRACTS", "3"),
+            # DynamoDB — contratos populares (single-table dm-chain-explorer)
+            "DYNAMODB_TABLE":        os.getenv("DYNAMODB_TABLE", "dm-chain-explorer"),
             # AWS
             "AWS_DEFAULT_REGION":   os.getenv("AWS_DEFAULT_REGION", "sa-east-1"),
         },

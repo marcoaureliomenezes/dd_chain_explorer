@@ -30,8 +30,10 @@ TOPICS = [
     ("mainnet.3.block.txs.hash_id",         8,  2, {"retention.ms": "86400000"}),
     # Full transaction data
     ("mainnet.4.transactions.data",         4,  2, {"retention.ms": "604800000"}),
-    # Decoded transaction inputs
-    ("mainnet.5.transactions.input_decoded", 4, 2, {"retention.ms": "604800000"}),
+    # Decoded transaction inputs — 8p to match 3 input-decoder replicas with headroom
+    ("mainnet.5.transactions.input_decoded", 8, 2, {"retention.ms": "604800000"}),
+    # Dead Letter Queue — failed transactions (API exhausted / unrecoverable errors)
+    ("mainnet.dlq.transactions.failed",      4, 2, {"retention.ms": "604800000"}),  # 7 days
 ]
 
 

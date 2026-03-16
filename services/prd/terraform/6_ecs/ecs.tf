@@ -88,7 +88,7 @@ resource "aws_ecs_task_definition" "mined_blocks_watcher" {
 
   container_definitions = jsonencode([{
     name      = "mined-blocks-watcher"
-    image     = var.docker_image_stream
+    image = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/1_mined_blocks_watcher.py",
@@ -98,8 +98,15 @@ resource "aws_ecs_task_definition" "mined_blocks_watcher" {
       { name = "TOPIC_LOGS",                value = "mainnet.0.application.logs" },
       { name = "TOPIC_MINED_BLOCKS_EVENTS", value = "mainnet.1.mined_blocks.events" },
       { name = "CLOCK_FREQUENCY",           value = "1" },
-      { name = "AKV_SECRET_NAME",           value = "/web3-api-keys/alchemy/api-key-1" },
+      { name = "SSM_SECRET_NAME",           value = "/web3-api-keys/alchemy/api-key-1" },
     ])
+    healthCheck = {
+      command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     logConfiguration = local.log_config
   }])
 
@@ -118,7 +125,7 @@ resource "aws_ecs_task_definition" "orphan_blocks_watcher" {
 
   container_definitions = jsonencode([{
     name      = "orphan-blocks-watcher"
-    image     = var.docker_image_stream
+    image = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/2_orphan_blocks_watcher.py",
@@ -129,8 +136,15 @@ resource "aws_ecs_task_definition" "orphan_blocks_watcher" {
       { name = "TOPIC_MINED_BLOCKS_EVENTS", value = "mainnet.1.mined_blocks.events" },
       { name = "CONSUMER_GROUP_ID",         value = "cg_orphan_block_events" },
       { name = "NUM_CONFIRMATIONS",         value = "10" },
-      { name = "AKV_SECRET_NAME",           value = "/web3-api-keys/alchemy/api-key-2" },
+      { name = "SSM_SECRET_NAME",           value = "/web3-api-keys/alchemy/api-key-2" },
     ])
+    healthCheck = {
+      command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     logConfiguration = local.log_config
   }])
 
@@ -149,7 +163,7 @@ resource "aws_ecs_task_definition" "block_data_crawler" {
 
   container_definitions = jsonencode([{
     name      = "block-data-crawler"
-    image     = var.docker_image_stream
+    image = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/3_block_data_crawler.py",
@@ -162,9 +176,16 @@ resource "aws_ecs_task_definition" "block_data_crawler" {
       { name = "TOPIC_TXS_HASH_IDS",            value = "mainnet.3.block.txs.hash_id" },
       { name = "TOPIC_TXS_HASH_IDS_PARTITIONS", value = "8" },
       { name = "CONSUMER_GROUP",                value = "cg_block_data_crawler" },
-      { name = "TXS_PER_BLOCK",                 value = "50" },
-      { name = "AKV_SECRET_NAME",               value = "/web3-api-keys/alchemy/api-key-2" },
+      { name = "TXS_PER_BLOCK",                 value = "0" },
+      { name = "SSM_SECRET_NAME",               value = "/web3-api-keys/alchemy/api-key-2" },
     ])
+    healthCheck = {
+      command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     logConfiguration = local.log_config
   }])
 
@@ -183,7 +204,7 @@ resource "aws_ecs_task_definition" "mined_txs_crawler" {
 
   container_definitions = jsonencode([{
     name      = "mined-txs-crawler"
-    image     = var.docker_image_stream
+    image = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/4_mined_txs_crawler.py",
@@ -193,10 +214,18 @@ resource "aws_ecs_task_definition" "mined_txs_crawler" {
       { name = "TOPIC_LOGS",        value = "mainnet.0.application.logs" },
       { name = "TOPIC_TXS_HASH_IDS", value = "mainnet.3.block.txs.hash_id" },
       { name = "TOPIC_TXS_DATA",    value = "mainnet.4.transactions.data" },
+      { name = "TOPIC_DLQ",          value = "mainnet.dlq.transactions.failed" },
       { name = "CONSUMER_GROUP",    value = "cg_mined_raw_txs" },
       # Notação compacta: expande para /web3-api-keys/infura/api-key-1 .. api-key-17
-      { name = "AKV_SECRET_NAMES",  value = "/web3-api-keys/infura/api-key-1-17" },
+      { name = "SSM_SECRET_NAMES",  value = "/web3-api-keys/infura/api-key-1-17" },
     ])
+    healthCheck = {
+      command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     logConfiguration = local.log_config
   }])
 
@@ -215,7 +244,7 @@ resource "aws_ecs_task_definition" "txs_input_decoder" {
 
   container_definitions = jsonencode([{
     name      = "txs-input-decoder"
-    image     = var.docker_image_stream
+    image = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/5_txs_input_decoder.py",
@@ -226,9 +255,16 @@ resource "aws_ecs_task_definition" "txs_input_decoder" {
       { name = "TOPIC_TXS_DATA",    value = "mainnet.4.transactions.data" },
       { name = "TOPIC_TXS_DECODED", value = "mainnet.5.transactions.input_decoded" },
       { name = "CONSUMER_GROUP",    value = "cg_txs_input_decoder" },
-      { name = "SSM_ETHERSCAN_KEY", value = "/etherscan-api-keys/api-key-1" },
+      { name = "SSM_ETHERSCAN_PATH", value = "/etherscan-api-keys" },  # TODO-C03: multi-key (era SSM_ETHERSCAN_KEY de key única)
       { name = "ABI_CACHE_DIR",     value = "/tmp/abi_cache" },
     ])
+    healthCheck = {
+      command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
     logConfiguration = local.log_config
   }])
 
@@ -252,6 +288,11 @@ resource "aws_ecs_service" "mined_blocks_watcher" {
     assign_public_ip = local.ecs_network_config.assign_public_ip
   }
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   tags = local.common_tags
 
   lifecycle { ignore_changes = [task_definition] }
@@ -268,6 +309,11 @@ resource "aws_ecs_service" "orphan_blocks_watcher" {
     subnets          = local.ecs_network_config.subnets
     security_groups  = local.ecs_network_config.security_groups
     assign_public_ip = local.ecs_network_config.assign_public_ip
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
 
   tags = local.common_tags
@@ -288,6 +334,11 @@ resource "aws_ecs_service" "block_data_crawler" {
     assign_public_ip = local.ecs_network_config.assign_public_ip
   }
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   tags = local.common_tags
 
   lifecycle { ignore_changes = [task_definition] }
@@ -306,6 +357,11 @@ resource "aws_ecs_service" "mined_txs_crawler" {
     assign_public_ip = local.ecs_network_config.assign_public_ip
   }
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   tags = local.common_tags
 
   lifecycle { ignore_changes = [task_definition] }
@@ -315,13 +371,18 @@ resource "aws_ecs_service" "txs_input_decoder" {
   name            = "dm-txs-input-decoder"
   cluster         = aws_ecs_cluster.dm.id
   task_definition = aws_ecs_task_definition.txs_input_decoder.arn
-  desired_count   = 1
+  desired_count   = 3  # TODO-C03: 3 réplicas para cobrir as 4 partições de mainnet.4 (3→round-robin, 1 standby)
   launch_type     = "FARGATE"
 
   network_configuration {
     subnets          = local.ecs_network_config.subnets
     security_groups  = local.ecs_network_config.security_groups
     assign_public_ip = local.ecs_network_config.assign_public_ip
+  }
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
 
   tags = local.common_tags
@@ -359,6 +420,13 @@ resource "aws_ecs_task_definition" "schema_registry" {
       { name = "SCHEMA_REGISTRY_KAFKASTORE_TOPIC_REPLICATION_FACTOR",    value = "2" },
       { name = "SCHEMA_REGISTRY_SCHEMA_REGISTRY_INTER_INSTANCE_PROTOCOL", value = "http" },
     ]
+    healthCheck = {
+      command     = ["CMD-SHELL", "curl -sf http://localhost:8081/subjects || exit 1"]
+      interval    = 30
+      timeout     = 10
+      retries     = 3
+      startPeriod = 60
+    }
     logConfiguration = local.log_config
   }])
 
@@ -378,6 +446,11 @@ resource "aws_ecs_service" "schema_registry" {
     assign_public_ip = local.ecs_network_config.assign_public_ip
   }
 
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
   service_registries {
     registry_arn = aws_service_discovery_service.schema_registry.arn
   }
@@ -385,4 +458,31 @@ resource "aws_ecs_service" "schema_registry" {
   tags = local.common_tags
 
   lifecycle { ignore_changes = [task_definition] }
+}
+
+# -----------------------------------------------------------------------
+# ECR Repositories
+# -----------------------------------------------------------------------
+resource "aws_ecr_repository" "stream" {
+  name                 = "onchain-stream-txs"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = local.common_tags
+}
+
+resource "aws_ecr_repository" "batch" {
+  name                 = "onchain-batch-txs"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  tags = local.common_tags
 }

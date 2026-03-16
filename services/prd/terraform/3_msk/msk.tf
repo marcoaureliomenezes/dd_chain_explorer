@@ -53,14 +53,18 @@ resource "aws_msk_cluster" "dm" {
   encryption_info {
     encryption_at_rest_kms_key_arn = aws_kms_key.msk_kms.arn
     encryption_in_transit {
-      client_broker = "PLAINTEXT"   # POC: plaintext dentro da VPC, sem TLS no cliente
+      client_broker = "TLS"            # TODO-A05: IAM auth requer TLS no transporte
       in_cluster    = true
     }
   }
 
-  # Sem autenticação — segurança via Security Group (somente ECS SG acessa MSK)
+  # TODO-A05: autenticação IAM via SASL/OAUTHBEARER — tokens gerados pelo ECS task role
   client_authentication {
-    unauthenticated = true
+    sasl {
+      iam {
+        enabled = true
+      }
+    }
   }
 
   logging_info {

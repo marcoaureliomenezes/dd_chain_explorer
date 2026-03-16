@@ -2,7 +2,7 @@ x-conf-dev-onchain-stream-txs: &conf_dev_onchain_stream_txs
   restart: on-failure
   env_file:
     - ./conf/local.kafka.conf   # Kafka local (local_services.yml) — substitui MSK em DEV
-    - ./conf/dev.redis.conf     # Redis local (local_services.yml) — substitui ElastiCache em DEV
+    - ./conf/dev.dynamodb.conf  # DynamoDB — substitui ElastiCache Redis em DEV
   networks:
     - vpc_dm
   build: ../docker/onchain-stream-txs
@@ -15,7 +15,7 @@ x-conf-dev-spark-stream-txs: &conf_dev_spark_stream_txs
   image: local/spark:3.5
   env_file:
     - ./conf/local.kafka.conf
-    - ./conf/dev.redis.conf
+    - ./conf/dev.dynamodb.conf
   networks:
     - vpc_dm
   volumes:
@@ -33,7 +33,6 @@ services:
     container_name: python-job-mined-blocks-watcher
     entrypoint: "python -u /app/1_mined_blocks_watcher.py /app/configs/producers.ini"
     environment:
-
       SSM_SECRET_NAME: '/web3-api-keys/alchemy/api-key-1'
       TOPIC_LOGS: mainnet.0.application.logs
       TOPIC_MINED_BLOCKS_EVENTS: mainnet.1.mined_blocks.events
@@ -71,7 +70,6 @@ services:
     #container_name: python-job-transactions_crawler
     entrypoint: "python -u 4_mined_txs_crawler.py configs/producers.ini configs/consumers.ini"
     environment:
-
       SSM_SECRET_NAMES: '/web3-api-keys/infura/api-key-1-17'
       TOPIC_LOGS: mainnet.0.application.logs
       TOPIC_TXS_HASH_IDS: mainnet.3.block.txs.hash_id
@@ -95,34 +93,8 @@ services:
       UNVERIFIED_TTL: 86400                    # 24h negative-cache TTL for unverified contracts
 
 
-  python-job-redis-collector:
-    <<: *conf_dev_onchain_stream_txs
-    container_name: python-job-redis-collector
-    entrypoint: "python -u n_semaphore_collect.py"
-    environment:
-      FREQUENCY: 0.5
-
-
   ##############################################################################
   ############################    SPARK APPLICATIONS    ########################
-
-  spark-app-apk-consumption:
-    <<: *conf_dev_spark_stream_txs
-    image: local/spark-stream-txs:latest  # must include Kafka JARs — use the pre-built image, not the base
-    container_name: spark-app-apk-consumption
-    user: root
-    entrypoint: >-
-      bash -c "sh /app/entrypoint.sh /app/pyspark/1_api_key_monitor.py"
-    environment:
-      SPARK_MASTER: spark://spark-master:7077
-      TOPIC_LOGS: mainnet.0.application.logs
-      CONSUMER_GROUP: cg_logs_processor
-      STARTING_OFFSETS: earliest
-      MAX_OFFSETS_PER_TRIGGER: 30000
-      TRIGGER_TIME: "2 seconds"
-      CHECKPOINT_PATH: /tmp/checkpoints/api_key_monitor
-      EXEC_MEMORY: 1g
-      TOTAL_EXEC_CORES: 1
 
   # --------------------------------------------------------------------------
   # Spark job: Kafka → S3 multiplex ingestion

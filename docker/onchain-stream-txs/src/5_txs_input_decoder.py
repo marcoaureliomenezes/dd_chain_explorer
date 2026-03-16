@@ -1,19 +1,19 @@
 """
-Job 5 — Transaction Input Decoder  (v2 — Redis cache + multi-key Etherscan)
-============================================================================
+Job 5 — Transaction Input Decoder  (v2 — DynamoDB cache + multi-key Etherscan)
+===============================================================================
 Consumes ``mainnet.4.transactions.data``, decodes the ``input`` field for ALL
 contract-call transactions and produces the result to
 ``mainnet.5.transactions.input_decoded``.
 
 **Decode pipeline (in order):**
 
-  1. Redis ABI cache (DB 6)    → hit?  → full decode (method + typed params)
+  1. DynamoDB ABI cache        → hit?  → full decode (method + typed params)
   2. Etherscan API (6 keys)    → ABI?  → cache + full decode
   3. 4byte.directory fallback  → sig?  → partial (method name only)
   4. Raw 4-byte selector       → last resort (never silently drops)
 
 Negative cache: addresses whose ABI is NOT verified on Etherscan are marked in
-Redis with a 24 h TTL so the API is not hammered repeatedly.
+DynamoDB with a 24 h TTL so the API is not hammered repeatedly.
 
 See ``decode_inputs.md`` for the full design document.
 """
@@ -32,10 +32,10 @@ from typing import Any, Dict, Optional
 from eth_abi import decode as abi_decode
 from web3 import Web3
 
-from utils.dm_parameter_store import ParameterStoreClient
-from utils.dm_schema_reg_client import get_schema
-from utils.dm_kafka_client import KafkaHandler
-from utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_parameter_store import ParameterStoreClient
+from dm_chain_utils.dm_schema_reg_client import get_schema
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_logger import KafkaLoggingHandler
 
 from utils_decode.abi_cache import ABICache
 from utils_decode.etherscan_multi import MultiKeyEtherscanClient
@@ -103,7 +103,7 @@ class TransactionInputDecoder(ChainExtractor):
     non-ETH-transfer transaction and publishes the result to Kafka.
 
     Uses:
-      • ``ABICache``  (Redis DB 6) — persistent, survives container restarts.
+      • ``ABICache``  (DynamoDB) — persistent, survives container restarts.
       • ``MultiKeyEtherscanClient`` — round-robin across 6 API keys.
     """
 
@@ -143,7 +143,7 @@ class TransactionInputDecoder(ChainExtractor):
     def run(self, callback: Any) -> None:
         cache_stats = self._cache.stats()
         self.logger.info(
-            f"Decoder started — Redis cache: {cache_stats['cached_abis']} ABIs, "
+            f"Decoder started — DynamoDB cache: {cache_stats['cached_abis']} ABIs, "
             f"{cache_stats['unverified_addresses']} unverified addresses"
         )
 
@@ -217,7 +217,7 @@ class TransactionInputDecoder(ChainExtractor):
         Attempt to decode *input_hex* for *contract_address*.
 
         Pipeline:
-          1. Redis cache → full decode
+          1. DynamoDB cache → full decode
           2. Etherscan API (multi-key) → store + full decode
           3. 4byte.directory → partial
           4. Raw selector → unknown
@@ -225,7 +225,7 @@ class TransactionInputDecoder(ChainExtractor):
         selector = input_hex[:10]  # '0x' + first 4 bytes
         addr = contract_address.lower()
 
-        # ---- 1. Redis cache ----
+        # ---- 1. DynamoDB cache ----
         abi = self._cache.get(addr)
         if abi:
             self._cnt_cache_hit += 1
@@ -408,12 +408,12 @@ if __name__ == "__main__":
     producer_decoded = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_decoded)
     logger.info("AVRO consumer/producer configured.")
 
-    # ---- ABI cache (Redis DB 6) ----
-    abi_cache = ABICache(logger, redis_db=6, unverified_ttl=UNVERIFIED_TTL)
+    # ---- ABI cache (DynamoDB) ----
+    abi_cache = ABICache(logger, unverified_ttl=UNVERIFIED_TTL)
     if abi_cache.ping():
-        logger.info("ABICache connected (Redis DB 6).")
+        logger.info("ABICache connected (DynamoDB).")
     else:
-        logger.error("ABICache — Redis connection FAILED. Exiting.")
+        logger.error("ABICache — DynamoDB connection FAILED. Exiting.")
         raise SystemExit(1)
 
     # ---- Etherscan multi-key client ----

@@ -567,8 +567,8 @@ To use a library image, create an `image` element with `"fileId"` pointing to on
 
 | Color | Hex | Usage |
 |-------|-----|-------|
-| Green background | `#b2f2bb` | Service group containers (Kafka cluster, Redis cluster) |
-| Pink background | `#ffc9c9` | Kafka topics, Redis databases |
+| Green background | `#b2f2bb` | Service group containers (Kafka cluster, DynamoDB) |
+| Pink background | `#ffc9c9` | Kafka topics, DynamoDB entities |
 | Yellow background | `#ffec99` | Jobs, connectors, workers |
 | Light blue background | `#a5d8ff` | External systems (Ethereum network) |
 | Black stroke | `#1e1e1e` | Default stroke/text color |
@@ -591,7 +591,7 @@ To use a library image, create an `image` element with `"fileId"` pointing to on
 |-----------|-------|--------|-------|
 | Service container | 300-400 | 500-700 | Green background, groups inner elements |
 | Kafka topic box | 200-280 | 35-40 | Pink background, bound text centered |
-| Redis DB box | 80-120 | 35-50 | Pink background, bound text centered |
+| DynamoDB entity box | 80-120 | 35-50 | Pink background, bound text centered |
 | Job/worker box | 200-280 | 35-50 | Yellow background, bound text centered |
 | Logo image | 100-172 | 100-172 | Aspect ratio preserved |
 
@@ -609,7 +609,7 @@ To use a library image, create an `image` element with `"fileId"` pointing to on
 
 ### Service Group Pattern
 
-A service (e.g., Kafka, Redis) is represented as a large green rectangle containing:
+A service (e.g., Kafka, DynamoDB) is represented as a large green rectangle containing:
 1. A logo image (top area)
 2. Multiple inner boxes (topics, databases) stacked vertically
 3. All elements share a `groupId`
@@ -648,7 +648,7 @@ Arrows connect producers to topics and topics to consumers:
                          ↑
                      blue arrow
                          |
-                     [Redis DB]
+                     [DynamoDB]
 ```
 
 ---
@@ -678,7 +678,7 @@ Arrows connect producers to topics and topics to consumers:
 Sketch the layout on a grid. Typical arrangement:
 - Left: Source systems
 - Center: Processing (jobs/services)
-- Right: Data stores (Kafka, Redis, S3)
+- Right: Data stores (Kafka, DynamoDB, S3)
 
 Use x-coordinates in multiples of 20 for alignment.
 

@@ -6,11 +6,11 @@ from configparser import ConfigParser
 from logging import Logger
 from typing import Dict, Any, Callable
 
-from utils.dm_redis import DMRedis
-from utils.dm_web3_client import Web3Handler
-from utils.dm_schema_reg_client import get_schema
-from utils.dm_kafka_client import KafkaHandler
-from utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_dynamodb import DMDynamoDB
+from dm_chain_utils.dm_web3_client import Web3Handler
+from dm_chain_utils.dm_schema_reg_client import get_schema
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_logger import KafkaLoggingHandler
 
 from chain_extractor import ChainExtractor
 
@@ -29,14 +29,14 @@ class OrphanBlocksProcessor(ChainExtractor):
     return self
 
   def sink_config(self, sink_properties: Dict[str, Any]):
-    self.block_cache: DMRedis = sink_properties['block_cache']
+    self.block_cache: DMDynamoDB = sink_properties['block_cache']
     self.producer_mined_blocks_events = sink_properties['producer_mined_blocks_events']
     return self
   
 
   def recognize_orphaned_blocks(self, safe_block_number: int, safe_block_hash: str):
-    prev_block_hash = self.block_cache.get(str(safe_block_number))
-    if prev_block_hash and prev_block_hash != safe_block_hash:
+    item = self.block_cache.get_item("BLOCK_CACHE", str(safe_block_number))
+    if item and item.get("block_hash") != safe_block_hash:
       return True
     return False
 
@@ -44,14 +44,12 @@ class OrphanBlocksProcessor(ChainExtractor):
     block_number = mined_block["value"]["block_number"]
     block_hash   = mined_block["value"]["block_hash"]
 
-    # Persiste o bloco atual no Redis
-    self.block_cache.set(str(block_number), block_hash)
-
-    # Remove entradas mais antigas que a janela de confirmação
-    safe_block_key = block_number - delay_counter
-    keys_to_delete = [k for k in self.block_cache.keys() if int(k) < safe_block_key]
-    if keys_to_delete:
-      self.block_cache.delete(*keys_to_delete)
+    # Persiste o bloco atual no DynamoDB com TTL de 1h
+    self.block_cache.put_item(
+      "BLOCK_CACHE", str(block_number),
+      attrs={"block_hash": block_hash},
+      ttl_seconds=3600,
+    )
 
 
   def run(self, callback: Callable):
@@ -87,13 +85,12 @@ if __name__ == "__main__":
     
   APP_NAME = "ORPHAN_BLOCKS_CRAWLER"
   NETWORK = os.getenv("NETWORK")
-  SSM_SECRET_NAME = os.getenv("AKV_SECRET_NAME")
+  SSM_SECRET_NAME = os.getenv("SSM_SECRET_NAME")
   KAFKA_BROKERS = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
   SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_LOGS = os.getenv("TOPIC_LOGS")
   TOPIC_MINED_BLOCKS_EVENTS = os.getenv("TOPIC_MINED_BLOCKS_EVENTS")
   CONSUMER_GROUP_ID = os.getenv("CONSUMER_GROUP_ID")
-  REDIS_DB_BLOCK_CACHE = int(os.getenv("REDIS_DB_BLOCK_CACHE", 2))
   NUM_CONFIRMATIONS = 10
 
   parser = argparse.ArgumentParser(description=f'Orphan blocks watcher — rede {NETWORK}')
@@ -137,9 +134,9 @@ if __name__ == "__main__":
   handler_web3 = Web3Handler(LOGGER, NETWORK).get_node_connection(SSM_SECRET_NAME, 'alchemy')
   LOGGER.info("Blockchain Node Connection configured.")
 
-  # Cache persistênte de hashes de blocos — sobrevive a restarts do container
-  block_cache = DMRedis(db=REDIS_DB_BLOCK_CACHE, logger=LOGGER)
-  LOGGER.info(f"Redis block cache configured (db={REDIS_DB_BLOCK_CACHE}).")
+  # Cache persistente de hashes de blocos — DynamoDB com TTL de 1h
+  block_cache = DMDynamoDB(logger=LOGGER)
+  LOGGER.info("DynamoDB block cache configured.")
 
   src_properties = {
     "handler_web3": handler_web3,

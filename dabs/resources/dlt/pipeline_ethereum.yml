@@ -8,6 +8,8 @@ resources:
                            # tabelas silver usam name="s_apps.*" / "s_logs.*"
 
       libraries:
+        - file:
+            path: ../../src/streaming/_avro_schemas.py
         - notebook:
             path: ../../src/streaming/4_pipeline_ethereum.py
 

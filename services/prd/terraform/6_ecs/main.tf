@@ -52,11 +52,11 @@ data "terraform_remote_state" "msk" {
   }
 }
 
-data "terraform_remote_state" "elasticache" {
+data "terraform_remote_state" "dynamodb" {
   backend = "s3"
   config = {
     bucket = "dm-chain-explorer-terraform-state"
-    key    = "elasticache/terraform.tfstate"
+    key    = "dynamodb/terraform.tfstate"
     region = "sa-east-1"
   }
 }

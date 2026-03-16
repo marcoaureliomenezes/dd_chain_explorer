@@ -6,10 +6,10 @@ from logging import Logger
 from typing import Dict, Callable, List, Any
 from configparser import ConfigParser
 
-from utils.dm_web3_client import Web3Handler
-from utils.dm_schema_reg_client import get_schema
-from utils.dm_kafka_client import KafkaHandler
-from utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_web3_client import Web3Handler
+from dm_chain_utils.dm_schema_reg_client import get_schema
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_logger import KafkaLoggingHandler
 
 from chain_extractor import ChainExtractor
 
@@ -64,7 +64,7 @@ if __name__ == '__main__':
 
   APP_NAME = "BLOCK_DATA_CRAWLER"
   NETWORK = os.getenv("NETWORK")
-  SSM_SECRET_NAME = os.getenv("AKV_SECRET_NAME")
+  SSM_SECRET_NAME = os.getenv("SSM_SECRET_NAME")
   KAFKA_BROKERS = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
   SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_LOGS = os.getenv("TOPIC_LOGS", "mainnet.0.application.logs")

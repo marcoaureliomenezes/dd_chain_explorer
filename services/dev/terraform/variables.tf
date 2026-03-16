@@ -19,3 +19,9 @@ variable "bucket_name" {
   type        = string
   default     = "dm-chain-explorer-dev-ingestion"
 }
+
+variable "dynamodb_table_name" {
+  description = "Nome da tabela DynamoDB (single-table design) que substitui o Redis."
+  type        = string
+  default     = "dm-chain-explorer"
+}

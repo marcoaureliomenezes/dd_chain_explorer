@@ -267,7 +267,7 @@ import logging
 from configparser import ConfigParser
 from dm_kafka_admin import DMClusterAdmin
 
-from dm_33_utils.logger_utils import ConsoleLoggingHandler
+from dm_chain_utils.dm_logger import ConsoleLoggingHandler
 
 
 if __name__ == "__main__":

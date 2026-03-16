@@ -7,11 +7,11 @@ from logging import Logger
 from typing import Dict, Generator, Optional, Callable, List, Any
 from configparser import ConfigParser
 
-from utils.dm_web3_client import Web3Handler
-from utils.dm_schema_reg_client import get_schema
-from utils.dm_kafka_admin import KafkaAdminClient
-from utils.dm_kafka_client import KafkaHandler
-from utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_web3_client import Web3Handler
+from dm_chain_utils.dm_schema_reg_client import get_schema
+from dm_chain_utils.dm_kafka_admin import KafkaAdminClient
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_logger import KafkaLoggingHandler
 
 
 class MinedBlocksWatcher:
@@ -68,7 +68,7 @@ if __name__ == '__main__':
   SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
   TOPIC_LOGS = os.getenv("TOPIC_LOGS")
   TOPIC_MINED_BLOCKS_EVENTS = os.getenv("TOPIC_MINED_BLOCKS_EVENTS")
-  SSM_SECRET_NAME = os.getenv('AKV_SECRET_NAME')
+  SSM_SECRET_NAME = os.getenv('SSM_SECRET_NAME')
   CLOCK_FREQUENCY = float(os.getenv("CLOCK_FREQUENCY"))
   
 
@@ -119,9 +119,6 @@ if __name__ == '__main__':
   
   LOGGER.info("AVRO Producer for mined blocks data configured.")
 
-  # Configuring Blockchain Node Connection. Needs a secret in Azure Key Vault for an API Key
-  # AKV_URL = f'https://{AKV_NODE_NAME}.vault.azure.net/'
-  # AKV_CLIENT = SecretClient(vault_url=AKV_URL, credential=DefaultAzureCredential())
   
   handler_web3 = Web3Handler(LOGGER, NETWORK).get_node_connection(SSM_SECRET_NAME, 'alchemy')
   LOGGER.info("Blockchain Node Connection configured.")

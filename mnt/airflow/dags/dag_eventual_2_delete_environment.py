@@ -5,6 +5,7 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
+from python_scripts.alerts import slack_alert
 
 
 def _read_aws_env() -> dict:
@@ -47,11 +48,12 @@ COMMON_SPARK_VARS = _read_aws_env()
 
 default_args = {
     "owner": "airflow",
-    "email_on_failure": False,
+    "email_on_failure": True,
     "email_on_retry": False,
     "email": "marco_aurelio_reis@yahoo.com.br",
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
+    "on_failure_callback": slack_alert,
 }
 
 
@@ -112,21 +114,29 @@ with DAG(
         },
     )
 
-    flush_redis = DockerOperator(
-        image="redis:7-alpine",
+    cleanup_dynamodb = DockerOperator(
+        image="local/onchain-batch-txs:latest",
         **COMMON_DOCKER_OP,
-        task_id="flush_redis",
-        # Flush API-key semaphore (db=0) and API-key counters (db=1).
-        # ${REDIS_PASS:+-a $REDIS_PASS} expands to "-a <pass>" only when REDIS_PASS is set.
-        entrypoint="sh",
+        task_id="cleanup_dynamodb",
+        entrypoint="python",
         command=[
             "-c",
-            "redis-cli -h $REDIS_HOST ${REDIS_PASS:+-a $REDIS_PASS} -n 0 FLUSHDB"
-            " && redis-cli -h $REDIS_HOST ${REDIS_PASS:+-a $REDIS_PASS} -n 1 FLUSHDB",
+            (
+                "import boto3; "
+                "import os; "
+                "table_name = os.getenv('DYNAMODB_TABLE', 'dm-chain-explorer'); "
+                "dynamodb = boto3.resource('dynamodb'); "
+                "table = dynamodb.Table(table_name); "
+                "resp = table.scan(ProjectionExpression='pk, sk'); "
+                "items = resp.get('Items', []); "
+                "print(f'Deleting {len(items)} items from {table_name}'); "
+                "[table.delete_item(Key={'pk': i['pk'], 'sk': i['sk']}) for i in items]; "
+                "print('DynamoDB cleanup complete')"
+            ),
         ],
         environment={
-            "REDIS_HOST": os.getenv("REDIS_HOST", "redis"),
-            "REDIS_PASS": os.getenv("REDIS_PASS", ""),
+            "DYNAMODB_TABLE": os.getenv("DYNAMODB_TABLE", "dm-chain-explorer"),
+            **COMMON_SPARK_VARS,
         },
     )
 
@@ -141,4 +151,4 @@ with DAG(
     starting_process >> delete_kafka_topics >> FINAL_TASK
     starting_process >> delete_s3_raw_data >> delete_spark_streaming_checkpoints >> FINAL_TASK
     starting_process >> DELETE_DATABRICKS_TABLES >> FINAL_TASK
-    starting_process >> flush_redis >> FINAL_TASK
+    starting_process >> cleanup_dynamodb >> FINAL_TASK

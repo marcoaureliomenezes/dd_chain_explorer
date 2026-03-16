@@ -1,0 +1,11 @@
+{
+    "namespace": "io.streamr.onchain",
+    "type": "record",
+    "name": "DLQ_Failed_Transaction",
+    "doc": "Dead Letter Queue record for transactions that could not be processed after all retries.",
+    "fields": [
+        {"name": "tx_hash",      "type": "string", "doc": "Ethereum transaction hash that failed processing."},
+        {"name": "reason",       "type": "string", "doc": "Failure reason code: api_exhausted | api_error | unknown."},
+        {"name": "timestamp_ms", "type": "long",   "doc": "Unix epoch milliseconds when the failure was recorded."}
+    ]
+}

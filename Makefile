@@ -56,9 +56,7 @@ stop_dev_batch:
 
 build_local_images:
 	@echo ">>> Buildando local/onchain-batch-txs ..."
-	@docker build -t local/onchain-batch-txs:latest docker/onchain-batch-txs
-	@echo ">>> Build concluído."
-
+        @docker build -f docker/onchain-batch-txs/Dockerfile -t local/onchain-batch-txs:latest .
 ################################################################################
 # DEV: Airflow (LocalExecutor)
 # Arquivo: services/dev/compose/airflow_services.yml
@@ -110,6 +108,21 @@ dabs_run_dev:
 # Ver status dos recursos deployados em DEV
 dabs_status_dev:
 	cd dabs && databricks bundle summary --target dev
+
+# Deploy apenas os dashboards em DEV (auto-descobre o warehouse_id via CLI)
+# Requer: databricks CLI autenticado + Python 3
+dabs_deploy_dev_dashboards:
+	$(eval WAREHOUSE_ID := $(shell cd dabs && databricks warehouses list \
+	  --output json 2>/dev/null | python3 -c \
+	  "import sys, json; whs=json.load(sys.stdin).get('warehouses',[]); \
+	   print(next((w['id'] for w in whs), ''))" 2>/dev/null))
+	@if [ -z "$(WAREHOUSE_ID)" ]; then \
+	  echo "AVISO: Nenhum SQL Warehouse encontrado. Deployando sem warehouse_id..."; \
+	  cd dabs && databricks bundle deploy --target dev; \
+	else \
+	  echo ">>> Usando warehouse_id=$(WAREHOUSE_ID)"; \
+	  cd dabs && databricks bundle deploy --target dev --var warehouse_id=$(WAREHOUSE_ID); \
+	fi
 
 ################################################################################
 # Terraform — atalhos para módulos individuais
@@ -222,6 +235,32 @@ prod_destroy_infra:
 	$(MAKE) tf_destroy_aws_resources
 	$(MAKE) tf_destroy_free_resources
 	@echo "===== Destroy PRD concluído ====="
+
+################################################################################
+# Schema Registry — sincronização de schemas Avro
+#
+# Registra todos os schemas Avro do diretório canonical
+# (docker/onchain-stream-txs/src/schemas/) em uma instância do
+# Confluent Schema Registry, configurando compatibilidade BACKWARD.
+#
+# Uso:
+#   make sync_schemas_dev           # SR local (DEV)
+#   make sync_schemas_prod SR_URL=http://<host>:8081  # SR no ECS (PROD via túnel/VPN)
+################################################################################
+
+SR_URL ?= http://localhost:8081
+
+sync_schemas_dev:
+	@echo ">>> Sincronizando schemas Avro → Schema Registry DEV ($(SR_URL)) ..."
+	python scripts/sync_avro_schemas.py --sr-url $(SR_URL)
+
+sync_schemas_prod:
+	@if [ -z "$(SR_URL)" ] || [ "$(SR_URL)" = "http://localhost:8081" ]; then \
+	  echo "ERRO: passe a URL do SR de PROD: make sync_schemas_prod SR_URL=http://<host>:8081"; \
+	  exit 1; \
+	fi
+	@echo ">>> Sincronizando schemas Avro → Schema Registry PROD ($(SR_URL)) ..."
+	python scripts/sync_avro_schemas.py --sr-url $(SR_URL)
 
 # ---------------------------------------------------------------------------
 # Inicialização — necessário após clonar o repo ou atualizar providers

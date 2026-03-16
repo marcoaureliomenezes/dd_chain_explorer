@@ -1,19 +1,23 @@
 import argparse
+import json
 import logging
 import os
+import time
 import uuid
 
 from configparser import ConfigParser
 from logging import Logger
 from typing import Any, Dict
 
+from confluent_kafka import Producer as PlainProducer
 from requests import HTTPError
-from utils.dm_redis import DMRedis
-from utils.dm_web3_client import Web3Handler
-from utils.dm_schema_reg_client import get_schema
-from utils.dm_kafka_client import KafkaHandler
-from utils.api_keys_manager import APIKeysManager
-from utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_dynamodb import DMDynamoDB
+from dm_chain_utils.dm_web3_client import Web3Handler
+from dm_chain_utils.dm_schema_reg_client import get_schema
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_msk_iam import get_msk_iam_config
+from dm_chain_utils.api_keys_manager import APIKeysManager
+from dm_chain_utils.dm_logger import KafkaLoggingHandler
 
 from chain_extractor import ChainExtractor
 
@@ -38,7 +42,30 @@ class RawTransactionsProcessor(ChainExtractor):
     self.api_keys_manager = sink_properties['api_keys_manager']
     self.producer_txs_data = sink_properties['producer_txs_data']
     self.topic_txs_data = sink_properties['topic_txs_data']
+    self.producer_dlq = sink_properties.get('producer_dlq')   # optional — absent in dev without TOPIC_DLQ
+    self.topic_dlq = sink_properties.get('topic_dlq')
     return self
+
+  def _send_to_dlq(self, tx_hash: str, reason: str) -> None:
+    """Publishes a failed transaction to the Dead Letter Queue topic.
+
+    No-ops silently if the DLQ producer was not configured (e.g. local dev
+    without TOPIC_DLQ env var). The message is a plain JSON string so it can
+    be consumed without a Schema Registry by any debugging consumer.
+    """
+    if not self.producer_dlq or not self.topic_dlq:
+      return
+    payload = json.dumps({
+      "tx_hash": tx_hash,
+      "reason": reason,
+      "timestamp_ms": int(time.time() * 1000),
+    })
+    try:
+      self.producer_dlq.produce(self.topic_dlq, key=tx_hash, value=payload)
+      self.producer_dlq.flush()
+      self.logger.info(f"DLQ: tx {tx_hash} publicada ({reason}).")
+    except Exception as e:
+      self.logger.error(f"Falha ao publicar tx {tx_hash} no DLQ: {e}")
 
   def _rotate_api_key(self, old_api_key: str) -> str:
     """Libera a key atual, elege uma nova e reconecta o Web3. Retorna a nova key."""
@@ -64,7 +91,12 @@ class RawTransactionsProcessor(ChainExtractor):
         status = err.response.status_code if err.response is not None else None
         if status == 429:
           self.logger.warning(f"Rate limit (429) na key {actual_api_key}, tentativa {attempt + 1}/{max_retries}. Rotacionando.")
-          actual_api_key = self._rotate_api_key(actual_api_key)
+          try:
+            actual_api_key = self._rotate_api_key(actual_api_key)
+          except RuntimeError:
+            # All keys are held in the DynamoDB semaphore simultaneously — deadlock.
+            self.logger.error(f"Deadlock de API keys (semáforo cheio). Descartando tx {tx_hash}.")
+            return None, actual_api_key
         else:
           self.logger.error(f"HTTPError inesperado buscando tx {tx_hash}: {err}")
           return None, actual_api_key
@@ -84,7 +116,9 @@ class RawTransactionsProcessor(ChainExtractor):
     for msg in self.consuming_topic(self.consumer_txs_hash_ids):
       raw_transaction_data, actual_api_key = self._fetch_tx_with_rotation(msg['value']['tx_hash'], actual_api_key)
       self.api_keys_manager.check_api_key_request(actual_api_key)
-      if not raw_transaction_data: continue
+      if not raw_transaction_data:
+        self._send_to_dlq(msg['value']['tx_hash'], "api_exhausted")
+        continue
       cleaned_transaction_data = self.web3.parse_transaction_data(raw_transaction_data)
       try:
         key, value = cleaned_transaction_data['hash'], cleaned_transaction_data
@@ -126,10 +160,9 @@ if __name__ == '__main__':
   TOPIC_TXS_HASH_IDS  = os.getenv("TOPIC_TXS_HASH_IDS")
   CONSUMER_GROUP   = os.getenv("CONSUMER_GROUP")
   TOPIC_TXS_DATA   = os.getenv("TOPIC_TXS_DATA")
-  SSM_SECRET_NAME  = os.getenv("AKV_SECRET_NAME")          # nome do segredo SSM (api key Infura inicial)
-  API_KEY_NAMES    = os.getenv("AKV_SECRET_NAMES")          # ex: 'infura-api-key-1-12'
-  REDIS_DB_APK_SEMAPHORE = int(os.getenv("REDIS_DB_APK_SEMAPHORE", 0))
-  REDIS_DB_APK_COUNTER   = int(os.getenv("REDIS_DB_APK_COUNTER",   1))
+  TOPIC_DLQ        = os.getenv("TOPIC_DLQ")                   # optional, absent disables DLQ
+  SSM_SECRET_NAME  = os.getenv("SSM_SECRET_NAME")          # nome do segredo SSM (api key Infura inicial)
+  API_KEY_NAMES    = os.getenv("SSM_SECRET_NAMES")          # ex: 'infura-api-key-1-12'
   TX_THROUGHPUT_THRESHOLD = 100
 
   PROC_ID = f"job-{str(uuid.uuid4())[:8]}"
@@ -170,11 +203,10 @@ if __name__ == '__main__':
   producer_txs_data = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_txs_data)
   logger.info("AVRO PRODUCER for transactions data configured.")
 
-  # Redis — semáforo de API keys e contador de requisições
-  redis_semaphore = DMRedis(db=REDIS_DB_APK_SEMAPHORE, logger=logger)
-  redis_counter   = DMRedis(db=REDIS_DB_APK_COUNTER,   logger=logger)
-  api_keys_manager = APIKeysManager(logger, PROC_ID, redis_semaphore, redis_counter, API_KEY_NAMES)
-  logger.info("API Keys Manager configured.")
+  # DynamoDB — semáforo de API keys e contador de requisições (single-table)
+  dynamodb = DMDynamoDB(logger=logger)
+  api_keys_manager = APIKeysManager(logger, PROC_ID, dynamodb, API_KEY_NAMES)
+  logger.info("API Keys Manager configured (DynamoDB).")
 
   # Web3 — conecta ao nó Infura via SSM
   node_connector = Web3Handler(logger, NETWORK)
@@ -193,6 +225,13 @@ if __name__ == '__main__':
     "topic_txs_data": TOPIC_TXS_DATA,
     "txs_threshold": TX_THROUGHPUT_THRESHOLD,
   }
+
+  # DLQ producer — plain (non-Avro) to avoid Schema Registry dependency for dead records
+  if TOPIC_DLQ:
+    _dlq_conf = {**KAFKA_BROKERS, **get_msk_iam_config(), "acks": "1", "retries": "2"}
+    sink_properties["producer_dlq"] = PlainProducer(_dlq_conf)
+    sink_properties["topic_dlq"] = TOPIC_DLQ
+    logger.info(f"DLQ producer configured for topic: {TOPIC_DLQ}")
 
   _ = (
     RawTransactionsProcessor(logger)

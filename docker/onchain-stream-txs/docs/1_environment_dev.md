@@ -16,7 +16,6 @@ docker/onchain-stream-txs/
     3_block_data_crawler.py         # Job 3 - Captura de dados de blocos
     4_mined_txs_crawler.py          # Job 4 - Captura de transacoes brutas
     5_txs_input_decoder.py          # Job 5 - Decodificacao de input de transacoes
-    n_semaphore_collect.py          # Utilitario - Exibicao do estado dos semaforos
     chain_extractor.py              # Classe base abstrata para jobs de streaming
     configs/
       producers.ini                 # Configuracoes de producers Kafka
@@ -30,9 +29,9 @@ docker/onchain-stream-txs/
       4_transactions_schema_avro.json
       txs_contract_call_decoded.json
     utils/
-      api_keys_manager.py           # Gerenciamento de API keys com semaforo Redis
+      api_keys_manager.py           # Gerenciamento de API keys com semaforo DynamoDB
       dm_parameter_store.py         # Cliente AWS SSM Parameter Store
-      dm_redis.py                   # Wrapper Redis (DEV local / PROD ElastiCache)
+      dm_dynamodb.py                # Wrapper DynamoDB single-table (boto3)
       etherscan_utils.py            # Cliente Etherscan com cache em disco
       kafka_utils.py                # Producers e consumers AVRO Kafka
       logger_utils.py               # Handler de logging via Kafka
@@ -66,8 +65,7 @@ O entrypoint padrao (`sleep infinity`) e substituido em tempo de execucao pelo `
 | `web3` | 7.8.0 | Conexao com nos Ethereum (Alchemy, Infura) |
 | `confluent-kafka` | 2.6.0 | Producer/consumer Kafka com serialzacao AVRO |
 | `fastavro` | 1.10.0 | Serializacao/desserializacao AVRO |
-| `redis` | 5.2.1 | Acesso ao Redis (semaforo, cache) |
-| `boto3` | >=1.26.0 | Acesso ao AWS SSM Parameter Store |
+| `boto3` | >=1.26.0 | Acesso ao AWS SSM Parameter Store e DynamoDB |
 | `requests` | 2.28.1 | Chamadas HTTP (Etherscan, 4byte.directory) |
 | `dm-33-utils` | 0.0.5 | Biblioteca interna com utilitarios (conversao HexBytes, etc.) |
 
@@ -77,7 +75,7 @@ O entrypoint padrao (`sleep infinity`) e substituido em tempo de execucao pelo `
 
 O ambiente de desenvolvimento replica localmente os servicos gerenciados da AWS. Os containers sao orquestrados via Docker Compose em dois arquivos:
 
-- `services/local_services.yml` -- infraestrutura local (Kafka, Redis, Spark)
+- `services/local_services.yml` -- infraestrutura local (Kafka, Spark)
 - `services/app_services.yml` -- jobs de streaming Python e Spark
 
 ### Inicializacao
@@ -96,13 +94,13 @@ docker compose -f services/app_services.yml up -d
 ### Diagrama de conectividade
 
 ```
-+---------------------+     +---------------------+     +---------------------+
-|  kafka-broker-1     |     |  schema-registry    |     |  redis              |
-|  (Confluent 7.6.0)  |     |  (Confluent 7.6.0)  |     |  (Redis 7 Alpine)   |
-|  Porta: 9092/29092  |     |  Porta: 8081        |     |  Porta: 6379        |
-+---------------------+     +---------------------+     +---------------------+
-         |                           |                           |
-         +---------------------------+---------------------------+
++---------------------+     +---------------------+
+|  kafka-broker-1     |     |  schema-registry    |
+|  (Confluent 7.6.0)  |     |  (Confluent 7.6.0)  |
+|  Porta: 9092/29092  |     |  Porta: 8081        |
++---------------------+     +---------------------+
+         |                           |
+         +---------------------------+
                                      |
                           rede: vpc_dm (bridge)
                                      |
@@ -151,26 +149,26 @@ Em desenvolvimento, o Schema Registry e uma instancia local do Confluent Schema 
 
 ---
 
-## Configuracao de Redis
+## Configuracao de DynamoDB
 
-Os jobs usam Redis para tres finalidades distintas, cada uma em um database separado:
+Os jobs usam DynamoDB como store de estado compartilhado, com uma unica tabela single-table design:
 
-| Database | Variavel de ambiente | Funcao |
+| Entidade (PK) | Variavel de ambiente | Funcao |
 |----------|---------------------|--------|
-| `db=0` | `REDIS_DB_APK_SEMAPHORE` | Semaforo distribuido de API keys |
-| `db=1` | `REDIS_DB_APK_COUNTER` | Contadores de requisicoes por API key |
-| `db=2` | `REDIS_DB_BLOCK_CACHE` | Cache de hashes de blocos (deteccao de orfaos) |
-| `db=3` | `REDIS_DB_SEMAPHORE_DISPLAY` | Snapshot do estado dos semaforos para monitoramento |
+| `SEMAPHORE` | `DYNAMODB_TABLE` | Semaforo distribuido de API keys (TTL 60s) |
+| `COUNTER` | `DYNAMODB_TABLE` | Contadores de requisicoes por API key |
+| `BLOCK_CACHE` | `DYNAMODB_TABLE` | Cache de hashes de blocos (TTL 3600s) |
+| `ABI` | `DYNAMODB_TABLE` | Cache de ABIs de contratos |
+| `ABI_NEG` | `DYNAMODB_TABLE` | Negative cache de ABIs (TTL 24h) |
 
-As variaveis de conexao sao definidas em `services/conf/dev.redis.conf`:
+As variaveis de conexao sao definidas em `services/conf/dev.dynamodb.conf`:
 
 ```properties
-REDIS_HOST=redis
-REDIS_PORT=6379
+DYNAMODB_TABLE=dm-chain-explorer
 APP_ENV=dev
 ```
 
-O wrapper `dm_redis.py` detecta `APP_ENV=dev` e conecta sem TLS e sem autenticacao. Em producao, o mesmo wrapper ativa TLS automaticamente (ver [2_environment_prod.md](2_environment_prod.md)).
+O wrapper `dm_dynamodb.py` usa boto3 e resolve credenciais AWS automaticamente (~/.aws em DEV, IAM task role em PROD).
 
 ---
 
@@ -227,8 +225,8 @@ A tabela abaixo consolida as variaveis de ambiente de cada servico conforme defi
 | `TOPIC_TXS_HASH_IDS` | -- | -- | mainnet.3.block.txs.hash_id | mainnet.3.block.txs.hash_id | -- |
 | `TOPIC_TXS_DATA` | -- | -- | -- | mainnet.4.transactions.data | mainnet.4.transactions.data |
 | `TOPIC_TXS_DECODED` | -- | -- | -- | -- | mainnet.5.transactions.input_decoded |
-| `AKV_SECRET_NAME` | /web3-api-keys/alchemy/api-key-1 | /web3-api-keys/alchemy/api-key-2 | /web3-api-keys/alchemy/api-key-2 | -- | -- |
-| `AKV_SECRET_NAMES` | -- | -- | -- | /web3-api-keys/infura/api-key-1-17 | -- |
+| `SSM_SECRET_NAME` | /web3-api-keys/alchemy/api-key-1 | /web3-api-keys/alchemy/api-key-2 | /web3-api-keys/alchemy/api-key-2 | -- | -- |
+| `SSM_SECRET_NAMES` | -- | -- | -- | /web3-api-keys/infura/api-key-1-17 | -- |
 | `SSM_ETHERSCAN_KEY` | -- | -- | -- | -- | /etherscan-api-keys/api-key-1 |
 | `CONSUMER_GROUP` | -- | cg_orphan_block_events | cg_block_data_crawler | cg_mined_raw_txs | cg_txs_input_decoder |
 | `CLOCK_FREQUENCY` | 1 | -- | -- | -- | -- |

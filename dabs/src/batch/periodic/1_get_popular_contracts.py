@@ -33,7 +33,7 @@ contracts = df_popular.collect()
 print(f"[INFO] Found {len(contracts)} popular contracts")
 
 # -----------------------------------------------------------------------
-# Persiste no DynamoDB (substituindo Redis DB3 do AS-IS)
+# Persiste no DynamoDB (single-table design: PK=CONTRACT, SK={address})
 # -----------------------------------------------------------------------
 dynamodb = boto3.resource("dynamodb")
 table    = dynamodb.Table(dynamodb_table)
@@ -41,7 +41,8 @@ table    = dynamodb.Table(dynamodb_table)
 with table.batch_writer() as batch:
     for row in contracts:
         batch.put_item(Item={
-            "contract_address": row["to_address"],
+            "pk":               "CONTRACT",
+            "sk":               row["to_address"],
             "tx_count":         str(row["tx_count"]),
             "last_seen":        str(row["last_seen"]),
         })

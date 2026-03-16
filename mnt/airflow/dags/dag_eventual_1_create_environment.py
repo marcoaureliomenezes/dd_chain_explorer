@@ -4,6 +4,7 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
+from python_scripts.alerts import slack_alert
 
 
 COMMON_DOCKER_OP = dict(
@@ -26,11 +27,12 @@ LAKE_ENV_VARS = dict(
 
 default_args = {
     "owner": "airflow",
-    "email_on_failure": False,
+    "email_on_failure": True,
     "email_on_retry": False,
     "email": "marco_aurelio_reis@yahoo.com.br",
     "retries": 1,
     "retry_delay": timedelta(minutes=5),
+    "on_failure_callback": slack_alert,
 }
 
 

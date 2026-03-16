@@ -11,14 +11,14 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.gold")
 spark.sql(f"""
   CREATE OR REPLACE VIEW `{catalog}`.gold.blocks_with_tx_count AS
   SELECT
-    b.number         AS block_number,
-    b.hash           AS block_hash,
+    b.block_number,
+    b.block_hash,
     b.miner,
     b.gas_used,
     b.gas_limit,
     b.base_fee_per_gas,
     b.transaction_count,
-    b.event_time
+    b.block_time     AS event_time
   FROM `{catalog}`.s_apps.blocks_fast b
 """)
 
@@ -37,13 +37,13 @@ spark.sql(f"""
 spark.sql(f"""
   CREATE OR REPLACE VIEW `{catalog}`.gold.blocks_hourly_summary AS
   SELECT
-    DATE_TRUNC('hour', event_time) AS hour_bucket,
+    DATE_TRUNC('hour', block_time) AS hour_bucket,
     COUNT(*)                        AS block_count,
     AVG(transaction_count)          AS avg_tx_per_block,
     AVG(gas_used)                   AS avg_gas_used,
     AVG(base_fee_per_gas)           AS avg_base_fee
   FROM `{catalog}`.s_apps.blocks_fast
-  GROUP BY DATE_TRUNC('hour', event_time)
+  GROUP BY DATE_TRUNC('hour', block_time)
 """)
 
 print(f"[OK] Gold views created in catalog '{catalog}'")

@@ -109,7 +109,7 @@ O job aceita apenas blocos sequenciais, garantindo que nenhum bloco seja pulado.
 
 | Variavel | Descricao | Exemplo |
 |----------|-----------|---------|
-| `AKV_SECRET_NAME` | Nome do parametro SSM com a API key Alchemy | `/web3-api-keys/alchemy/api-key-1` |
+| `SSM_SECRET_NAME` | Nome do parametro SSM com a API key Alchemy | `/web3-api-keys/alchemy/api-key-1` |
 | `TOPIC_LOGS` | Topico de logs | `mainnet.0.application.logs` |
 | `TOPIC_MINED_BLOCKS_EVENTS` | Topico de saida | `mainnet.1.mined_blocks.events` |
 | `CLOCK_FREQUENCY` | Intervalo de polling em segundos | `1` |
@@ -127,21 +127,21 @@ Utiliza Alchemy via `Web3Handler.get_node_connection(api_key_name, 'alchemy')`.
 
 ### Funcao
 
-Detecta blocos orfaos (reorganizacoes de cadeia) comparando o hash de blocos ja confirmados com o hash armazenado em cache Redis. Quando a rede Ethereum sofre uma reorganizacao, um bloco previamente aceito pode ser substituido por outro com hash diferente. Este job identifica essas situacoes.
+Detecta blocos orfaos (reorganizacoes de cadeia) comparando o hash de blocos ja confirmados com o hash armazenado em cache DynamoDB. Quando a rede Ethereum sofre uma reorganizacao, um bloco previamente aceito pode ser substituido por outro com hash diferente. Este job identifica essas situacoes.
 
 ### Logica de execucao
 
 ```
 para cada evento em mainnet.1.mined_blocks.events:
-  armazenar (block_number, block_hash) no Redis (db=2)
+  armazenar (block_number, block_hash) no DynamoDB (PK=BLOCK_CACHE, SK=block_number)
   bloco_seguro = block_number - delay_counter
   dados_bloco_seguro = web3.eth.get_block(bloco_seguro)
-  hash_anterior = redis.get(bloco_seguro)
+  hash_anterior = dynamodb.get(PK=BLOCK_CACHE, SK=bloco_seguro)
 
   se hash_anterior != dados_bloco_seguro.hash:
     emitir evento orphan em mainnet.1.mined_blocks.events
 
-  limpar entradas Redis mais antigas que a janela de confirmacao
+  (entradas antigas expiram automaticamente via TTL de 3600s)
   delay_counter = min(delay_counter + 1, NUM_CONFIRMATIONS)
 ```
 
@@ -161,21 +161,22 @@ O `delay_counter` cresce progressivamente de 0 a `NUM_CONFIRMATIONS` (padrao: 10
 }
 ```
 
-### Uso do Redis
+### Uso do DynamoDB
 
-- **Database**: `db=2` (`REDIS_DB_BLOCK_CACHE`)
-- **Operacoes**: `SET` para armazenar hashes, `GET` para comparar, `DELETE` para limpar entradas antigas
-- A instancia `DMRedis` e utilizada como cache persistente de hashes de blocos
+- **Entidade**: `BLOCK_CACHE` (PK=`BLOCK_CACHE`, SK=`{block_number}`)
+- **Operacoes**: `put_item` para armazenar hashes (com TTL 3600s), `get_item` para comparar
+- Entradas antigas expiram automaticamente via TTL (nao requer limpeza manual)
+- A instancia `DMDynamoDB` e utilizada como cache de hashes de blocos
 
 ### Variaveis de ambiente
 
 | Variavel | Descricao | Exemplo |
 |----------|-----------|---------|
-| `AKV_SECRET_NAME` | Parametro SSM com a API key Alchemy | `/web3-api-keys/alchemy/api-key-2` |
+| `SSM_SECRET_NAME` | Parametro SSM com a API key Alchemy | `/web3-api-keys/alchemy/api-key-2` |
 | `TOPIC_LOGS` | Topico de logs | `mainnet.0.application.logs` |
 | `TOPIC_MINED_BLOCKS_EVENTS` | Topico de entrada e saida | `mainnet.1.mined_blocks.events` |
 | `CONSUMER_GROUP_ID` | Consumer group | `cg_orphan_block_events` |
-| `REDIS_DB_BLOCK_CACHE` | Database Redis para cache | `2` |
+| `DYNAMODB_TABLE` | Nome da tabela DynamoDB | `dm-chain-explorer` |
 | `NUM_CONFIRMATIONS` | Numero de confirmacoes para considerar um bloco seguro | `10` |
 
 ---
@@ -250,7 +251,7 @@ O parametro `TXS_PER_BLOCK` limita o numero de transacoes enviadas por bloco par
 
 | Variavel | Descricao | Exemplo |
 |----------|-----------|---------|
-| `AKV_SECRET_NAME` | Parametro SSM com a API key Alchemy | `/web3-api-keys/alchemy/api-key-2` |
+| `SSM_SECRET_NAME` | Parametro SSM com a API key Alchemy | `/web3-api-keys/alchemy/api-key-2` |
 | `TOPIC_LOGS` | Topico de logs | `mainnet.0.application.logs` |
 | `TOPIC_MINED_BLOCKS_EVENTS` | Topico de entrada | `mainnet.1.mined_blocks.events` |
 | `TOPIC_MINED_BLOCKS` | Topico de saida (dados de blocos) | `mainnet.2.blocks.data` |
@@ -327,13 +328,12 @@ O gerenciamento de API keys e detalhado em [4_api_key_management.md](4_api_key_m
 
 | Variavel | Descricao | Exemplo |
 |----------|-----------|---------|
-| `AKV_SECRET_NAMES` | Range compactado de API keys Infura | `/web3-api-keys/infura/api-key-1-17` |
+| `SSM_SECRET_NAMES` | Range compactado de API keys Infura | `/web3-api-keys/infura/api-key-1-17` |
 | `TOPIC_LOGS` | Topico de logs | `mainnet.0.application.logs` |
 | `TOPIC_TXS_HASH_IDS` | Topico de entrada | `mainnet.3.block.txs.hash_id` |
 | `TOPIC_TXS_DATA` | Topico de saida | `mainnet.4.transactions.data` |
 | `CONSUMER_GROUP` | Consumer group | `cg_mined_raw_txs` |
-| `REDIS_DB_APK_SEMAPHORE` | Database Redis para semaforo | `0` |
-| `REDIS_DB_APK_COUNTER` | Database Redis para contadores | `1` |
+| `DYNAMODB_TABLE` | Nome da tabela DynamoDB | `dm-chain-explorer` |
 
 ---
 

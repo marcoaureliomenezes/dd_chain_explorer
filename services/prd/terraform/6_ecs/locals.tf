@@ -1,4 +1,10 @@
+data "aws_caller_identity" "current" {}
+
 locals {
+  ecr_base        = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
+  ecr_image_stream = "${local.ecr_base}/onchain-stream-txs:${var.docker_image_stream}"
+  ecr_image_batch  = "${local.ecr_base}/onchain-batch-txs:${var.docker_image_batch}"
+
   common_tags = {
     "owner"       = "marco-menezes"
     "managed-by"  = "terraform"
@@ -12,7 +18,11 @@ locals {
   common_stream_env = [
     {
       name  = "KAFKA_BROKERS"
-      value = data.terraform_remote_state.msk.outputs.msk_bootstrap_brokers
+      value = data.terraform_remote_state.msk.outputs.msk_bootstrap_brokers_sasl_iam  # SASL/IAM (port 9098)
+    },
+    {
+      name  = "KAFKA_MSK_IAM"
+      value = "true"          # TODO-A05: habilita get_msk_iam_config() nos jobs Python
     },
     {
       name  = "NETWORK"
@@ -31,28 +41,8 @@ locals {
       value = "http://dm-schema-registry.dm-chain-explorer.local:8081"
     },
     {
-      name  = "REDIS_HOST"
-      value = data.terraform_remote_state.elasticache.outputs.redis_primary_endpoint
-    },
-    {
-      name  = "REDIS_PORT"
-      value = tostring(data.terraform_remote_state.elasticache.outputs.redis_port)
-    },
-    {
-      name  = "REDIS_DB_APK_SEMAPHORE"
-      value = "0"
-    },
-    {
-      name  = "REDIS_DB_APK_COUNTER"
-      value = "1"
-    },
-    {
-      name  = "REDIS_DB_BLOCK_CACHE"
-      value = "2"
-    },
-    {
-      name  = "REDIS_DB_SEMAPHORE_DISPLAY"
-      value = "3"
+      name  = "DYNAMODB_TABLE"
+      value = data.terraform_remote_state.dynamodb.outputs.dynamodb_table_name
     },
   ]
 

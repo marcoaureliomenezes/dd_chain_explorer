@@ -159,116 +159,10 @@ def bronze_multiplex():
 # Tabelas escritas em schemas s_apps / s_logs via name="schema.table".
 # ════════════════════════════════════════════════════════════════════════════
 
-# ── Avro Schemas (embutidos — sem dependência do Schema Registry em runtime) ──
+# COMMAND ----------
+from _avro_schemas import *  # noqa: F401,F403  (defined as DLT file library)
 
-AVRO_SCHEMA_APP_LOGS = """{
-  "type": "record",
-  "name": "Application_Logs",
-  "namespace": "io.streamr.onchain",
-  "fields": [
-    {"name": "timestamp",     "type": "int"},
-    {"name": "logger",        "type": "string"},
-    {"name": "level",         "type": "string"},
-    {"name": "filename",      "type": "string"},
-    {"name": "function_name", "type": "string"},
-    {"name": "message",       "type": "string"}
-  ]
-}"""
-
-AVRO_SCHEMA_MINED_BLOCKS_EVENTS = """{
-  "type": "record",
-  "name": "mined_block_event_schema",
-  "namespace": "io.streamr.onchain",
-  "fields": [
-    {"name": "block_timestamp", "type": "int"},
-    {"name": "block_number",    "type": "int"},
-    {"name": "block_hash",      "type": "string"}
-  ]
-}"""
-
-AVRO_SCHEMA_BLOCKS = """{
-  "type": "record",
-  "name": "BlockClock",
-  "namespace": "io.onchain.streamtxs.avro",
-  "fields": [
-    {"name": "number",           "type": "long"},
-    {"name": "timestamp",        "type": "long"},
-    {"name": "hash",             "type": "string"},
-    {"name": "parentHash",       "type": "string"},
-    {"name": "difficulty",       "type": "long"},
-    {"name": "totalDifficulty",  "type": "string"},
-    {"name": "nonce",            "type": "string"},
-    {"name": "size",             "type": "long"},
-    {"name": "miner",            "type": "string"},
-    {"name": "baseFeePerGas",    "type": "long"},
-    {"name": "gasLimit",         "type": "long"},
-    {"name": "gasUsed",          "type": "long"},
-    {"name": "logsBloom",        "type": "string"},
-    {"name": "extraData",        "type": "string"},
-    {"name": "transactionsRoot", "type": "string"},
-    {"name": "stateRoot",        "type": "string"},
-    {"name": "transactions", "type": {"type": "array", "items": "string"}},
-    {"name": "withdrawals",      "type": {"type": "array", "items": {
-      "type": "record", "name": "Withdrawal", "fields": [
-        {"name": "index",          "type": "long"},
-        {"name": "validatorIndex", "type": "long"},
-        {"name": "address",        "type": "string"},
-        {"name": "amount",         "type": "long"}
-      ]
-    }}}
-  ]
-}"""
-
-AVRO_SCHEMA_TX_HASH_IDS = """{
-  "type": "record",
-  "name": "transactions_hash_ids",
-  "namespace": "io.streamr.onchain",
-  "fields": [
-    {"name": "tx_hash", "type": "string"}
-  ]
-}"""
-
-AVRO_SCHEMA_TRANSACTIONS = """{
-  "type": "record",
-  "name": "Transaction",
-  "namespace": "io.streamr.onchain",
-  "fields": [
-    {"name": "blockHash",        "type": "string"},
-    {"name": "blockNumber",      "type": "long"},
-    {"name": "hash",             "type": "string"},
-    {"name": "transactionIndex", "type": "long"},
-    {"name": "from",             "type": "string"},
-    {"name": "to",               "type": "string"},
-    {"name": "value",            "type": "string"},
-    {"name": "input",            "type": "string"},
-    {"name": "gas",              "type": "long"},
-    {"name": "gasPrice",         "type": "long"},
-    {"name": "nonce",            "type": "long"},
-    {"name": "v",                "type": "long"},
-    {"name": "r",                "type": "string"},
-    {"name": "s",                "type": "string"},
-    {"name": "type",             "type": "long"},
-    {"name": "accessList",       "type": {"type": "array", "items": {
-      "type": "record", "name": "accessList", "fields": [
-        {"name": "address",     "type": "string"},
-        {"name": "storageKeys", "type": {"type": "array", "items": "string"}}
-      ]
-    }}}
-  ]
-}"""
-
-AVRO_SCHEMA_INPUT_DECODED = """{
-  "type": "record",
-  "name": "Input_Transaction",
-  "namespace": "io.streamr.onchain",
-  "fields": [
-    {"name": "tx_hash",          "type": "string"},
-    {"name": "contract_address", "type": "string"},
-    {"name": "method",           "type": "string"},
-    {"name": "parms",            "type": "string"},
-    {"name": "decode_type",      "type": "string"}
-  ]
-}"""
+# COMMAND ----------
 
 
 # ── Helper: lê bronze interna ao pipeline + deserializa Avro ─────────────────
@@ -404,9 +298,12 @@ def silver_transaction_hash_ids():
         "quality": "silver",
         "pipelines.autoOptimize.managed": "true",
     },
+    partition_cols=["event_date"],
 )
-@dlt.expect_or_drop("valid_hash",  "tx_hash IS NOT NULL")
-@dlt.expect_or_drop("valid_block", "block_number IS NOT NULL")
+@dlt.expect_or_drop("valid_hash",       "tx_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_block",      "block_number IS NOT NULL")
+@dlt.expect("valid_from_address", "from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect("valid_to_address",   "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_transactions_fast():
     df = _silver_avro("mainnet.4.transactions.data", AVRO_SCHEMA_TRANSACTIONS)
     return df.select(
@@ -429,6 +326,7 @@ def silver_transactions_fast():
         F.col("kafka_timestamp"),
         F.col("kafka_partition"),
         F.col("kafka_offset"),
+        F.to_date(F.col("kafka_timestamp")).alias("event_date"),
     )
 
 
@@ -486,9 +384,12 @@ def silver_txs_inputs_decoded_fast():
         "quality": "silver",
         "pipelines.autoOptimize.managed": "true",
     },
+    partition_cols=["event_date"],
 )
-@dlt.expect_or_drop("valid_hash",  "tx_hash IS NOT NULL")
-@dlt.expect_or_drop("valid_block", "block_number IS NOT NULL")
+@dlt.expect_or_drop("valid_hash",       "tx_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_block",      "block_number IS NOT NULL")
+@dlt.expect("valid_from_address", "from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect("valid_to_address",   "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_transactions_ethereum():
     # ── Stream: transações raw ───────────────────────────────────────────────
     # dlt.read_stream → Streaming Table (consume novos registros incrementalmente)
@@ -556,6 +457,7 @@ def silver_transactions_ethereum():
             F.col("kafka_timestamp"),
             F.col("kafka_partition"),
             F.col("kafka_offset"),
+            F.to_date(F.col("kafka_timestamp")).alias("event_date"),
         )
     )
 
@@ -846,7 +748,13 @@ def gold_transactions_lambda():
         )
     )
 
-    # ── UNION com deduplicação: batch tem prioridade (rank 1) ─────────────────
+    # ── UNION com deduplicação: prioridade por completude do decode_type ──────
+    # Ordem de prioridade (TODO-P05):
+    #   1. decode_type='full'       → método + parâmetros via ABI Etherscan (mais completo)
+    #   2. decode_type='full_4byte' → método + parâmetros via 4byte.directory
+    #   3. decode_type='partial'    → apenas nome do método decodificado
+    #   4. source_layer='batch'     → input raw completo do Etherscan (sem decode)
+    #   5. decode_type='unknown'    → apenas seletor 4-byte hex (menos informativo)
     df_union = df_stream_popular.unionByName(df_batch_enriched)
 
     return (
@@ -855,11 +763,114 @@ def gold_transactions_lambda():
             "_rank",
             F.row_number().over(
                 Window.partitionBy("tx_hash").orderBy(
-                    # batch first (priority), then streaming
-                    F.when(F.col("source_layer") == "batch", F.lit(1)).otherwise(F.lit(2))
+                    F.when(F.col("decode_type") == "full",       F.lit(1))
+                     .when(F.col("decode_type") == "full_4byte",  F.lit(2))
+                     .when(F.col("decode_type") == "partial",     F.lit(3))
+                     .when(F.col("source_layer") == "batch",      F.lit(4))
+                     .when(F.col("decode_type") == "unknown",     F.lit(5))
+                     .otherwise(F.lit(6))
                 )
             )
         )
         .filter(F.col("_rank") == 1)
         .drop("_rank")
+    )
+
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## Gold 5 — Network Metrics Hourly → `g_network.network_metrics_hourly`
+# MAGIC
+# MAGIC Métricas agredadas da rede Ethereum por hora: TPS médio, preço de gas,
+# MAGIC utilização de blocos e volume de transações (TODO-P06).
+
+# COMMAND ----------
+
+@dlt.table(
+    name="g_network.network_metrics_hourly",
+    comment="Gold MV: métricas horárias da rede Ethereum — TPS, gas médio, utilização de blocos",
+    table_properties={
+        "quality": "gold",
+        "pipelines.autoOptimize.managed": "true",
+    },
+)
+def gold_network_metrics_hourly():
+    """
+    Agrega métricas da rede Ethereum por hora usando blocks_fast e transactions_fast.
+
+    Métricas calculadas:
+    - block_count               : blocos produzidos na hora
+    - tx_count                  : total de transações
+    - tps_avg                   : TPS médio (tx_count / 3600 segundos)
+    - avg_gas_price_gwei        : preço médio do gas em Gwei
+    - avg_block_gas_used        : gas médio usado por bloco
+    - avg_block_gas_limit       : gas limit médio por bloco
+    - avg_block_utilization_pct : utilização média do bloco (gas_used/gas_limit × 100)
+    - avg_txs_per_block         : média de transações por bloco
+    """
+    blocks = (
+        dlt.read("s_apps.blocks_fast")
+        .select(
+            F.date_trunc("hour", F.col("block_time")).alias("hour_bucket"),
+            F.col("block_number"),
+            F.col("gas_used").alias("block_gas_used"),
+            F.col("gas_limit").alias("block_gas_limit"),
+            F.col("transaction_count"),
+        )
+    )
+
+    txs = (
+        dlt.read("s_apps.transactions_fast")
+        .select(
+            F.date_trunc("hour", F.col("kafka_timestamp")).alias("hour_bucket"),
+            F.col("tx_hash"),
+            F.col("gas_price"),
+        )
+    )
+
+    blocks_agg = (
+        blocks
+        .groupBy("hour_bucket")
+        .agg(
+            F.count("block_number").alias("block_count"),
+            F.sum("transaction_count").alias("tx_count_from_blocks"),
+            F.avg("block_gas_used").alias("avg_block_gas_used"),
+            F.avg("block_gas_limit").alias("avg_block_gas_limit"),
+            F.avg(
+                F.when(
+                    F.col("block_gas_limit") > 0,
+                    F.col("block_gas_used").cast("double") / F.col("block_gas_limit") * 100,
+                ).otherwise(F.lit(None))
+            ).alias("avg_block_utilization_pct"),
+            F.avg("transaction_count").alias("avg_txs_per_block"),
+        )
+    )
+
+    txs_agg = (
+        txs
+        .groupBy("hour_bucket")
+        .agg(
+            F.count("tx_hash").alias("tx_count"),
+            F.avg(F.col("gas_price").cast("double") / 1e9).alias("avg_gas_price_gwei"),
+        )
+    )
+
+    return (
+        blocks_agg
+        .join(txs_agg, "hour_bucket", "left")
+        .select(
+            F.col("hour_bucket"),
+            F.col("block_count"),
+            F.coalesce(F.col("tx_count"), F.col("tx_count_from_blocks")).alias("tx_count"),
+            F.round(
+                F.coalesce(F.col("tx_count"), F.col("tx_count_from_blocks")).cast("double") / 3600,
+                2,
+            ).alias("tps_avg"),
+            F.round(F.col("avg_gas_price_gwei"), 4).alias("avg_gas_price_gwei"),
+            F.round(F.col("avg_block_gas_used"), 0).alias("avg_block_gas_used"),
+            F.round(F.col("avg_block_gas_limit"), 0).alias("avg_block_gas_limit"),
+            F.round(F.col("avg_block_utilization_pct"), 2).alias("avg_block_utilization_pct"),
+            F.round(F.col("avg_txs_per_block"), 1).alias("avg_txs_per_block"),
+            F.current_timestamp().alias("computed_at"),
+        )
     )

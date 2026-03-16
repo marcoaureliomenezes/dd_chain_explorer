@@ -26,10 +26,10 @@ Em producao, os jobs de streaming sao executados como tarefas ECS Fargate. Toda 
               +-----------+--------------+--------------++-----------+
               |                          |                           |
   +-----------v-----------+  +-----------v-----------+  +-----------v-----------+
-  | Amazon MSK            |  | AWS Glue Schema       |  | Amazon ElastiCache    |
-  | (Apache Kafka 3.x)   |  | Registry              |  | (Redis 7)             |
-  | 2 brokers, 2 AZs     |  | ChainExplorer-schema- |  | Single-node, TLS      |
-  | TLS + IAM auth        |  | registry              |  | Porta 6380            |
+  | Amazon MSK            |  | AWS Glue Schema       |  | Amazon DynamoDB       |
+  | (Apache Kafka 3.x)   |  | Registry              |  | (Single-table)        |
+  | 2 brokers, 2 AZs     |  | ChainExplorer-schema- |  | dm-chain-explorer     |
+  | TLS + IAM auth        |  | registry              |  | PAY_PER_REQUEST       |
   +--+--------------------+  +-----------+-----------+  +-----------+-----------+
      |                                   |                          |
      +-----------------------------------+--------------------------+
@@ -76,7 +76,7 @@ O Job 4 (`mined-txs-crawler`) e o unico com multiplas replicas, pois precisa par
 
 ### Rede e Seguranca
 
-Todas as tarefas ECS sao executadas em subnets privadas (sem IP publico), acessando os servicos gerenciados (MSK, ElastiCache, SSM) via endpoints internos da VPC:
+Todas as tarefas ECS sao executadas em subnets privadas (sem IP publico), acessando os servicos gerenciados (MSK, DynamoDB, SSM) via endpoints internos da VPC:
 
 ```hcl
 network_configuration {
@@ -181,35 +181,29 @@ def _glue_get_schema(schema_name, registry_name="ChainExplorer-schema-registry")
 
 ---
 
-## Amazon ElastiCache (Redis)
+## Amazon DynamoDB
 
-O Redis gerenciado e provisionado em `terraform/8_elasticache/elasticache.tf`.
+O DynamoDB e utilizado como store de estado compartilhado, substituindo o Redis. A tabela segue o padrao single-table design.
 
 ### Configuracao
 
 | Parametro | Valor |
 |-----------|-------|
-| Cluster mode | Desabilitado (permite uso de `db=0..15`) |
-| Nos | 1 (single-node, escalavel) |
-| Porta | 6380 (TLS) |
-| TLS em transito | Habilitado |
-| Criptografia em repouso | Habilitado |
-| Auth token | Configuravel via variavel Terraform |
-| Snapshot | Diario, retencao de 1 dia |
+| Tabela | `dm-chain-explorer` |
+| Partition Key | `pk` (String) |
+| Sort Key | `sk` (String) |
+| Billing | PAY_PER_REQUEST (on-demand) |
+| TTL | Atributo `ttl` (expiracao automatica) |
+| PITR | Habilitado (point-in-time recovery) |
+| SSE | Habilitado (criptografia em repouso) |
 
-A decisao de desabilitar o cluster mode e intencional: os scripts Python utilizam databases Redis separados (`db=0`, `db=1`, `db=2`, `db=3`) para isolar funcionalidades, e essa funcionalidade so esta disponivel com cluster mode desabilitado.
+O design single-table utiliza PK/SK para modelar diferentes entidades (SEMAPHORE, COUNTER, BLOCK_CACHE, ABI, ABI_NEG, CONTRACT, CONSUMPTION) numa unica tabela.
 
-### Adapatacao automatica do cliente
+### Acesso via DMDynamoDB
 
-O wrapper `dm_redis.py` detecta `APP_ENV=prod` e ativa TLS automaticamente:
-
-```python
-if app_env == "dev":
-    self._client = Redis(host=host, port=port, db=db, decode_responses=True)
-else:
-    self._client = Redis(host=host, port=port, db=db, ssl=True,
-                         ssl_cert_reqs=None, decode_responses=True)
-```
+O wrapper `dm_dynamodb.py` usa `boto3` e detecta automaticamente as credenciais AWS:
+- DEV: usa `~/.aws/credentials` montado no container
+- PROD: usa IAM Task Role do ECS (sem credenciais explicitas)
 
 ---
 
@@ -240,9 +234,7 @@ As variaveis de ambiente sao definidas diretamente nas Task Definitions do ECS (
 | `KAFKA_BROKERS` | `kafka-broker-1:9092` | Endpoint MSK (bootstrap servers IAM) |
 | `SCHEMA_REGISTRY_URL` | `http://schema-registry:8081` | Nao utilizado (`APP_ENV=prod` usa Glue) |
 | `APP_ENV` | `dev` | `prod` |
-| `REDIS_HOST` | `redis` | Endpoint ElastiCache |
-| `REDIS_PORT` | `6379` | `6380` (TLS) |
-| `REDIS_PASSWORD` | (vazio) | Auth token ElastiCache |
+| `DYNAMODB_TABLE` | `dm-chain-explorer` | `dm-chain-explorer` |
 | Credenciais AWS | `~/.aws` montado | IAM Task Role |
 
 ---
@@ -259,4 +251,5 @@ As variaveis de ambiente sao definidas diretamente nas Task Definitions do ECS (
 | DynamoDB | `terraform/5_dynamodb/` | Tabelas auxiliares |
 | ECS | `terraform/6_ecs/` | Cluster, task definitions, services |
 | Databricks | `terraform/7_databricks/` | Workspace Databricks (lakehouse) |
-| ElastiCache | `terraform/8_elasticache/` | Redis gerenciado |
+| DynamoDB | `terraform/9_dynamodb/` | Tabela DynamoDB single-table |
+| Lambda | `terraform/10_lambda/` | Lambda gold_to_dynamodb (S3→DynamoDB) |

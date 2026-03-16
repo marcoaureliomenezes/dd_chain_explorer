@@ -8,11 +8,11 @@ from datetime import datetime as dt, timedelta
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 
-from utils.dm_etherscan import EtherscanClient  # NOTE: legacy EthercanAPI renamed to EtherscanClient
+from dm_chain_utils.dm_etherscan import EtherscanClient
 
-from dm_33_utils.logger_utils import ConsoleLoggingHandler, KafkaLoggingHandler
-from dm_33_utils.kafka_utils import KafkaHandler
-from dm_33_utils.schema_reg_utils import SchemaRegistryHandler
+from dm_chain_utils.dm_logger import ConsoleLoggingHandler, KafkaLoggingHandler
+from dm_chain_utils.dm_kafka_client import KafkaHandler
+from dm_chain_utils.dm_schema_reg_client import get_schema
 
 class ContractTransactionsCrawler:
 
