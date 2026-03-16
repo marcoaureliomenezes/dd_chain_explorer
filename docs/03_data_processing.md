@@ -397,5 +397,5 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 
 ## TODOs — Processamento de Dados
 
-- [ ] **TODO-P01**: Validar DLT contínuo end-to-end com MSK + IAM auth em PROD. Configurado em `dabs/databricks.yml` (`prod` target: `dlt_continuous: true`, `source_type: kafka`), mas pendente validação E2E em ambiente PROD real.
+- [ ] **TODO-P01** 🔴 P0: Validar DLT contínuo end-to-end com MSK + IAM auth em PROD. Configurado em `dabs/databricks.yml` (`prod` target: `dlt_continuous: true`, `source_type: kafka`), mas pendente validação E2E em ambiente PROD real. Prioridade elevada de P2 para P0 — blocker para validação do ambiente de produção (TODO-O12).
 - [ ] **TODO-P09**: Avaliar migração do Airflow para MWAA (Managed Workflows for Apache Airflow) em PROD para maior resiliência. Análise de custo/benefício pendente.

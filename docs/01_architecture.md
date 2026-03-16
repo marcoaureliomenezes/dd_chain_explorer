@@ -228,9 +228,11 @@ Portas expostas no host:
 
 ## TODOs — Arquitetura
 
-- [ ] **TODO-A02**: Resolver a ponte Kafka → S3 em PROD. Em DEV usamos um Spark job para levar dados do Kafka local ao S3. Em PROD, o Databricks pode ler MSK diretamente. Opções: (a) usar Kafka Connect com S3 Sink Connector; (b) pipeline DLT contínuo lendo MSK direto (já implementado para PROD no `databricks.yml`).
+- [x] **TODO-A02**: ~~Resolver a ponte Kafka → S3 em PROD.~~ Consolidado no **TODO-A11**.
 - [ ] **TODO-A03**: Definir estratégia de Airflow em PROD. Atualmente roda como Docker Compose local. Opções: (a) AWS MWAA (Managed Airflow); (b) ECS Fargate com imagem customizada; (c) Docker Swarm na mesma EC2/instância.
 - [ ] **TODO-A04**: Implementar TLS para comunicação Kafka em PROD. Atualmente usa plaintext dentro da VPC. Avaliar se o isolamento via security groups é suficiente ou se precisamos de SASL/TLS.
 - [ ] **TODO-A06**: Implementar observabilidade em PROD. Em DEV usamos Control Center para monitorar Kafka. Em PROD precisamos de dashboards CloudWatch e/ou Prometheus+Grafana.
 - [ ] **TODO-A07**: Avaliar necessidade de NAT Gateway na VPC de PROD. Atualmente ECS tasks têm IP público para acesso à internet (APIs Web3). NAT Gateway é mais seguro, porém tem custo.
 - [ ] **TODO-A10**: Criar ambiente de staging/homologação. Atualmente temos apenas DEV e PROD. Um ambiente intermediário permitiria validar mudanças antes do deploy em produção.
+- [ ] **TODO-A11**: Substituir o Spark Streaming Kafka→S3 (DEV-only, `docker/spark-stream-txs/`) por **Kafka Connect com S3 Sink Connector**. O novo componente deve funcionar tanto em DEV quanto em PROD, eliminando a assimetria atual onde DEV usa Spark e PROD não tem ponte Kafka→S3. Consolida os antigos TODO-A02 e TODO-C07.
+- [ ] **TODO-A12**: Estudo de custo **ECS Fargate vs EC2**. Duplicar os services de streaming em um cluster EC2 (capacity provider), rodar ambos por 24h e comparar custos. Workload previsível (5 jobs + 6 réplicas do job 4) favorece EC2 com instâncias reservadas.

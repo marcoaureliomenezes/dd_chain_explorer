@@ -424,3 +424,5 @@ dabs/
 
 - [ ] **TODO-O08**: Implementar monitoramento com CloudWatch Dashboards ou Grafana para métricas de ECS + MSK + DynamoDB.
 - [ ] **TODO-O10**: Implementar notificações Slack/Teams para falhas de CI/CD e alertas de infraestrutura.
+- [ ] **TODO-O11** 🔴 P0: Hardening do pipeline de CI/CD. Testar e validar os 4 tipos de deploy no GitHub Actions: (1) Docker images → push DockerHub → deploy ECS (`deploy_apps.yml`), (2) publicação da lib Python `dm-chain-utils`, (3) Terraform plan/apply com aprovação manual (`deploy_infrastructure.yml`), (4) DABs bundle deploy para Databricks (`deploy_databricks.yml`). Todos os workflows devem estar funcionais e testados.
+- [ ] **TODO-O12** 🔴 P0: Validar ambiente PROD end-to-end. Garantir que o fluxo completo funciona: jobs de streaming rodando no ECS Fargate → produzindo para MSK → DLT Databricks consumindo do MSK → tabelas Gold populadas e atualizando. Depende de TODO-P01 (DLT contínuo com MSK).

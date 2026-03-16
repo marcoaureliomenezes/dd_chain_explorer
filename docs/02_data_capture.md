@@ -462,6 +462,6 @@ COPY docker/onchain-stream-txs/src /app
 
 ## TODOs — Captura de Dados
 
-- [ ] **TODO-C07**: Avaliar substituição do Spark Kafka→S3 Multiplex por Kafka Connect S3 Sink Connector em PROD.
+- [x] **TODO-C07**: ~~Avaliar substituição do Spark Kafka→S3 Multiplex por Kafka Connect S3 Sink Connector.~~ Consolidado no **TODO-A11** (em `docs/01_architecture.md`). A decisão é adotar Kafka Connect S3 Sink Connector em DEV e PROD, aposentando o `docker/spark-stream-txs/`.
 - [ ] **TODO-C08**: Implementar métricas Prometheus nos jobs de streaming (ex: taxa de processamento, latência, erros por minuto).
 - [ ] **TODO-C10**: Adicionar suporte a batched RPC calls (JSON-RPC batch) nos Jobs 3 e 4 para reduzir latência de rede.
