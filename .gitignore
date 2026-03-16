@@ -54,6 +54,18 @@ z_test.py
 # Chaves e segredos locais — nunca versionados
 valid/.env
 valid/*.md
+**/.env
+**/*.env
+
+# Arquivos de segredos de compose — nunca versionados
+**/dev.secrets.conf
+**/prod.secrets.conf
+services/dev/compose/conf/dev.secrets.conf
+services/prd/compose/conf/prd.secrets.conf
+
+# Relatórios de segurança com exemplos de chaves — nunca versionados
+security.md
+*_security_scan.md
 
 # Airflow runtime config — varia por ambiente e contém credenciais de BD
 mnt/airflow/airflow.cfg
