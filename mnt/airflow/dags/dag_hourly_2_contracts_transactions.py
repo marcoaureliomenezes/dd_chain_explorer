@@ -2,6 +2,7 @@ import os
 from datetime import datetime, timedelta
 from airflow import DAG
 from airflow.operators.bash import BashOperator
+from airflow.operators.python import BranchPythonOperator
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.providers.databricks.operators.databricks import DatabricksRunNowOperator
 from docker.types import Mount
