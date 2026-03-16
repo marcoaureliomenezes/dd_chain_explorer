@@ -80,8 +80,6 @@ jobs:
         id: plan
         run: terraform plan -input=false -out=tfplan
         env:
-          # O provider Databricks lê essas env vars automaticamente.
-          # Sobrescrevem o profile ~/.databrickscfg sem necessidade de -var-file.
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
