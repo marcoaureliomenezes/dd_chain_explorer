@@ -1,0 +1,229 @@
+name: Deploy Batch & Streaming Apps (Docker → ECS)
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - 'docker/onchain-stream-txs/**'
+      - 'docker/onchain-batch-txs/**'
+      - 'utils/**'
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'App to deploy (stream, batch, or both)'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - stream
+          - batch
+          - both
+
+env:
+  AWS_REGION:  sa-east-1
+  ECS_CLUSTER: dm-chain-explorer-ecs
+
+jobs:
+  # ----------------------------------------------------------------
+  # Lint + Tests (gate — must pass before any build)
+  # ----------------------------------------------------------------
+  lint-and-test:
+    name: Compose lint & unit tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: utils/pyproject.toml
+
+      - name: Install dm-chain-utils (dev extras)
+        run: pip install --upgrade pip && pip install "utils/[dev]"
+
+      - name: Run unit tests
+        run: pytest utils/tests/unit/ -v --tb=short
+
+      - name: Validate Docker Compose — app_services
+        run: docker compose -f services/dev/compose/app_services.yml config --quiet
+
+      - name: Validate Docker Compose — batch_services
+        run: docker compose -f services/dev/compose/batch_services.yml config --quiet
+
+  # ----------------------------------------------------------------
+  # Detecta quais apps mudaram
+  # ----------------------------------------------------------------
+  detect-changes:
+    name: Detect changed apps
+    runs-on: ubuntu-latest
+    needs: lint-and-test
+    outputs:
+      build_stream: ${{ steps.detect.outputs.build_stream }}
+      build_batch:  ${{ steps.detect.outputs.build_batch }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed apps
+        id: detect
+        run: |
+          INPUT="${{ github.event.inputs.app }}"
+          if [ "$INPUT" = "both" ] || [ "$INPUT" = "stream" ]; then
+            BUILD_STREAM=true
+          else
+            STREAM_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E "(onchain-stream-txs|utils/)" | wc -l)
+            BUILD_STREAM=$([ "$STREAM_CHANGED" -gt 0 ] && echo "true" || echo "false")
+          fi
+          if [ "$INPUT" = "both" ] || [ "$INPUT" = "batch" ]; then
+            BUILD_BATCH=true
+          else
+            BATCH_CHANGED=$(git diff --name-only HEAD~1 HEAD | grep -E "(onchain-batch-txs|utils/)" | wc -l)
+            BUILD_BATCH=$([ "$BATCH_CHANGED" -gt 0 ] && echo "true" || echo "false")
+          fi
+          echo "build_stream=$BUILD_STREAM" >> $GITHUB_OUTPUT
+          echo "build_batch=$BUILD_BATCH"   >> $GITHUB_OUTPUT
+
+  # ----------------------------------------------------------------
+  # Build + Push — onchain-stream-txs
+  # ----------------------------------------------------------------
+  build-push-stream:
+    name: Build & push onchain-stream-txs
+    needs: detect-changes
+    if: needs.detect-changes.outputs.build_stream == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Set image tag & ECR registry
+        run: |
+          echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
+
+      - name: Login to Amazon ECR
+        run: aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+      - name: Build and push onchain-stream-txs
+        uses: docker/build-push-action@v5
+        with:
+          context:    .
+          file:       docker/onchain-stream-txs/Dockerfile
+          push:       true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/onchain-stream-txs:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/onchain-stream-txs:latest
+
+      - name: Force new ECS deployment — streaming apps
+        run: |
+          SERVICES=(
+            dm-mined-blocks-watcher
+            dm-orphan-blocks-watcher
+            dm-block-data-crawler
+            dm-mined-txs-crawler
+            dm-txs-input-decoder
+          )
+          for SVC in "${SERVICES[@]}"; do
+            echo "Updating $SVC ..."
+            # Update task definition image
+            TASK_DEF=$(aws ecs describe-task-definition \
+              --task-definition "dm-${SVC#dm-}" \
+              --query 'taskDefinition' --output json)
+            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+              --arg img "${{ env.ECR_REGISTRY }}/onchain-stream-txs:${{ env.IMAGE_TAG }}" \
+              '.containerDefinitions[0].image = $img | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)')
+            NEW_TASK_ARN=$(aws ecs register-task-definition \
+              --cli-input-json "$NEW_TASK_DEF" \
+              --query 'taskDefinition.taskDefinitionArn' --output text)
+            aws ecs update-service \
+              --cluster ${{ env.ECS_CLUSTER }} \
+              --service "$SVC" \
+              --task-definition "$NEW_TASK_ARN" \
+              --force-new-deployment \
+              --query 'service.serviceName'
+          done
+
+      - name: Verify ECS deployments are stable
+        run: |
+          echo "Aguardando estabilização dos serviços ECS (timeout: 10 min)..."
+          aws ecs wait services-stable \
+            --cluster ${{ env.ECS_CLUSTER }} \
+            --services \
+              dm-mined-blocks-watcher \
+              dm-orphan-blocks-watcher \
+              dm-block-data-crawler \
+              dm-mined-txs-crawler \
+              dm-txs-input-decoder \
+            --region ${{ env.AWS_REGION }} || {
+            echo "::error::Deploy ECS instável — deployment_circuit_breaker acionou rollback automático."
+            echo "::error::Verifique os logs em CloudWatch: /ecs/dm-chain-explorer"
+            exit 1
+          }
+          echo "Todos os serviços ECS estão estáveis."
+
+  # ----------------------------------------------------------------
+  # Build + Push — onchain-batch-txs
+  # ----------------------------------------------------------------
+  build-push-batch:
+    name: Build & push onchain-batch-txs
+    needs: detect-changes
+    if: needs.detect-changes.outputs.build_batch == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Set image tag & ECR registry
+        run: |
+          echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
+
+      - name: Login to Amazon ECR
+        run: aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ env.ECR_REGISTRY }}
+
+      - name: Build and push onchain-batch-txs
+        uses: docker/build-push-action@v5
+        with:
+          context:    .
+          file:       docker/onchain-batch-txs/Dockerfile
+          push:       true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/onchain-batch-txs:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/onchain-batch-txs:latest
+
+      # Batch apps run as ECS Scheduled Tasks triggered by EventBridge Scheduler.
+      # Updating the task definition is sufficient — the scheduler will use it on next run.
+      - name: Register new batch task definition
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition "dm-contracts-txs-crawler" \
+            --query 'taskDefinition' --output json 2>/dev/null || echo "{}")
+          if [ "$TASK_DEF" != "{}" ]; then
+            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+              --arg img "${{ env.ECR_REGISTRY }}/onchain-batch-txs:${{ env.IMAGE_TAG }}" \
+              '.containerDefinitions[0].image = $img | del(.taskDefinitionArn, .revision, .status, .requiresAttributes, .placementConstraints, .compatibilities, .registeredAt, .registeredBy)')
+            aws ecs register-task-definition \
+              --cli-input-json "$NEW_TASK_DEF" \
+              --query 'taskDefinition.taskDefinitionArn' --output text
+            echo "[OK] Batch task definition updated"
+          else
+            echo "[SKIP] Batch task definition not found — skipping"
+          fi
