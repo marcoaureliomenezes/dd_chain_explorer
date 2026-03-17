@@ -1,0 +1,151 @@
+name: Deploy Batch Apps
+
+on:
+  workflow_dispatch:
+
+env:
+  AWS_REGION:  sa-east-1
+  ECS_CLUSTER: dm-chain-explorer-ecs
+  ECR_REPO:    onchain-batch-txs
+
+jobs:
+  # ----------------------------------------------------------------
+  # Gate — lint + unit tests
+  # ----------------------------------------------------------------
+  lint-and-test:
+    name: Lint & unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: utils/pyproject.toml
+
+      - name: Install dm-chain-utils (dev extras)
+        run: pip install --upgrade pip && pip install "utils/[dev]"
+
+      - name: Run unit tests
+        run: pytest utils/tests/unit/ -v --tb=short
+
+      - name: Validate Docker Compose — batch_services
+        run: docker compose -f services/dev/compose/batch_services.yml config --quiet
+
+  # ----------------------------------------------------------------
+  # Idempotency check — skip if same SHA already deployed
+  # ----------------------------------------------------------------
+  check-idempotency:
+    name: Check if deploy is needed
+    needs: lint-and-test
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.check.outputs.skip }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Compare HEAD SHA with deployed ECR tag
+        id: check
+        run: |
+          CURRENT_SHA=$(git rev-parse --short HEAD)
+          DEPLOYED_SHA=$(aws ecr describe-images \
+            --repository-name "${{ env.ECR_REPO }}" \
+            --image-ids imageTag=latest \
+            --query 'imageDetails[0].imageTags' \
+            --output json 2>/dev/null \
+            | jq -r '.[] | select(. != "latest")' | head -1) || DEPLOYED_SHA=""
+          echo "Current SHA:  $CURRENT_SHA"
+          echo "Deployed SHA: $DEPLOYED_SHA"
+          if [ "$CURRENT_SHA" = "$DEPLOYED_SHA" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            echo "::notice::Image for SHA $CURRENT_SHA already deployed — skipping."
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ----------------------------------------------------------------
+  # Build + Push — onchain-batch-txs
+  # ----------------------------------------------------------------
+  build-and-push:
+    name: Build & push onchain-batch-txs
+    needs: check-idempotency
+    if: needs.check-idempotency.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Set image tag & ECR registry
+        run: |
+          echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
+
+      - name: Login to Amazon ECR
+        run: aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin "${{ env.ECR_REGISTRY }}"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v5
+        with:
+          context:    .
+          file:       docker/onchain-batch-txs/Dockerfile
+          push:       true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/onchain-batch-txs:${{ env.IMAGE_TAG }}
+            ${{ env.ECR_REGISTRY }}/onchain-batch-txs:latest
+
+  # ----------------------------------------------------------------
+  # Deploy — register new batch task definition
+  # Batch apps run as ECS Scheduled Tasks (EventBridge).
+  # Updating the task definition is sufficient — next scheduled
+  # execution will pick up the new image automatically.
+  # ----------------------------------------------------------------
+  update-task-definition:
+    name: Update batch task definition
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Set image tag & ECR registry
+        run: |
+          echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
+
+      - name: Register new task definition
+        run: |
+          TASK_DEF=$(aws ecs describe-task-definition \
+            --task-definition "dm-contracts-txs-crawler" \
+            --query 'taskDefinition' --output json 2>/dev/null || echo "{}")
+          if [ "$TASK_DEF" != "{}" ]; then
+            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+              --arg img "${{ env.ECR_REGISTRY }}/onchain-batch-txs:${{ env.IMAGE_TAG }}" \
+              '.containerDefinitions[0].image = $img
+               | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
+                     .placementConstraints, .compatibilities, .registeredAt, .registeredBy)')
+            NEW_ARN=$(aws ecs register-task-definition \
+              --cli-input-json "$NEW_TASK_DEF" \
+              --query 'taskDefinition.taskDefinitionArn' --output text)
+            echo "Batch task definition updated: $NEW_ARN"
+          else
+            echo "::warning::Batch task definition dm-contracts-txs-crawler not found — skipping."
+          fi
