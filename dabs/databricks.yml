@@ -80,6 +80,7 @@ targets:
       dlt_num_workers: 0
       dlt_development: true
       dlt_continuous: false
+      warehouse_id: "a2a66f2adb0faf18"
 
   # ----------------------------------------------------------------
   # PROD: Databricks on AWS (created via terraform/7_databricks)

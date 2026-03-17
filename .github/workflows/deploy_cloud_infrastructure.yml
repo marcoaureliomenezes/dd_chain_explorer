@@ -1,59 +1,78 @@
-name: Deploy Infrastructure (Terraform AWS + Databricks)
+name: Deploy Cloud Infrastructure
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'services/prd/terraform/**'
   workflow_dispatch:
     inputs:
       target_module:
-        description: 'Módulo terraform a aplicar (leave empty for all)'
+        description: 'Terraform module to apply (leave empty for all changed)'
         required: false
         default: ''
+        type: string
 
 env:
-  AWS_REGION: sa-east-1
-  TF_VERSION: 1.7.0
+  AWS_REGION:  sa-east-1
+  TF_VERSION:  1.7.0
+  TF_ROOT:     services/prd/terraform
 
 jobs:
   # ----------------------------------------------------------------
-  # Detecta quais módulos terraform foram alterados
+  # Detect which Terraform modules need to be applied
   # ----------------------------------------------------------------
   detect-changes:
+    name: Detect target modules
     runs-on: ubuntu-latest
     outputs:
       modules: ${{ steps.detect.outputs.modules }}
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
 
-      - name: Detect changed terraform modules
+      - name: Determine modules
         id: detect
         run: |
+          ALL_MODULES=(0_remote_state 1_vpc 2_iam 3_msk 4_s3 6_ecs 7_databricks 8_elasticache 9_dynamodb 10_lambda)
+
           if [ -n "${{ github.event.inputs.target_module }}" ]; then
             echo "modules=[\"${{ github.event.inputs.target_module }}\"]" >> $GITHUB_OUTPUT
+            echo "Target module: ${{ github.event.inputs.target_module }}"
+            exit 0
+          fi
+
+          # Detect changed modules vs default branch
+          CHANGED=()
+          for MOD in "${ALL_MODULES[@]}"; do
+            if git diff --name-only origin/development...HEAD \
+                | grep -q "${{ env.TF_ROOT }}/${MOD}/"; then
+              CHANGED+=("\"${MOD}\"")
+            fi
+          done
+
+          if [ ${#CHANGED[@]} -eq 0 ]; then
+            echo "modules=[]" >> $GITHUB_OUTPUT
+            echo "::notice::No Terraform changes detected."
           else
-            CHANGED=$(git diff --name-only HEAD~1 HEAD -- 'services/prd/terraform/**' \
-              | awk -F'/' '{print $4}' | sort -u | jq -R -s -c 'split("\n") | map(select(length > 0))')
-            echo "modules=$CHANGED" >> $GITHUB_OUTPUT
+            UNIQUE=($(echo "${CHANGED[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+            MATRIX="[$(IFS=,; echo "${UNIQUE[*]}")]"
+            echo "modules=$MATRIX" >> $GITHUB_OUTPUT
+            echo "Changed modules: $MATRIX"
           fi
 
   # ----------------------------------------------------------------
-  # Validação e plan para todos os módulos alterados
+  # Terraform init → validate → plan (matrix per module)
   # ----------------------------------------------------------------
   terraform-plan:
+    name: Plan — ${{ matrix.module }}
     needs: detect-changes
-    runs-on: ubuntu-latest
     if: needs.detect-changes.outputs.modules != '[]'
+    runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         module: ${{ fromJson(needs.detect-changes.outputs.modules) }}
     defaults:
       run:
-        working-directory: services/prd/terraform/${{ matrix.module }}
+        working-directory: ${{ env.TF_ROOT }}/${{ matrix.module }}
 
     steps:
       - uses: actions/checkout@v4
@@ -70,15 +89,15 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      - name: terraform init
+      - name: Terraform init
         run: terraform init -input=false
 
-      - name: terraform validate
+      - name: Terraform validate
         run: terraform validate
 
-      - name: terraform plan
+      - name: Terraform plan
         id: plan
-        run: terraform plan -input=false -out=tfplan
+        run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
@@ -88,22 +107,32 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: tfplan-${{ matrix.module }}
-          path: services/prd/terraform/${{ matrix.module }}/tfplan
+          path: ${{ env.TF_ROOT }}/${{ matrix.module }}/tfplan
           retention-days: 1
 
+      - name: Post plan summary
+        if: always()
+        run: |
+          echo "### Terraform Plan — \`${{ matrix.module }}\`" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          tail -20 plan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
   # ----------------------------------------------------------------
-  # Apply — só roda após aprovação manual (environment: production)
+  # Apply — requires manual approval (environment: production)
   # ----------------------------------------------------------------
   terraform-apply:
-    needs: terraform-plan
+    name: Apply — ${{ matrix.module }}
+    needs: [detect-changes, terraform-plan]
     runs-on: ubuntu-latest
     environment: production
     strategy:
+      fail-fast: false
       matrix:
         module: ${{ fromJson(needs.detect-changes.outputs.modules) }}
     defaults:
       run:
-        working-directory: services/prd/terraform/${{ matrix.module }}
+        working-directory: ${{ env.TF_ROOT }}/${{ matrix.module }}
 
     steps:
       - uses: actions/checkout@v4
@@ -124,12 +153,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: tfplan-${{ matrix.module }}
-          path: services/prd/terraform/${{ matrix.module }}
+          path: ${{ env.TF_ROOT }}/${{ matrix.module }}
 
-      - name: terraform init
+      - name: Terraform init
         run: terraform init -input=false
 
-      - name: terraform apply
+      - name: Terraform apply
         run: terraform apply -input=false -auto-approve tfplan
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}

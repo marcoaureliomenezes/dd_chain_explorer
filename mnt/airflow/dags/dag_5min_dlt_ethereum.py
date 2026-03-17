@@ -31,7 +31,7 @@ with DAG(
     doc_md="""
 ## pipeline_5min_dlt_pipelines
 
-Aciona a cada **5 minutos** os jobs Databricks de DLT em sequência:
+Aciona a cada **5 minutos** os jobs Databricks de DLT **em sequência**:
 1. `dm-trigger-dlt-ethereum` — atualiza o pipeline `dm-ethereum` (blockchain data)
 2. `dm-trigger-dlt-app-logs` — atualiza o pipeline `dm-app-logs` (logs de aplicação)
 
@@ -46,15 +46,19 @@ Esta DAG substitui o trigger contínuo gerenciando a periodicidade externamente.
 ### Fluxo
 ```
 Airflow (cada 5 min)
-  ├── TRIGGER_DLT_ETHEREUM  (paralelo)
-  │     └── pipeline_task → dm-ethereum (availableNow)
-  │           ├── bronze: kafka_topics_multiplexed  (S3 → b_ethereum)
-  │           └── silver: s_apps.*                  (Avro decode)
-  └── TRIGGER_DLT_APP_LOGS  (paralelo)
-        └── pipeline_task → dm-app-logs (availableNow)
-              ├── silver: s_logs.logs_streaming, s_logs.logs_batch
-              └── gold:   g_api_keys.etherscan_consumption, g_api_keys.web3_keys_consumption
+  1. TRIGGER_DLT_ETHEREUM  (sequencial — roda primeiro)
+       └── pipeline_task → dm-ethereum (availableNow)
+             ├── bronze: kafka_topics_multiplexed  (S3 → b_ethereum)
+             └── silver: s_apps.*                  (Avro decode)
+  2. TRIGGER_DLT_APP_LOGS  (sequencial — roda após ethereum)
+       └── pipeline_task → dm-app-logs (availableNow)
+             ├── silver: s_logs.logs_streaming, s_logs.logs_batch
+             └── gold:   g_api_keys.etherscan_consumption, g_api_keys.web3_keys_consumption
 ```
+
+### Por que sequencial?
+O Databricks **Free Edition** permite apenas **1 pipeline DLT ativo** por vez
+(QUOTA_EXCEEDED_EXCEPTION: Limit: 1). Rodar em paralelo causa falha no segundo.
 """,
 ) as dag:
 
@@ -74,6 +78,7 @@ Airflow (cada 5 min)
         polling_period_seconds=30,
     )
 
-    # Tasks run in parallel — dm-app-logs reads from existing bronze (b_ethereum.*)
-    # which is already persisted from previous runs. No sequential dependency needed.
-    [TRIGGER_DLT_ETHEREUM, TRIGGER_DLT_APP_LOGS]
+    # Sequential: Free Edition allows only 1 active DLT pipeline at a time.
+    # dm-ethereum must complete before dm-app-logs starts (also a data dependency:
+    # dm-app-logs reads from b_ethereum.kafka_topics_multiplexed).
+    TRIGGER_DLT_ETHEREUM >> TRIGGER_DLT_APP_LOGS
