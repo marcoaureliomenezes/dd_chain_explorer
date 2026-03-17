@@ -1,21 +1,7 @@
 name: Deploy Databricks (DABs)
 
 on:
-  push:
-    branches:
-      - master
-    paths:
-      - 'dabs/**'
   workflow_dispatch:
-    inputs:
-      target:
-        description: 'DABs target (dev or prod)'
-        required: true
-        default: 'prod'
-        type: choice
-        options:
-          - dev
-          - prod
 
 env:
   DATABRICKS_CLI_VERSION: 0.218.0
@@ -23,6 +9,7 @@ env:
 
 jobs:
   validate:
+    name: Validate bundle
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -36,14 +23,14 @@ jobs:
 
       - name: Validate bundle
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
-        run: databricks bundle validate --target prod
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+        run: databricks bundle validate --target hml
 
-  deploy-prod:
+  deploy-hml:
+    name: Deploy to HML
     needs: validate
     runs-on: ubuntu-latest
-    environment: production
     defaults:
       run:
         working-directory: ${{ env.DABS_PATH }}
@@ -54,22 +41,19 @@ jobs:
       - name: Setup Databricks CLI
         uses: databricks/setup-cli@v0.218.0
 
-      - name: Deploy bundle to PROD
+      - name: Deploy bundle to HML
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
-          databricks bundle deploy --target prod \
-            --var="prod_workspace_host=${{ secrets.DATABRICKS_PROD_HOST }}" \
+          databricks bundle deploy --target hml \
             --var="kafka_bootstrap_servers=${{ secrets.MSK_BOOTSTRAP_SERVERS }}" \
-            --var="dynamodb_semaphore_table=${{ secrets.DYNAMODB_SEMAPHORE_TABLE }}" \
-            --var="dynamodb_consumption_table=${{ secrets.DYNAMODB_CONSUMPTION_TABLE }}" \
-            --var="dynamodb_popular_contracts_table=${{ secrets.DYNAMODB_POPULAR_CONTRACTS_TABLE }}"
+            --var="dynamodb_table=${{ secrets.DYNAMODB_TABLE }}"
 
       - name: Verify deployment
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
           echo "=== DLT Pipelines ==="
           databricks pipelines list --output json | jq '.[] | .name'
