@@ -21,28 +21,13 @@ variables:
     description: "Unity Catalog name"
     default: "dd_chain_explorer"
 
-  raw_s3_bucket:
-    description: "S3 bucket for raw ingestion data"
-    default: "dm-chain-explorer-raw-data"
-
-  lakehouse_s3_bucket:
-    description: "S3 bucket for lakehouse (Bronze/Silver/Gold)"
-    default: "dm-chain-explorer-lakehouse"
-
   dev_ingestion_s3_bucket:
-    description: "S3 bucket for DEV ingestion (Kafka → Parquet → Databricks Free Edition)"
+    description: "S3 bucket for DEV ingestion and exports"
     default: "dm-chain-explorer-dev-ingestion"
-
-  kafka_bootstrap_servers:
-    description: "Kafka MSK bootstrap brokers (IAM auth)"
 
   dynamodb_table:
     description: "DynamoDB single-table (PK/SK) for all application state"
     default: "dm-chain-explorer"
-
-  source_type:
-    description: "DLT bronze source: 'kafka' (prod) or 's3' (dev)"
-    default: "kafka"
 
   dlt_num_workers:
     description: "Number of DLT workers (0 = single-node for DEV)"
@@ -73,14 +58,30 @@ targets:
       root_path: "~/.bundle/${bundle.name}/dev"
     variables:
       catalog: "dev"
-      kafka_bootstrap_servers: "localhost:9092"  # local Kafka in docker-compose
       dev_ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
       dynamodb_table: "dm-chain-explorer"
-      source_type: "s3"
       dlt_num_workers: 0
       dlt_development: true
       dlt_continuous: false
       warehouse_id: "a2a66f2adb0faf18"
+
+  # ----------------------------------------------------------------
+  # HML: Databricks Free Edition (same workspace as DEV)
+  # Catalog: hml — deployed only via CI/CD (deploy_databricks.yml)
+  # ----------------------------------------------------------------
+  hml:
+    presets:
+      name_prefix: "[hml dd_chain_explorer] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+    variables:
+      catalog: "hml"
+      dev_ingestion_s3_bucket: "dm-chain-explorer-hml-ingestion"
+      dynamodb_table: "dm-chain-explorer-hml"
+      dlt_num_workers: 0
+      dlt_development: false
+      dlt_continuous: false
 
   # ----------------------------------------------------------------
   # PROD: Databricks on AWS (created via terraform/7_databricks)
@@ -93,7 +94,6 @@ targets:
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "dd_chain_explorer"
-      source_type: "kafka"
       dlt_num_workers: 1
       dlt_development: false
-      dlt_continuous: true
+      dlt_continuous: false

@@ -1,12 +1,16 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # App Logs DLT Pipeline — Silver + Gold
+# MAGIC # App Logs DLT Pipeline — Bronze + Silver + Gold
 # MAGIC
 # MAGIC Pipeline dedicado ao processamento dos logs das aplicações Python on-chain.
-# MAGIC Lê da tabela bronze `b_ethereum.kafka_topics_multiplexed` (produzida por `dm-ethereum`),
-# MAGIC filtra o tópico `mainnet.0.application.logs`, decodifica o Avro e produz:
+# MAGIC Pós-migração Kafka → Kinesis/SQS/Firehose.
+# MAGIC
+# MAGIC ## Bronze — `b_app_logs`
+# MAGIC Auto Loader (cloudFiles) lê NDJSON entregue pelo Firehose no S3:
+# MAGIC - `b_app_logs_data` ← Firehose `bronze/app_logs/`
 # MAGIC
 # MAGIC ## Silver — `s_logs`
+# MAGIC Lê da bronze via `dlt.read_stream()` (interno ao pipeline):
 # MAGIC - `s_logs.logs_streaming`  ← logs dos jobs de streaming (MINED_BLOCKS_WATCHER, etc.)
 # MAGIC - `s_logs.logs_batch`      ← logs dos jobs batch (CONTRACT_TRANSACTIONS_CRAWLER)
 # MAGIC
@@ -16,18 +20,20 @@
 
 # COMMAND ----------
 
+import gzip as gzip_lib
+import json as json_lib
+
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType
-from pyspark.sql.avro.functions import from_avro
+from pyspark.sql.types import (
+    ArrayType, LongType, StringType, StructField, StructType,
+)
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
 
-CATALOG = spark.conf.get("catalog", "dd_chain_explorer_dev")
-
-# Tópico Kafka de logs de aplicação
-TOPIC_APP_LOGS = "mainnet.0.application.logs"
+INGESTION_BUCKET = spark.conf.get("ingestion.s3.bucket", "dm-chain-explorer-dev-ingestion")
+S3_RAW_BASE      = f"s3://{INGESTION_BUCKET}/raw"
 
 # APP_NAME constants — valor do campo `logger` nas mensagens de log
 STREAMING_APP_NAMES = [
@@ -42,37 +48,136 @@ BATCH_APP_NAMES = [
 ]
 
 # COMMAND ----------
-from _avro_schemas import *  # noqa: F401,F403  (defined as DLT file library)
+
+
+# ── CloudWatch Logs schema & UDF ──────────────────────────────────────────────
+
+_CW_EVENT_SCHEMA = ArrayType(StructType([
+    StructField("timestamp",     LongType(),   True),
+    StructField("message",       StringType(), True),
+    StructField("log_group",     StringType(), True),
+    StructField("log_stream",    StringType(), True),
+]))
+
+
+@F.udf(returnType=_CW_EVENT_SCHEMA)
+def _extract_cw_log_events(content):
+    """
+    Decompress double-gzipped CloudWatch Logs Firehose payload and
+    return individual log events.
+
+    File layout: outer gzip (Firehose) → inner gzip (CW Logs)
+    → concatenated JSON envelopes with logEvents arrays.
+    """
+    if content is None:
+        return []
+    try:
+        inner = gzip_lib.decompress(bytes(content))
+    except Exception:
+        return []
+    try:
+        text = gzip_lib.decompress(inner).decode("utf-8")
+    except Exception:
+        try:
+            text = inner.decode("utf-8")
+        except Exception:
+            return []
+
+    events = []
+    decoder = json_lib.JSONDecoder()
+    idx = 0
+    while idx < len(text):
+        while idx < len(text) and text[idx] in " \n\r\t":
+            idx += 1
+        if idx >= len(text):
+            break
+        try:
+            obj, end = decoder.raw_decode(text, idx)
+            idx = end
+            if obj.get("messageType") == "DATA_MESSAGE":
+                lg = obj.get("logGroup", "")
+                ls = obj.get("logStream", "")
+                for le in obj.get("logEvents", []):
+                    events.append({
+                        "timestamp":  le.get("timestamp"),
+                        "message":    le.get("message", ""),
+                        "log_group":  lg,
+                        "log_stream": ls,
+                    })
+        except Exception:
+            idx += 1
+    return events
+
+
+# ── Auto Loader Helper ─────────────────────────────────────────────────────────
+
+def _auto_loader_cwlogs(stream_name: str):
+    """
+    Auto Loader reader for CloudWatch Logs files delivered by Firehose.
+
+    Files are double-gzipped (Firehose GZIP + CW Logs inner gzip).
+    Uses binaryFile format + UDF to decompress and extract events,
+    then parses each log event message as JSON.
+    """
+    path = f"{S3_RAW_BASE}/{stream_name}/"
+    raw = (
+        spark.readStream
+        .format("cloudFiles")
+        .option("cloudFiles.format", "binaryFile")
+        .option("cloudFiles.schemaLocation",
+                f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}")
+        .load(path)
+    )
+    return (
+        raw
+        .withColumn("events", _extract_cw_log_events(F.col("content")))
+        .select(F.explode("events").alias("evt"))
+        .select(
+            F.col("evt.timestamp").alias("timestamp"),
+            F.col("evt.log_group").alias("log_group"),
+            F.col("evt.log_stream").alias("log_stream"),
+            F.col("evt.message").alias("raw_message"),
+        )
+        .withColumn("_parsed", F.from_json("raw_message", "timestamp LONG, logger STRING, level STRING, filename STRING, function_name STRING, message STRING"))
+        .select(
+            F.col("timestamp"),
+            F.coalesce(F.col("_parsed.logger"),  F.col("log_stream")).alias("logger"),
+            F.coalesce(F.col("_parsed.level"),   F.lit("INFO")).alias("level"),
+            F.col("_parsed.filename").alias("filename"),
+            F.col("_parsed.function_name").alias("function_name"),
+            F.coalesce(F.col("_parsed.message"), F.col("raw_message")).alias("message"),
+            F.col("log_group"),
+            F.col("log_stream"),
+        )
+    )
+
+
+# ════════════════════════════════════════════════════════════════════════════
+# BRONZE LAYER
+# ════════════════════════════════════════════════════════════════════════════
+
+# COMMAND ----------
+# MAGIC %md
+# MAGIC ## Bronze — `b_app_logs_data`
+# MAGIC
+# MAGIC Auto Loader lê NDJSON entregue pelo Firehose (CloudWatch Logs → S3).
+# MAGIC Cada registro JSON contém: `timestamp`, `logger`, `level`, `filename`,
+# MAGIC `function_name`, `message`.
 
 # COMMAND ----------
 
-
-# ── Helper ────────────────────────────────────────────────────────────────────
-
-def _parse_app_logs_from_bronze():
-    """
-    Lê de kafka_topics_multiplexed (bronze, pipeline dm-ethereum), filtra
-    apenas o tópico de logs de aplicação e decodifica o payload Avro.
-
-    O payload Kafka tem 5 bytes de cabeçalho do Schema Registry antes do Avro.
-    """
-    df = (
-        spark.readStream.table(f"{CATALOG}.b_ethereum.kafka_topics_multiplexed")
-        .filter(F.col("topic_name") == TOPIC_APP_LOGS)
-        .withColumn("avro_payload", F.expr("substring(value, 6)"))
-        .withColumn("parsed", from_avro(F.col("avro_payload"), AVRO_SCHEMA_APP_LOGS))
-    )
-    return df.select(
-        F.col("parsed.timestamp").alias("event_ts_epoch"),
-        F.to_timestamp(F.col("parsed.timestamp")).alias("event_time"),
-        F.col("parsed.logger").alias("logger"),
-        F.col("parsed.level").alias("level"),
-        F.col("parsed.filename").alias("filename"),
-        F.col("parsed.function_name").alias("function_name"),
-        F.col("parsed.message").alias("message"),
-        F.col("kafka_timestamp"),
-        F.col("kafka_partition"),
-        F.col("kafka_offset"),
+@dlt.table(
+    name="b_app_logs_data",
+    comment="Bronze: logs das aplicações on-chain via CloudWatch → Firehose → S3 (NDJSON)",
+    table_properties={
+        "quality": "bronze",
+        "pipelines.autoOptimize.managed": "true",
+    },
+)
+def bronze_app_logs_data():
+    return (
+        _auto_loader_cwlogs("app_logs")
+        .withColumn("_ingested_at", F.current_timestamp())
     )
 
 
@@ -100,8 +205,18 @@ def _parse_app_logs_from_bronze():
 @dlt.expect_or_drop("valid_level",   "level IS NOT NULL")
 @dlt.expect_or_drop("valid_message", "message IS NOT NULL")
 def silver_logs_streaming():
+    df = dlt.read_stream("b_app_logs_data")
     return (
-        _parse_app_logs_from_bronze()
+        df.select(
+            F.col("timestamp").alias("event_ts_epoch"),
+            F.to_timestamp(F.col("timestamp")).alias("event_time"),
+            F.col("logger"),
+            F.col("level"),
+            F.col("filename"),
+            F.col("function_name"),
+            F.col("message"),
+            F.col("_ingested_at"),
+        )
         .filter(F.col("logger").isin(STREAMING_APP_NAMES))
     )
 
@@ -125,8 +240,18 @@ def silver_logs_streaming():
 @dlt.expect_or_drop("valid_level",   "level IS NOT NULL")
 @dlt.expect_or_drop("valid_message", "message IS NOT NULL")
 def silver_logs_batch():
+    df = dlt.read_stream("b_app_logs_data")
     return (
-        _parse_app_logs_from_bronze()
+        df.select(
+            F.col("timestamp").alias("event_ts_epoch"),
+            F.to_timestamp(F.col("timestamp")).alias("event_time"),
+            F.col("logger"),
+            F.col("level"),
+            F.col("filename"),
+            F.col("function_name"),
+            F.col("message"),
+            F.col("_ingested_at"),
+        )
         .filter(F.col("logger").isin(BATCH_APP_NAMES))
     )
 
@@ -161,7 +286,7 @@ def gold_etherscan_consumption():
         etherscan;api_call;api_key_name:{name};action:{action};status:{status};request_count:{n}
 
     Uma linha por chave com contadores de requisições OK e com erro separados.
-    Janelas: 1h, 2h, 12h, 24h, 48h (relativas ao kafka_timestamp da mensagem).
+    Janelas: 1h, 2h, 12h, 24h, 48h (relativas ao _ingested_at da mensagem).
     """
     df = (
         dlt.read("logs_streaming")
@@ -187,23 +312,23 @@ def gold_etherscan_consumption():
         F.count("*").alias("calls_total"),
         F.count(F.when(F.col("call_status") == "ok", 1)).alias("calls_ok_total"),
         F.count(F.when(F.col("call_status") != "ok", 1)).alias("calls_error_total"),
-        # ── janelas de tempo (baseadas no kafka_timestamp da mensagem) ──
+        # ── janelas de tempo (baseadas no _ingested_at da mensagem) ──
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)
         ).alias("calls_1h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)
         ).alias("calls_2h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)
         ).alias("calls_12h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)
         ).alias("calls_24h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)
         ).alias("calls_48h"),
-        F.max("kafka_timestamp").alias("last_call_at"),
+        F.max("_ingested_at").alias("last_call_at"),
         F.current_timestamp().alias("computed_at"),
     )
 
@@ -267,22 +392,22 @@ def gold_web3_keys_consumption():
         F.count("*").alias("calls_total"),
         F.count(F.when(F.col("call_status") == "ok",     1)).alias("calls_ok_total"),
         F.count(F.when(F.col("call_status") != "ok",     1)).alias("calls_error_total"),
-        # ── janelas de tempo (baseadas no kafka_timestamp da mensagem) ──
+        # ── janelas de tempo (baseadas no _ingested_at da mensagem) ──
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)
         ).alias("calls_1h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)
         ).alias("calls_2h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)
         ).alias("calls_12h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)
         ).alias("calls_24h"),
         F.count(
-            F.when(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)
+            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)
         ).alias("calls_48h"),
-        F.max("kafka_timestamp").alias("last_call_at"),
+        F.max("_ingested_at").alias("last_call_at"),
         F.current_timestamp().alias("computed_at"),
     )

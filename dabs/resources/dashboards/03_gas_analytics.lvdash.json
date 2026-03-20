@@ -8,7 +8,7 @@
     {
       "name": "gas_hourly",
       "displayName": "Gas Price por Hora e Tipo",
-      "query": "SELECT\n  DATE_TRUNC('hour', tx_timestamp)                      AS hour_bucket,\n  type_transaction,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.s_apps.ethereum_gas_consume\nWHERE tx_timestamp IS NOT NULL\n  AND type_transaction IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1 ASC, 2 ASC\nLIMIT 2000"
+      "query": "SELECT\n  DATE_TRUNC('hour', tx_timestamp)                      AS hour_bucket,\n  type_transaction,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.s_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1 ASC, 2 ASC\nLIMIT 2000"
     }
   ],
   "pages": [

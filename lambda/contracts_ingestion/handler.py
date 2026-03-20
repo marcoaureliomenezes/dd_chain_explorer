@@ -1,0 +1,225 @@
+"""
+Lambda: Contracts Ingestion — Etherscan → S3
+
+Captura transações de contratos populares via API Etherscan e grava
+arquivos JSON no S3 no formato esperado pelo notebook Databricks
+1_s3_to_bronze_contracts_txs.py:
+
+    {bucket}/{prefix}/year={Y}/month={M}/day={D}/hour={H}/txs_{addr}.json
+
+Trigger: EventBridge Scheduler (rate 1 hour)
+Runtime: Python 3.12  |  Timeout: 300s  |  Memory: 256 MB
+
+Dependências (via Lambda Layer dm-chain-utils):
+    dm_chain_utils.dm_dynamodb
+    dm_chain_utils.dm_etherscan
+    dm_chain_utils.dm_parameter_store
+    requests
+"""
+
+import json
+import logging
+import os
+from datetime import datetime, timedelta, timezone
+
+import boto3
+
+from dm_chain_utils.dm_dynamodb import DMDynamoDB
+from dm_chain_utils.dm_etherscan import EtherscanClient
+from dm_chain_utils.dm_parameter_store import ParameterStoreClient
+
+logger = logging.getLogger("contracts_ingestion")
+logger.setLevel(logging.INFO)
+
+
+# ---------------------------------------------------------------------------
+# ContractTransactionsCrawler — adapted from
+# docker/onchain-batch-txs/src/batch_ingestion/1_capture_and_ingest_contracts_txs.py
+#
+# Changes vs original:
+#   - Removed CloudWatchLoggingHandler (Lambda logs natively to CloudWatch)
+#   - Removed local filesystem writes (uses /tmp/ for transient files)
+#   - Uses json.dumps → S3 put_object (no upload_file)
+# ---------------------------------------------------------------------------
+
+class ContractTransactionsCrawler:
+
+    def __init__(self, log):
+        self.logger = log
+        self.timestamp_interval = None
+        self.block_interval = None
+        self.paths = None
+        self._configure_pagination()
+
+    def _configure_pagination(self, page=1, offset=1000, sort="asc"):
+        self.page = page
+        self.offset = offset
+        self.sort = sort
+        return self
+
+    def read_config(self, dynamodb_client, etherscan_client):
+        self.etherscan_client = etherscan_client
+        self.dynamodb_client = dynamodb_client
+        return self
+
+    def get_contracts(self):
+        items = self.dynamodb_client.query("CONTRACT")
+        data = [(item.get("sk", ""), int(item.get("tx_count", 0))) for item in items]
+        return [addr for addr, _ in sorted(data, key=lambda x: x[1], reverse=True)]
+
+    def write_config(self, s3_client, bucket, bucket_prefix, overwrite=False):
+        self.s3_client = s3_client
+        self.bucket = bucket
+        self.s3_bucket_prefix = bucket_prefix
+        self.overwrite = overwrite
+        return self
+
+    def interval_config(self, end_date, window_hours=1):
+        end_date = datetime.strptime(end_date, "%Y-%m-%d %H:%M:%S%z")
+        start_date = end_date - timedelta(hours=window_hours)
+        start_ts = int(start_date.timestamp())
+        end_ts = int(end_date.timestamp())
+        self.timestamp_interval = (start_ts, end_ts)
+        self.logger.info(f"timestamp_start:{start_ts};timestamp_end:{end_ts}")
+        self.block_interval = self._get_block_interval()
+        if self.block_interval is None:
+            raise RuntimeError(
+                f"Etherscan returned NOTOK for block timestamp lookup — "
+                f"interval={self.timestamp_interval}. "
+                "Check that EXEC_DATE is not in the future and that the API key is valid."
+            )
+        return self
+
+    def _config_file_name(self, contract_addr):
+        dat_hour = datetime.fromtimestamp(self.timestamp_interval[1])
+        blocks_interval = (
+            f"year={dat_hour.year}/month={dat_hour.month}"
+            f"/day={dat_hour.day}/hour={dat_hour.hour}"
+        )
+        s3_key = f"{self.s3_bucket_prefix}/{blocks_interval}/txs_{contract_addr}.json"
+        self.current_s3_key = s3_key
+        self.logger.info(f"s3_key:{s3_key}")
+        return self
+
+    def _get_block_interval(self):
+        get_block = lambda ts, closest: self.etherscan_client.get_block_by_timestamp(
+            ts, closest=closest
+        )
+        block_before = get_block(self.timestamp_interval[0], closest="after")
+        block_after = get_block(self.timestamp_interval[1], closest="before")
+        if block_before["message"] != "OK" or block_after["message"] != "OK":
+            return None
+        self.logger.info(
+            f"block_before:{block_before['result']};block_after:{block_after['result']}"
+        )
+        return (block_before["result"], block_after["result"])
+
+    def _get_transactions(self, contract_address):
+        lower_limit, upper_limit = self.block_interval
+        block_before, block_after = lower_limit, str(int(upper_limit) - 1)
+        data = []
+        while block_before < block_after:
+            result = self.etherscan_client.get_contract_txs_by_block_interval(
+                contract_address,
+                block_before,
+                block_after,
+                page=self.page,
+                offset=self.offset,
+                sort=self.sort,
+            )
+            if result["message"] != "OK":
+                return
+            if data == result["result"]:
+                return
+            data = result["result"]
+            block_before = data[-1]["blockNumber"]
+            yield data
+
+    def _check_file_exists(self, key):
+        try:
+            self.s3_client.head_object(Bucket=self.bucket, Key=key)
+            return True
+        except Exception:
+            return False
+
+    def _write_to_s3(self, data):
+        if self._check_file_exists(self.current_s3_key):
+            self.logger.info(
+                f"File {self.current_s3_key} already exists in S3. Skipping..."
+            )
+            return
+        self.s3_client.put_object(
+            Bucket=self.bucket,
+            Key=self.current_s3_key,
+            Body=json.dumps(data).encode("utf-8"),
+            ContentType="application/json",
+        )
+
+    def run(self):
+        contracts = self.get_contracts()
+        contracts_processed = 0
+        total_txs = 0
+        for contract in contracts:
+            all_contract_data = []
+            self._config_file_name(contract)
+            for data in self._get_transactions(contract):
+                all_contract_data.extend(data)
+            self.logger.info(
+                f"Contract {contract} has {len(all_contract_data)} transactions"
+            )
+            self._write_to_s3(all_contract_data)
+            contracts_processed += 1
+            total_txs += len(all_contract_data)
+
+        self.logger.info(
+            f"etherscan;api_summary;"
+            f"contracts_processed:{contracts_processed};"
+            f"total_transactions:{total_txs};"
+            f"request_count:{self.etherscan_client.call_count}"
+        )
+        return {"contracts_processed": contracts_processed, "total_txs": total_txs}
+
+
+# ---------------------------------------------------------------------------
+# Lambda handler
+# ---------------------------------------------------------------------------
+
+def handler(event, context):
+    """
+    EventBridge Scheduler invokes with empty event or custom payload.
+    Optional event fields:
+        exec_date  — "YYYY-MM-DD HH:MM:SS+0000" (defaults to current hour truncated)
+    """
+    now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+    exec_date = event.get("exec_date", now.strftime("%Y-%m-%d %H:%M:%S%z"))
+
+    s3_bucket = os.environ["S3_BUCKET"]
+    s3_prefix = os.environ.get("S3_BUCKET_PREFIX", "batch")
+    network = os.environ.get("NETWORK", "mainnet")
+    ssm_path = os.environ.get("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
+    dynamodb_table = os.environ.get("DYNAMODB_TABLE", "dm-chain-explorer")
+
+    s3_client = boto3.client("s3")
+    dynamodb_client = DMDynamoDB(logger=logger, table_name=dynamodb_table)
+
+    ssm = ParameterStoreClient()
+    etherscan_keys = ssm.get_parameters_by_path(ssm_path)
+    if not etherscan_keys:
+        raise RuntimeError(f"No Etherscan keys found under {ssm_path}")
+    api_key_name, api_key = next(iter(etherscan_keys.items()))
+    etherscan_client = EtherscanClient(
+        logger, api_key, network=network, api_key_name=api_key_name
+    )
+
+    result = (
+        ContractTransactionsCrawler(logger)
+        .read_config(dynamodb_client, etherscan_client)
+        .write_config(s3_client, bucket=s3_bucket, bucket_prefix=s3_prefix, overwrite=False)
+        .interval_config(exec_date)
+        .run()
+    )
+
+    return {
+        "statusCode": 200,
+        "body": json.dumps({"exec_date": exec_date, **result}),
+    }
