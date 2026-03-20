@@ -9,9 +9,13 @@
 #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
 #   DATABRICKS_ACCOUNT_ID, DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET
 #   DATABRICKS_PROD_HOST, DATABRICKS_PROD_TOKEN
-#   MSK_BOOTSTRAP_SERVERS
-#   DYNAMODB_SEMAPHORE_TABLE, DYNAMODB_CONSUMPTION_TABLE,
-#   DYNAMODB_POPULAR_CONTRACTS_TABLE
+#   DYNAMODB_TABLE
+#
+# HML secrets:
+#   HML_VPC_ID, HML_SUBNET_ID
+#   ECS_TASK_EXECUTION_ROLE_ARN, ECS_TASK_ROLE_ARN
+#   DATABRICKS_HML_HOST, DATABRICKS_HML_TOKEN
+#   HML_ETHERSCAN_SSM_PATH
 #
 # Prerequisites (one of the two):
 #   Option A — gh CLI:  gh auth login  (needs repo + secrets scope)
@@ -176,23 +180,13 @@ else
   set_secret "AWS_SECRET_ACCESS_KEY" "$AWS_SECRET"
 fi
 
-# ---- MSK Bootstrap Servers --------------------------------------------------
+# ---- DynamoDB table name (single-table design) -----------------------------
 echo ""
-echo "--- MSK Bootstrap Servers ---"
-echo "  Hint: AWS Console → MSK → cluster → 'View client information'"
-read -rp "  Enter MSK_BOOTSTRAP_SERVERS (or press Enter to skip): " MSK_BROKERS
-set_secret "MSK_BOOTSTRAP_SERVERS" "$MSK_BROKERS"
-
-# ---- DynamoDB table names ---------------------------------------------------
-echo ""
-echo "--- DynamoDB table names ---"
-echo "  Hint: AWS Console → DynamoDB → Tables (sa-east-1)"
-read -rp "  Enter DYNAMODB_SEMAPHORE_TABLE         [dm-chain-explorer-semaphore]: " TBL1
-read -rp "  Enter DYNAMODB_CONSUMPTION_TABLE       [dm-chain-explorer-consumption]: " TBL2
-read -rp "  Enter DYNAMODB_POPULAR_CONTRACTS_TABLE [dm-chain-explorer-popular-contracts]: " TBL3
-set_secret "DYNAMODB_SEMAPHORE_TABLE"        "${TBL1:-dm-chain-explorer-semaphore}"
-set_secret "DYNAMODB_CONSUMPTION_TABLE"      "${TBL2:-dm-chain-explorer-consumption}"
-set_secret "DYNAMODB_POPULAR_CONTRACTS_TABLE" "${TBL3:-dm-chain-explorer-popular-contracts}"
+echo "--- DynamoDB table name ---"
+echo "  Hint: PROD table name from 'make dev_tf_output' or Terraform output."
+echo "        Default: dm-chain-explorer"
+read -rp "  Enter DYNAMODB_TABLE [dm-chain-explorer]: " TBL1
+set_secret "DYNAMODB_TABLE" "${TBL1:-dm-chain-explorer}"
 
 # ---- Databricks (DABs CLI) --------------------------------------------------
 echo ""
@@ -214,9 +208,47 @@ set_secret "DATABRICKS_ACCOUNT_ID"    "$DBX_ACCOUNT"
 set_secret "DATABRICKS_CLIENT_ID"     "$DBX_CLIENT_ID"
 set_secret "DATABRICKS_CLIENT_SECRET" "$DBX_CLIENT_SECRET"
 
+# ---- HML Infrastructure Secrets --------------------------------------------
+echo ""
+echo "--- HML Infrastructure Secrets ---"
+echo "  Hint: Run 'make hml_tf_output' to get ECS role ARNs."
+echo "        Run 'make hml_tf_apply' first if HML terraform not yet applied."
+echo ""
+
+read -rp  "  Enter HML_VPC_ID     (e.g. vpc-0abc123...): "          HML_VPC_ID
+read -rp  "  Enter HML_SUBNET_ID  (public subnet in HML VPC): "    HML_SUBNET_ID
+set_secret "HML_VPC_ID"    "$HML_VPC_ID"
+set_secret "HML_SUBNET_ID" "$HML_SUBNET_ID"
+
+echo ""
+echo "  Hint: Copy values from 'make hml_tf_output' (services/hml/1_aws_core/)"
+read -rp  "  Enter ECS_TASK_EXECUTION_ROLE_ARN (hml_ecs_task_execution_role_arn): " EXEC_ROLE_ARN
+read -rp  "  Enter ECS_TASK_ROLE_ARN           (hml_ecs_task_role_arn):           " TASK_ROLE_ARN
+set_secret "ECS_TASK_EXECUTION_ROLE_ARN" "$EXEC_ROLE_ARN"
+set_secret "ECS_TASK_ROLE_ARN"           "$TASK_ROLE_ARN"
+
+echo ""
+echo "--- Databricks HML workspace (Free Edition) ---"
+echo "  Hint: Databricks Free Edition workspace URL + personal access token."
+read -rp  "  Enter DATABRICKS_HML_HOST  (e.g. https://community.cloud.databricks.com): " DBX_HML_HOST
+read -rsp "  Enter DATABRICKS_HML_TOKEN (dapi...): " DBX_HML_TOKEN; echo
+set_secret "DATABRICKS_HML_HOST"  "$DBX_HML_HOST"
+set_secret "DATABRICKS_HML_TOKEN" "$DBX_HML_TOKEN"
+
+echo ""
+echo "--- HML Batch Integration Test ---"
+echo "  Hint: SSM Parameter Store path containing an Etherscan API key."
+echo "        Example: /etherscan-api-keys/key-1"
+echo "        The ECS_TASK_ROLE_ARN must have secretsmanager:GetSecretValue on"
+echo "        arn:aws:secretsmanager:<region>:*:secret:dm-chain-explorer-hml-*"
+read -rp  "  Enter HML_ETHERSCAN_SSM_PATH (SSM path, not the key value): " HML_ETH_SSM
+set_secret "HML_ETHERSCAN_SSM_PATH" "$HML_ETH_SSM"
+
 # ---- GitHub environments ----------------------------------------------------
 echo ""
 echo "--- GitHub environments ---"
+create_environment "dev"
+create_environment "hml"
 create_environment "production"
 
 echo ""
