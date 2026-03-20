@@ -15,15 +15,18 @@ module "kinesis" {
   streams = {
     "mainnet-blocks-data" = {
       stream_mode      = "ON_DEMAND"
-      retention_period  = 24
+      retention_period = 24
+      encryption_type  = "NONE"
     }
     "mainnet-transactions-data" = {
       stream_mode      = "ON_DEMAND"
-      retention_period  = 24
+      retention_period = 24
+      encryption_type  = "NONE"
     }
     "mainnet-transactions-decoded" = {
       stream_mode      = "ON_DEMAND"
-      retention_period  = 24
+      retention_period = 24
+      encryption_type  = "NONE"
     }
   }
 
