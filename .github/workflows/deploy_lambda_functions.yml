@@ -167,7 +167,7 @@ jobs:
     needs: [check-version, build-artifacts]
     runs-on: ubuntu-latest
     outputs:
-      test_result: ${{ steps.invoke.outputs.test_result }}
+      test_result: ${{ steps.set-result.outputs.test_result }}
     steps:
       - uses: actions/checkout@v4
 
@@ -245,14 +245,12 @@ jobs:
           echo "Waiting for function to become active..."
           aws lambda wait function-active-v2 --function-name "$FUNC_NAME"
 
-      - name: Invoke and validate (dry-run)
+      - name: Invoke and validate contracts_ingestion (dry-run)
         id: invoke
         run: |
           FUNC_NAME="${{ steps.deploy.outputs.func_name }}"
           echo "Invoking $FUNC_NAME with dry_run=true..."
 
-          # Single invocation — CLI outputs JSON metadata to stdout, function
-          # response to /tmp/lambda-response.json
           INVOKE_META=$(aws lambda invoke \
             --function-name "$FUNC_NAME" \
             --payload '{"dry_run": true}' \
@@ -266,23 +264,150 @@ jobs:
           cat /tmp/lambda-response.json 2>/dev/null || true
 
           if [ -n "$FUNC_ERROR" ]; then
-            echo "::error::Lambda FunctionError: $FUNC_ERROR"
+            echo "::error::contracts_ingestion FunctionError: $FUNC_ERROR"
             echo "test_result=failed" >> $GITHUB_OUTPUT
             exit 1
           fi
 
-          echo "test_result=passed" >> $GITHUB_OUTPUT
-          echo "## HML Lambda Test" >> $GITHUB_STEP_SUMMARY
+          # dry_run: SSM key absence is a hard fail; 0 contracts is a warning only
+          BODY=$(cat /tmp/lambda-response.json 2>/dev/null | jq -r '.body // "{}"')
+          ETH_KEYS=$(echo "$BODY" | jq -r '.etherscan_keys // 0')
+          if [ "$ETH_KEYS" -lt 1 ]; then
+            echo "::error::dry_run: no Etherscan keys found in SSM — cannot proceed."
+            echo "test_result=failed" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+          echo "contracts_ingestion dry_run: etherscan_keys=$ETH_KEYS ✅"
+          echo "## HML Lambda Test — contracts_ingestion" >> $GITHUB_STEP_SUMMARY
           echo "Function: \`$FUNC_NAME\`" >> $GITHUB_STEP_SUMMARY
-          echo "Layer: \`${{ steps.hml-layer.outputs.layer_arn }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "HTTP status: $HTTP_CODE | FunctionError: none ✅" >> $GITHUB_STEP_SUMMARY
+          echo "HTTP status: $HTTP_CODE | FunctionError: none | Etherscan keys: $ETH_KEYS ✅" >> $GITHUB_STEP_SUMMARY
+
+      # ----------------------------------------------------------------
+      # gold_to_dynamodb HML test — fixture-based
+      # Upload a test JSON to S3, invoke with mock S3 event,
+      # verify DynamoDB CONSUMPTION item, then teardown.
+      # ----------------------------------------------------------------
+      - name: Read S3 lakehouse bucket from TF state
+        id: s3-lakehouse
+        run: |
+          LAKEHOUSE_BUCKET=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/s3/terraform.tfstate - 2>/dev/null \
+            | jq -r '.outputs.databricks_bucket_name.value // empty') || LAKEHOUSE_BUCKET=""
+          if [ -z "$LAKEHOUSE_BUCKET" ]; then
+            echo "::error::databricks_bucket_name not found in TF state (s3/terraform.tfstate). Ensure PRD infra is deployed."
+            exit 1
+          fi
+          echo "lakehouse_bucket=$LAKEHOUSE_BUCKET" >> $GITHUB_OUTPUT
+          echo "Lakehouse bucket: $LAKEHOUSE_BUCKET"
+
+      - name: Upload gold_to_dynamodb fixture to S3
+        id: fixture
+        run: |
+          RUN_ID="${{ github.run_id }}"
+          BUCKET="${{ steps.s3-lakehouse.outputs.lakehouse_bucket }}"
+          FIXTURE_KEY="exports/gold_api_keys/hml-test-${RUN_ID}.json"
+          FIXTURE_CONTENT='{"source":"hml-test","api_key_name":"test-key-001","calls_total":42,"calls_ok_total":40,"calls_error_total":2,"calls_24h":10,"vendor":"etherscan","computed_at":"2026-01-01T00:00:00"}'
+
+          echo "$FIXTURE_CONTENT" | aws s3 cp - "s3://${BUCKET}/${FIXTURE_KEY}" \
+            --content-type "application/json"
+          echo "fixture_key=$FIXTURE_KEY" >> $GITHUB_OUTPUT
+          echo "Uploaded fixture: s3://${BUCKET}/${FIXTURE_KEY}"
+
+      - name: Deploy HML gold_to_dynamodb function
+        id: deploy-gld
+        run: |
+          RUN_ID="${{ github.run_id }}"
+          FUNC_NAME="hml-gold-to-dynamodb-${RUN_ID}"
+          echo "func_name=$FUNC_NAME" >> $GITHUB_OUTPUT
+
+          # gold_to_dynamodb has no external deps — no layer needed
+          ROLE_ARN=$(aws iam get-role \
+            --role-name "${{ env.PRD_LAMBDA_ROLE }}" \
+            --query 'Role.Arn' --output text)
+
+          aws lambda create-function \
+            --function-name "$FUNC_NAME" \
+            --runtime python3.12 \
+            --handler handler.handler \
+            --role "$ROLE_ARN" \
+            --zip-file fileb://gold_to_dynamodb.zip \
+            --timeout 30 \
+            --memory-size 128 \
+            --environment "{\"Variables\":{\"DYNAMODB_TABLE\":\"${{ steps.tf-outputs.outputs.dynamodb_table }}\"}}" \
+            --query 'FunctionArn' --output text
+
+          aws lambda wait function-active-v2 --function-name "$FUNC_NAME"
+          echo "gold_to_dynamodb HML function ready: $FUNC_NAME"
+
+      - name: Invoke gold_to_dynamodb with mock S3 event
+        id: invoke-gld
+        run: |
+          FUNC_NAME="${{ steps.deploy-gld.outputs.func_name }}"
+          BUCKET="${{ steps.s3-lakehouse.outputs.lakehouse_bucket }}"
+          FIXTURE_KEY="${{ steps.fixture.outputs.fixture_key }}"
+
+          PAYLOAD=$(jq -n \
+            --arg bucket "$BUCKET" \
+            --arg key "$FIXTURE_KEY" \
+            '{Records:[{s3:{bucket:{name:$bucket},object:{key:$key}}}]}')
+
+          INVOKE_META=$(aws lambda invoke \
+            --function-name "$FUNC_NAME" \
+            --payload "$PAYLOAD" \
+            /tmp/gld-response.json) || INVOKE_META="{}"
+
+          FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty')
+          echo "Function response:"
+          cat /tmp/gld-response.json 2>/dev/null || true
+
+          if [ -n "$FUNC_ERROR" ]; then
+            echo "::error::gold_to_dynamodb FunctionError: $FUNC_ERROR"
+            exit 1
+          fi
+
+          RECORDS=$(cat /tmp/gld-response.json 2>/dev/null | jq -r '.records_processed // 0')
+          if [ "$RECORDS" -lt 1 ]; then
+            echo "::error::gold_to_dynamodb: 0 records processed — fixture may not have been read correctly."
+            exit 1
+          fi
+          echo "gold_to_dynamodb: $RECORDS record(s) processed ✅"
+
+      - name: Verify DynamoDB CONSUMPTION item
+        run: |
+          TABLE="${{ steps.tf-outputs.outputs.dynamodb_table }}"
+          ITEM=$(aws dynamodb get-item \
+            --table-name "$TABLE" \
+            --key '{"pk":{"S":"CONSUMPTION"},"sk":{"S":"hml-test#test-key-001"}}' \
+            --query 'Item' --output json 2>/dev/null || echo 'null')
+
+          if [ "$ITEM" = "null" ] || [ -z "$ITEM" ]; then
+            echo "::error::DynamoDB: CONSUMPTION item hml-test#test-key-001 not found after gold_to_dynamodb invocation."
+            exit 1
+          fi
+          echo "DynamoDB CONSUMPTION item verified ✅"
+          echo "Item: $ITEM"
+          echo "## HML Lambda Test — gold_to_dynamodb" >> $GITHUB_STEP_SUMMARY
+          echo "Function: \`${{ steps.deploy-gld.outputs.func_name }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "DynamoDB item CONSUMPTION#hml-test#test-key-001: found ✅" >> $GITHUB_STEP_SUMMARY
+
+      - name: Set overall test result
+        id: set-result
+        run: echo "test_result=passed" >> $GITHUB_OUTPUT
 
       - name: HML Teardown
         if: always()
         run: |
           RUN_ID="${{ github.run_id }}"
+          TABLE="${{ steps.tf-outputs.outputs.dynamodb_table }}"
+          BUCKET="${{ steps.s3-lakehouse.outputs.lakehouse_bucket }}"
+
+          # Delete ephemeral Lambda functions
           aws lambda delete-function \
             --function-name "hml-contracts-ingestion-${RUN_ID}" 2>/dev/null || true
+          aws lambda delete-function \
+            --function-name "hml-gold-to-dynamodb-${RUN_ID}" 2>/dev/null || true
+
+          # Delete HML test layer versions
           LAYER_NAME="hml-dm-chain-utils-${RUN_ID}"
           VERSIONS=$(aws lambda list-layer-versions \
             --layer-name "$LAYER_NAME" \
@@ -291,6 +416,19 @@ jobs:
             aws lambda delete-layer-version \
               --layer-name "$LAYER_NAME" --version-number "$V" 2>/dev/null || true
           done
+
+          # Delete S3 fixture
+          if [ -n "$BUCKET" ]; then
+            aws s3 rm "s3://${BUCKET}/exports/gold_api_keys/hml-test-${RUN_ID}.json" 2>/dev/null || true
+          fi
+
+          # Delete DynamoDB test item
+          if [ -n "$TABLE" ]; then
+            aws dynamodb delete-item \
+              --table-name "$TABLE" \
+              --key '{"pk":{"S":"CONSUMPTION"},"sk":{"S":"hml-test#test-key-001"}}' 2>/dev/null || true
+          fi
+
           echo "HML Lambda resources cleaned up."
 
   # ----------------------------------------------------------------

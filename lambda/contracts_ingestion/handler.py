@@ -184,20 +184,65 @@ class ContractTransactionsCrawler:
 # Lambda handler
 # ---------------------------------------------------------------------------
 
+def _dry_run_validation(ssm_path: str, dynamodb_table: str) -> dict:
+    """
+    Validates connectivity to upstream dependencies without calling Etherscan
+    or writing to S3.  Used by the HML CI/CD Lambda test gate.
+
+    Returns a dict with:
+        etherscan_keys  — number of API keys found in SSM
+        contracts_found — number of CONTRACT items in DynamoDB
+        status          — "ok" | "warning"
+        warnings        — list of non-blocking issues (e.g. no contracts yet)
+    """
+    warnings = []
+
+    ssm = ParameterStoreClient()
+    etherscan_keys = ssm.get_parameters_by_path(ssm_path)
+    if not etherscan_keys:
+        raise RuntimeError(f"dry_run: No Etherscan keys found under {ssm_path}")
+    logger.info(f"dry_run: {len(etherscan_keys)} Etherscan key(s) found")
+
+    dynamodb_client = DMDynamoDB(logger=logger, table_name=dynamodb_table)
+    contracts = dynamodb_client.query("CONTRACT")
+    contracts_found = len(contracts) if contracts else 0
+    if contracts_found == 0:
+        warnings.append(
+            "DynamoDB has 0 CONTRACT items — Gold MV popular_contracts_ranking "
+            "may not have run yet. Lambda will produce no output until contracts are populated."
+        )
+        logger.warning(f"dry_run: 0 CONTRACT items in {dynamodb_table}")
+    else:
+        logger.info(f"dry_run: {contracts_found} CONTRACT item(s) found in {dynamodb_table}")
+
+    return {
+        "etherscan_keys": len(etherscan_keys),
+        "contracts_found": contracts_found,
+        "status": "warning" if warnings else "ok",
+        "warnings": warnings,
+    }
+
+
 def handler(event, context):
     """
     EventBridge Scheduler invokes with empty event or custom payload.
     Optional event fields:
         exec_date  — "YYYY-MM-DD HH:MM:SS+0000" (defaults to current hour truncated)
+        dry_run    — if True, validate SSM + DynamoDB connectivity only (no Etherscan, no S3 writes)
     """
+    ssm_path = os.environ.get("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
+    dynamodb_table = os.environ.get("DYNAMODB_TABLE", "dm-chain-explorer")
+
+    if event.get("dry_run"):
+        result = _dry_run_validation(ssm_path, dynamodb_table)
+        return {"statusCode": 200, "body": json.dumps({"dry_run": True, **result})}
+
     now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
     exec_date = event.get("exec_date", now.strftime("%Y-%m-%d %H:%M:%S%z"))
 
     s3_bucket = os.environ["S3_BUCKET"]
     s3_prefix = os.environ.get("S3_BUCKET_PREFIX", "batch")
     network = os.environ.get("NETWORK", "mainnet")
-    ssm_path = os.environ.get("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
-    dynamodb_table = os.environ.get("DYNAMODB_TABLE", "dm-chain-explorer")
 
     s3_client = boto3.client("s3")
     dynamodb_client = DMDynamoDB(logger=logger, table_name=dynamodb_table)
