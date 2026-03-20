@@ -8,10 +8,58 @@ env:
 
 jobs:
   # ----------------------------------------------------------------
+  # Branch guard — only allow dispatch from develop
+  # ----------------------------------------------------------------
+  branch-guard:
+    name: Branch guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+            exit 1
+          fi
+          echo "Branch check passed: ${{ github.ref }}"
+
+  # ----------------------------------------------------------------
+  # Version check — VERSION file must match utils/pyproject.toml version
+  # ----------------------------------------------------------------
+  check-version:
+    name: Check version consistency
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate VERSION file matches pyproject.toml
+        run: |
+          FILE_VERSION=$(cat VERSION | tr -d '[:space:]')
+          TOML_VERSION=$(python3 -c "
+import re, pathlib
+text = pathlib.Path('${{ env.LIB_PATH }}/pyproject.toml').read_text()
+print(re.search(r'version\\s*=\\s*\"([^\"]+)\"', text).group(1))
+")
+          echo "VERSION file : $FILE_VERSION"
+          echo "pyproject.toml: $TOML_VERSION"
+          if [ "$FILE_VERSION" != "$TOML_VERSION" ]; then
+            echo "::error::VERSION file ($FILE_VERSION) does not match utils/pyproject.toml ($TOML_VERSION). Keep them in sync."
+            exit 1
+          fi
+          if git tag --list | grep -qx "v${FILE_VERSION}-lib"; then
+            echo "::error::Version v${FILE_VERSION}-lib is already tagged. Bump VERSION and pyproject.toml before deploying."
+            exit 1
+          fi
+          echo "Version v${FILE_VERSION} is consistent and new — proceeding."
+
+  # ----------------------------------------------------------------
   # Gate — unit tests
   # ----------------------------------------------------------------
   test:
     name: Test
+    needs: check-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -122,14 +170,36 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   # ----------------------------------------------------------------
+  # Create release branch — after PyPI publish succeeds
+  # ----------------------------------------------------------------
+  create-release-branch:
+    name: Create release branch
+    needs: [version-check, publish]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push release branch
+        run: |
+          VERSION="${{ needs.version-check.outputs.version }}"
+          BRANCH="release/lib-v${VERSION}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------------------------------
   # GitHub Release with artifacts
   # ----------------------------------------------------------------
   github-release:
     name: Create GitHub Release
-    needs: [version-check, publish]
+    needs: [version-check, create-release-branch]
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -139,11 +209,16 @@ jobs:
           name: dist
           path: dist/
 
-      - name: Create release
+      - name: Create release and git tag
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          TAG="v${{ needs.version-check.outputs.version }}"
+          VERSION="${{ needs.version-check.outputs.version }}"
+          TAG="v${VERSION}-lib"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           gh release create "$TAG" dist/* \
-            --title "${{ needs.version-check.outputs.name }} $TAG" \
+            --title "${{ needs.version-check.outputs.name }} v${VERSION}" \
             --generate-notes
+          echo "## Release Complete" >> $GITHUB_STEP_SUMMARY
+          echo "PyPI: \`${{ needs.version-check.outputs.name }}==${VERSION}\` | Git tag: \`${TAG}\`" >> $GITHUB_STEP_SUMMARY

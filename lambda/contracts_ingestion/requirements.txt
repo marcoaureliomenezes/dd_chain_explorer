@@ -1,0 +1,4 @@
+# Lambda: contracts_ingestion
+# boto3 is provided natively by the Lambda runtime — do NOT include here.
+# dm_chain_utils is provided via Lambda Layer.
+requests>=2.31,<3

@@ -16,6 +16,8 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.b_ethereum")
 # NÃO criar aqui — o DLT precisa ser o dono exclusivo da tabela.
 
 # popular_contracts_txs — batch ingestão de transações de contratos populares
+lakehouse_bucket = spark.conf.get("lakehouse.s3.bucket", "dm-chain-explorer-lakehouse")
+
 spark.sql(f"""
   CREATE TABLE IF NOT EXISTS `{catalog}`.b_ethereum.popular_contracts_txs (
     contract_address  STRING,
@@ -31,6 +33,7 @@ spark.sql(f"""
   )
   USING DELTA
   PARTITIONED BY (ingestion_date)
+  LOCATION 's3://{lakehouse_bucket}/b_ethereum/popular_contracts_txs'
   TBLPROPERTIES ('quality' = 'bronze')
 """)
 

@@ -2,20 +2,19 @@
 # MAGIC %md
 # MAGIC # Ethereum DLT Pipeline — Bronze + Silver + Gold
 # MAGIC
-# MAGIC Pipeline unificado com três camadas:
+# MAGIC Pipeline unificado com três camadas (pós-migração Kafka → Kinesis/SQS/Firehose).
 # MAGIC
 # MAGIC ## Bronze — `b_ethereum`
-# MAGIC - `kafka_topics_multiplexed`: ingestão de todos os tópicos Kafka
-# MAGIC   - **PROD** (`source.type = kafka`): Kafka MSK via IAM auth (streaming)
-# MAGIC   - **DEV**  (`source.type = s3`):   Auto Loader sobre Parquet no S3
+# MAGIC Auto Loader (cloudFiles) lê NDJSON entregue pelo Firehose no S3:
+# MAGIC - `b_blocks_data`             ← Firehose `bronze/mainnet-blocks-data/`
+# MAGIC - `b_transactions_data`       ← Firehose `bronze/mainnet-transactions-data/`
+# MAGIC - `b_transactions_decoded`    ← Firehose `bronze/mainnet-transactions-decoded/`
 # MAGIC
 # MAGIC ## Silver — `s_apps`
 # MAGIC Lê da bronze via `dlt.read()` (interno ao pipeline, sem dependência externa):
-# MAGIC - `s_apps.mined_blocks_events`          ← `mainnet.1.mined_blocks.events`
-# MAGIC - `s_apps.blocks_fast`                  ← `mainnet.2.blocks.data`
-# MAGIC - `s_apps.transaction_hash_ids`         ← `mainnet.3.block.txs.hash_id`
-# MAGIC - `s_apps.transactions_fast`            ← `mainnet.4.transactions.data` (raw, sem decoded)
-# MAGIC - `s_apps.txs_inputs_decoded_fast`      ← `mainnet.5.transactions.input_decoded`
+# MAGIC - `s_apps.blocks_fast`                  ← b_blocks_data
+# MAGIC - `s_apps.transactions_fast`            ← b_transactions_data (raw, sem decoded)
+# MAGIC - `s_apps.txs_inputs_decoded_fast`      ← b_transactions_decoded
 # MAGIC - `s_apps.transactions_ethereum`        ← JOIN transactions_fast + txs_inputs_decoded_fast + blocks_fast
 # MAGIC - `s_apps.blocks_withdrawals`           ← blocks_fast.withdrawals explodido (1 linha por saque Beacon Chain)
 # MAGIC
@@ -29,30 +28,17 @@
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType
-from pyspark.sql.avro.functions import from_avro
+from pyspark.sql.types import StringType, StructType, StructField, LongType, ArrayType, IntegerType
 from pyspark.sql.window import Window
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
+# Post-migration: all data arrives via Firehose → S3 as NDJSON (gzip).
+# Auto Loader reads from the Firehose delivery prefix.
 
-SOURCE_TYPE     = spark.conf.get("source.type", "kafka")       # "kafka" or "s3"
-KAFKA_BOOTSTRAP = spark.conf.get("kafka.bootstrap.servers", "")
-MSK_IAM_AUTH    = spark.conf.get("kafka.msk.iam.auth", "false").lower() == "true"
-S3_PATH         = spark.conf.get("s3.ingestion.path", "")
-
-TOPICS = [
-    "mainnet.0.application.logs",
-    "mainnet.1.mined_blocks.events",
-    "mainnet.2.blocks.data",
-    "mainnet.3.block.txs.hash_id",
-    "mainnet.4.transactions.data",
-    "mainnet.5.transactions.input_decoded",
-]
-
-# Catalog e S3 bucket para Materialized Views que exportam dados
-CATALOG         = spark.conf.get("catalog", "dev")
-S3_EXPORT_PATH  = spark.conf.get("s3.export.path", "")
+INGESTION_BUCKET = spark.conf.get("ingestion.s3.bucket", "dm-chain-explorer-dev-ingestion")
+S3_RAW_BASE      = f"s3://{INGESTION_BUCKET}/raw"
+CATALOG          = spark.conf.get("catalog", "dev")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -61,96 +47,60 @@ S3_EXPORT_PATH  = spark.conf.get("s3.export.path", "")
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Bronze — `kafka_topics_multiplexed`
+# MAGIC ## Bronze — Auto Loader tables (Firehose → S3 NDJSON)
+# MAGIC
+# MAGIC Each Kinesis stream has a dedicated Firehose delivery to S3.
+# MAGIC Auto Loader reads NDJSON (gzip) from the Firehose prefix.
 
 # COMMAND ----------
 
-# ── Kafka source (PROD) ──────────────────────────────────────────────────────
-
-def _kafka_reader(topic: str):
-    """Retorna um Spark Streaming reader para um tópico Kafka específico."""
-    options = {
-        "kafka.bootstrap.servers": KAFKA_BOOTSTRAP,
-        "subscribe": topic,
-        "startingOffsets": "latest",
-        "failOnDataLoss": "false",
-    }
-    if MSK_IAM_AUTH:
-        options.update({
-            "kafka.security.protocol": "SASL_SSL",
-            "kafka.sasl.mechanism": "AWS_MSK_IAM",
-            "kafka.sasl.jaas.config": (
-                "software.amazon.msk.auth.iam.IAMLoginModule required;"
-            ),
-            "kafka.sasl.client.callback.handler.class": (
-                "software.amazon.msk.auth.iam.IAMClientCallbackHandler"
-            ),
-        })
-    return spark.readStream.format("kafka").options(**options)
-
-
-def _read_from_kafka():
-    """Lê todos os tópicos Kafka e retorna um DataFrame unificado (streaming)."""
-    from functools import reduce
-    dfs = []
-    for topic in TOPICS:
-        df = (
-            _kafka_reader(topic)
-            .load()
-            .select(
-                F.lit(topic).alias("topic_name"),
-                F.col("partition").alias("kafka_partition"),
-                F.col("offset").alias("kafka_offset"),
-                F.col("timestamp").alias("kafka_timestamp"),
-                F.col("key").cast(StringType()).alias("key"),
-                F.col("value"),
-            )
-        )
-        dfs.append(df)
-    return reduce(lambda a, b: a.union(b), dfs)
-
-
-# ── S3 Parquet source (DEV) ──────────────────────────────────────────────────
-
-def _read_from_s3():
-    """
-    Lê dados Parquet do S3 via Auto Loader (cloudFiles).
-    Estrutura esperada: s3://<bucket>/bronze/kafka_multiplex/topic_name=<topic>/...parquet
-    """
+def _auto_loader_json(stream_name: str):
+    """Auto Loader reader for NDJSON files delivered by Firehose."""
+    path = f"{S3_RAW_BASE}/{stream_name}/"
     return (
         spark.readStream
         .format("cloudFiles")
-        .option("cloudFiles.format", "parquet")
-        .option("cloudFiles.schemaLocation", f"{S3_PATH}/_schema")
+        .option("cloudFiles.format", "json")
+        .option("cloudFiles.schemaLocation", f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}")
         .option("cloudFiles.inferColumnTypes", "true")
-        .load(S3_PATH)
-        .select(
-            F.col("topic_name"),
-            F.col("kafka_partition"),
-            F.col("kafka_offset"),
-            F.col("kafka_timestamp"),
-            F.col("key"),
-            F.col("value"),
-        )
+        .load(path)
     )
 
 
-# ── DLT Bronze table ─────────────────────────────────────────────────────────
+@dlt.table(
+    name="b_blocks_data",
+    comment="Bronze: block data from Firehose (mainnet-blocks-data)",
+    table_properties={"quality": "bronze", "pipelines.autoOptimize.managed": "true"},
+)
+def bronze_blocks_data():
+    return (
+        _auto_loader_json("mainnet-blocks-data")
+        .withColumn("_ingested_at", F.current_timestamp())
+    )
+
 
 @dlt.table(
-    name="kafka_topics_multiplexed",
-    comment="Bronze: todos os tópicos Kafka multiplexados em uma única tabela",
-    table_properties={
-        "quality": "bronze",
-        "pipelines.autoOptimize.managed": "true",
-    },
-    partition_cols=["topic_name"],
+    name="b_transactions_data",
+    comment="Bronze: transaction data from Firehose (mainnet-transactions-data)",
+    table_properties={"quality": "bronze", "pipelines.autoOptimize.managed": "true"},
 )
-def bronze_multiplex():
-    """Source dinâmico: Kafka (PROD) ou S3 Auto Loader (DEV)."""
-    if SOURCE_TYPE == "s3":
-        return _read_from_s3()
-    return _read_from_kafka()
+def bronze_transactions_data():
+    return (
+        _auto_loader_json("mainnet-transactions-data")
+        .withColumn("_ingested_at", F.current_timestamp())
+    )
+
+
+@dlt.table(
+    name="b_transactions_decoded",
+    comment="Bronze: decoded transaction inputs from Firehose (mainnet-transactions-decoded)",
+    table_properties={"quality": "bronze", "pipelines.autoOptimize.managed": "true"},
+)
+def bronze_transactions_decoded():
+    return (
+        _auto_loader_json("mainnet-transactions-decoded")
+        .withColumn("_ingested_at", F.current_timestamp())
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -160,61 +110,11 @@ def bronze_multiplex():
 # ════════════════════════════════════════════════════════════════════════════
 
 # COMMAND ----------
-from _avro_schemas import *  # noqa: F401,F403  (defined as DLT file library)
-
-# COMMAND ----------
-
-
-# ── Helper: lê bronze interna ao pipeline + deserializa Avro ─────────────────
-
-def _silver_avro(topic: str, avro_schema: str):
-    """
-    Lê da tabela bronze via dlt.read() (referência interna ao pipeline),
-    filtra pelo tópico, remove o header Confluent (5 bytes) e desserializa o
-    payload Avro usando o schema embutido.
-
-    Retorna DataFrame com coluna `parsed` (struct) + metadados Kafka.
-    """
-    return (
-        dlt.read("kafka_topics_multiplexed")
-        .filter(F.col("topic_name") == topic)
-        .withColumn("avro_payload", F.expr("substring(value, 6)"))
-        .withColumn("parsed", from_avro(F.col("avro_payload"), avro_schema))
-    )
-
-
-# COMMAND ----------
 # MAGIC %md
-# MAGIC ## Silver 1 — Mined Blocks Events → `s_apps.mined_blocks_events`
-
-# COMMAND ----------
-
-@dlt.table(
-    name="s_apps.mined_blocks_events",
-    comment="Silver: eventos de blocos minerados na Ethereum Mainnet",
-    table_properties={
-        "quality": "silver",
-        "pipelines.autoOptimize.managed": "true",
-    },
-)
-@dlt.expect_or_drop("valid_block_number", "block_number IS NOT NULL")
-@dlt.expect_or_drop("valid_block_hash",   "block_hash IS NOT NULL")
-def silver_mined_blocks_events():
-    df = _silver_avro("mainnet.1.mined_blocks.events", AVRO_SCHEMA_MINED_BLOCKS_EVENTS)
-    return df.select(
-        F.col("parsed.block_number").alias("block_number"),
-        F.col("parsed.block_hash").alias("block_hash"),
-        F.col("parsed.block_timestamp").alias("block_timestamp"),
-        F.to_timestamp(F.col("parsed.block_timestamp")).alias("event_time"),
-        F.col("kafka_timestamp"),
-        F.col("kafka_partition"),
-        F.col("kafka_offset"),
-    )
-
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## Silver 2 — Blocks Data → `s_apps.blocks_fast`
+# MAGIC ## Silver — Blocks Data → `s_apps.blocks_fast`
+# MAGIC
+# MAGIC Reads from bronze `b_blocks_data` (JSON fields from Firehose).
+# MAGIC Field names match the JSON keys produced by Job 3.
 
 # COMMAND ----------
 
@@ -229,71 +129,44 @@ def silver_mined_blocks_events():
 @dlt.expect_or_drop("valid_block_number", "block_number IS NOT NULL")
 @dlt.expect_or_drop("valid_hash",         "block_hash IS NOT NULL")
 def silver_blocks_fast():
-    df = _silver_avro("mainnet.2.blocks.data", AVRO_SCHEMA_BLOCKS)
+    df = dlt.read_stream("b_blocks_data")
     return df.select(
-        F.col("parsed.number").alias("block_number"),
-        F.col("parsed.hash").alias("block_hash"),
-        F.col("parsed.parentHash").alias("parent_hash"),
-        F.to_timestamp(F.col("parsed.timestamp")).alias("block_time"),
-        F.col("parsed.timestamp").alias("block_timestamp"),
-        F.col("parsed.miner").alias("miner"),
-        F.col("parsed.difficulty").alias("difficulty"),
-        F.col("parsed.totalDifficulty").alias("total_difficulty"),
-        F.col("parsed.nonce").alias("nonce"),
-        F.col("parsed.size").alias("size"),
-        F.col("parsed.baseFeePerGas").alias("base_fee_per_gas"),
-        F.col("parsed.gasLimit").alias("gas_limit"),
-        F.col("parsed.gasUsed").alias("gas_used"),
-        F.col("parsed.logsBloom").alias("logs_bloom"),
-        F.col("parsed.extraData").alias("extra_data"),
-        F.col("parsed.transactionsRoot").alias("transactions_root"),
-        F.col("parsed.stateRoot").alias("state_root"),
-        F.size(F.col("parsed.transactions")).alias("transaction_count"),
-        F.col("parsed.transactions").alias("transactions"),
-        F.col("parsed.withdrawals").alias("withdrawals"),
-        F.col("kafka_timestamp"),
-        F.col("kafka_partition"),
-        F.col("kafka_offset"),
+        F.col("number").alias("block_number"),
+        F.col("hash").alias("block_hash"),
+        F.col("parentHash").alias("parent_hash"),
+        F.to_timestamp(F.col("timestamp")).alias("block_time"),
+        F.col("timestamp").alias("block_timestamp"),
+        F.col("miner"),
+        F.col("difficulty"),
+        F.col("totalDifficulty").alias("total_difficulty"),
+        F.col("nonce"),
+        F.col("size"),
+        F.col("baseFeePerGas").alias("base_fee_per_gas"),
+        F.col("gasLimit").alias("gas_limit"),
+        F.col("gasUsed").alias("gas_used"),
+        F.col("logsBloom").alias("logs_bloom"),
+        F.col("extraData").alias("extra_data"),
+        F.col("transactionsRoot").alias("transactions_root"),
+        F.col("stateRoot").alias("state_root"),
+        F.size(F.col("transactions")).alias("transaction_count"),
+        F.col("transactions"),
+        F.col("withdrawals"),
+        F.col("_ingested_at"),
     )
 
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Silver 3 — Transaction Hash IDs → `s_apps.transaction_hash_ids`
-
-# COMMAND ----------
-
-@dlt.table(
-    name="s_apps.transaction_hash_ids",
-    comment="Silver: hash IDs de transações por bloco",
-    table_properties={
-        "quality": "silver",
-        "pipelines.autoOptimize.managed": "true",
-    },
-)
-@dlt.expect_or_drop("valid_tx_hash", "tx_hash IS NOT NULL")
-def silver_transaction_hash_ids():
-    df = _silver_avro("mainnet.3.block.txs.hash_id", AVRO_SCHEMA_TX_HASH_IDS)
-    return df.select(
-        F.col("parsed.tx_hash").alias("tx_hash"),
-        F.col("key").alias("block_hash"),
-        F.col("kafka_timestamp"),
-        F.col("kafka_partition"),
-        F.col("kafka_offset"),
-    )
-
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## Silver 4 — Transactions raw → `s_apps.transactions_fast`
-# MAGIC Contém apenas os dados brutos do tópico `mainnet.4.transactions.data`.
+# MAGIC ## Silver — Transactions raw → `s_apps.transactions_fast`
+# MAGIC
+# MAGIC Reads from bronze `b_transactions_data` (JSON fields from Firehose).
 # MAGIC **Sem** campos decoded (method/parms/decode_type) — esses ficam em `txs_inputs_decoded_fast`.
 
 # COMMAND ----------
 
 @dlt.table(
     name="s_apps.transactions_fast",
-    comment="Silver: transações Ethereum do tópico mainnet.4.transactions.data — dados raw sem input decodificado",
+    comment="Silver: transações Ethereum — dados raw sem input decodificado",
     table_properties={
         "quality": "silver",
         "pipelines.autoOptimize.managed": "true",
@@ -305,41 +178,40 @@ def silver_transaction_hash_ids():
 @dlt.expect("valid_from_address", "from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 @dlt.expect("valid_to_address",   "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_transactions_fast():
-    df = _silver_avro("mainnet.4.transactions.data", AVRO_SCHEMA_TRANSACTIONS)
+    df = dlt.read_stream("b_transactions_data")
     return df.select(
-        F.col("parsed.hash").alias("tx_hash"),
-        F.col("parsed.blockNumber").alias("block_number"),
-        F.col("parsed.blockHash").alias("block_hash"),
-        F.col("parsed.transactionIndex").alias("transaction_index"),
-        F.col("parsed.`from`").alias("from_address"),
-        F.col("parsed.to").alias("to_address"),
-        F.col("parsed.value").alias("value"),
-        F.col("parsed.input").alias("input"),
-        F.col("parsed.gas").alias("gas"),
-        F.col("parsed.gasPrice").alias("gas_price"),
-        F.col("parsed.nonce").alias("nonce"),
-        F.col("parsed.v").alias("v"),
-        F.col("parsed.r").alias("r"),
-        F.col("parsed.s").alias("s"),
-        F.col("parsed.type").alias("tx_type"),
-        F.col("parsed.accessList").alias("access_list"),
-        F.col("kafka_timestamp"),
-        F.col("kafka_partition"),
-        F.col("kafka_offset"),
-        F.to_date(F.col("kafka_timestamp")).alias("event_date"),
+        F.col("hash").alias("tx_hash"),
+        F.col("blockNumber").alias("block_number"),
+        F.col("blockHash").alias("block_hash"),
+        F.col("transactionIndex").alias("transaction_index"),
+        F.col("`from`").alias("from_address"),
+        F.col("to").alias("to_address"),
+        F.col("value"),
+        F.col("input"),
+        F.col("gas"),
+        F.col("gasPrice").alias("gas_price"),
+        F.col("nonce"),
+        F.col("v"),
+        F.col("r"),
+        F.col("s"),
+        F.col("type").alias("tx_type"),
+        F.col("accessList").alias("access_list"),
+        F.col("_ingested_at"),
+        F.to_date(F.col("_ingested_at")).alias("event_date"),
     )
 
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Silver 5 — Decoded inputs → `s_apps.txs_inputs_decoded_fast`
-# MAGIC Dados do tópico `mainnet.5.transactions.input_decoded`: method, parms, decode_type.
+# MAGIC ## Silver — Decoded inputs → `s_apps.txs_inputs_decoded_fast`
+# MAGIC
+# MAGIC Reads from bronze `b_transactions_decoded` (JSON fields from Firehose).
 
 # COMMAND ----------
 
 @dlt.table(
     name="s_apps.txs_inputs_decoded_fast",
-    comment="Silver: inputs de transações decodificados — topic mainnet.5.transactions.input_decoded",
+    comment="Silver: inputs de transações decodificados — Kinesis stream mainnet-transactions-decoded",
     table_properties={
         "quality": "silver",
         "pipelines.autoOptimize.managed": "true",
@@ -347,16 +219,14 @@ def silver_transactions_fast():
 )
 @dlt.expect_or_drop("valid_tx_hash", "tx_hash IS NOT NULL")
 def silver_txs_inputs_decoded_fast():
-    df = _silver_avro("mainnet.5.transactions.input_decoded", AVRO_SCHEMA_INPUT_DECODED)
+    df = dlt.read_stream("b_transactions_decoded")
     return df.select(
-        F.col("parsed.tx_hash").alias("tx_hash"),
-        F.col("parsed.contract_address").alias("contract_address"),
-        F.col("parsed.method").alias("method"),
-        F.col("parsed.parms").alias("parms"),
-        F.col("parsed.decode_type").alias("decode_type"),
-        F.col("kafka_timestamp"),
-        F.col("kafka_partition"),
-        F.col("kafka_offset"),
+        F.col("tx_hash"),
+        F.col("contract_address"),
+        F.col("method"),
+        F.col("parms"),
+        F.col("decode_type"),
+        F.col("_ingested_at"),
     )
 
 
@@ -454,17 +324,15 @@ def silver_transactions_ethereum():
             F.col("decode_type"),
             # Placeholder para enriquecimento batch Etherscan
             F.lit(None).cast("string").alias("input_etherscan"),
-            F.col("kafka_timestamp"),
-            F.col("kafka_partition"),
-            F.col("kafka_offset"),
-            F.to_date(F.col("kafka_timestamp")).alias("event_date"),
+            F.col("_ingested_at"),
+            F.to_date(F.col("_ingested_at")).alias("event_date"),
         )
     )
 
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Silver 7 — Beacon Chain withdrawals → `s_apps.blocks_withdrawals`
+# MAGIC ## Silver — Beacon Chain withdrawals → `s_apps.blocks_withdrawals`
 # MAGIC
 # MAGIC Explode do campo `withdrawals` de `blocks_fast`: cada validator que sacou
 # MAGIC ETH excedente (acima de 32 ETH) gera uma linha. Introduzido no EIP-4895
@@ -491,7 +359,7 @@ def silver_blocks_withdrawals():
             F.col("block_number"),
             F.from_unixtime("block_timestamp", "yyyy-MM-dd HH:mm:ss").alias("block_timestamp"),
             F.col("miner"),
-            F.col("kafka_timestamp"),
+            F.col("_ingested_at"),
             F.explode("withdrawals").alias("wd"),
         )
         .select(
@@ -503,7 +371,7 @@ def silver_blocks_withdrawals():
             F.col("wd.address").alias("withdrawal_address"),
             F.col("wd.amount").alias("amount_gwei"),
             (F.col("wd.amount") / F.lit(1e9)).alias("amount_eth"),
-            F.col("kafka_timestamp"),
+            F.col("_ingested_at"),
         )
     )
 
@@ -532,19 +400,20 @@ def silver_blocks_withdrawals():
 def gold_popular_contracts_ranking():
     """
     Lê de transactions_fast (DLT interna) e calcula ranking dos 100 contratos
-    que mais receberam transações. Usa janela de 1 hora a partir do kafka_timestamp.
+    que mais receberam transações na última hora.
     """
     df = dlt.read("s_apps.transactions_fast")
 
+    df = df.filter(F.col("to_address").isNotNull())
+    df = df.filter(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"))
+
     return (
         df
-        .filter(F.col("to_address").isNotNull())
-        .filter(F.col("kafka_timestamp") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"))
         .groupBy("to_address")
         .agg(
             F.count("*").alias("tx_count"),
-            F.max("kafka_timestamp").alias("last_seen"),
-            F.min("kafka_timestamp").alias("first_seen"),
+            F.max("_ingested_at").alias("last_seen"),
+            F.min("_ingested_at").alias("first_seen"),
             F.countDistinct("from_address").alias("unique_senders"),
         )
         .orderBy(F.desc("tx_count"))
@@ -598,7 +467,7 @@ def gold_peer_to_peer_txs():
             F.col("gas_price"),
             F.col("tx_timestamp"),
             F.col("base_fee_per_gas"),
-            F.col("kafka_timestamp"),
+            F.col("_ingested_at"),
         )
     )
 
@@ -645,7 +514,7 @@ def gold_ethereum_gas_consume():
     )
 
     # Porcentagem de gas que esta tx consumiu no bloco.
-    # Nota: `gas` aqui é o gas limit da tx (o Avro de streaming não carrega
+    # Nota: `gas` aqui é o gas limit da tx (streaming não carrega
     # gas_used do receipt). block_gas_used é o total efetivo do bloco.
     gas_pct_of_block = (
         F.when(
@@ -822,7 +691,7 @@ def gold_network_metrics_hourly():
     txs = (
         dlt.read("s_apps.transactions_fast")
         .select(
-            F.date_trunc("hour", F.col("kafka_timestamp")).alias("hour_bucket"),
+            F.date_trunc("hour", F.col("_ingested_at")).alias("hour_bucket"),
             F.col("tx_hash"),
             F.col("gas_price"),
         )

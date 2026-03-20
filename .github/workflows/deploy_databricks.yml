@@ -3,13 +3,102 @@ name: Deploy Databricks (DABs)
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 env:
   DATABRICKS_CLI_VERSION: 0.218.0
   DABS_PATH: dabs
 
 jobs:
+  # ----------------------------------------------------------------
+  # Branch guard — only allow dispatch from develop
+  # ----------------------------------------------------------------
+  branch-guard:
+    name: Branch guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+            exit 1
+          fi
+          echo "Branch check passed: ${{ github.ref }}"
+
+  # ----------------------------------------------------------------
+  # Infra prerequisite gate — PRD Databricks workspace must exist
+  #
+  # Checks that the Databricks workspace is reachable before
+  # proceeding. Prevents deploying DABs if deploy_cloud_infra_prd
+  # has not been run (module 7_databricks).
+  # ----------------------------------------------------------------
+  check-infra-prd:
+    name: Check PRD infra prerequisites
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            sa-east-1
+
+      - name: Verify Databricks workspace is deployed (TF state + HTTP check)
+        run: |
+          TF_STATE_BUCKET="dm-chain-explorer-terraform-state"
+          WS_URL=$(aws s3 cp s3://${TF_STATE_BUCKET}/databricks/terraform.tfstate - 2>/dev/null \
+            | jq -r '.outputs.databricks_workspace_url.value // empty') || WS_URL=""
+
+          if [ -z "$WS_URL" ]; then
+            echo "::warning::Databricks workspace URL not found in TF state — falling back to DATABRICKS_PROD_HOST secret."
+            WS_URL="${{ secrets.DATABRICKS_PROD_HOST }}"
+          fi
+
+          if [ -z "$WS_URL" ]; then
+            echo "::error::No Databricks workspace URL available (TF state or secret)."
+            echo "::error::Run 'Deploy Infrastructure PRD' (module 7_databricks) before deploying DABs."
+            exit 1
+          fi
+
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${WS_URL}" --max-time 15) || HTTP_STATUS="000"
+          if [ "$HTTP_STATUS" = "000" ]; then
+            echo "::error::Databricks workspace at ${WS_URL} is unreachable (connection error)."
+            echo "::error::Ensure 'Deploy Infrastructure PRD' (module 7_databricks) has been applied."
+            exit 1
+          fi
+          echo "Databricks workspace is reachable (HTTP ${HTTP_STATUS}): ${WS_URL}"
+
+  # ----------------------------------------------------------------
+  # Version check — fail fast if VERSION file was not bumped
+  # ----------------------------------------------------------------
+  check-version:
+    name: Check version bump
+    needs: [branch-guard]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate VERSION
+        id: ver
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Project version: $VERSION"
+          if git tag --list | grep -qx "v${VERSION}-dabs"; then
+            echo "::error::Version v${VERSION}-dabs is already tagged. Bump VERSION before deploying."
+            exit 1
+          fi
+          echo "Version v${VERSION} is new — proceeding."
+
   validate:
     name: Validate bundle
+    needs: check-version
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -29,7 +118,7 @@ jobs:
 
   deploy-hml:
     name: Deploy to HML
-    needs: validate
+    needs: [validate, check-version]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -45,17 +134,173 @@ jobs:
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
-        run: |
-          databricks bundle deploy --target hml \
-            --var="kafka_bootstrap_servers=${{ secrets.MSK_BOOTSTRAP_SERVERS }}" \
-            --var="dynamodb_table=${{ secrets.DYNAMODB_TABLE }}"
+        run: databricks bundle deploy --target hml
 
-      - name: Verify deployment
+      - name: Verify HML deployment
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
-          echo "=== DLT Pipelines ==="
+          echo "=== DLT Pipelines (HML) ==="
           databricks pipelines list --output json | jq '.[] | .name'
-          echo "=== Workflows ==="
+          echo "=== Workflows (HML) ==="
           databricks jobs list --output json | jq '.jobs[] | .settings.name'
+          echo "## HML Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Target: \`hml\` | Version: \`${{ needs.check-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------------------------------
+  # HML DLT Integration Test — trigger pipelines + validate Gold MVs
+  # Free Edition: pipelines triggered sequentially (no concurrency).
+  # ----------------------------------------------------------------
+  hml-dlt-integration-test:
+    name: HML DLT Integration Test
+    needs: deploy-hml
+    runs-on: ubuntu-latest
+    outputs:
+      test_passed: ${{ steps.validate.outputs.test_passed }}
+    defaults:
+      run:
+        working-directory: ${{ env.DABS_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@v0.218.0
+
+      - name: Trigger pipeline_ethereum (dm-ethereum)
+        env:
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+        run: |
+          echo "Triggering dm-ethereum pipeline (incremental update)..."
+          databricks bundle run --target hml dm-trigger-dlt-ethereum 2>&1 | tee /tmp/dlt_ethereum.log
+          echo "dm-ethereum pipeline completed."
+
+      - name: Trigger pipeline_app_logs (dm-app-logs)
+        env:
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+        run: |
+          echo "Triggering dm-app-logs pipeline (incremental update)..."
+          databricks bundle run --target hml dm-trigger-dlt-app-logs 2>&1 | tee /tmp/dlt_app_logs.log
+          echo "dm-app-logs pipeline completed."
+
+      - name: Discover SQL Warehouse ID
+        id: warehouse
+        env:
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+        run: |
+          WH_ID=$(databricks warehouses list --output json 2>/dev/null \
+            | jq -r '.warehouses[0].id // empty') || WH_ID=""
+          if [ -z "$WH_ID" ]; then
+            echo "::error::No SQL Warehouse found in the Databricks workspace."
+            exit 1
+          fi
+          echo "warehouse_id=$WH_ID" >> $GITHUB_OUTPUT
+          echo "SQL Warehouse ID: $WH_ID"
+
+      - name: Validate Gold MVs
+        id: validate
+        working-directory: ${{ github.workspace }}
+        env:
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+          CATALOG: hml
+          WAREHOUSE_ID: ${{ steps.warehouse.outputs.warehouse_id }}
+        run: |
+          echo "## HML DLT Integration Test" >> $GITHUB_STEP_SUMMARY
+          echo "Catalog: \`hml\` | Warehouse: \`${WAREHOUSE_ID}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if bash scripts/hml_dlt_integration_test.sh 2>&1 | tee /tmp/dlt_test_output.txt; then
+            echo "test_passed=true" >> $GITHUB_OUTPUT
+            echo "✅ **PASSED** — all mandatory Gold MVs have data." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "test_passed=false" >> $GITHUB_OUTPUT
+            echo "❌ **FAILED** — one or more Gold MVs empty or missing." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E "PASS|FAIL|SKIP|Results" /tmp/dlt_test_output.txt >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "::error::HML DLT integration test FAILED — see step summary."
+            exit 1
+          fi
+
+  # ----------------------------------------------------------------
+  # Create release branch — only after HML deploy + integration test
+  # ----------------------------------------------------------------
+  create-release-branch:
+    name: Create release branch
+    needs: [check-version, deploy-hml, hml-dlt-integration-test]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push release branch
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          BRANCH="release/dabs-v${VERSION}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
+          echo "Branch created: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
+          echo "Next: approve the 'Deploy to Production' stage below." >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------------------------------
+  # Deploy to Production — requires manual approval
+  # (GitHub Environment: production)
+  #
+  # Authenticates via OAuth M2M (service principal) — no PAT expiry.
+  # Deploys DABs to the `prod` target (Databricks AWS Workspace).
+  # ----------------------------------------------------------------
+  deploy-prod:
+    name: Deploy to Production
+    needs: [check-version, check-infra-prd, create-release-branch]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.DABS_PATH }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@v0.218.0
+
+      - name: Deploy bundle to PROD (OAuth M2M)
+        env:
+          DATABRICKS_HOST:          ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+        run: databricks bundle deploy --target prod
+
+      - name: Verify PROD deployment
+        env:
+          DATABRICKS_HOST:          ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+        run: |
+          echo "=== DLT Pipelines (PROD) ==="
+          databricks pipelines list --output json | jq '.[] | .name'
+          echo "=== Workflows (PROD) ==="
+          databricks jobs list --output json | jq '.jobs[] | .settings.name'
+
+      - name: Create and push release git tag
+        working-directory: ${{ github.workspace }}
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}-dabs" -m "Release v${VERSION} — DABs deployed to PROD"
+          git push origin "v${VERSION}-dabs"
+          echo "## Production Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Target: \`prod\` | Git tag: \`v${VERSION}-dabs\`" >> $GITHUB_STEP_SUMMARY

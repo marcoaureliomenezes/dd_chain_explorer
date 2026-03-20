@@ -3,12 +3,12 @@
     {
       "name": "etherscan_health",
       "displayName": "Etherscan API Keys",
-      "query": "SELECT\n  api_key_name,\n  calls_total,\n  calls_ok_total,\n  calls_error_total,\n  calls_1h,\n  calls_24h,\n  last_call_at,\n  ROUND(100.0 * calls_error_total / NULLIF(calls_total, 0), 2) AS error_rate_pct\nFROM dev.g_api_keys.etherscan_consumption\nORDER BY calls_total DESC"
+      "query": "SELECT\n  api_key_name,\n  calls_total,\n  calls_ok_total,\n  calls_error_total,\n  calls_1h,\n  calls_24h,\n  last_call_at,\n  ROUND(100.0 * calls_error_total / NULLIF(calls_total, 0), 2) AS error_rate_pct\nFROM dev.g_api_keys.etherscan_consumption\nUNION ALL\nSELECT\n  '(sem dados - pipeline app-logs nao executado)' AS api_key_name,\n  0 AS calls_total, 0 AS calls_ok_total, 0 AS calls_error_total,\n  0 AS calls_1h, 0 AS calls_24h, NULL AS last_call_at, NULL AS error_rate_pct\nWHERE NOT EXISTS (SELECT 1 FROM dev.g_api_keys.etherscan_consumption)\nORDER BY calls_total DESC"
     },
     {
       "name": "web3_health",
       "displayName": "Web3 API Keys (Alchemy / Infura)",
-      "query": "SELECT\n  api_key_name,\n  vendor,\n  calls_total,\n  calls_ok_total,\n  calls_error_total,\n  calls_1h,\n  calls_24h,\n  last_call_at,\n  ROUND(100.0 * calls_error_total / NULLIF(calls_total, 0), 2) AS error_rate_pct\nFROM dev.g_api_keys.web3_keys_consumption\nORDER BY calls_total DESC"
+      "query": "SELECT\n  api_key_name,\n  vendor,\n  calls_total,\n  calls_ok_total,\n  calls_error_total,\n  calls_1h,\n  calls_24h,\n  last_call_at,\n  ROUND(100.0 * calls_error_total / NULLIF(calls_total, 0), 2) AS error_rate_pct\nFROM dev.g_api_keys.web3_keys_consumption\nUNION ALL\nSELECT\n  '(sem dados - pipeline app-logs nao executado)' AS api_key_name,\n  'n/a' AS vendor,\n  0 AS calls_total, 0 AS calls_ok_total, 0 AS calls_error_total,\n  0 AS calls_1h, 0 AS calls_24h, NULL AS last_call_at, NULL AS error_rate_pct\nWHERE NOT EXISTS (SELECT 1 FROM dev.g_api_keys.web3_keys_consumption)\nORDER BY calls_total DESC"
     }
   ],
   "pages": [

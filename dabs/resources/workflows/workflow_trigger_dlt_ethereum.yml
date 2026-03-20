@@ -3,9 +3,13 @@ resources:
     workflow_trigger_dlt_ethereum:
       name: "dm-trigger-dlt-ethereum"
 
-      # Sem schedule interno — ativado externamente pelo Airflow a cada 5 minutos.
-      # No Databricks Free Edition, DLT só suporta availableNow; cada run processa
-      # os dados disponíveis no momento e encerra. O Airflow garante a periodicidade.
+      # PAUSADO: workflow consolidado workflow_trigger_dlt_all.yml agora dispara
+      # ambos os pipelines (ethereum → app_logs) sequencialmente.
+      # Manter este workflow para trigger manual individual.
+      schedule:
+        quartz_cron_expression: "0 0/5 * * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED
 
       tasks:
         - task_key: trigger_pipeline_update

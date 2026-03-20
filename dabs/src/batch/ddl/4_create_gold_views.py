@@ -28,10 +28,10 @@ spark.sql(f"""
     to_address           AS contract_address,
     COUNT(*)             AS tx_count,
     SUM(CAST(value AS DOUBLE)) AS total_value_wei,
-    DATE_TRUNC('hour', kafka_timestamp) AS hour_bucket
+    DATE_TRUNC('hour', _ingested_at) AS hour_bucket
   FROM `{catalog}`.s_apps.transactions_fast
   WHERE to_address IS NOT NULL
-  GROUP BY to_address, DATE_TRUNC('hour', kafka_timestamp)
+  GROUP BY to_address, DATE_TRUNC('hour', _ingested_at)
 """)
 
 spark.sql(f"""

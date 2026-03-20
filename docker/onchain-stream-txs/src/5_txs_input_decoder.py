@@ -18,13 +18,11 @@ DynamoDB with a 24 h TTL so the API is not hammered repeatedly.
 See ``decode_inputs.md`` for the full design document.
 """
 
-import argparse
 import json
 import logging
 import os
 import uuid
 
-from configparser import ConfigParser
 from functools import lru_cache
 from logging import Logger
 from typing import Any, Dict, Optional
@@ -33,14 +31,11 @@ from eth_abi import decode as abi_decode
 from web3 import Web3
 
 from dm_chain_utils.dm_parameter_store import ParameterStoreClient
-from dm_chain_utils.dm_schema_reg_client import get_schema
-from dm_chain_utils.dm_kafka_client import KafkaHandler
-from dm_chain_utils.dm_logger import KafkaLoggingHandler
+from dm_chain_utils.dm_kinesis import KinesisHandler
+from dm_chain_utils.dm_cloudwatch_logger import CloudWatchLoggingHandler
 
 from utils_decode.abi_cache import ABICache
 from utils_decode.etherscan_multi import MultiKeyEtherscanClient
-
-from chain_extractor import ChainExtractor
 
 
 # ---------------------------------------------------------------------------
@@ -97,10 +92,10 @@ def _parse_top_level_types(args_str: str) -> list:
 # Main class
 # ---------------------------------------------------------------------------
 
-class TransactionInputDecoder(ChainExtractor):
+class TransactionInputDecoder:
     """
     Streaming job that decodes the ``input`` field of every non-deploy,
-    non-ETH-transfer transaction and publishes the result to Kafka.
+    non-ETH-transfer transaction and publishes the result to Kinesis.
 
     Uses:
       • ``ABICache``  (DynamoDB) — persistent, survives container restarts.
@@ -124,23 +119,22 @@ class TransactionInputDecoder(ChainExtractor):
         self._cnt_api_call  = 0
 
     # ------------------------------------------------------------------
-    # ChainExtractor interface
+    # Source / Sink interface
     # ------------------------------------------------------------------
 
     def src_config(self, src_properties: Dict[str, Any]) -> "TransactionInputDecoder":
-        self._consumer = src_properties["consumer"]
-        self._topic_in = src_properties["topic_in"]
-        self._consumer.subscribe([self._topic_in])
-        self.logger.info(f"Source configured — topic: {self._topic_in}")
+        self._kinesis_handler: KinesisHandler = src_properties["kinesis_handler"]
+        self._stream_in = src_properties["stream_in"]
+        self.logger.info(f"Source configured — Kinesis stream: {self._stream_in}")
         return self
 
     def sink_config(self, sink_properties: Dict[str, Any]) -> "TransactionInputDecoder":
-        self._producer  = sink_properties["producer"]
-        self._topic_out = sink_properties["topic_out"]
-        self.logger.info(f"Sink configured — topic: {self._topic_out}")
+        self._kinesis_handler_out: KinesisHandler = sink_properties["kinesis_handler"]
+        self._stream_out = sink_properties["stream_out"]
+        self.logger.info(f"Sink configured — Kinesis stream: {self._stream_out}")
         return self
 
-    def run(self, callback: Any) -> None:
+    def run(self) -> None:
         cache_stats = self._cache.stats()
         self.logger.info(
             f"Decoder started — DynamoDB cache: {cache_stats['cached_abis']} ABIs, "
@@ -151,8 +145,8 @@ class TransactionInputDecoder(ChainExtractor):
         skipped_count  = 0
         fallback_count = 0
 
-        for msg in self.consuming_topic(self._consumer):
-            tx = msg["value"]
+        for record in self._kinesis_handler.consume_stream(self._stream_in):
+            tx = json.loads(record["Data"])
 
             contract_address = tx.get("to", "")
             input_hex        = tx.get("input", "0x")
@@ -184,19 +178,17 @@ class TransactionInputDecoder(ChainExtractor):
             if result["decode_type"] == "partial":
                 fallback_count += 1
 
-            record = self._build_record(tx, contract_address, result)
-            if record is None:
+            out_record = self._build_record(tx, contract_address, result)
+            if out_record is None:
                 skipped_count += 1
                 continue
 
             try:
-                self._producer.produce(
-                    self._topic_out,
-                    key=tx["hash"],
-                    value=record,
-                    on_delivery=callback,
+                self._kinesis_handler_out.put_record(
+                    self._stream_out,
+                    data=json.dumps(out_record, default=str),
+                    partition_key=tx["hash"],
                 )
-                self._producer.flush()
                 decoded_count += 1
             except Exception as exc:
                 self.logger.error(f"Produce error for {tx.get('hash')}: {exc}")
@@ -352,26 +344,15 @@ class TransactionInputDecoder(ChainExtractor):
 
 if __name__ == "__main__":
 
-    APP_NAME            = "TRANSACTION_INPUT_DECODER"
-    NETWORK             = os.getenv("NETWORK", "mainnet")
-    KAFKA_BROKERS       = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
-    SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
-    TOPIC_LOGS          = os.getenv("TOPIC_LOGS")
-    TOPIC_TXS_DATA      = os.getenv("TOPIC_TXS_DATA",    "mainnet.4.transactions.data")
-    TOPIC_TXS_DECODED   = os.getenv("TOPIC_TXS_DECODED", "mainnet.5.transactions.input_decoded")
-    CONSUMER_GROUP      = os.getenv("CONSUMER_GROUP",     "cg_txs_input_decoder")
-    SSM_ETHERSCAN_PATH  = os.getenv("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
-    UNVERIFIED_TTL      = int(os.getenv("UNVERIFIED_TTL", "86400"))  # 24 h
+    APP_NAME             = "TRANSACTION_INPUT_DECODER"
+    NETWORK              = os.getenv("NETWORK", "mainnet")
+    CLOUDWATCH_LOG_GROUP = os.getenv("CLOUDWATCH_LOG_GROUP")
+    KINESIS_STREAM_TRANSACTIONS = os.getenv("KINESIS_STREAM_TRANSACTIONS")
+    KINESIS_STREAM_DECODED      = os.getenv("KINESIS_STREAM_DECODED")
+    SSM_ETHERSCAN_PATH   = os.getenv("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
+    UNVERIFIED_TTL       = int(os.getenv("UNVERIFIED_TTL", "86400"))  # 24 h
 
     PROC_ID = f"job-{str(uuid.uuid4())[:8]}"
-
-    parser = argparse.ArgumentParser(description=APP_NAME)
-    parser.add_argument("config_producer", type=argparse.FileType("r"), help="Config Producers")
-    parser.add_argument("config_consumer", type=argparse.FileType("r"), help="Config Consumers")
-    args   = parser.parse_args()
-    config = ConfigParser()
-    config.read_file(args.config_producer)
-    config.read_file(args.config_consumer)
 
     logging.basicConfig(
         level=logging.INFO,
@@ -379,34 +360,15 @@ if __name__ == "__main__":
     )
     logger = logging.getLogger(APP_NAME)
 
-    PRODUCER_CONF = {"client.id": PROC_ID, **KAFKA_BROKERS, **config["producer.general.config"]}
-    CONSUMER_CONF = {
-        "client.id": PROC_ID,
-        **KAFKA_BROKERS,
-        **config["consumer.general.config"],
-        "group.id": CONSUMER_GROUP,
-    }
+    # CloudWatch logging handler — replaces KafkaLoggingHandler
+    logger.addHandler(CloudWatchLoggingHandler(
+        log_group=CLOUDWATCH_LOG_GROUP,
+        log_stream=f"{APP_NAME.lower()}-{PROC_ID}",
+    ))
+    logger.info("CloudWatch logging handler configured.")
 
-    handler_kafka = KafkaHandler(logger, sc_url=SCHEMA_REGISTRY_URL)
-
-    # ---- Schemas ----
-    LOGS_SCHEMA_PATH    = "schemas/0_application_logs_avro.json"
-    TXS_SCHEMA_PATH     = "schemas/4_transactions_schema_avro.json"
-    DECODED_SCHEMA_PATH = "schemas/txs_contract_call_decoded.json"
-
-    schema_app_logs = get_schema(schema_name="application-logs-schema",  schema_path=LOGS_SCHEMA_PATH)
-    schema_txs      = get_schema(schema_name="transactions-schema",      schema_path=TXS_SCHEMA_PATH)
-    schema_decoded  = get_schema(schema_name="input-transaction-schema", schema_path=DECODED_SCHEMA_PATH)
-
-    # ---- Kafka logging handler ----
-    producer_logs = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_app_logs)
-    logger.addHandler(KafkaLoggingHandler(producer_logs, TOPIC_LOGS))
-    logger.info("Kafka logging handler configured.")
-
-    # ---- Kafka consumer / producer ----
-    consumer_txs     = handler_kafka.create_avro_consumer(CONSUMER_CONF, schema_txs)
-    producer_decoded = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_decoded)
-    logger.info("AVRO consumer/producer configured.")
+    kinesis_handler = KinesisHandler(logger)
+    logger.info("Kinesis handler configured.")
 
     # ---- ABI cache (DynamoDB) ----
     abi_cache = ABICache(logger, unverified_ttl=UNVERIFIED_TTL)
@@ -437,17 +399,17 @@ if __name__ == "__main__":
 
     # ---- Run ----
     src_properties = {
-        "consumer": consumer_txs,
-        "topic_in": TOPIC_TXS_DATA,
+        "kinesis_handler": kinesis_handler,
+        "stream_in": KINESIS_STREAM_TRANSACTIONS,
     }
     sink_properties = {
-        "producer":  producer_decoded,
-        "topic_out": TOPIC_TXS_DECODED,
+        "kinesis_handler": kinesis_handler,
+        "stream_out": KINESIS_STREAM_DECODED,
     }
 
     _ = (
         TransactionInputDecoder(logger, abi_cache, etherscan)
             .src_config(src_properties)
             .sink_config(sink_properties)
-            .run(callback=handler_kafka.message_handler)
+            .run()
     )

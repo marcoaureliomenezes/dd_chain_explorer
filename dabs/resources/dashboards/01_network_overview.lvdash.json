@@ -3,12 +3,12 @@
     {
       "name": "network_summary_24h",
       "displayName": "Resumo Rede — 24h",
-      "query": "SELECT\n  SUM(block_count)                             AS blocks_24h,\n  ROUND(AVG(avg_tx_per_block), 2)              AS avg_tx_per_block,\n  ROUND(AVG(avg_base_fee) / 1e9, 4)           AS avg_base_fee_gwei,\n  ROUND(AVG(avg_gas_used) / 1e6, 4)           AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 24 HOURS"
+      "query": "SELECT\n  SUM(block_count)                             AS blocks_24h,\n  ROUND(AVG(avg_tx_per_block), 2)              AS avg_tx_per_block,\n  ROUND(AVG(avg_base_fee) / 1e9, 4)           AS avg_base_fee_gwei,\n  ROUND(AVG(avg_gas_used) / 1e6, 4)           AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 30 DAYS"
     },
     {
       "name": "hourly_trend",
       "displayName": "Tendência Horária — 7 dias",
-      "query": "SELECT\n  hour_bucket,\n  block_count,\n  ROUND(avg_tx_per_block, 2)     AS avg_tx_per_block,\n  ROUND(avg_base_fee / 1e9, 4)  AS avg_base_fee_gwei,\n  ROUND(avg_gas_used / 1e6, 4)  AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 168 HOURS\nORDER BY hour_bucket ASC"
+      "query": "SELECT\n  hour_bucket,\n  block_count,\n  ROUND(avg_tx_per_block, 2)     AS avg_tx_per_block,\n  ROUND(avg_base_fee / 1e9, 4)  AS avg_base_fee_gwei,\n  ROUND(avg_gas_used / 1e6, 4)  AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 90 DAYS\nORDER BY hour_bucket ASC"
     },
     {
       "name": "recent_blocks",
