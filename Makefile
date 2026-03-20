@@ -64,12 +64,11 @@ dabs_deploy_dev_dashboards:
 TF_ARGS ?=
 TF_DIR  := services/prd
 
-# =============================================================================
-# GRUPO 1 — Recursos gratuitos: VPC + IAM + S3
-# Sem custo na AWS. Podem ficar sempre ativos.
-# Apply:   make tf_apply_free_resources
-# Destroy: make tf_destroy_free_resources
-# =============================================================================
+publish_apps:
+	# docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
+	# docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
+	docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
+	# docker push marcoaureliomenezes/spark-streaming-jobs:$(current_branch)
 
 tf_apply_free_resources:
 	@echo ">>> Aplicando recursos gratuitos: VPC + IAM + S3 ..."
@@ -78,12 +77,10 @@ tf_apply_free_resources:
 	cd $(TF_DIR)/4_s3  && terraform apply -auto-approve
 	@echo ">>> Recursos gratuitos: OK"
 
-tf_destroy_free_resources:
-	@echo ">>> Destruindo recursos gratuitos: S3 → IAM → VPC ..."
-	cd $(TF_DIR)/4_s3  && terraform destroy -auto-approve
-	cd $(TF_DIR)/2_iam && terraform destroy -auto-approve
-	cd $(TF_DIR)/1_vpc && terraform destroy -auto-approve
-	@echo ">>> Recursos gratuitos destruídos."
+deploy_dev_all:
+	# docker compose -f services/compose/python_streaming_apps_layer.yml up -d --build
+	docker compose -f services/compose/airflow_orchestration_layer.yml up -d --build
+	# docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
 
 # =============================================================================
 # GRUPO 2 — Recursos AWS pagos: Kinesis/SQS + DynamoDB + ECS + Lambda
