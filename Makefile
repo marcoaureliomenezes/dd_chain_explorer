@@ -3,27 +3,6 @@
 # Atalhos para operações de desenvolvimento e deploy.
 ################################################################################
 
-# Faz pull da imagem apache/spark usada pelo spark-master e spark-worker.
-# Execute uma vez por máquina: make setup_spark
-# setup_spark:
-# 	@docker pull apache/spark:3.5.8-scala2.12-java17-python3-ubuntu && echo "apache/spark:3.5.8 pronto."
-################################################################################
-# DEV: Infraestrutura local (Kafka + Redis + Spark)
-# Arquivo: services/dev/compose/local_services.yml
-################################################################################
-
-deploy_dev_infra:
-	@docker network create vpc_dm 2>/dev/null || true
-	@docker compose -f services/dev/compose/local_services.yml up -d
-
-
-stop_dev_infra:
-	@docker compose -f services/dev/compose/local_services.yml down
-
-watch_dev_infra:
-	watch docker compose -f services/dev/compose/local_services.yml ps
-
-
 ################################################################################
 # DEV: Aplicações Python de captura on-chain
 # Arquivo: services/dev/compose/app_services.yml
@@ -37,59 +16,6 @@ stop_dev_stream:
 
 watch_dev_stream:
 	watch docker compose -f services/dev/compose/app_services.yml ps
-
-################################################################################
-# DEV: Jobs Batch Python (kafka maintenance, test api keys)
-# Arquivo: services/dev/compose/batch_services.yml
-################################################################################
-
-deploy_dev_batch:
-	@docker compose -f services/dev/compose/batch_services.yml up --build
-
-stop_dev_batch:
-	@docker compose -f services/dev/compose/batch_services.yml down
-
-################################################################################
-# DEV: Build de imagens locais usadas pelo DockerOperator do Airflow
-# Execute antes de subir o Airflow: make build_local_images
-################################################################################
-
-build_local_images:
-	@echo ">>> Buildando local/onchain-batch-txs ..."
-        @docker build -f docker/onchain-batch-txs/Dockerfile -t local/onchain-batch-txs:latest .
-################################################################################
-# DEV: Airflow (LocalExecutor)
-# Arquivo: services/dev/compose/airflow_services.yml
-# Acesso: http://localhost:8090  (admin / admin)
-################################################################################
-
-deploy_dev_airflow:
-	@docker build -t local/airflow:latest docker/customized/airflow
-	@docker compose -f services/dev/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
-	@docker compose -f services/dev/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
-
-stop_dev_airflow:
-	@docker compose -f services/dev/compose/airflow_services.yml down
-
-logs_dev_airflow:
-	docker compose -f services/dev/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
-
-################################################################################
-# PRD: Airflow (LocalExecutor)
-# Arquivo: services/prd/compose/airflow_services.yml
-# Acesso: http://localhost:8091  (admin / <AIRFLOW_ADMIN_PASSWORD>)
-################################################################################
-
-deploy_prd_airflow:
-	@docker build -t local/airflow:latest docker/customized/airflow
-	@docker compose -f services/prd/compose/airflow_services.yml up airflow-init --exit-code-from airflow-init
-	@docker compose -f services/prd/compose/airflow_services.yml up -d airflow-scheduler airflow-webserver
-
-stop_prd_airflow:
-	@docker compose -f services/prd/compose/airflow_services.yml down
-
-logs_prd_airflow:
-	docker compose -f services/prd/compose/airflow_services.yml logs -f airflow-scheduler airflow-webserver
 
 # Deploy para DEV (Databricks Free Edition)
 dabs_deploy_dev:
@@ -136,7 +62,7 @@ dabs_deploy_dev_dashboards:
 ################################################################################
 
 TF_ARGS ?=
-TF_DIR  := services/prd/terraform
+TF_DIR  := services/prd
 
 # =============================================================================
 # GRUPO 1 — Recursos gratuitos: VPC + IAM + S3
@@ -160,41 +86,35 @@ tf_destroy_free_resources:
 	@echo ">>> Recursos gratuitos destruídos."
 
 # =============================================================================
-# GRUPO 2 — Recursos AWS pagos: MSK + ElastiCache + ECS
+# GRUPO 2 — Recursos AWS pagos: Kinesis/SQS + DynamoDB + ECS + Lambda
 #
 # Ordem de apply (dependências):
-#   1. MSK (kafka)  e ElastiCache (redis) — sem dependência entre si
-#   2. ECS Schema Registry                — precisa do MSK para bootstrapar
-#   3. ECS tasks de captura               — precisam do Schema Registry
-#
-# ATENÇÃO: MSK leva ~20 min para ficar ACTIVE. O apply aguarda automaticamente.
+#   1. Kinesis/SQS/Firehose/CloudWatch (3_kinesis_sqs)
+#   2. DynamoDB (9_dynamodb) — ECS tasks precisam do output dynamodb_table_name
+#   3. ECS Fargate (6_ecs) — tasks de captura streaming
+#   4. Lambda (10_lambda)
 #
 # Apply:   make tf_apply_aws_resources
 # Destroy: make tf_destroy_aws_resources
 # =============================================================================
 
 tf_apply_aws_resources:
-	@echo ">>> [1/3] MSK e ElastiCache ..."
-	cd $(TF_DIR)/3_msk         && terraform apply -auto-approve
-	cd $(TF_DIR)/8_elasticache && terraform apply -auto-approve
-	@echo ">>> [2/3] ECS: Schema Registry ..."
-	cd $(TF_DIR)/6_ecs && terraform apply -auto-approve \
-	  -target=aws_ecs_cluster.dm \
-	  -target=aws_ecs_cluster_capacity_providers.dm \
-	  -target=aws_cloudwatch_log_group.ecs_apps \
-	  -target=aws_service_discovery_private_dns_namespace.dm \
-	  -target=aws_service_discovery_service.schema_registry \
-	  -target=aws_ecs_task_definition.schema_registry \
-	  -target=aws_ecs_service.schema_registry
-	@echo ">>> [3/3] ECS: Tasks de captura de dados ..."
-	cd $(TF_DIR)/6_ecs && terraform apply -auto-approve
+	@echo ">>> [1/4] Kinesis + SQS + Firehose ..."
+	cd $(TF_DIR)/3_kinesis_sqs && terraform apply -auto-approve
+	@echo ">>> [2/4] DynamoDB ..."
+	cd $(TF_DIR)/9_dynamodb    && terraform apply -auto-approve
+	@echo ">>> [3/4] ECS Fargate ..."
+	cd $(TF_DIR)/6_ecs         && terraform apply -auto-approve
+	@echo ">>> [4/4] Lambda ..."
+	cd $(TF_DIR)/10_lambda     && terraform apply -auto-approve
 	@echo ">>> Recursos AWS: OK"
 
 tf_destroy_aws_resources:
-	@echo ">>> Destruindo recursos AWS: ECS → ElastiCache → MSK ..."
+	@echo ">>> Destruindo recursos AWS: Lambda → DynamoDB → ECS → Kinesis ..."
+	cd $(TF_DIR)/10_lambda     && terraform destroy -auto-approve
+	cd $(TF_DIR)/9_dynamodb    && terraform destroy -auto-approve
 	cd $(TF_DIR)/6_ecs         && terraform destroy -auto-approve
-	cd $(TF_DIR)/8_elasticache && terraform destroy -auto-approve
-	cd $(TF_DIR)/3_msk         && terraform destroy -auto-approve
+	cd $(TF_DIR)/3_kinesis_sqs && terraform destroy -auto-approve
 	@echo ">>> Recursos AWS destruídos."
 
 # =============================================================================
@@ -236,42 +156,16 @@ prod_destroy_infra:
 	$(MAKE) tf_destroy_free_resources
 	@echo "===== Destroy PRD concluído ====="
 
-################################################################################
-# Schema Registry — sincronização de schemas Avro
-#
-# Registra todos os schemas Avro do diretório canonical
-# (docker/onchain-stream-txs/src/schemas/) em uma instância do
-# Confluent Schema Registry, configurando compatibilidade BACKWARD.
-#
-# Uso:
-#   make sync_schemas_dev           # SR local (DEV)
-#   make sync_schemas_prod SR_URL=http://<host>:8081  # SR no ECS (PROD via túnel/VPN)
-################################################################################
-
-SR_URL ?= http://localhost:8081
-
-sync_schemas_dev:
-	@echo ">>> Sincronizando schemas Avro → Schema Registry DEV ($(SR_URL)) ..."
-	python scripts/sync_avro_schemas.py --sr-url $(SR_URL)
-
-sync_schemas_prod:
-	@if [ -z "$(SR_URL)" ] || [ "$(SR_URL)" = "http://localhost:8081" ]; then \
-	  echo "ERRO: passe a URL do SR de PROD: make sync_schemas_prod SR_URL=http://<host>:8081"; \
-	  exit 1; \
-	fi
-	@echo ">>> Sincronizando schemas Avro → Schema Registry PROD ($(SR_URL)) ..."
-	python scripts/sync_avro_schemas.py --sr-url $(SR_URL)
-
 # ---------------------------------------------------------------------------
-# Inicialização — necessário após clonar o repo ou atualizar providers
+# Inicialização PRD — necessário após clonar o repo ou atualizar providers
 # ---------------------------------------------------------------------------
 
 tf_init_prd:
 	@for dir in $(TF_DIR)/0_remote_state $(TF_DIR)/1_vpc $(TF_DIR)/2_iam \
-	            $(TF_DIR)/3_msk $(TF_DIR)/4_s3 $(TF_DIR)/6_ecs \
-	            $(TF_DIR)/7_databricks $(TF_DIR)/8_elasticache; do \
+	            $(TF_DIR)/3_kinesis_sqs $(TF_DIR)/4_s3 $(TF_DIR)/6_ecs \
+	            $(TF_DIR)/7_databricks $(TF_DIR)/9_dynamodb $(TF_DIR)/10_lambda; do \
 	  echo "=== terraform init: $$dir ==="; \
-	  cd $$dir && terraform init -input=false && cd ../..; \
+	  (cd $$dir && terraform init -input=false); \
 	done
 
 tf_apply_remote_state:
@@ -279,58 +173,67 @@ tf_apply_remote_state:
 
 # =============================================================================
 # TERRAFORM DEV — AWS infra para Databricks Free Edition
-# Diretório: services/dev/terraform/
+# Diretório: services/dev/terraform/1_aws_core/
 #
-# Cria bucket S3 para ingestão Kafka → S3 → Databricks Free Edition.
-# Autenticação AWS: usa o perfil local (~/.aws/credentials).
+# Recursos: S3 + Kinesis/SQS + DynamoDB + Lambda + CloudWatch
+# Estado:   S3 remoto (bucket dm-chain-explorer-terraform-state, key dev/)
+# Autenticação AWS: perfil padrão (~/.aws/credentials)
 #
 # Apply:   make dev_tf_apply
 # Destroy: make dev_tf_destroy
 # =============================================================================
 
+DEV_TF_DIR := services/dev/terraform/1_aws_core
+
 dev_tf_init:
-	cd services/dev/terraform && terraform init -input=false
+	cd $(DEV_TF_DIR) && terraform init -input=false
 
 dev_tf_plan:
-	cd services/dev/terraform && terraform plan
+	cd $(DEV_TF_DIR) && terraform plan
 
 dev_tf_apply:
-	cd services/dev/terraform && terraform apply -auto-approve
+	cd $(DEV_TF_DIR) && terraform apply -auto-approve
 
 dev_tf_destroy:
-	cd services/dev/terraform && terraform destroy -auto-approve
+	cd $(DEV_TF_DIR) && terraform destroy -auto-approve
 
 dev_tf_output:
-	cd services/dev/terraform && terraform output
+	cd $(DEV_TF_DIR) && terraform output
 
 # =============================================================================
-# DEV: Ingestão Kafka → S3 (Spark local)
+# TERRAFORM HML — AWS infra persistente para ambiente de homologação
+# Diretório: services/hml/1_aws_core/
 #
-# Pré-requisitos:
-#   1. make dev_tf_apply      (cria bucket S3 + IAM)
-#   2. Preencha services/dev/compose/conf/dev.s3.conf com as credenciais
-#   3. make deploy_dev_infra  (Kafka + Redis rodando)
-#   4. make deploy_dev_stream (apps de captura publicando no Kafka)
+# Recursos persistentes: S3 (dm-chain-explorer-hml-ingestion) + IAM roles ECS
+# Recursos efêmeros (criados/destruídos por CI/CD): Kinesis, SQS, CloudWatch, DynamoDB
+# Estado:   S3 remoto (bucket dm-chain-explorer-terraform-state, key hml/)
+# Autenticação AWS: perfil padrão (~/.aws/credentials)
 #
-# O job spark-app-kafka-s3 lê 5 tópicos Kafka e escreve Parquet no S3.
+# Apply:   make hml_tf_apply
+# Destroy: make hml_tf_destroy
 # =============================================================================
 
-start_kafka_s3:
-	@echo ">>> Iniciando job Spark: Kafka → S3 multiplex ..."
-	@docker compose -f services/dev/compose/app_services.yml up -d spark-app-kafka-s3
-	@echo ">>> Job iniciado. Logs: docker logs -f spark-app-kafka-s3"
+HML_TF_DIR := services/hml/1_aws_core
 
-stop_kafka_s3:
-	@docker compose -f services/dev/compose/app_services.yml stop spark-app-kafka-s3
+hml_tf_init:
+	cd $(HML_TF_DIR) && terraform init -input=false
 
-logs_kafka_s3:
-	docker logs -f spark-app-kafka-s3
+hml_tf_plan:
+	cd $(HML_TF_DIR) && terraform plan
+
+hml_tf_apply:
+	cd $(HML_TF_DIR) && terraform apply -auto-approve
+
+hml_tf_destroy:
+	cd $(HML_TF_DIR) && terraform destroy -auto-approve
+
+hml_tf_output:
+	cd $(HML_TF_DIR) && terraform output
 
 ################################################################################
 # Build e push de imagens Docker (uso manual; CI/CD faz isso automaticamente)
 # Uso: make build_stream VERSION=1.0.0
 #      make push_stream  VERSION=1.0.0
-#      make build_and_push_stream VERSION=1.0.0
 # Se VERSION não for passado, usa 'latest'.
 ################################################################################
 
@@ -339,18 +242,10 @@ VERSION ?= latest
 build_stream:
 	docker build -t marcoaureliomenezes/onchain-stream-txs:$(VERSION) ./docker/onchain-stream-txs
 
-build_batch:
-	docker build -t marcoaureliomenezes/onchain-batch-txs:$(VERSION) ./docker/onchain-batch-txs
-
 push_stream:
 	docker push marcoaureliomenezes/onchain-stream-txs:$(VERSION)
 
-push_batch:
-	docker push marcoaureliomenezes/onchain-batch-txs:$(VERSION)
-
 build_and_push_stream: build_stream push_stream
-
-build_and_push_batch: build_batch push_batch
 
 ################################################################################
 # PROD: Observabilidade — scripts de monitoramento
@@ -364,10 +259,3 @@ prod_logs_ecs:
 prod_logs_ecs_svc:
 	python scripts/prod_ecs_logs.py --lines 100 --service $(SVC)
 
-# Métricas e logs do MSK (janela = 30 min por padrão)
-prod_msk_metrics:
-	python scripts/prod_msk_metrics.py --minutes 30
-
-# Janela maior: make prod_msk_metrics_1h
-prod_msk_metrics_1h:
-	python scripts/prod_msk_metrics.py --minutes 60

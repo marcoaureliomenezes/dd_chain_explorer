@@ -61,7 +61,7 @@ services/dev/compose/conf/dev.secrets.conf
 services/prd/compose/conf/prd.secrets.conf
 
 # Relatórios de segurança com exemplos de chaves — nunca versionados
-security.md
+/security.md
 *_security_scan.md
 
 # Airflow runtime config — varia por ambiente e contém credenciais de BD
