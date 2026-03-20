@@ -4,7 +4,7 @@
 
 O processamento analítico é implementado no **Databricks** com **Delta Live Tables (DLT)** seguindo a arquitetura medalhão (Bronze → Silver → Gold). Dois pipelines DLT processam os dados, complementados por workflows batch para ingestão de contratos, setup/teardown e manutenção.
 
-A orquestração é feita pelo **Apache Airflow**, que aciona os pipelines DLT periodicamente e gerencia os workflows batch.
+A orquestração é feita nativamente pelo **Databricks Workflows** (schedules Quartz cron) e **AWS Lambda + EventBridge** para ingestão batch de contratos.
 
 ---
 
@@ -18,8 +18,8 @@ Pipeline unificado Bronze + Silver + Gold definido em `4_pipeline_ethereum.py`. 
 
 | Parâmetro | DEV | PROD |
 |-----------|-----|------|
-| `source.type` | `s3` (Auto Loader sobre Parquet) | `kafka` (MSK streaming direto) |
-| `dlt_continuous` | `false` (triggered by Airflow a cada 5 min) | `true` (streaming contínuo) |
+| `source.type` | `s3` (Auto Loader sobre NDJSON) | `s3` (Auto Loader sobre NDJSON via Firehose) |
+| `dlt_continuous` | `false` (triggered por Workflow `dm-trigger-dlt-all` a cada 5 min) | `false` (triggered por Workflow schedule) |
 | `dlt_development` | `true` | `false` |
 | `serverless` | `true` | `true` |
 | Catalog | `dev` | `dd_chain_explorer` |
@@ -275,63 +275,49 @@ full_refresh_ethereum → full_refresh_app_logs
 
 ### 3.8 Trigger DLT (`dm-trigger-dlt-ethereum` / `dm-trigger-dlt-app-logs`)
 
-Jobs que disparam `pipeline_task` nos pipelines DLT com `full_refresh: false`. Sem schedule interno — acionados externamente pelo Airflow.
+Jobs individuais que disparam `pipeline_task` nos pipelines DLT com `full_refresh: false`. **PAUSADOS** — substituídos pelo workflow consolidado `dm-trigger-dlt-all` que dispara ambos sequencialmente.
 
 ---
 
-## 4. Orquestração (Airflow)
+## 4. Orquestração (Databricks Workflows + Lambda)
 
-### 4.1 DAGs
+### 4.1 Workflows Agendados
 
-| DAG | Schedule | Descrição |
-|-----|----------|-----------|
-| `pipeline_5min_dlt_pipelines` | `*/5 * * * *` | Aciona ambos pipelines DLT (ethereum + app_logs) em paralelo |
-| `pipeline_hourly_2_contracts_transactions` | `@hourly` | Busca txs de contratos populares via Etherscan → S3 → Bronze → Silver |
-| `pipeline_periodic_maintenance_streaming_tables` | `0 */12 * * *` | Aciona workflow `dm-iceberg-maintenance` (OPTIMIZE + VACUUM) |
-| `pipeline_eventual_1_create_environment` | `@once` | Setup: cria tópicos Kafka + tabelas Databricks |
-| `pipeline_eventual_2_delete_environment` | `@once` | Teardown: deleta tópicos, S3, checkpoints, DynamoDB, tabelas |
-| `pipeline_streaming_1_spark_jobs` | `@once` | Lança job Spark Streaming (multiplex Kafka→S3) || `pipeline_backfill_reprocess` | manual | Reprocessamento histórico via full_refresh DLT — acionado manualmente quando schemas ou lógica mudarem || `dag_zn_test` | `@once` | Teste de DockerOperator no Airflow |
+| Workflow | Schedule | Descrição |
+|----------|----------|----------|
+| `dm-trigger-dlt-all` | A cada 5 min | Dispara pipelines DLT Ethereum → App Logs sequencialmente |
+| `dm-periodic-processing` | A cada 1h | get_popular_contracts → ingest_contracts_txs → S3→Bronze → Bronze→Silver → SCD2 |
+| `dm-iceberg-maintenance` | A cada 12h (4 AM/PM) | OPTIMIZE + VACUUM nas tabelas Delta |
 
-### 4.2 DAG `pipeline_5min_dlt_pipelines` (Detalhamento)
+### 4.2 Lambda + EventBridge
 
-```mermaid
-flowchart LR
-    A["Airflow<br/>(cada 5 min)"] --> B["TRIGGER_DLT_ETHEREUM<br/>DatabricksRunNowOperator"]
-    A --> C["TRIGGER_DLT_APP_LOGS<br/>DatabricksRunNowOperator"]
+| Recurso | Schedule | Descrição |
+|---------|----------|----------|
+| Lambda `contracts-ingestion` | A cada 1h (EventBridge) | Etherscan API → JSON → S3 `batch/` |
 
-    B --> D["Pipeline dm-ethereum<br/>(availableNow)"]
-    C --> E["Pipeline dm-app-logs<br/>(availableNow)"]
+### 4.3 Workflows Manuais
 
-    D --> F["Bronze → Silver → Gold"]
-    E --> G["Silver logs → Gold API keys"]
-```
+| Workflow | Descrição |
+|----------|----------|
+| `dm-ddl-setup` | Criação de tabelas Databricks |
+| `dm-teardown` | Remoção de tabelas |
+| `dm-dlt-full-refresh` | Reprocessamento completo DLT (full_refresh) |
+| `dm-batch-s3-to-bronze` | Carga manual S3 → Bronze |
+| `dm-batch-bronze-to-silver` | Carga manual Bronze → Silver |
 
-Ambas tasks executam em **paralelo**. Cada pipeline roda no modo `availableNow` (processa dados disponíveis e encerra) — workaround para Databricks Free Edition que não suporta DLT contínuo.
+### 4.4 Scripts de Limpeza (standalone)
 
-### 4.3 DAG `pipeline_hourly_2_contracts_transactions` (Detalhamento)
-
-```mermaid
-flowchart LR
-    S["STARTING_TASK"] --> F["FETCH_CONTRACTS_TXS<br/>(DockerOperator)<br/>Etherscan → S3 JSON"]
-    F --> LB["LOAD_BRONZE<br/>(DatabricksRunNow)<br/>S3 → Bronze"]
-    LB --> PS["PROCESS_SILVER<br/>(DatabricksRunNow)<br/>Bronze → Silver"]
-    PS --> E["FINAL_TASK"]
-```
-
-### 4.4 DAG `pipeline_eventual_2_delete_environment` (Detalhamento)
+| Script | Descrição |
+|--------|----------|
+| `scripts/environment/cleanup_s3.py` | Deleta objetos S3 por prefixo |
+| `scripts/environment/cleanup_dynamodb.py` | Deleta todos itens de uma tabela DynamoDB |
 
 ```mermaid
 flowchart LR
-    S["starting_task"] --> DK["delete_kafka_topics"]
-    S --> DS["delete_s3_raw_data"]
-    S --> DDB["DELETE_DATABRICKS_TABLES"]
-    S --> CD["cleanup_dynamodb"]
-    
-    DK --> F["FINAL_TASK"]
-    DS --> DC["delete_spark_checkpoints"]
-    DC --> F
-    DDB --> F
-    CD --> F
+    EB["EventBridge<br/>(cada 1h)"] --> LAMBDA["Lambda<br/>contracts-ingestion"]
+    LAMBDA --> S3["S3 batch/"]
+    DW["Databricks Workflow<br/>(cada 5 min)"] --> DLT["DLT Ethereum + App Logs"]
+    DW2["Databricks Workflow<br/>(cada 1h)"] --> PROC["S3 → Bronze → Silver → Gold"]
 ```
 
 ---
@@ -362,12 +348,12 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 
 | Aspecto | DEV | PROD |
 |---------|-----|------|
-| **Fonte Bronze** | S3 Parquet via Auto Loader (`cloudFiles`) | Kafka MSK streaming direto |
-| **DLT Mode** | Triggered (Airflow a cada 5 min, `availableNow`) | Contínuo (`continuous: true`) |
+| **Fonte Bronze** | S3 NDJSON via Auto Loader (`cloudFiles`) | S3 NDJSON via Auto Loader (Firehose) |
+| **DLT Mode** | Triggered (Workflow a cada 5 min, `availableNow`) | Triggered (Workflow schedule) |
 | **Development Flag** | `true` (permite refresh rápido) | `false` |
 | **Workers** | 0 (single-node) | 1+ |
 | **Catalog** | `dev` | `dd_chain_explorer` |
-| **MSK IAM Auth** | N/A (sem Kafka direto) | `SASL_SSL` + `AWS_MSK_IAM` |
+| **Batch Ingestion** | Manual / scripts | Lambda + EventBridge (hourly) |
 
 ---
 
@@ -387,15 +373,13 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 | Batch scripts | `dabs/src/batch/batch_contracts/`, `ddl/`, `maintenance/`, `periodic/` |
 | SCD Type 2 popular contracts | `dabs/src/batch/periodic/3_popular_contracts_scd2.py` |
 | Workflow Full Refresh DLT | `dabs/resources/workflows/workflow_dlt_full_refresh.yml` |
-| Airflow DAGs | `mnt/airflow/dags/dag_5min_dlt_ethereum.py`, `dag_hourly_2_contracts_transactions.py`, `dag_periodic_maintenance_streaming_tables.py`, `dag_eventual_1_create_environment.py`, `dag_eventual_2_delete_environment.py`, `dag_streaming_1_spark_jobs.py` |
-| Airflow DAG Backfill | `mnt/airflow/dags/dag_backfill_reprocess.py` |
-| Airflow Config | `mnt/airflow/airflow.cfg` |
-| Airflow Compose DEV | `services/dev/compose/airflow_services.yml` |
-| Airflow Compose PRD | `services/prd/compose/airflow_services.yml` |
+| Lambda Ingestion | `lambda/contracts_ingestion/handler.py` |
+| Terraform Lambda | `services/prd/10_lambda/lambda_contracts_ingestion.tf` |
+| Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
 
 ---
 
 ## TODOs — Processamento de Dados
 
-- [ ] **TODO-P01** 🔴 P0: Validar DLT contínuo end-to-end com MSK + IAM auth em PROD. Configurado em `dabs/databricks.yml` (`prod` target: `dlt_continuous: true`, `source_type: kafka`), mas pendente validação E2E em ambiente PROD real. Prioridade elevada de P2 para P0 — blocker para validação do ambiente de produção (TODO-O12).
-- [ ] **TODO-P09**: Avaliar migração do Airflow para MWAA (Managed Workflows for Apache Airflow) em PROD para maior resiliência. Análise de custo/benefício pendente.
+- [ ] **TODO-P01** 🔴 P0: Validar DLT triggered end-to-end em PROD. Configurado em `dabs/databricks.yml` (`prod` target), pendente validação E2E em ambiente PROD real. Blocker para validação do ambiente de produção (TODO-O12).
+- [x] **TODO-P09**: ~~Avaliar migração do Airflow para MWAA~~ — Cancelado: Airflow removido. Orquestração migrada para Databricks Workflows + Lambda (EventBridge). Ver `docs/rearchitecting_airflow.md`.

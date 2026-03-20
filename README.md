@@ -33,25 +33,26 @@ Extrair e enriquecer dados de blocos e transações da blockchain Ethereum para 
 
 ```
 Blockchain (Ethereum Mainnet)
-         │   APIs (Alchemy / Infura)
+         │   APIs (Alchemy / Infura / Etherscan)
          ▼
-   ┌─────────────┐
-   │ ECS Fargate  │  4 apps Python (PROD)
-   │              │  Docker Compose (DEV)
-   └──────┬───────┘
-          │ Kafka (MSK em PROD / local em DEV)
-          ▼
-   ┌─────────────────────────────────┐
-   │  Databricks                     │
-   │  Delta Live Tables (streaming)  │  5 pipelines contínuos
-   │  ─────────────────────────────  │
-   │  Bronze → Silver                │
-   │  Workflows Batch                │  DDL · Periódico · Manutenção
-   └─────────────────────────────────┘
+   ┌──────────────────┐     ┌───────────────────────┐
+   │ ECS Fargate       │     │ Lambda                 │
+   │ 5 apps Python     │     │ contracts-ingestion    │
+   │ (streaming)       │     │ (hourly, EventBridge)  │
+   └──────┬────────────┘     └──────────┬────────────┘
+          │ Kinesis/SQS/Firehose        │ S3 (batch/)
+          ▼                             ▼
+   ┌─────────────────────────────────────────────┐
+   │  Databricks                                  │
+   │  Delta Live Tables (streaming)  │  DLT Auto  │
+   │  ─────────────────────────────  │  Loader    │
+   │  Bronze → Silver → Gold                      │
+   │  Workflows (schedules nativos)               │
+   └──────────────────────────────────────────────┘
           │
           ▼
    Unity Catalog (Delta Lake)
-   b_fast · bronze · s_apps · s_logs · gold
+   b_ethereum · b_app_logs · s_apps · s_logs · gold
 ```
 
 ---
@@ -62,15 +63,16 @@ Blockchain (Ethereum Mainnet)
 |-----------|-----------|
 | Cloud | AWS (`sa-east-1`) |
 | IaC | Terraform >= 1.3 (7 módulos) |
-| Mensageria | Amazon MSK (Kafka) + AWS Glue Schema Registry |
-| Processamento streaming | Databricks Delta Live Tables |
-| Processamento batch | Databricks Workflows |
+| Mensageria | AWS Kinesis Data Streams + SQS + Firehose |
+| Processamento streaming | Databricks Delta Live Tables (Auto Loader) |
+| Processamento batch | Databricks Workflows (schedules nativos) |
+| Ingestão batch | AWS Lambda + EventBridge Scheduler |
 | Armazenamento | Amazon S3 + Delta Lake (Unity Catalog) |
-| Apps de captura | Python 3.10, `web3.py`, `confluent-kafka`, `boto3` |
+| Apps de captura | Python 3.12, `web3.py`, `boto3` |
 | Containerização | Docker · ECS Fargate |
 | Deploy Databricks | Databricks Asset Bundles (DABs) + CLI |
-| CI/CD | GitHub Actions (3 workflows) |
-| Gerenciamento de API keys | Amazon DynamoDB (tabelas on-demand) |
+| CI/CD | GitHub Actions |
+| State management | Amazon DynamoDB (single-table, on-demand) |
 
 ---
 
@@ -88,21 +90,22 @@ dd_chain_explorer/
 │       └── batch/               # Notebooks DDL, periódico, manutenção
 │
 ├── docker/
-│   ├── onchain-stream-txs/      # 4 apps Python de captura contínua
-│   └── onchain-batch-txs/       # App de ingestão batch + manutenção Kafka/S3
+│   └── onchain-stream-txs/      # 5 apps Python de captura contínua (streaming)
 │
-├── services/compose/
-│   ├── local_services.yml       # Kafka + DynamoDB local (DEV)
-│   ├── python_streaming_apps_layer.yml  # Apps Python em DEV
-│   └── conf/                    # Variáveis de ambiente DEV
+├── lambda/
+│   └── contracts_ingestion/     # Lambda: Etherscan → S3 (hourly, EventBridge)
 │
-├── terraform_prd/               # Infra PRD: 10 módulos (S3 state → VPC → IAM → MSK → S3 → ECS → Databricks → DynamoDB → Lambda)
-│   └── [0-9]_*/                 #   Destruir tudo: make prod_destroy_infra
+├── scripts/
+│   └── environment/             # cleanup_s3.py, cleanup_dynamodb.py
 │
-├── terraform_dev/               # Infra DEV: Databricks Free Edition
-│   └── *.tf                     #   Criar: make dev_tf_apply | Destruir: make dev_tf_destroy
+├── services/
+│   ├── dev/compose/             # local_services.yml, app_services.yml
+│   └── prd/                     # Terraform PRD: 10 módulos
 │
-├── docs/to-be/                  # Documentação técnica completa ← ver abaixo
+├── utils/
+│   └── src/dm_chain_utils/      # Biblioteca Python compartilhada
+│
+├── docs/                        # Documentação técnica completa
 └── Makefile                     # Atalhos para todas as operações
 ```
 
@@ -120,25 +123,16 @@ databricks --version                         # Databricks CLI >= 0.218.0
 ### 1. Infraestrutura local
 
 ```bash
-docker network create vpc_dm
-make deploy_dev_infra          # Kafka + Schema Registry + DynamoDB local
+make deploy_dev_infra          # Rede Docker vpc_dm + serviços locais
 ```
 
-### 2. Criar tópicos Kafka
+### 2. Apps Python de captura (streaming)
 
 ```bash
-docker compose -f services/compose/python_streaming_apps_layer.yml \
-  run --rm onchain-batch-txs \
-  python /app/kafka_maintenance/0_create_topics.py
+make deploy_dev_stream         # sobe os 5 serviços de captura on-chain
 ```
 
-### 3. Apps Python de captura
-
-```bash
-make deploy_dev_stream         # sobe os 4 serviços de captura on-chain
-```
-
-### 4. DABs no Databricks Free Edition
+### 3. DABs no Databricks Free Edition
 
 ```bash
 # Configure dev_workspace_host em dabs/databricks.yml
@@ -178,9 +172,9 @@ git push origin feature/minha-alteracao
 ### DEV — Infraestrutura local
 
 ```bash
-make deploy_dev_infra          # Kafka + DynamoDB local
+make deploy_dev_infra          # Rede Docker + serviços locais
 make stop_dev_infra            # Para infraestrutura
-make deploy_dev_stream         # Apps Python de captura
+make deploy_dev_stream         # Apps Python de captura (streaming)
 make stop_dev_stream           # Para apps Python
 ```
 
@@ -194,14 +188,14 @@ make dabs_run_dev JOB=<nome>   # Executa workflow em DEV
 make dabs_status_dev           # Status dos recursos em DEV
 ```
 
-Nomes de jobs disponíveis: `dm-ddl-setup`, `dm-periodic-processing`, `dm-iceberg-maintenance`, `dm-teardown`
+Nomes de jobs disponíveis: `dm-ddl-setup`, `dm-periodic-processing`, `dm-iceberg-maintenance`, `dm-teardown`, `dm-trigger-dlt-all`
 
 ### Terraform
 
 ```bash
-make tf_init_all               # Init de todos os módulos
-make tf_plan_vpc && make tf_apply_vpc
-make tf_plan_msk && make tf_apply_msk
+make tf_init_prd               # Init de todos os módulos PRD
+make tf_apply_free_resources   # VPC + IAM + S3 (custo zero)
+make tf_apply_databricks       # Databricks workspace
 ```
 
 ---
@@ -210,11 +204,11 @@ make tf_plan_msk && make tf_apply_msk
 
 | Documento | Conteúdo |
 |-----------|---------|
-| [gitflow.md](docs/to-be/gitflow.md) | Gitflow e os 3 pipelines de CI/CD (GitHub Actions) |
-| [infrastructure/dev_environment.md](docs/to-be/infrastructure/dev_environment.md) | Ambiente DEV local: Docker Compose, tópicos Kafka, DABs |
-| [infrastructure/prod_environment.md](docs/to-be/infrastructure/prod_environment.md) | Infraestrutura PROD: todos os 7 módulos Terraform, ECS, MSK, DynamoDB, Databricks |
-| [application/data_capture.md](docs/to-be/application/data_capture.md) | Apps Python: `mined_blocks_watcher`, `block_data_crawler`, `mined_txs_crawler`, `batch_ingestion` |
-| [application/data_processing_stream.md](docs/to-be/application/data_processing_stream.md) | 5 pipelines DLT: schemas das tabelas Bronze e Silver |
-| [application/data_processing_batch.md](docs/to-be/application/data_processing_batch.md) | 4 workflows batch: DDL, periódico (Etherscan), manutenção (OPTIMIZE/VACUUM) |
-| [workflows/dlts.md](docs/to-be/workflows/dlts.md) | Referência rápida dos DLT pipelines |
-| [workflows/jobs.md](docs/to-be/workflows/jobs.md) | Referência rápida dos Databricks Workflows |
+| [01_architecture.md](docs/01_architecture.md) | Arquitetura geral: captura, streaming, processamento, orquestração |
+| [02_data_capture.md](docs/02_data_capture.md) | Apps Python de streaming + Lambda batch + scripts de ambiente |
+| [03_data_processing.md](docs/03_data_processing.md) | DLT pipelines: schemas Bronze, Silver, Gold |
+| [04_data_ops.md](docs/04_data_ops.md) | CI/CD, deploy, monitoramento |
+| [05_data_serving.md](docs/05_data_serving.md) | Dashboards e APIs |
+| [06_fin_ops.md](docs/06_fin_ops.md) | Análise de custos AWS + Databricks |
+| [07_roadmap.md](docs/07_roadmap.md) | Roadmap e TODOs por área |
+| [rearchitecting_airflow.md](docs/rearchitecting_airflow.md) | Plano de migração Airflow → Databricks Workflows + Lambda |
