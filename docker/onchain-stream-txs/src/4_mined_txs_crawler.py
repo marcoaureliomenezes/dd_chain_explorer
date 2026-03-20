@@ -1,71 +1,44 @@
-import argparse
 import json
 import logging
 import os
 import time
 import uuid
 
-from configparser import ConfigParser
 from logging import Logger
 from typing import Any, Dict
 
-from confluent_kafka import Producer as PlainProducer
 from requests import HTTPError
 from dm_chain_utils.dm_dynamodb import DMDynamoDB
 from dm_chain_utils.dm_web3_client import Web3Handler
-from dm_chain_utils.dm_schema_reg_client import get_schema
-from dm_chain_utils.dm_kafka_client import KafkaHandler
-from dm_chain_utils.dm_msk_iam import get_msk_iam_config
+from dm_chain_utils.dm_sqs import SQSHandler
+from dm_chain_utils.dm_kinesis import KinesisHandler
+from dm_chain_utils.dm_cloudwatch_logger import CloudWatchLoggingHandler
 from dm_chain_utils.api_keys_manager import APIKeysManager
-from dm_chain_utils.dm_logger import KafkaLoggingHandler
-
-from chain_extractor import ChainExtractor
 
 
-class RawTransactionsProcessor(ChainExtractor):
+class RawTransactionsProcessor:
 
   def __init__(self, logger: Logger):
     self.logger = logger
 
   def src_config(self, src_properties: Dict[str, Any]):
-    self.consumer_txs_hash_ids = src_properties['consumer_txs_hash_ids']
-    topic_txs_hash_ids = src_properties['topic_txs_hash_ids']
-    self.consumer_txs_hash_ids.subscribe([topic_txs_hash_ids])
-    self.logger.info(f"Crawling transactions from topic: {topic_txs_hash_ids}")
+    self.sqs_handler: SQSHandler = src_properties['sqs_handler']
+    self.sqs_queue_url = src_properties['sqs_queue_url']
+    self.logger.info(f"Crawling transactions from SQS: {self.sqs_queue_url.split('/')[-1]}")
     self.web3 = src_properties["web3_handler"]
     self.actual_api_key = src_properties["actual_api_key"]
-    #self.node_conn.get_node_connection(api_key_name, 'infura')
     return self
 
 
   def sink_config(self, sink_properties: Dict[str, Any]):
     self.api_keys_manager = sink_properties['api_keys_manager']
-    self.producer_txs_data = sink_properties['producer_txs_data']
-    self.topic_txs_data = sink_properties['topic_txs_data']
-    self.producer_dlq = sink_properties.get('producer_dlq')   # optional — absent in dev without TOPIC_DLQ
-    self.topic_dlq = sink_properties.get('topic_dlq')
+    self.kinesis_handler: KinesisHandler = sink_properties['kinesis_handler']
+    self.kinesis_stream_txs = sink_properties['kinesis_stream_txs']
     return self
 
   def _send_to_dlq(self, tx_hash: str, reason: str) -> None:
-    """Publishes a failed transaction to the Dead Letter Queue topic.
-
-    No-ops silently if the DLQ producer was not configured (e.g. local dev
-    without TOPIC_DLQ env var). The message is a plain JSON string so it can
-    be consumed without a Schema Registry by any debugging consumer.
-    """
-    if not self.producer_dlq or not self.topic_dlq:
-      return
-    payload = json.dumps({
-      "tx_hash": tx_hash,
-      "reason": reason,
-      "timestamp_ms": int(time.time() * 1000),
-    })
-    try:
-      self.producer_dlq.produce(self.topic_dlq, key=tx_hash, value=payload)
-      self.producer_dlq.flush()
-      self.logger.info(f"DLQ: tx {tx_hash} publicada ({reason}).")
-    except Exception as e:
-      self.logger.error(f"Falha ao publicar tx {tx_hash} no DLQ: {e}")
+    """Logs failed transactions. SQS DLQ handles redelivery automatically."""
+    self.logger.warning(f"DLQ: tx {tx_hash} failed ({reason}).")
 
   def _rotate_api_key(self, old_api_key: str) -> str:
     """Libera a key atual, elege uma nova e reconecta o Web3. Retorna a nova key."""
@@ -104,31 +77,32 @@ class RawTransactionsProcessor(ChainExtractor):
     return None, actual_api_key
   
 
-  def run(self, callback: Any) -> None:
-    # Limpa TODO o semáforo na inicialização para remover entradas obsoletas
-    # (ex: formato antigo de chave, réplicas mortas sem TTL expirado).
+  def run(self) -> None:
     self.api_keys_manager.free_api_keys(free_timeout=0)
     actual_api_key = self.api_keys_manager.elect_new_api_key()
     self.web3.get_node_connection(actual_api_key, 'infura')
     self.api_keys_manager.check_api_key_request(actual_api_key)
     counter = 1
     self.txs_threshold = 100
-    for msg in self.consuming_topic(self.consumer_txs_hash_ids):
-      raw_transaction_data, actual_api_key = self._fetch_tx_with_rotation(msg['value']['tx_hash'], actual_api_key)
+    for msg in self.sqs_handler.consume_queue(self.sqs_queue_url):
+      tx_hash = json.loads(msg["Body"])["tx_hash"]
+      self.sqs_handler.delete_message(self.sqs_queue_url, msg["ReceiptHandle"])
+      raw_transaction_data, actual_api_key = self._fetch_tx_with_rotation(tx_hash, actual_api_key)
       self.api_keys_manager.check_api_key_request(actual_api_key)
       if not raw_transaction_data:
-        self._send_to_dlq(msg['value']['tx_hash'], "api_exhausted")
+        self._send_to_dlq(tx_hash, "api_exhausted")
         continue
       cleaned_transaction_data = self.web3.parse_transaction_data(raw_transaction_data)
       try:
-        key, value = cleaned_transaction_data['hash'], cleaned_transaction_data
-        self.producer_txs_data.produce(self.topic_txs_data, key=key, value=value, on_delivery=callback)
-        self.producer_txs_data.flush()
-      except Exception as e: 
-        self.logger.error(f"Error producing message: {e}")
-        print(raw_transaction_data)
-    
-        
+        key = cleaned_transaction_data['hash']
+        self.kinesis_handler.put_record(
+          self.kinesis_stream_txs,
+          data=json.dumps(cleaned_transaction_data, default=str),
+          partition_key=key,
+        )
+      except Exception as e:
+        self.logger.error(f"Error producing to Kinesis: {e}")
+
       if not self.api_keys_manager.check_if_api_key_is_mine(actual_api_key):
         self.logger.info(f"API KEY {actual_api_key} is being used by another process.")
         new_api_key = self.api_keys_manager.elect_new_api_key()
@@ -153,55 +127,27 @@ class RawTransactionsProcessor(ChainExtractor):
 if __name__ == '__main__':
 
   APP_NAME = "RAW_TXS_CRAWLER"
-  NETWORK          = os.getenv("NETWORK")
-  KAFKA_BROKERS    = {"bootstrap.servers": os.getenv("KAFKA_BROKERS")}
-  SCHEMA_REGISTRY_URL = os.getenv("SCHEMA_REGISTRY_URL")
-  TOPIC_LOGS       = os.getenv("TOPIC_LOGS")
-  TOPIC_TXS_HASH_IDS  = os.getenv("TOPIC_TXS_HASH_IDS")
-  CONSUMER_GROUP   = os.getenv("CONSUMER_GROUP")
-  TOPIC_TXS_DATA   = os.getenv("TOPIC_TXS_DATA")
-  TOPIC_DLQ        = os.getenv("TOPIC_DLQ")                   # optional, absent disables DLQ
-  SSM_SECRET_NAME  = os.getenv("SSM_SECRET_NAME")          # nome do segredo SSM (api key Infura inicial)
-  API_KEY_NAMES    = os.getenv("SSM_SECRET_NAMES")          # ex: 'infura-api-key-1-12'
-  TX_THROUGHPUT_THRESHOLD = 100
+  NETWORK = os.getenv("NETWORK")
+  CLOUDWATCH_LOG_GROUP = os.getenv("CLOUDWATCH_LOG_GROUP")
+  SQS_QUEUE_URL_TXS_HASH_IDS = os.getenv("SQS_QUEUE_URL_TXS_HASH_IDS")
+  KINESIS_STREAM_TRANSACTIONS = os.getenv("KINESIS_STREAM_TRANSACTIONS")
+  API_KEY_NAMES = os.getenv("SSM_SECRET_NAMES")
 
   PROC_ID = f"job-{str(uuid.uuid4())[:8]}"
-
-  parser = argparse.ArgumentParser(description=APP_NAME)
-  parser.add_argument('config_producer', type=argparse.FileType('r'), help='Config Producers')
-  parser.add_argument('config_consumer', type=argparse.FileType('r'), help='Config Consumers')
-  args = parser.parse_args()
-  config = ConfigParser()
-  config.read_file(args.config_producer)
-  config.read_file(args.config_consumer)
 
   logging.basicConfig(level=logging.INFO, format='%(name)s — %(levelname)s — %(message)s')
   logger = logging.getLogger(APP_NAME)
 
-  PRODUCER_CONF = {"client.id": PROC_ID, **KAFKA_BROKERS, **config['producer.general.config']}
-  CONSUMER_CONF = {"client.id": PROC_ID, **KAFKA_BROKERS, **config['consumer.general.config'], "group.id": CONSUMER_GROUP}
+  # CloudWatch logging handler — replaces KafkaLoggingHandler
+  logger.addHandler(CloudWatchLoggingHandler(
+    log_group=CLOUDWATCH_LOG_GROUP,
+    log_stream=f"{APP_NAME.lower()}-{PROC_ID}",
+  ))
+  logger.info("CloudWatch logging handler configured.")
 
-  handler_kafka = KafkaHandler(logger, sc_url=SCHEMA_REGISTRY_URL)
-
-  # Schemas
-  LOGS_SCHEMA_PATH         = 'schemas/0_application_logs_avro.json'
-  TXS_HASH_IDS_SCHEMA_PATH = 'schemas/3_transaction_hash_ids_schema_avro.json'
-  TXS_DATA_SCHEMA_PATH     = 'schemas/4_transactions_schema_avro.json'
-
-  schema_app_logs     = get_schema(schema_name="application-logs-schema",       schema_path=LOGS_SCHEMA_PATH)
-  schema_txs_hash_ids = get_schema(schema_name="transaction-hash-ids-schema",   schema_path=TXS_HASH_IDS_SCHEMA_PATH)
-  schema_txs_data     = get_schema(schema_name="transactions-schema",            schema_path=TXS_DATA_SCHEMA_PATH)
-
-  # Kafka logging handler — writes log records to TOPIC_LOGS
-  producer_logs = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_app_logs)
-  logger.addHandler(KafkaLoggingHandler(producer_logs, TOPIC_LOGS))
-  logger.info("Kafka logging handler configured.")
-
-  consumer_txs_hash_ids = handler_kafka.create_avro_consumer(CONSUMER_CONF, schema_txs_hash_ids)
-  logger.info("AVRO CONSUMER for transactions hash ids configured.")
-
-  producer_txs_data = handler_kafka.create_avro_producer(PRODUCER_CONF, schema_txs_data)
-  logger.info("AVRO PRODUCER for transactions data configured.")
+  sqs_handler = SQSHandler(logger)
+  kinesis_handler = KinesisHandler(logger)
+  logger.info("SQS and Kinesis handlers configured.")
 
   # DynamoDB — semáforo de API keys e contador de requisições (single-table)
   dynamodb = DMDynamoDB(logger=logger)
@@ -215,28 +161,20 @@ if __name__ == '__main__':
   src_properties = {
     "web3_handler": node_connector,
     "actual_api_key": None,
-    "consumer_txs_hash_ids": consumer_txs_hash_ids,
-    "topic_txs_hash_ids": TOPIC_TXS_HASH_IDS,
+    "sqs_handler": sqs_handler,
+    "sqs_queue_url": SQS_QUEUE_URL_TXS_HASH_IDS,
   }
 
   sink_properties = {
     "api_keys_manager": api_keys_manager,
-    "producer_txs_data": producer_txs_data,
-    "topic_txs_data": TOPIC_TXS_DATA,
-    "txs_threshold": TX_THROUGHPUT_THRESHOLD,
+    "kinesis_handler": kinesis_handler,
+    "kinesis_stream_txs": KINESIS_STREAM_TRANSACTIONS,
   }
-
-  # DLQ producer — plain (non-Avro) to avoid Schema Registry dependency for dead records
-  if TOPIC_DLQ:
-    _dlq_conf = {**KAFKA_BROKERS, **get_msk_iam_config(), "acks": "1", "retries": "2"}
-    sink_properties["producer_dlq"] = PlainProducer(_dlq_conf)
-    sink_properties["topic_dlq"] = TOPIC_DLQ
-    logger.info(f"DLQ producer configured for topic: {TOPIC_DLQ}")
 
   _ = (
     RawTransactionsProcessor(logger)
       .src_config(src_properties)
       .sink_config(sink_properties)
-      .run(callback=handler_kafka.message_handler)
+      .run()
   )
 
