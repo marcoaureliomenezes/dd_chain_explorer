@@ -1,0 +1,345 @@
+name: Destroy Cloud Infra
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to destroy'
+        required: true
+        type: choice
+        options:
+          - dev
+          - hml
+          - prd
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION:   sa-east-1
+  TF_VERSION:   1.7.0
+  DEV_TF_DIR:   services/dev/terraform/1_aws_core
+  HML_TF_DIR:   services/hml/1_aws_core
+  TF_ROOT:      services/prd
+
+jobs:
+  # ----------------------------------------------------------------
+  # Branch guard — only allow dispatch from develop
+  # ----------------------------------------------------------------
+  branch-guard:
+    name: Branch guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+            exit 1
+          fi
+          echo "Branch check passed: ${{ github.ref }}"
+
+  # ================================================================
+  #  DEV — Destroy
+  # ================================================================
+  dev-plan-destroy:
+    name: Plan destroy — DEV
+    needs: branch-guard
+    if: github.event.inputs.environment == 'dev'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.DEV_TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform plan -destroy
+        run: terraform plan -destroy -no-color -input=false -out=tfplan-destroy 2>&1 | tee plan.txt
+
+      - name: Upload destroy plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-destroy-dev
+          path: ${{ env.DEV_TF_DIR }}/tfplan-destroy
+          retention-days: 1
+
+      - name: Post plan summary
+        if: always()
+        run: |
+          echo "### ⚠️ Terraform DESTROY Plan — \`DEV\`" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          tail -30 plan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  dev-destroy:
+    name: Destroy — DEV
+    needs: dev-plan-destroy
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: ${{ env.DEV_TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Download destroy plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-destroy-dev
+          path: ${{ env.DEV_TF_DIR }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply (destroy)
+        run: terraform apply -input=false -auto-approve tfplan-destroy
+
+      - name: Post destroy summary
+        if: always()
+        run: |
+          echo "### DEV Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "Environment: \`dev\` | Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # ================================================================
+  #  HML — Destroy
+  # ================================================================
+  hml-plan-destroy:
+    name: Plan destroy — HML
+    needs: branch-guard
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.HML_TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform plan -destroy
+        run: terraform plan -destroy -no-color -input=false -out=tfplan-destroy 2>&1 | tee plan.txt
+
+      - name: Upload destroy plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-destroy-hml
+          path: ${{ env.HML_TF_DIR }}/tfplan-destroy
+          retention-days: 1
+
+      - name: Post plan summary
+        if: always()
+        run: |
+          echo "### ⚠️ Terraform DESTROY Plan — \`HML\`" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          tail -30 plan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  hml-destroy:
+    name: Destroy — HML
+    needs: hml-plan-destroy
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Download destroy plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-destroy-hml
+          path: ${{ env.HML_TF_DIR }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply (destroy)
+        run: terraform apply -input=false -auto-approve tfplan-destroy
+
+      - name: Post destroy summary
+        if: always()
+        run: |
+          echo "### HML Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
+          echo "Environment: \`hml\` | Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # ================================================================
+  #  PRD — Destroy (modules in reverse dependency order)
+  #  Excludes 0_remote_state (manages terraform state itself)
+  # ================================================================
+  prd-plan-destroy:
+    name: Plan destroy — PRD (${{ matrix.module }})
+    needs: branch-guard
+    if: github.event.inputs.environment == 'prd'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        module:
+          - 10_lambda
+          - 9_dynamodb
+          - 7_databricks
+          - 6_ecs
+          - 3_kinesis_sqs
+          - 4_s3
+          - 2_iam
+          - 1_vpc
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/${{ matrix.module }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform plan -destroy
+        run: terraform plan -destroy -no-color -input=false -out=tfplan-destroy 2>&1 | tee plan.txt
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+      - name: Upload destroy plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-destroy-${{ matrix.module }}
+          path: ${{ env.TF_ROOT }}/${{ matrix.module }}/tfplan-destroy
+          retention-days: 1
+
+      - name: Post plan summary
+        if: always()
+        run: |
+          echo "### ⚠️ Terraform DESTROY Plan — \`${{ matrix.module }}\`" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          tail -30 plan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-destroy:
+    name: Destroy — PRD (sequential)
+    needs: prd-plan-destroy
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Destroy PRD modules (reverse dependency order)
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          MODULES=(10_lambda 9_dynamodb 7_databricks 6_ecs 3_kinesis_sqs 4_s3 2_iam 1_vpc)
+          TOTAL=${#MODULES[@]}
+          FAILED=()
+
+          for i in "${!MODULES[@]}"; do
+            MOD="${MODULES[$i]}"
+            STEP=$((i + 1))
+            echo ""
+            echo "============================================"
+            echo "[$STEP/$TOTAL] Destroying: $MOD"
+            echo "============================================"
+
+            cd "${{ github.workspace }}/${{ env.TF_ROOT }}/${MOD}"
+            terraform init -input=false
+
+            if terraform destroy -input=false -auto-approve; then
+              echo "[$STEP/$TOTAL] $MOD — destroyed"
+            else
+              echo "::error::[$STEP/$TOTAL] $MOD — FAILED"
+              FAILED+=("$MOD")
+            fi
+          done
+
+          echo ""
+          echo "============================================"
+          echo "DESTROY SUMMARY"
+          echo "============================================"
+          if [ ${#FAILED[@]} -gt 0 ]; then
+            echo "::error::Failed modules: ${FAILED[*]}"
+            echo "### PRD Destroy — PARTIAL FAILURE" >> $GITHUB_STEP_SUMMARY
+            echo "Failed modules: \`${FAILED[*]}\`" >> $GITHUB_STEP_SUMMARY
+            exit 1
+          else
+            echo "All $TOTAL modules destroyed successfully."
+            echo "### PRD Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
+            echo "All $TOTAL modules destroyed successfully." >> $GITHUB_STEP_SUMMARY
+            echo "Note: \`0_remote_state\` was intentionally preserved (manages Terraform state)." >> $GITHUB_STEP_SUMMARY
+          fi

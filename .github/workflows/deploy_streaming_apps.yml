@@ -4,16 +4,108 @@ on:
   workflow_dispatch:
 
 env:
-  AWS_REGION:  sa-east-1
-  ECS_CLUSTER: dm-chain-explorer-ecs
-  ECR_REPO:    onchain-stream-txs
+  AWS_REGION:       sa-east-1
+  ECS_CLUSTER:      dm-chain-explorer-ecs
+  HML_ECS_CLUSTER:  dm-hml-ecs
+  ECR_REPO:         onchain-stream-txs
+
+permissions:
+  contents: write
 
 jobs:
+  # ----------------------------------------------------------------
+  # Branch guard — only allow dispatch from develop
+  # ----------------------------------------------------------------
+  branch-guard:
+    name: Branch guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+            exit 1
+          fi
+          echo "Branch check passed: ${{ github.ref }}"
+
+  # ----------------------------------------------------------------
+  # Infra prerequisite gate — PRD ECS cluster must exist
+  #
+  # Checks that the PRD ECS cluster is ACTIVE before proceeding.
+  # Prevents deploying if deploy_cloud_infra_prd has not been run
+  # (modules 1_vpc, 2_iam, 3_kinesis_sqs, 6_ecs).
+  # ----------------------------------------------------------------
+  check-infra-prd:
+    name: Check PRD infra prerequisites
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Verify PRD ECS cluster exists and is ACTIVE
+        run: |
+          CLUSTER_STATUS=$(aws ecs describe-clusters \
+            --clusters "${{ env.ECS_CLUSTER }}" \
+            --query 'clusters[0].status' \
+            --output text 2>/dev/null) || CLUSTER_STATUS=""
+          if [ "$CLUSTER_STATUS" != "ACTIVE" ]; then
+            echo "::error::ECS cluster '${{ env.ECS_CLUSTER }}' is not ACTIVE (status: ${CLUSTER_STATUS:-not found})."
+            echo "::error::Run 'Deploy Infrastructure PRD' (modules 1_vpc, 2_iam, 6_ecs) before deploying streaming apps."
+            exit 1
+          fi
+          echo "ECS cluster ${{ env.ECS_CLUSTER }} is ACTIVE."
+
+      - name: Verify PRD ECR repository exists
+        run: |
+          REPO_URI=$(aws ecr describe-repositories \
+            --repository-names "${{ env.ECR_REPO }}" \
+            --query 'repositories[0].repositoryUri' \
+            --output text 2>/dev/null) || REPO_URI=""
+          if [ -z "$REPO_URI" ]; then
+            echo "::error::ECR repository '${{ env.ECR_REPO }}' not found."
+            echo "::error::Run 'Deploy Infrastructure PRD' (module 5_ecr) before deploying streaming apps."
+            exit 1
+          fi
+          echo "ECR repository found: $REPO_URI"
+
+  # ----------------------------------------------------------------
+  # Version check — fail fast if VERSION file was not bumped
+  # (git tag v{VERSION} must not already exist)
+  # ----------------------------------------------------------------
+  check-version:
+    name: Check version bump
+    needs: [branch-guard, check-infra-prd]
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate VERSION
+        id: ver
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Project version: $VERSION"
+          if git tag --list | grep -qx "v${VERSION}"; then
+            echo "::error::Version v${VERSION} is already tagged. Bump VERSION before deploying."
+            exit 1
+          fi
+          echo "Version v${VERSION} is new — proceeding."
+
   # ----------------------------------------------------------------
   # Gate — lint + unit tests
   # ----------------------------------------------------------------
   lint-and-test:
     name: Lint & unit tests
+    needs: check-version
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -35,14 +127,16 @@ jobs:
         run: docker compose -f services/dev/compose/app_services.yml config --quiet
 
   # ----------------------------------------------------------------
-  # Idempotency check — skip if same SHA already deployed
+  # Idempotency check — skip if same RC SHA already in ECR
   # ----------------------------------------------------------------
   check-idempotency:
     name: Check if deploy is needed
-    needs: lint-and-test
+    needs: [lint-and-test, check-version]
     runs-on: ubuntu-latest
     outputs:
-      skip: ${{ steps.check.outputs.skip }}
+      skip:      ${{ steps.check.outputs.skip }}
+      image_tag: ${{ steps.check.outputs.image_tag }}
+      version:   ${{ needs.check-version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
 
@@ -53,33 +147,38 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Compare HEAD SHA with deployed ECR tag
+      - name: Compare HEAD SHA with latest deployed ECR tag
         id: check
         run: |
-          CURRENT_SHA=$(git rev-parse --short HEAD)
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "image_tag=$IMAGE_TAG" >> $GITHUB_OUTPUT
           DEPLOYED_SHA=$(aws ecr describe-images \
             --repository-name "${{ env.ECR_REPO }}" \
             --image-ids imageTag=latest \
             --query 'imageDetails[0].imageTags' \
             --output json 2>/dev/null \
-            | jq -r '.[] | select(. != "latest")' | head -1) || DEPLOYED_SHA=""
-          echo "Current SHA:  $CURRENT_SHA"
+            | jq -r '.[] | select(startswith("rc-") | not) | select(. != "latest")' | head -1) || DEPLOYED_SHA=""
+          echo "Current SHA:  $IMAGE_TAG"
           echo "Deployed SHA: $DEPLOYED_SHA"
-          if [ "$CURRENT_SHA" = "$DEPLOYED_SHA" ]; then
+          if [ "$IMAGE_TAG" = "$DEPLOYED_SHA" ]; then
             echo "skip=true" >> $GITHUB_OUTPUT
-            echo "::notice::Image for SHA $CURRENT_SHA already deployed — skipping."
+            echo "::notice::Image for SHA $IMAGE_TAG already deployed — skipping."
           else
             echo "skip=false" >> $GITHUB_OUTPUT
           fi
 
   # ----------------------------------------------------------------
-  # Build + Push — onchain-stream-txs
+  # Build Release Candidate — push to ECR as :rc-{sha}
+  # RC images are for HML testing only; prod uses the release tag.
   # ----------------------------------------------------------------
-  build-and-push:
-    name: Build & push onchain-stream-txs
+  build-rc:
+    name: Build & push RC image
     needs: check-idempotency
     if: needs.check-idempotency.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    outputs:
+      rc_tag:       ${{ steps.meta.outputs.rc_tag }}
+      ecr_registry: ${{ steps.meta.outputs.ecr_registry }}
     steps:
       - uses: actions/checkout@v4
 
@@ -90,33 +189,481 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Set image tag & ECR registry
+      - name: Resolve RC tag & ECR registry
+        id: meta
         run: |
-          echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
+          RC_TAG="rc-${{ needs.check-idempotency.outputs.image_tag }}"
+          ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          echo "rc_tag=$RC_TAG"           >> $GITHUB_OUTPUT
+          echo "ecr_registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
 
       - name: Login to Amazon ECR
-        run: aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin "${{ env.ECR_REGISTRY }}"
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+            | docker login --username AWS --password-stdin "${{ steps.meta.outputs.ecr_registry }}"
 
-      - name: Build and push image
+      - name: Build and push RC image
         uses: docker/build-push-action@v5
         with:
-          context:    .
-          file:       docker/onchain-stream-txs/Dockerfile
-          push:       true
-          tags: |
-            ${{ env.ECR_REGISTRY }}/onchain-stream-txs:${{ env.IMAGE_TAG }}
-            ${{ env.ECR_REGISTRY }}/onchain-stream-txs:latest
+          context: .
+          file:    docker/onchain-stream-txs/Dockerfile
+          push:    true
+          tags:    ${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.rc_tag }}
 
   # ----------------------------------------------------------------
-  # Deploy — update ECS services
+  # HML Provision — Create ephemeral ECS cluster + SG + log group
+  #
+  # Post-migration: Kafka/Schema Registry are no longer needed.
+  # Streaming jobs now use Kinesis/SQS/CloudWatch natively via AWS SDK.
+  #
+  # Required secrets:
+  #   HML_VPC_ID, HML_SUBNET_ID, ECS_TASK_EXECUTION_ROLE_ARN
   # ----------------------------------------------------------------
-  deploy-ecs:
-    name: Deploy to ECS
-    needs: build-and-push
+  hml-provision:
+    name: Provision HML environment
+    needs: [check-idempotency, build-rc]
+    if: needs.check-idempotency.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      hml_sg_id:              ${{ steps.infra.outputs.hml_sg_id }}
+      sqs_url_mined_blocks:   ${{ steps.queues.outputs.sqs_url_mined_blocks }}
+      sqs_url_txs_hash_ids:   ${{ steps.queues.outputs.sqs_url_txs_hash_ids }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Create HML ECS cluster
+        run: |
+          aws ecs create-cluster \
+            --cluster-name "${{ env.HML_ECS_CLUSTER }}" \
+            --capacity-providers FARGATE \
+            --default-capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
+            --tags key=Environment,value=hml key=ManagedBy,value=cicd \
+            --region "${{ env.AWS_REGION }}" 2>/dev/null || echo "Cluster already exists"
+          # CloudWatch Log Group /apps/dm-chain-explorer-hml is Terraform-managed
+          # (services/hml/1_aws_core/cloudwatch.tf) — includes Firehose → S3 raw/app_logs/
+          aws logs describe-log-groups \
+            --log-group-name-prefix "/apps/dm-chain-explorer-hml" \
+            --query 'logGroups[0].logGroupName' --output text --region "${{ env.AWS_REGION }}" \
+            | grep -q "/apps/dm-chain-explorer-hml" \
+            || { echo "::error::CW Log Group /apps/dm-chain-explorer-hml not found. Run deploy_cloud_infra_prd (HML) first."; exit 1; }
+          echo "CW Log Group /apps/dm-chain-explorer-hml confirmed (Terraform-managed)."
+
+      - name: Create HML Kinesis streams (ephemeral)
+        run: |
+          for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+            aws kinesis create-stream \
+              --stream-name "${STREAM}-hml" \
+              --stream-mode-details StreamMode=ON_DEMAND \
+              --region "${{ env.AWS_REGION }}" 2>/dev/null || echo "Stream ${STREAM}-hml already exists"
+            echo "Created Kinesis stream: ${STREAM}-hml"
+          done
+          # Wait for all streams to become ACTIVE
+          for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+            aws kinesis wait stream-exists \
+              --stream-name "${STREAM}-hml" \
+              --region "${{ env.AWS_REGION }}" 2>/dev/null || true
+          done
+          echo "All HML Kinesis streams ready."
+
+      - name: Create HML SQS queues + DLQs (ephemeral)
+        id: queues
+        run: |
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          # Create DLQs first (referenced by main queue redrive policy)
+          for Q in mainnet-mined-blocks-events mainnet-block-txs-hash-id; do
+            aws sqs create-queue \
+              --queue-name "${Q}-dlq-hml" \
+              --attributes '{"MessageRetentionPeriod":"1209600"}' \
+              --region "$REGION" 2>/dev/null || echo "DLQ ${Q}-dlq-hml already exists"
+          done
+
+          # Create main queues with redrive to their DLQs
+          DLQ_MINED_ARN="arn:aws:sqs:${REGION}:${ACCOUNT_ID}:mainnet-mined-blocks-events-dlq-hml"
+          DLQ_TXS_ARN="arn:aws:sqs:${REGION}:${ACCOUNT_ID}:mainnet-block-txs-hash-id-dlq-hml"
+
+          aws sqs create-queue \
+            --queue-name "mainnet-mined-blocks-events-hml" \
+            --attributes "{\"VisibilityTimeout\":\"30\",\"ReceiveMessageWaitTimeSeconds\":\"20\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_MINED_ARN}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" \
+            --region "$REGION" 2>/dev/null || echo "Queue mainnet-mined-blocks-events-hml already exists"
+
+          aws sqs create-queue \
+            --queue-name "mainnet-block-txs-hash-id-hml" \
+            --attributes "{\"VisibilityTimeout\":\"60\",\"ReceiveMessageWaitTimeSeconds\":\"20\",\"RedrivePolicy\":\"{\\\"deadLetterTargetArn\\\":\\\"${DLQ_TXS_ARN}\\\",\\\"maxReceiveCount\\\":\\\"3\\\"}\"}" \
+            --region "$REGION" 2>/dev/null || echo "Queue mainnet-block-txs-hash-id-hml already exists"
+
+          # Capture queue URLs for downstream jobs
+          URL_MINED=$(aws sqs get-queue-url --queue-name "mainnet-mined-blocks-events-hml" --region "$REGION" --query 'QueueUrl' --output text)
+          URL_TXS=$(aws sqs get-queue-url --queue-name "mainnet-block-txs-hash-id-hml" --region "$REGION" --query 'QueueUrl' --output text)
+          echo "sqs_url_mined_blocks=$URL_MINED" >> $GITHUB_OUTPUT
+          echo "sqs_url_txs_hash_ids=$URL_TXS"  >> $GITHUB_OUTPUT
+          echo "SQS mined-blocks: $URL_MINED"
+          echo "SQS txs-hash-ids: $URL_TXS"
+
+      - name: Create HML Firehose delivery streams (ephemeral)
+        run: |
+          REGION="${{ env.AWS_REGION }}"
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+          FIREHOSE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/dm-hml-firehose-role"
+          BUCKET_ARN="arn:aws:s3:::dm-chain-explorer-hml-ingestion"
+
+          for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+            KINESIS_ARN="arn:aws:kinesis:${REGION}:${ACCOUNT_ID}:stream/${STREAM}-hml"
+            FIREHOSE_NAME="firehose-${STREAM}-hml"
+            aws firehose create-delivery-stream \
+              --region "$REGION" \
+              --cli-input-json "$(jq -n \
+                --arg name     "$FIREHOSE_NAME" \
+                --arg karn     "$KINESIS_ARN" \
+                --arg frole    "$FIREHOSE_ROLE_ARN" \
+                --arg barn     "$BUCKET_ARN" \
+                --arg stream   "$STREAM" \
+                '{
+                  DeliveryStreamName: $name,
+                  DeliveryStreamType: "KinesisStreamAsSource",
+                  KinesisStreamSourceConfiguration: {
+                    KinesisStreamARN: $karn,
+                    RoleARN: $frole
+                  },
+                  ExtendedS3DestinationConfiguration: {
+                    RoleARN: $frole,
+                    BucketARN: $barn,
+                    Prefix: ("raw/" + $stream + "/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"),
+                    ErrorOutputPrefix: ("raw/" + $stream + "_errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"),
+                    BufferingHints: {SizeInMBs: 1, IntervalInSeconds: 60},
+                    CompressionFormat: "GZIP"
+                  }
+                }')" 2>/dev/null || echo "Firehose $FIREHOSE_NAME already exists"
+            echo "Created Firehose: $FIREHOSE_NAME"
+          done
+
+          # Wait until all Firehose streams are ACTIVE
+          for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+            FIREHOSE_NAME="firehose-${STREAM}-hml"
+            STATUS="CREATING"
+            for i in $(seq 1 20); do
+              STATUS=$(aws firehose describe-delivery-stream \
+                --delivery-stream-name "$FIREHOSE_NAME" \
+                --query 'DeliveryStreamDescription.DeliveryStreamStatus' \
+                --output text --region "$REGION" 2>/dev/null || echo "CREATING")
+              [ "$STATUS" = "ACTIVE" ] && break || sleep 10
+            done
+            echo "Firehose $FIREHOSE_NAME status: $STATUS"
+          done
+          echo "All HML Firehose streams ready."
+
+      - name: Create HML security group
+        id: infra
+        run: |
+          HML_SG_ID=$(aws ec2 create-security-group \
+            --group-name "dm-hml-sg-${{ github.run_id }}" \
+            --description "HML ephemeral SG run=${{ github.run_id }}" \
+            --vpc-id "${{ secrets.HML_VPC_ID }}" \
+            --query 'GroupId' --output text)
+          echo "hml_sg_id=$HML_SG_ID" >> $GITHUB_OUTPUT
+          # Allow all internal traffic within the HML SG
+          aws ec2 authorize-security-group-ingress \
+            --group-id "$HML_SG_ID" \
+            --protocol tcp --port 0-65535 \
+            --source-group "$HML_SG_ID"
+          # Allow HTTPS outbound (ECR pull, Kinesis, SQS, DynamoDB, CloudWatch, SSM)
+          aws ec2 authorize-security-group-egress \
+            --group-id "$HML_SG_ID" \
+            --ip-permissions '[{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]' \
+            2>/dev/null || true
+
+
+  # ----------------------------------------------------------------
+  # HML Integration Test — run streaming jobs with RC image for 10 min
+  # Pass criteria: fewer than 10 ERROR log events over the full window.
+  # ----------------------------------------------------------------
+  hml-integration-test:
+    name: HML integration test (10 min)
+    needs: [check-idempotency, build-rc, hml-provision]
+    if: needs.check-idempotency.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      test_passed: ${{ steps.monitor.outputs.test_passed }}
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Create HML DynamoDB table
+        run: |
+          aws dynamodb create-table \
+            --table-name "dm-chain-explorer-hml" \
+            --attribute-definitions \
+              AttributeName=PK,AttributeType=S \
+              AttributeName=SK,AttributeType=S \
+            --key-schema \
+              AttributeName=PK,KeyType=HASH \
+              AttributeName=SK,KeyType=RANGE \
+            --billing-mode PAY_PER_REQUEST \
+            --region "${{ env.AWS_REGION }}" 2>/dev/null || echo "DynamoDB table already exists"
+
+      - name: Launch HML streaming tasks (RC image)
+        id: launch
+        run: |
+          EXEC_ROLE="${{ secrets.ECS_TASK_EXECUTION_ROLE_ARN }}"
+          TASK_ROLE="${{ secrets.ECS_TASK_ROLE_ARN }}"
+          SUBNET="${{ secrets.HML_SUBNET_ID }}"
+          HML_SG="${{ needs.hml-provision.outputs.hml_sg_id }}"
+          RC_IMAGE="${{ needs.build-rc.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ needs.build-rc.outputs.rc_tag }}"
+          REGION="${{ env.AWS_REGION }}"
+          SQS_MINED="${{ needs.hml-provision.outputs.sqs_url_mined_blocks }}"
+          SQS_TXS="${{ needs.hml-provision.outputs.sqs_url_txs_hash_ids }}"
+
+          SERVICES=(dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder)
+          for SVC in "${SERVICES[@]}"; do
+            aws ecs register-task-definition --cli-input-json "$(jq -n \
+              --arg svc        "$SVC" \
+              --arg img        "$RC_IMAGE" \
+              --arg exec       "$EXEC_ROLE" \
+              --arg task       "$TASK_ROLE" \
+              --arg region     "$REGION" \
+              --arg sqs_mined  "$SQS_MINED" \
+              --arg sqs_txs    "$SQS_TXS" \
+              '{
+                "family": ("hml-" + $svc),
+                "networkMode": "awsvpc",
+                "requiresCompatibilities": ["FARGATE"],
+                "cpu": "256",
+                "memory": "512",
+                "executionRoleArn": $exec,
+                "taskRoleArn": $task,
+                "containerDefinitions": [{
+                  "name": $svc,
+                  "image": $img,
+                  "essential": true,
+                  "environment": [
+                    {"name": "DYNAMODB_TABLE",              "value": "dm-chain-explorer-hml"},
+                    {"name": "CLOUDWATCH_LOG_GROUP",        "value": "/apps/dm-chain-explorer-hml"},
+                    {"name": "ENV",                         "value": "hml"},
+                    {"name": "JOB_NAME",                    "value": $svc},
+                    {"name": "SQS_QUEUE_URL_MINED_BLOCKS",  "value": $sqs_mined},
+                    {"name": "SQS_QUEUE_URL_TXS_HASH_IDS",  "value": $sqs_txs},
+                    {"name": "KINESIS_STREAM_BLOCKS",       "value": "mainnet-blocks-data-hml"},
+                    {"name": "KINESIS_STREAM_TRANSACTIONS", "value": "mainnet-transactions-data-hml"},
+                    {"name": "KINESIS_STREAM_DECODED",      "value": "mainnet-transactions-decoded-hml"},
+                    {"name": "NETWORK",                     "value": "mainnet"},
+                    {"name": "SSM_ETHERSCAN_PATH",          "value": "/etherscan-api-keys"}
+                  ],
+                  "logConfiguration": {
+                    "logDriver": "awslogs",
+                    "options": {
+                      "awslogs-group":         "/apps/dm-chain-explorer-hml",
+                      "awslogs-region":        $region,
+                      "awslogs-stream-prefix": $svc
+                    }
+                  }
+                }]
+              }')" \
+              --query 'taskDefinition.taskDefinitionArn' --output text
+
+            aws ecs run-task \
+              --cluster "${{ env.HML_ECS_CLUSTER }}" \
+              --task-definition "hml-${SVC}" \
+              --launch-type FARGATE \
+              --network-configuration "awsvpcConfiguration={subnets=[$SUBNET],securityGroups=[$HML_SG],assignPublicIp=ENABLED}" \
+              --count 1 \
+              --query 'tasks[0].taskArn' --output text
+            echo "Launched: hml-${SVC}"
+          done
+
+      - name: Checkout source (for integration test script)
+        uses: actions/checkout@v4
+
+      - name: Run HML integration test
+        id: monitor
+        env:
+          ENV:                        hml
+          REGION:                     ${{ env.AWS_REGION }}
+          S3_BUCKET:                  dm-chain-explorer-hml-ingestion
+          DYNAMODB_TABLE:             dm-chain-explorer-hml
+          KINESIS_STREAM_BLOCKS:      mainnet-blocks-data-hml
+          KINESIS_STREAM_TRANSACTIONS: mainnet-transactions-data-hml
+          KINESIS_STREAM_DECODED:     mainnet-transactions-decoded-hml
+          SQS_QUEUE_MINED_BLOCKS:     mainnet-mined-blocks-events-hml
+          SQS_QUEUE_TXS_HASH_IDS:     mainnet-block-txs-hash-id-hml
+          WAIT_PHASE1_SECS:           "180"
+          WAIT_PHASE2_SECS:           "480"
+        run: |
+          echo "## HML Integration Test — onchain-stream-txs" >> $GITHUB_STEP_SUMMARY
+          echo "RC image: \`${{ needs.build-rc.outputs.rc_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Started: $(date -u)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if bash scripts/hml_integration_test.sh 2>&1 | tee /tmp/hml_test_output.txt; then
+            echo "✅ **PASSED** — all 8 checks passed." >> $GITHUB_STEP_SUMMARY
+            echo "test_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ **FAILED** — one or more checks failed." >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            grep -E "^\\[|PASS|FAIL" /tmp/hml_test_output.txt >> $GITHUB_STEP_SUMMARY || true
+            echo '```' >> $GITHUB_STEP_SUMMARY
+            echo "::error::HML integration test FAILED — see step summary for details."
+            echo "test_passed=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+  # ----------------------------------------------------------------
+  # HML Teardown — always runs (success or failure)
+  # Destroys: ECS tasks, ECS cluster, security group, DynamoDB table,
+  #           Kinesis streams, SQS queues + DLQs, CloudWatch log group.
+  # ----------------------------------------------------------------
+  hml-teardown:
+    name: Teardown HML environment
+    needs: [check-idempotency, hml-provision, hml-integration-test]
+    if: |
+      always() &&
+      needs.check-idempotency.outputs.skip != 'true' &&
+      needs.hml-provision.result != 'skipped'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Stop all HML ECS tasks
+        run: |
+          TASKS=$(aws ecs list-tasks \
+            --cluster "${{ env.HML_ECS_CLUSTER }}" \
+            --query 'taskArns' --output json 2>/dev/null || echo '[]')
+          for TASK_ARN in $(echo "$TASKS" | jq -r '.[]'); do
+            aws ecs stop-task \
+              --cluster "${{ env.HML_ECS_CLUSTER }}" \
+              --task "$TASK_ARN" \
+              --reason "HML teardown" 2>/dev/null || true
+          done
+          echo "Stop requested for all HML tasks."
+
+      - name: Deregister HML task definitions
+        run: |
+          for FAMILY in hml-dm-mined-blocks-watcher hml-dm-orphan-blocks-watcher hml-dm-block-data-crawler hml-dm-mined-txs-crawler hml-dm-txs-input-decoder; do
+            REVISIONS=$(aws ecs list-task-definitions \
+              --family-prefix "$FAMILY" \
+              --query 'taskDefinitionArns' --output json 2>/dev/null || echo '[]')
+            for ARN in $(echo "$REVISIONS" | jq -r '.[]'); do
+              aws ecs deregister-task-definition --task-definition "$ARN" \
+                --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || true
+            done
+          done
+          echo "HML task definitions deregistered."
+
+      - name: Delete HML ECS cluster
+        run: |
+          aws ecs delete-cluster \
+            --cluster "${{ env.HML_ECS_CLUSTER }}" 2>/dev/null || echo "Cluster not found."
+
+      - name: Delete HML security group
+        run: |
+          HML_SG_ID="${{ needs.hml-provision.outputs.hml_sg_id }}"
+          if [ -n "$HML_SG_ID" ]; then
+            echo "Waiting 20s for ENIs to detach before deleting SG..."
+            sleep 20
+            aws ec2 delete-security-group \
+              --group-id "$HML_SG_ID" 2>/dev/null || echo "SG $HML_SG_ID could not be deleted (may need retry)."
+          fi
+
+      - name: Delete HML DynamoDB table
+        run: |
+          aws dynamodb delete-table \
+            --table-name "dm-chain-explorer-hml" \
+            --region "${{ env.AWS_REGION }}" 2>/dev/null || echo "DynamoDB table not found."
+
+      - name: Delete HML Kinesis streams
+        run: |
+          for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+            aws kinesis delete-stream \
+              --stream-name "${STREAM}-hml" \
+              --enforce-consumer-deletion \
+              --region "${{ env.AWS_REGION }}" 2>/dev/null || echo "Stream ${STREAM}-hml not found."
+          done
+          echo "HML Kinesis streams deletion requested."
+
+      - name: Delete HML SQS queues + DLQs
+        run: |
+          REGION="${{ env.AWS_REGION }}"
+          for Q in mainnet-mined-blocks-events-hml mainnet-block-txs-hash-id-hml \
+                   mainnet-mined-blocks-events-dlq-hml mainnet-block-txs-hash-id-dlq-hml; do
+            URL=$(aws sqs get-queue-url --queue-name "$Q" --region "$REGION" \
+              --query 'QueueUrl' --output text 2>/dev/null) || URL=""
+            if [ -n "$URL" ]; then
+              aws sqs delete-queue --queue-url "$URL" --region "$REGION" 2>/dev/null || true
+              echo "Deleted SQS queue: $Q"
+            else
+              echo "SQS queue $Q not found — skipping."
+            fi
+          done
+
+      - name: Delete HML Firehose delivery streams
+        run: |
+          for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+            aws firehose delete-delivery-stream \
+              --delivery-stream-name "firehose-${STREAM}-hml" \
+              --region "${{ env.AWS_REGION }}" 2>/dev/null || echo "Firehose firehose-${STREAM}-hml not found."
+          done
+          echo "HML Firehose streams deletion requested."
+
+      # CloudWatch Log Group /apps/dm-chain-explorer-hml is Terraform-managed — NOT deleted here.
+      # It persists across CI/CD runs (includes Firehose subscription → S3 raw/app_logs/).
+
+  # ----------------------------------------------------------------
+  # Create release branch — only after HML test passes
+  # ----------------------------------------------------------------
+  create-release-branch:
+    name: Create release branch
+    needs: [check-idempotency, build-rc, hml-integration-test, hml-teardown]
+    if: |
+      needs.check-idempotency.outputs.skip != 'true' &&
+      needs.hml-integration-test.outputs.test_passed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push release branch
+        run: |
+          VERSION="${{ needs.check-idempotency.outputs.version }}"
+          BRANCH="release/onchain-stream-v${VERSION}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
+          echo "Branch created: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
+          echo "Next: approve the 'Deploy to Production' stage below." >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------------------------------
+  # Deploy to Production — requires manual approval
+  # (GitHub Environment: production)
+  #
+  # Promotes the RC image to the final release tag, then updates
+  # the ECS task definitions and waits for services to stabilize.
+  # ----------------------------------------------------------------
+  prod-deploy:
+    name: Deploy to Production
+    needs: [check-idempotency, build-rc, create-release-branch]
+    if: needs.check-idempotency.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -125,12 +672,32 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
 
-      - name: Set image tag & ECR registry
+      - name: Resolve ECR registry & tags
+        id: meta
         run: |
-          echo "IMAGE_TAG=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com" >> $GITHUB_ENV
+          ECR_REGISTRY=$(aws sts get-caller-identity --query Account --output text).dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com
+          IMAGE_TAG="${{ needs.check-idempotency.outputs.image_tag }}"
+          echo "ecr_registry=$ECR_REGISTRY" >> $GITHUB_OUTPUT
+          echo "image_tag=$IMAGE_TAG"       >> $GITHUB_OUTPUT
 
-      - name: Update ECS task definitions and force deploy
+      - name: Login to Amazon ECR
+        run: |
+          aws ecr get-login-password --region ${{ env.AWS_REGION }} \
+            | docker login --username AWS --password-stdin "${{ steps.meta.outputs.ecr_registry }}"
+
+      - name: Promote RC image to release
+        run: |
+          RC_IMAGE="${{ needs.build-rc.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ needs.build-rc.outputs.rc_tag }}"
+          REL_IMAGE="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}"
+          LAT_IMAGE="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:latest"
+          docker pull "$RC_IMAGE"
+          docker tag  "$RC_IMAGE" "$REL_IMAGE"
+          docker tag  "$RC_IMAGE" "$LAT_IMAGE"
+          docker push "$REL_IMAGE"
+          docker push "$LAT_IMAGE"
+          echo "Release image: $REL_IMAGE"
+
+      - name: Update ECS task definitions & force deploy
         run: |
           SERVICES=(
             dm-mined-blocks-watcher
@@ -139,13 +706,14 @@ jobs:
             dm-mined-txs-crawler
             dm-txs-input-decoder
           )
+          RELEASE_IMG="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}"
           for SVC in "${SERVICES[@]}"; do
             echo "::group::Updating $SVC"
             TASK_DEF=$(aws ecs describe-task-definition \
               --task-definition "$SVC" \
               --query 'taskDefinition' --output json)
             NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
-              --arg img "${{ env.ECR_REGISTRY }}/onchain-stream-txs:${{ env.IMAGE_TAG }}" \
+              --arg img "$RELEASE_IMG" \
               '.containerDefinitions[0].image = $img
                | del(.taskDefinitionArn, .revision, .status, .requiresAttributes,
                      .placementConstraints, .compatibilities, .registeredAt, .registeredBy)')
@@ -174,7 +742,19 @@ jobs:
               dm-txs-input-decoder \
             --region "${{ env.AWS_REGION }}" || {
             echo "::error::ECS deploy unstable — circuit breaker may have triggered rollback."
-            echo "::error::Check logs at CloudWatch: /ecs/dm-chain-explorer"
+            echo "::error::Check CloudWatch: /ecs/dm-chain-explorer"
             exit 1
           }
+          echo "## Production Deploy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "Image: \`${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "Services: dm-mined-blocks-watcher, dm-orphan-blocks-watcher, dm-block-data-crawler, dm-mined-txs-crawler, dm-txs-input-decoder" >> $GITHUB_STEP_SUMMARY
           echo "All ECS services are stable."
+
+      - name: Create and push release git tag
+        run: |
+          VERSION="${{ needs.check-idempotency.outputs.version }}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${VERSION}" -m "Release v${VERSION} — onchain-stream-txs deployed to prod"
+          git push origin "v${VERSION}"
+          echo "Git tag created: v${VERSION}" >> $GITHUB_STEP_SUMMARY

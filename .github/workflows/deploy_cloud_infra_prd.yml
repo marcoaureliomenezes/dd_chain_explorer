@@ -1,28 +1,80 @@
-name: Deploy Cloud Infrastructure
+name: Deploy Cloud Infra PRD
 
 on:
   workflow_dispatch:
     inputs:
       target_module:
-        description: 'Terraform module to apply (leave empty for all changed)'
+        description: 'PRD Terraform module to apply (empty = all changed modules)'
         required: false
         default: ''
         type: string
+      apply_hml:
+        description: 'Force apply HML terraform even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
 
 env:
   AWS_REGION:  sa-east-1
   TF_VERSION:  1.7.0
-  TF_ROOT:     services/prd/terraform
+  TF_ROOT:     services/prd
+  HML_TF_DIR:  services/hml/1_aws_core
 
 jobs:
+  # ----------------------------------------------------------------
+  # Branch guard — only allow dispatch from develop
+  # ----------------------------------------------------------------
+  branch-guard:
+    name: Branch guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+            exit 1
+          fi
+          echo "Branch check passed: ${{ github.ref }}"
+
+  # ----------------------------------------------------------------
+  # Version check — fail fast if VERSION file was not bumped
+  # ----------------------------------------------------------------
+  check-version:
+    name: Check version bump
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read and validate VERSION
+        id: ver
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Project version: $VERSION"
+          if git tag --list | grep -qx "v${VERSION}-infra"; then
+            echo "::error::Version v${VERSION}-infra is already tagged. Bump VERSION before deploying."
+            exit 1
+          fi
+          echo "Version v${VERSION} is new — proceeding."
+
   # ----------------------------------------------------------------
   # Detect which Terraform modules need to be applied
   # ----------------------------------------------------------------
   detect-changes:
     name: Detect target modules
+    needs: [branch-guard, check-version]
     runs-on: ubuntu-latest
     outputs:
-      modules: ${{ steps.detect.outputs.modules }}
+      modules:     ${{ steps.detect.outputs.modules }}
+      hml_changed: ${{ steps.detect.outputs.hml_changed }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -31,18 +83,30 @@ jobs:
       - name: Determine modules
         id: detect
         run: |
-          ALL_MODULES=(0_remote_state 1_vpc 2_iam 3_msk 4_s3 6_ecs 7_databricks 8_elasticache 9_dynamodb 10_lambda)
+          ALL_MODULES=(0_remote_state 1_vpc 2_iam 3_kinesis_sqs 4_s3 6_ecs 7_databricks 9_dynamodb 10_lambda)
 
+          # ---- HML detection ----
+          if [ "${{ github.event.inputs.apply_hml }}" = "true" ]; then
+            echo "hml_changed=true" >> $GITHUB_OUTPUT
+            echo "HML: forced via workflow input"
+          elif git diff --name-only origin/develop...HEAD | grep -q "${{ env.HML_TF_DIR }}/"; then
+            echo "hml_changed=true" >> $GITHUB_OUTPUT
+            echo "HML: changes detected in ${{ env.HML_TF_DIR }}"
+          else
+            echo "hml_changed=false" >> $GITHUB_OUTPUT
+            echo "HML: no changes"
+          fi
+
+          # ---- PRD module detection ----
           if [ -n "${{ github.event.inputs.target_module }}" ]; then
             echo "modules=[\"${{ github.event.inputs.target_module }}\"]" >> $GITHUB_OUTPUT
-            echo "Target module: ${{ github.event.inputs.target_module }}"
+            echo "PRD target module: ${{ github.event.inputs.target_module }}"
             exit 0
           fi
 
-          # Detect changed modules vs default branch
           CHANGED=()
           for MOD in "${ALL_MODULES[@]}"; do
-            if git diff --name-only origin/development...HEAD \
+            if git diff --name-only origin/develop...HEAD \
                 | grep -q "${{ env.TF_ROOT }}/${MOD}/"; then
               CHANGED+=("\"${MOD}\"")
             fi
@@ -50,16 +114,114 @@ jobs:
 
           if [ ${#CHANGED[@]} -eq 0 ]; then
             echo "modules=[]" >> $GITHUB_OUTPUT
-            echo "::notice::No Terraform changes detected."
+            echo "::notice::No PRD Terraform changes detected."
           else
             UNIQUE=($(echo "${CHANGED[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
-            MATRIX="[$(IFS=,; echo "${UNIQUE[*]}")]"
+            MATRIX="[$(IFS=,; echo "${UNIQUE[*]}" )]"
             echo "modules=$MATRIX" >> $GITHUB_OUTPUT
-            echo "Changed modules: $MATRIX"
+            echo "PRD changed modules: $MATRIX"
           fi
 
   # ----------------------------------------------------------------
-  # Terraform init → validate → plan (matrix per module)
+  # HML Terraform plan (single module — services/hml/terraform/)
+  # ----------------------------------------------------------------
+  hml-plan:
+    name: Plan — HML
+    needs: detect-changes
+    if: needs.detect-changes.outputs.hml_changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.HML_TF_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+
+      - name: Upload HML plan artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-hml
+          path: ${{ env.HML_TF_DIR }}/tfplan
+          retention-days: 1
+
+      - name: Post HML plan summary
+        if: always()
+        run: |
+          echo "### Terraform Plan — \`HML\`" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY
+          tail -20 plan.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------------------------------
+  # HML Terraform apply — auto (environment: hml, no approval gate)
+  # ----------------------------------------------------------------
+  hml-apply:
+    name: Apply — HML
+    needs: [detect-changes, hml-plan]
+    if: needs.detect-changes.outputs.hml_changed == 'true'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_TF_DIR }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform ${{ env.TF_VERSION }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+
+      - name: Download HML plan artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan-hml
+          path: ${{ env.HML_TF_DIR }}
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Show HML outputs
+        run: |
+          echo "### HML Terraform Outputs" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          terraform output >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+
+  # ----------------------------------------------------------------
+  # PRD Terraform init → validate → plan (matrix per module)
   # ----------------------------------------------------------------
   terraform-plan:
     name: Plan — ${{ matrix.module }}
@@ -119,11 +281,17 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
 
   # ----------------------------------------------------------------
-  # Apply — requires manual approval (environment: production)
+  # PRD Apply — requires manual approval (environment: production)
+  # Runs only after HML apply succeeds (or was skipped — no HML changes)
   # ----------------------------------------------------------------
   terraform-apply:
     name: Apply — ${{ matrix.module }}
-    needs: [detect-changes, terraform-plan]
+    needs: [detect-changes, terraform-plan, hml-apply]
+    if: |
+      always() &&
+      needs.terraform-plan.result == 'success' &&
+      needs.detect-changes.outputs.modules != '[]' &&
+      (needs.hml-apply.result == 'success' || needs.hml-apply.result == 'skipped')
     runs-on: ubuntu-latest
     environment: production
     strategy:
@@ -164,3 +332,37 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+  # ----------------------------------------------------------------
+  # Create release branch and git tag
+  # Runs when at least one apply (HML or PRD) succeeded.
+  # ----------------------------------------------------------------
+  create-release-branch:
+    name: Create release branch and tag
+    needs: [check-version, hml-apply, terraform-apply]
+    if: |
+      always() &&
+      needs.check-version.result == 'success' &&
+      (needs.hml-apply.result == 'success' || needs.hml-apply.result == 'skipped') &&
+      (needs.terraform-apply.result == 'success' || needs.terraform-apply.result == 'skipped') &&
+      (needs.hml-apply.result == 'success' || needs.terraform-apply.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create release branch and push git tag
+        run: |
+          VERSION="${{ needs.check-version.outputs.version }}"
+          BRANCH="release/infra-v${VERSION}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git push origin "$BRANCH"
+          git tag -a "v${VERSION}-infra" -m "Release v${VERSION} — infrastructure applied"
+          git push origin "v${VERSION}-infra"
+          echo "## Infrastructure Release" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: \`$BRANCH\` | Tag: \`v${VERSION}-infra\`" >> $GITHUB_STEP_SUMMARY
+          echo "HML apply: ${{ needs.hml-apply.result }} | PRD apply: ${{ needs.terraform-apply.result }}" >> $GITHUB_STEP_SUMMARY
