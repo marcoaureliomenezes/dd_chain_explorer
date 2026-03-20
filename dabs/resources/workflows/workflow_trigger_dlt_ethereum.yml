@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    workflow_trigger_dlt_ethereum:
+      name: "dm-trigger-dlt-ethereum"
+
+      # PAUSADO: workflow consolidado workflow_trigger_dlt_all.yml agora dispara
+      # ambos os pipelines (ethereum → app_logs) sequencialmente.
+      # Manter este workflow para trigger manual individual.
+      schedule:
+        quartz_cron_expression: "0 0/5 * * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED
+
+      tasks:
+        - task_key: trigger_pipeline_update
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pipeline_ethereum.id}
+            full_refresh: false
+
+      tags:
+        layer: streaming
+        project: dd-chain-explorer
+        trigger: airflow

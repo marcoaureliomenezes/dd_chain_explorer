@@ -1,0 +1,37 @@
+# Databricks SQL Alert — API Key DynamoDB Deadlock
+# Detecta quando TODAS as API keys Infura estão bloqueadas no semáforo DynamoDB
+# simultaneamente, causando descarte de transações.
+#
+# O Job 4 (4_mined_txs_crawler.py) loga o erro "Todas as API keys rate-limited"
+# no tópico Kafka mainnet.0.application.logs, consumido pelo pipeline DLT dm-app-logs.
+#
+# Threshold: qualquer ocorrência nos últimos 5 minutos dispara o alerta.
+# Cooldown: 5 minutos (seconds_to_retrigger: 300) para evitar spam.
+
+resources:
+  queries:
+    q_api_keys_deadlock:
+      display_name: "API Keys — Deadlock Events (5 min)"
+      parent_path: "/Shared/dd-chain-explorer"
+      warehouse_id: ${var.warehouse_id}
+      query: >-
+        SELECT COUNT(*) AS deadlock_events
+        FROM ${var.catalog}.s_logs.apps_logs_fast
+        WHERE level = 'ERROR'
+          AND message LIKE '%Todas as API keys rate-limited%'
+          AND from_unixtime(timestamp) >= CURRENT_TIMESTAMP - INTERVAL 5 MINUTES
+
+  alerts:
+    alert_api_keys_deadlock:
+      display_name: "API Keys — Deadlock detectado (todas bloqueadas)"
+      parent_path: "/Shared/dd-chain-explorer"
+      query_id: ${resources.queries.q_api_keys_deadlock.id}
+      condition:
+        op: GREATER_THAN
+        operand:
+          column:
+            name: deadlock_events
+        threshold:
+          value:
+            double_value: 0.0
+      seconds_to_retrigger: 300

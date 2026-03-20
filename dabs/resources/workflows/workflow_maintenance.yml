@@ -1,0 +1,47 @@
+resources:
+  jobs:
+    workflow_maintenance:
+      name: "dm-iceberg-maintenance"
+
+      # Schedule a cada 12h — substitui dag_periodic_maintenance_streaming_tables.py (Airflow)
+      schedule:
+        quartz_cron_expression: "0 0 4,16 * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED  # Despausar após validação em PROD
+
+      max_concurrent_runs: 1
+
+      tasks:
+        - task_key: optimize_bronze
+          notebook_task:
+            notebook_path: ../../src/batch/maintenance/1_optimize_bronze.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+        - task_key: optimize_silver
+          depends_on:
+            - task_key: optimize_bronze
+          notebook_task:
+            notebook_path: ../../src/batch/maintenance/2_optimize_silver.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+        - task_key: vacuum_all
+          depends_on:
+            - task_key: optimize_silver
+          notebook_task:
+            notebook_path: ../../src/batch/maintenance/3_vacuum_all.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+        - task_key: monitor_tables
+          depends_on:
+            - task_key: vacuum_all
+          notebook_task:
+            notebook_path: ../../src/batch/maintenance/4_monitor_tables.py
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+      tags:
+        layer: maintenance
+        project: dd-chain-explorer

@@ -1,0 +1,35 @@
+# Databricks SQL Alert — API Key consumption threshold
+# Triggers when MAX error rate across all API keys exceeds 80%.
+# Requires: var.warehouse_id must be non-empty (same warehouse used by dashboards).
+
+resources:
+  queries:
+    q_api_keys_error_rate:
+      display_name: "API Keys — Max Error Rate (24h)"
+      parent_path: "/Shared/dd-chain-explorer"
+      warehouse_id: ${var.warehouse_id}
+      query: >-
+        SELECT
+          MAX(ROUND(100.0 * calls_error_total / NULLIF(calls_total, 0), 2)) AS max_error_rate_pct
+        FROM (
+          SELECT calls_error_total, calls_total
+          FROM ${var.catalog}.g_api_keys.etherscan_consumption
+          UNION ALL
+          SELECT calls_error_total, calls_total
+          FROM ${var.catalog}.g_api_keys.web3_keys_consumption
+        )
+
+  alerts:
+    alert_api_keys_error_rate:
+      display_name: "API Keys — Error Rate > 80%"
+      parent_path: "/Shared/dd-chain-explorer"
+      query_id: ${resources.queries.q_api_keys_error_rate.id}
+      condition:
+        op: GREATER_THAN
+        operand:
+          column:
+            name: max_error_rate_pct
+        threshold:
+          value:
+            double_value: 80.0
+      seconds_to_retrigger: 86400

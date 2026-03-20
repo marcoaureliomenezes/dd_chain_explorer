@@ -1,0 +1,10 @@
+{
+  "namespace": "io.streamr.onchain",
+  "type": "record",
+  "name": "mined_block_event_schema",
+  "fields": [
+    {"name": "block_timestamp", "type": "int"},
+    {"name": "block_number", "type": "int"},
+    {"name": "block_hash", "type": "string"}
+  ]
+}

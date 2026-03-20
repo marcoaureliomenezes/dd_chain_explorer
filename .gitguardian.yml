@@ -1,0 +1,12 @@
+version: 2
+
+secret:
+  # SSM Parameter Store paths in compose files are NOT secrets.
+  # They are pointers (e.g. /web3-api-keys/alchemy/api-key-1) that
+  # the application uses to fetch the actual key at runtime from AWS SSM.
+  # Actual secret values never appear in any committed file.
+  ignored-paths:
+    - "services/dev/compose/app_services.yml"
+    - "services/prd/compose/app_services.yml"
+    - "services/dev/compose/airflow_services.yml"
+    - "services/prd/compose/airflow_services.yml"

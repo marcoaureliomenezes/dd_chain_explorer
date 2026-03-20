@@ -1,0 +1,8 @@
+resources:
+  dashboards:
+    gas_analytics:
+      display_name: "Gas Analytics"
+      file_path: ./03_gas_analytics.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: true
+      parent_path: /Shared/dd-chain-explorer/dashboards
