@@ -27,7 +27,7 @@ while true; do
     --query 'Versions[].{Key:Key,VersionId:VersionId}' \
     --output json 2>/dev/null || echo "[]")
 
-  if [ "${VERSIONS}" = "[]" ] || [ -z "${VERSIONS}" ]; then
+  if [ -z "${VERSIONS}" ] || [ "${VERSIONS}" = "[]" ] || [ "${VERSIONS}" = "null" ]; then
     break
   fi
 
@@ -47,7 +47,7 @@ while true; do
     --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' \
     --output json 2>/dev/null || echo "[]")
 
-  if [ "${MARKERS}" = "[]" ] || [ -z "${MARKERS}" ]; then
+  if [ -z "${MARKERS}" ] || [ "${MARKERS}" = "[]" ] || [ "${MARKERS}" = "null" ]; then
     break
   fi
 
