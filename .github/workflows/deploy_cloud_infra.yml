@@ -440,6 +440,68 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
+      - name: Import existing Databricks account resources (idempotent)
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          # Acquire OAuth token via M2M client credentials
+          TOKEN=$(curl -sf -X POST \
+            "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
+            -H "Content-Type: application/x-www-form-urlencoded" \
+            --data-urlencode "grant_type=client_credentials" \
+            --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
+            --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
+            --data-urlencode "scope=all-apis" \
+            | jq -r '.access_token' 2>/dev/null || true)
+          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+            echo "::error::Could not acquire Databricks OAuth token — check DATABRICKS_CLIENT_ID/SECRET secrets."
+            exit 1
+          fi
+          ACCT="https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}"
+          AUTH="Authorization: Bearer $TOKEN"
+
+          tf_import() {
+            local label="$1" addr="$2" id="$3"
+            if terraform state show "$addr" &>/dev/null; then
+              echo "  ${label}: already in state — skipping."
+              return 0
+            fi
+            if terraform import "$addr" "$id"; then
+              echo "  ${label}: imported OK."
+            else
+              echo "  ${label}: not found in Databricks — will be created by apply."
+            fi
+          }
+
+          echo "==> Checking for pre-existing Databricks account resources to import..."
+
+          CRED_ID=$(curl -sf -H "$AUTH" "${ACCT}/credentials" 2>/dev/null \
+            | jq -r '[.[] | select(.credentials_name=="dm-chain-explorer-credentials")][0].credentials_id // empty' 2>/dev/null || true)
+          [ -n "$CRED_ID" ] && tf_import "MWS credentials" "databricks_mws_credentials.dm" "${DATABRICKS_ACCOUNT_ID}/${CRED_ID}"
+
+          STOR_ID=$(curl -sf -H "$AUTH" "${ACCT}/storage-configurations" 2>/dev/null \
+            | jq -r '[.[] | select(.storage_configuration_name=="dm-chain-explorer-storage")][0].storage_configuration_id // empty' 2>/dev/null || true)
+          [ -n "$STOR_ID" ] && tf_import "MWS storage config" "databricks_mws_storage_configurations.dm" "${DATABRICKS_ACCOUNT_ID}/${STOR_ID}"
+
+          NET_ID=$(curl -sf -H "$AUTH" "${ACCT}/networks" 2>/dev/null \
+            | jq -r '[.[] | select(.network_name=="dm-chain-explorer-network")][0].network_id // empty' 2>/dev/null || true)
+          [ -n "$NET_ID" ] && tf_import "MWS network" "databricks_mws_networks.dm" "${DATABRICKS_ACCOUNT_ID}/${NET_ID}"
+
+          WS_ID=$(curl -sf -H "$AUTH" "${ACCT}/workspaces" 2>/dev/null \
+            | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_id // empty' 2>/dev/null || true)
+          [ -n "$WS_ID" ] && tf_import "MWS workspace" "databricks_mws_workspaces.dm" "${DATABRICKS_ACCOUNT_ID}/${WS_ID}"
+
+          MS_ID=$(curl -sf -H "$AUTH" "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/metastores" 2>/dev/null \
+            | jq -r '[.metastores[]? | select(.name=="dm-chain-explorer-metastore")][0].metastore_id // empty' 2>/dev/null || true)
+          [ -n "$MS_ID" ] && tf_import "Unity Catalog metastore" "databricks_metastore.dm" "$MS_ID"
+
+          if [ -n "${WS_ID:-}" ] && [ -n "${MS_ID:-}" ]; then
+            tf_import "Metastore assignment" "databricks_metastore_assignment.dm" "${WS_ID}/${MS_ID}"
+          fi
+
+          echo "==> Import check complete."
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
@@ -489,12 +551,20 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Apply 05a_databricks_account
+        run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
+      - name: Dump apply errors
+        if: failure()
+        run: |
+          echo "### Apply Error — PRD/05a_databricks_account" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          tail -100 apply.txt >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Export workspace outputs
         id: ws_out
         run: |
