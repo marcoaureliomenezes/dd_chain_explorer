@@ -90,7 +90,6 @@ Performance, custo e maturidade operacional.
 
 | Prioridade | TODO | Área | Descrição | Esforço |
 |------------|------|------|-----------|--------|
-| 🟠 P2 | TODO-A12 | Arquitetura | Estudo de custo ECS Fargate vs EC2: duplicar services, rodar 24h, comparar consumo | Médio |
 | 🟠 P2 | TODO-C10 | Captura | Batched RPC calls nos Jobs 3 e 4 (JSON-RPC batch) | Médio |
 | 🟠 P2 | TODO-A07 | Arquitetura | Avaliar NAT Gateway na VPC (segurança vs custo) | Baixo |
 

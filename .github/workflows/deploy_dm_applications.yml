@@ -22,8 +22,8 @@ env:
   HML_ECS_CLUSTER:         dm-hml-ecs
   ECR_REPO:                onchain-stream-txs
   DATABRICKS_CLI_VERSION:  0.218.0
-  DABS_PATH:               dabs
-  LAMBDA_DIR:              lambda
+  DABS_PATH:               apps/dabs
+  LAMBDA_DIR:              apps/lambda
   UTILS_DIR:               utils
   PRD_TF_LAMBDA:           services/prd/06_lambda
   TF_STATE_BUCKET:         dm-chain-explorer-terraform-state

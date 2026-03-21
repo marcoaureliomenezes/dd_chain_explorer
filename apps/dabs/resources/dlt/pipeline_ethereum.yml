@@ -13,11 +13,11 @@ resources:
 
       configuration:
         # S3 bucket for ingestion (raw data, DLT external tables, checkpoints)
-        ingestion.s3.bucket: ${var.dev_ingestion_s3_bucket}
+        ingestion.s3.bucket: ${var.ingestion_s3_bucket}
         # Catalog name (para spark.table() referências a tabelas externas ao DLT)
         catalog: ${var.catalog}
         # S3 export path (para MVs que exportam dados para consumo externo)
-        s3.export.path: "s3://${var.dev_ingestion_s3_bucket}/exports/popular_contracts"
+        s3.export.path: "s3://${var.ingestion_s3_bucket}/exports/popular_contracts"
 
       serverless: true
 
