@@ -2,6 +2,9 @@ name: Deploy Python Lib
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - "trigger-lib-*"
 
 env:
   LIB_PATH: utils
@@ -11,10 +14,13 @@ jobs:
     name: Branch guard
     runs-on: ubuntu-latest
     steps:
-      - name: Enforce develop branch
+      - name: Enforce develop branch or trigger tag
         run: |
-          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
-            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+          REF="${{ github.ref }}"
+          if [[ "$REF" == "refs/heads/develop" || "$REF" == refs/tags/trigger-lib-* ]]; then
+            echo "Allowed ref: $REF"
+          else
+            echo "::error::This workflow must be triggered from 'develop' or via a 'trigger-lib-*' tag. Got: $REF"
             exit 1
           fi
 
