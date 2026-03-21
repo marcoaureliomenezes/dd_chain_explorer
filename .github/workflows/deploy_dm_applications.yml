@@ -438,11 +438,15 @@ jobs:
           RC_IMAGE="${{ needs.stream-build-rc.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ needs.stream-build-rc.outputs.rc_tag }}"
           REL_IMAGE="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}"
           LAT_IMAGE="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:latest"
+          VER_IMAGE="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:v${{ needs.stream-check-idempotency.outputs.version }}"
           docker pull "$RC_IMAGE"
           docker tag  "$RC_IMAGE" "$REL_IMAGE"
           docker tag  "$RC_IMAGE" "$LAT_IMAGE"
+          docker tag  "$RC_IMAGE" "$VER_IMAGE"
           docker push "$REL_IMAGE"
           docker push "$LAT_IMAGE"
+          docker push "$VER_IMAGE"
+          echo "Docker image tagged: v${{ needs.stream-check-idempotency.outputs.version }}"
       - name: Update ECS task definitions & force deploy
         run: |
           RELEASE_IMG="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}"
@@ -881,8 +885,13 @@ jobs:
         run: |
           mkdir -p ${{ env.PRD_TF_LAMBDA }}/.lambda_zip
           cp dm_chain_utils_layer.zip ${{ env.PRD_TF_LAMBDA }}/.lambda_zip/
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform init & apply
         working-directory: ${{ env.PRD_TF_LAMBDA }}
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
         run: |
           terraform init -input=false
           terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt

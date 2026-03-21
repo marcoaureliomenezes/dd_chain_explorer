@@ -408,13 +408,3 @@ apps/dabs/
 | Lambda | `apps/lambda/contracts_ingestion/handler.py`, `apps/lambda/gold_to_dynamodb/handler.py` |
 | Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
 
----
-
-## TODOs — DataOps
-
-- [ ] **TODO-O08**: Implementar monitoramento com CloudWatch Dashboards para métricas de ECS + Kinesis + DynamoDB.
-- [ ] **TODO-O10**: Implementar notificações Slack/Teams para falhas de CI/CD e alertas de infraestrutura.
-- [x] **TODO-O11** 🔴 P0: ~~Hardening do pipeline de CI/CD.~~ Concluído: 8 workflows consolidados em 4 — `deploy_cloud_infra` (DEV+PRD unificado), `destroy_cloud_infra` (DEV+PRD com confirmação dupla), `deploy_dm_applications` (streaming+DABs+Lambda), `deploy_lib_python` (PyPI via OIDC). HML 100% efêmero, infra DEV com 2 módulos separados (`01_peripherals` + `02_lambda`), módulos PRD renumerados.
-- [ ] **TODO-O12** 🔴 P0: Validar ambiente PROD end-to-end. Garantir que o fluxo completo funciona: jobs de streaming no ECS Fargate → Kinesis/Firehose → S3 → DLT Databricks → tabelas Gold populadas. Lambda contracts-ingestion → S3 batch/ → `dm-batch-contracts` → Silver/Gold.
-- [ ] **TODO-O13**: Validar `deploy_dm_applications.yml` (app_type=lambda-functions) end-to-end: build artifacts, HML test, PRD deploy via Terraform apply.
-- [x] **TODO-O14**: ~~Implementar infra-as-prerequisite gates nos workflows de deploy de apps.~~ Concluído — todos os 3 tipos em `deploy_dm_applications.yml` possuem jobs `*-check-infra` que verificam ECS cluster, Databricks workspace e IAM roles antes de prosseguir.

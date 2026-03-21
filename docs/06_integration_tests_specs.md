@@ -44,32 +44,17 @@ Mandatory checks that must pass before a release branch is created.
 | 5 | dm-app-logs | `g_api_keys.etherscan_consumption` | `logs_streaming` + `logs_batch` |
 | 6 | dm-app-logs | `g_api_keys.web3_keys_consumption` | `logs_streaming` + `logs_batch` |
 
-### Skipped (TODO — batch dependency)
+### Skipped (batch dependency)
 
 | Gold MV | Reason |
 |---|---|
-| `s_apps.transactions_lambda` | Depends on `b_ethereum.popular_contracts_txs` (batch pipeline). See TODO below. |
+| `s_apps.transactions_lambda` | Depends on `b_ethereum.popular_contracts_txs` (batch pipeline — not yet tested end-to-end). |
 
 **Pass criteria**: all 6 mandatory Gold MVs have row_count > 0. Any FAIL → block release.
 
 ---
 
-## 3. TODO — Batch Popular Contracts Pipeline
-
-**Not yet tested.** The full batch flow requires:
-
-1. DLT Gold MV `popular_contracts_ranking` → top 100 contracts
-2. Periodic workflow exports ranking to DynamoDB (via Lambda)
-3. Another Lambda reads DynamoDB contracts → fetches txs from Etherscan API
-4. Lambda writes batch txs to S3 (raw bucket)
-5. DLT reads from S3 → `b_ethereum.popular_contracts_txs` (Bronze)
-6. Gold MV `transactions_lambda` JOINs streaming + batch data
-
-**Complexity**: requires Lambda functions, Etherscan API keys, DynamoDB orchestration, and careful mapping of the data flow before building a reliable integration test.
-
----
-
-## Execution Order in CI/CD
+## 3. Execution Order in CI/CD
 
 ### `deploy_streaming_apps.yml`
 ```

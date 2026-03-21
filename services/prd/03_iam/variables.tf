@@ -20,3 +20,9 @@ variable "databricks_account_uuid" {
   sensitive   = true
   default     = "f28000a4-f27e-4231-8ae4-20fa34ba09fd"
 }
+
+variable "version" {
+  description = "Project version from VERSION file — propagated to resource tags"
+  type        = string
+  default     = "0.0.0"
+}

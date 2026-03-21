@@ -39,3 +39,8 @@ variable "databricks_bucket_name" {
   type        = string
 }
 
+variable "version" {
+  description = "Project version from VERSION file — propagated to resource tags"
+  type        = string
+  default     = "0.0.0"
+}

@@ -363,9 +363,3 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 | Terraform Lambda PRD | `services/prd/06_lambda/lambda_contracts_ingestion.tf` |
 | Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
 
----
-
-## TODOs — Processamento de Dados
-
-- [ ] **TODO-P01** 🔴 P0: Validar DLT triggered end-to-end em PROD. Configurado em `apps/dabs/databricks.yml` (`prod` target), pendente validação E2E em ambiente PROD real. Blocker para validação do ambiente de produção (TODO-O12).
-- [x] **TODO-P09**: ~~Avaliar migração do Airflow para MWAA~~ — Cancelado: Airflow removido. Orquestração migrada para Databricks Workflows + Lambda (EventBridge). Ver `docs/rearchitecting_airflow.md`.

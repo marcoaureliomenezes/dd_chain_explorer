@@ -104,7 +104,12 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform validate
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-dev-peripherals
@@ -138,8 +143,13 @@ jobs:
         with:
           name: tfplan-dev-peripherals
           path: ${{ env.DEV_PERIPHERALS }}
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   dev-apply-lambda:
     name: DEV — Plan + Apply 06_lambda
@@ -163,15 +173,22 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform validate
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - if: always()
         run: |
           echo "### Plan DEV/06_lambda" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   # ══════════════════════════════════════════════════════════════
   #  PRD — Layer 0: version check (gate for all PRD jobs)
@@ -188,7 +205,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Validate VERSION
+      - name: Read and validate VERSION
         id: ver
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
@@ -196,10 +213,12 @@ jobs:
           if [ "${{ github.event.inputs.force_apply }}" = "true" ]; then
             echo "force_apply — skipping tag check."
           elif git tag --list | grep -qx "v${VERSION}-infra"; then
-            echo "::error::v${VERSION}-infra already tagged. Bump VERSION or use force_apply."
+            echo "::error::v${VERSION}-infra already tagged. A new PR merge to develop is required to bump VERSION."
             exit 1
           fi
           echo "Version v${VERSION} — OK."
+          echo "## Version Check" >> $GITHUB_STEP_SUMMARY
+          echo "Deploying PRD infra **v${VERSION}**" >> $GITHUB_STEP_SUMMARY
 
   # ── PRD Layer 1: 02_vpc + 04_peripherals (parallel) ───────────
 
@@ -222,7 +241,12 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform validate
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-02_vpc
@@ -255,8 +279,13 @@ jobs:
         with:
           name: tfplan-prd-02_vpc
           path: ${{ env.PRD_ROOT }}/02_vpc
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   prd-plan-peripherals:
     name: PRD — Plan 04_peripherals
@@ -277,7 +306,12 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform validate
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-04_peripherals
@@ -310,8 +344,13 @@ jobs:
         with:
           name: tfplan-prd-04_peripherals
           path: ${{ env.PRD_ROOT }}/04_peripherals
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   # ── PRD Layer 2: 03_iam (depends on vpc + peripherals) ─────────
 
@@ -334,7 +373,12 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform validate
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-03_iam
@@ -367,8 +411,13 @@ jobs:
         with:
           name: tfplan-prd-03_iam
           path: ${{ env.PRD_ROOT }}/03_iam
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   # ── PRD Layer 3: 05_databricks + 06_lambda + 07_ecs (parallel) ─
 
@@ -396,11 +445,15 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_version:           ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-05_databricks
@@ -435,11 +488,15 @@ jobs:
           name: tfplan-prd-05_databricks
           path: ${{ env.PRD_ROOT }}/05_databricks
       - run: terraform init -input=false
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform apply -input=false -auto-approve tfplan
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_version:           ${{ steps.ver.outputs.version }}
 
   prd-apply-lambda:
     name: PRD — Plan + Apply 06_lambda
@@ -459,15 +516,22 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform validate
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - if: always()
         run: |
           echo "### Plan PRD/06_lambda" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   prd-plan-ecs:
     name: PRD — Plan 07_ecs
@@ -488,7 +552,12 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform validate
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-07_ecs
@@ -521,8 +590,13 @@ jobs:
         with:
           name: tfplan-prd-07_ecs
           path: ${{ env.PRD_ROOT }}/07_ecs
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_version: ${{ steps.ver.outputs.version }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 

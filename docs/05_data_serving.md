@@ -267,10 +267,3 @@ Para disponibilizar dados publicamente, considerações:
 | Lambda batch data | `dabs/src/batch/batch_contracts/1_s3_to_bronze_contracts_txs.py`, `2_bronze_to_silver_contracts_txs.py` |
 | DABs config | `dabs/databricks.yml` |
 | DLT pipeline config | `dabs/resources/dlt/pipeline_ethereum.yml`, `pipeline_app_logs.yml` |
-
----
-
-## TODOs — Data Serving
-
-- [ ] **TODO-S06**: Avaliar implementação de REST API (FastAPI no ECS ou Databricks SQL Statement API) para acesso programático.
-- [ ] **TODO-S10**: Criar página web pública com métricas básicas da rede Ethereum consumindo a REST API proposta.

@@ -2,6 +2,12 @@ name: Deploy Python Lib
 
 on:
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — validate version and build without publishing to PyPI'
+        required: false
+        default: false
+        type: boolean
 
 env:
   LIB_PATH: utils
@@ -42,7 +48,7 @@ print(m.group(1))
             exit 1
           fi
           if git tag --list | grep -qx "v${FILE_VERSION}-lib"; then
-            echo "::error::Version v${FILE_VERSION}-lib is already tagged. Bump VERSION and pyproject.toml before deploying."
+            echo "::error::Version v${FILE_VERSION}-lib is already tagged. Merge a new PR to develop to trigger auto-bump before deploying."
             exit 1
           fi
           echo "Version v${FILE_VERSION} is consistent and new — proceeding."
@@ -120,6 +126,7 @@ print(f'OK: {local} > {pypi}')
   publish:
     name: Publish to PyPI
     needs: version-check
+    if: github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -134,6 +141,7 @@ print(f'OK: {local} > {pypi}')
   create-release-branch:
     name: Create release branch
     needs: [version-check, publish]
+    if: github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -154,6 +162,7 @@ print(f'OK: {local} > {pypi}')
   github-release:
     name: Create GitHub Release
     needs: [version-check, create-release-branch]
+    if: github.event.inputs.dry_run != 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

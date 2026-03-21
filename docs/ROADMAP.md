@@ -4,10 +4,9 @@
 
 Este documento consolida as melhorias pendentes do projeto, organizadas por prioridade e fase de execução. Cada item referencia o TODO original para rastreabilidade.
 
-> Os itens concluídos foram removidos do roadmap. Consulte o histórico de commits e os documentos 01–05 para o registro completo de implementações.
-> TODOs consolidados (A02→A11, C07→A11) permanecem marcados com `[x]` nos documentos de origem.
+> Os itens concluídos foram removidos do roadmap. Consulte o histórico de commits para o registro completo de implementações.
 
-**TODOs em aberto: 11** (3 Arquitetura + 2 Captura + 1 Processamento + 3 DataOps + 2 Serving)
+**TODOs em aberto: 11** (2 Arquitetura + 2 Captura + 1 Processamento + 4 DataOps + 2 Serving)
 
 ---
 
@@ -77,10 +76,10 @@ Melhorias que aumentam a confiabilidade, visibilidade e paridade DEV/PROD.
 
 | Prioridade | TODO | Área | Descrição | Esforço |
 |------------|------|------|-----------|--------|
-| 🟡 P1 | TODO-A06 | Arquitetura | Implementar observabilidade PROD (CloudWatch/Prometheus+Grafana) | Alto |
 | 🟡 P1 | TODO-O08 | DataOps | CloudWatch Dashboards ou Grafana para ECS + Kinesis + DynamoDB | Alto |
-| 🟡 P1 | TODO-C08 | Captura | Métricas Prometheus nos jobs de streaming (throughput, latência, erros) | Médio |
+| 🟡 P1 | TODO-C08 | Captura | Métricas CloudWatch nos jobs de streaming (throughput, latência, erros) | Médio |
 | 🟡 P1 | TODO-O10 | DataOps | Notificações Slack/Teams para falhas CI/CD e alertas de infra | Médio |
+| 🟡 P1 | TODO-O13 | DataOps | Validar `deploy_dm_applications.yml` (app_type=lambda-functions) end-to-end: build, HML test, PRD deploy via Terraform | Médio |
 
 ---
 
@@ -92,6 +91,7 @@ Performance, custo e maturidade operacional.
 |------------|------|------|-----------|--------|
 | 🟠 P2 | TODO-C10 | Captura | Batched RPC calls nos Jobs 3 e 4 (JSON-RPC batch) | Médio |
 | 🟠 P2 | TODO-A07 | Arquitetura | Avaliar NAT Gateway na VPC (segurança vs custo) | Baixo |
+| 🟠 P2 | TODO-A12 | Arquitetura | Estudo de custo ECS Fargate vs EC2/EKS — rodar workload de streaming por 24h em EC2 (capacity provider) e comparar custos com Fargate | Médio |
 
 ---
 
@@ -110,10 +110,10 @@ Funcionalidades novas e expansão do escopo.
 
 | Área | Total | Fase 0 | Fase 1 | Fase 2 | Fase 3 |
 |------|-------|--------|--------|--------|--------|
-| Arquitetura (A) | 3 | — | 1 | 2 | — |
+| Arquitetura (A) | 2 | — | — | 2 | — |
 | Captura (C) | 2 | — | 1 | 1 | — |
 | Processamento (P) | 1 | 1 | — | — | — |
-| DataOps (O) | 3 | 1 | 2 | — | — |
+| DataOps (O) | 4 | 1 | 3 | — | — |
 | Serving (S) | 2 | — | — | — | 2 |
 | **Total** | **11** | **2** | **4** | **3** | **2** |
 
@@ -135,8 +135,8 @@ Funcionalidades novas e expansão do escopo.
 ```mermaid
 flowchart TD
     P01["🔴 TODO-P01<br/>DLT S3 Auto Loader PROD"] --> O12["🔴 TODO-O12<br/>Validar PROD E2E"]
-    A06["🟡 TODO-A06<br/>Observabilidade PROD"] --> O08["🟡 TODO-O08<br/>CloudWatch/Grafana"]
-    A06 --> C08["🟡 TODO-C08<br/>CloudWatch Metrics streaming"]
+    O08["🟡 TODO-O08<br/>CloudWatch/Grafana"]
+    C08["🟡 TODO-C08<br/>CloudWatch Metrics streaming"]
     A12["🟠 TODO-A12<br/>Fargate vs EC2"] -.-> O12
     S06["🔵 TODO-S06<br/>REST API"] --> S10["🔵 TODO-S10<br/>Web pública"]
 ```
@@ -145,11 +145,12 @@ flowchart TD
 
 ## Referências de Arquivos
 
-| Documento | Arquivo | TODOs |
-|-----------|---------|-------|
-| 01 — Arquitetura | `docs/01_architecture.md` | A03, ~~A04~~, A06, A07, A10, ~~A11~~, **A12** |
-| 02 — Captura de Dados | `docs/02_data_capture.md` | C08, C10 |
-| 03 — Processamento de Dados | `docs/03_data_processing.md` | TODO-P01 |
-| 04 — DataOps | `docs/04_data_ops.md` | TODO-O08, O10, O12, O13 |
-| 05 — Data Serving | `docs/05_data_serving.md` | TODO-S06, S10 |
+| Documento | Arquivo |
+|-----------|--------|
+| 01 — Arquitetura | `docs/01_architecture.md` |
+| 02 — Captura de Dados | `docs/02_data_capture.md` |
+| 03 — Processamento de Dados | `docs/03_data_processing.md` |
+| 04 — DataOps | `docs/04_data_ops.md` |
+| 05 — Data Serving | `docs/05_data_serving.md` |
+| 06 — Integration Tests Specs | `docs/06_integration_tests_specs.md` |
 

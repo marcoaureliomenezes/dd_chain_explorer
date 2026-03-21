@@ -45,3 +45,9 @@ variable "az_private_subnet_2" {
   default = "sa-east-1b"
   type    = string
 }
+
+variable "version" {
+  description = "Project version from VERSION file — propagated to resource tags"
+  type        = string
+  default     = "0.0.0"
+}

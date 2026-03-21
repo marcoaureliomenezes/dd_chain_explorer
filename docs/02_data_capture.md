@@ -354,10 +354,3 @@ COPY apps/docker/onchain-stream-txs/src /app
 | Utilitários compartilhados | `utils/src/dm_chain_utils/` (pacote `dm-chain-utils` 1.0.0) |
 | Docker (streaming) | `apps/docker/onchain-stream-txs/Dockerfile`, `requirements.txt` |
 
----
-
-## TODOs — Captura de Dados
-
-- [x] **TODO-C07**: ~~Avaliar substituição do Spark Kafka→S3 Multiplex.~~ Eliminado — Firehose entrega NDJSON no S3 nativamente. Spark Streaming e Kafka removidos.
-- [ ] **TODO-C08**: Implementar métricas CloudWatch Metrics nos jobs de streaming (ex: taxa de processamento, latência, erros por minuto).
-- [ ] **TODO-C10**: Adicionar suporte a batched RPC calls (JSON-RPC batch) nos Jobs 3 e 4 para reduzir latência de rede.

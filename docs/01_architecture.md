@@ -214,15 +214,3 @@ O ambiente de DEV opera em **duas redes isoladas**:
 | Makefile | `Makefile` |
 | Configs Compose | `services/dev/00_compose/conf/` |
 
----
-
-## TODOs — Arquitetura
-
-- [x] **TODO-A02**: ~~Resolver a ponte Kafka → S3 em PROD.~~ Resolvido pela migração Kinesis/Firehose → S3.
-- [x] **TODO-A03**: ~~Definir estratégia de Airflow em PROD.~~ Resolvido — Airflow removido. Orquestração migrada para Databricks Workflows (schedules nativos) + Lambda (EventBridge). Ver `docs/rearchitecting_airflow.md`.
-- [x] **TODO-A04**: ~~Implementar TLS para comunicação Kafka em PROD.~~ Eliminado — Kafka removido. Kinesis/SQS/CloudWatch usam TLS nativo via AWS SDK.
-- [x] **TODO-A06**: ~~Implementar observabilidade em PROD.~~ CloudWatch Logs + Metrics nativos com a migração. Dashboards podem ser criados sobre CloudWatch.
-- [ ] **TODO-A07**: Avaliar necessidade de NAT Gateway na VPC de PROD. Atualmente ECS tasks têm IP público para acesso à internet (APIs Web3). NAT Gateway é mais seguro, porém tem custo.
-- [x] **TODO-A10**: ~~Criar ambiente de staging/homologação.~~ Resolvido — ambiente HML opera com recursos 100% efêmeros provisionados e destruídos dentro dos workflows de deploy de apps (`deploy_dm_applications.yml` — jobs `stream-hml-*`, `dabs-hml-*`, `lambda-hml-*`). Infra persistente de HML removida.
-- [x] **TODO-A11**: ~~Substituir Spark Streaming Kafka→S3 por Kafka Connect S3 Sink.~~ Eliminado — Firehose entrega NDJSON no S3 nativamente. Spark Streaming removido.
-- [ ] **TODO-A12**: Estudo de custo **ECS Fargate vs EC2/EKS**. Duplicar os services de streaming em um cluster EC2 (capacity provider) ou EKS, rodar ambos por 24h e comparar custos. Workload previsível (5 jobs + 6 réplicas do job 4) favorece EC2 com instâncias reservadas.

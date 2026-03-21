@@ -6,5 +6,6 @@ locals {
     "environment" = var.environment
     "project"     = "dd-chain-explorer"
 
+    "version"     = var.version
   }
 }

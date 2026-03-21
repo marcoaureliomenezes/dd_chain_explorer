@@ -37,3 +37,9 @@ variable "dynamodb_table_name" {
   type        = string
   default     = "dm-chain-explorer"
 }
+
+variable "version" {
+  description = "Project version from VERSION file — propagated to resource tags"
+  type        = string
+  default     = "0.0.0"
+}

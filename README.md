@@ -92,7 +92,7 @@ make prod_ecs_logs           # Ver logs ECS PRD em tempo real
 | [`docs/03_data_processing.md`](docs/03_data_processing.md) | DLT pipelines, modelo Medallion, workflows Databricks |
 | [`docs/04_data_ops.md`](docs/04_data_ops.md) | CI/CD, Terraform, DABs, GitFlow, observabilidade |
 | [`docs/05_data_serving.md`](docs/05_data_serving.md) | Tabelas Gold, dashboards, APIs |
-| [`docs/07_integration_tests_specs.md`](docs/07_integration_tests_specs.md) | Especificações e regras dos testes de integração |
+| [`docs/06_integration_tests_specs.md`](docs/06_integration_tests_specs.md) | Especificações e regras dos testes de integração |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | TODOs, prioridades e dependências |
 | [`docs/report_finops.md`](docs/report_finops.md) | Inventário de recursos e custos AWS |
 | [`docs/report_security.md`](docs/report_security.md) | Relatório de auditoria de segurança |
