@@ -13,6 +13,11 @@ on:
         required: false
         default: false
         type: boolean
+      force_apply:
+        description: 'Skip version tag check (use when redeploying same version, e.g. after infra destroy)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -59,11 +64,13 @@ jobs:
           VERSION=$(cat VERSION | tr -d '[:space:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "Project version: $VERSION"
-          if git tag --list | grep -qx "v${VERSION}-infra"; then
+          if [ "${{ github.event.inputs.force_apply }}" = "true" ]; then
+            echo "force_apply=true — skipping version tag check."
+          elif git tag --list | grep -qx "v${VERSION}-infra"; then
             echo "::error::Version v${VERSION}-infra is already tagged. Bump VERSION before deploying."
             exit 1
           fi
-          echo "Version v${VERSION} is new — proceeding."
+          echo "Version v${VERSION} — proceeding."
 
   # ----------------------------------------------------------------
   # Detect which Terraform modules need to be applied
