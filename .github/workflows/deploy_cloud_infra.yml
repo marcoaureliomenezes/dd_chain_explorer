@@ -419,16 +419,16 @@ jobs:
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  # ── PRD Layer 3: 05_databricks + 06_lambda + 07_ecs (parallel) ─
+  # ── PRD Layer 3: 05a_databricks_account + 06_lambda + 07_ecs (parallel) ─
 
-  prd-plan-databricks:
-    name: PRD — Plan 05_databricks
+  prd-plan-databricks-account:
+    name: PRD — Plan 05a_databricks_account
     needs: prd-apply-iam
     if: github.event.inputs.skip_databricks != 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.PRD_ROOT }}/05_databricks
+        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -443,46 +443,34 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Extract workspace host/token from existing tfstate
-        id: ws
-        run: |
-          WS_JSON=$(terraform output -json 2>/dev/null || echo '{}')
-          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value // empty' 2>/dev/null || echo "")
-          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value // empty' 2>/dev/null || echo "")
-          echo "host=$WS_URL"  >> $GITHUB_OUTPUT
-          echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
-          echo "Workspace URL: ${WS_URL:-'(none - will create new workspace)'}"
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:    ${{ steps.ver.outputs.version }}
-          TF_VAR_workspace_host:     ${{ steps.ws.outputs.host }}
-          TF_VAR_workspace_token:    ${{ steps.ws.outputs.token }}
+          TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
-          name: tfplan-prd-05_databricks
-          path: ${{ env.PRD_ROOT }}/05_databricks/tfplan
+          name: tfplan-prd-05a-databricks-account
+          path: ${{ env.PRD_ROOT }}/05a_databricks_account/tfplan
           retention-days: 1
       - if: always()
         run: |
-          echo "### Plan PRD/05_databricks" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/05a_databricks_account" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
 
-  prd-apply-databricks:
-    name: PRD — Apply 05_databricks
-    needs: prd-plan-databricks
+  prd-apply-databricks-account:
+    name: PRD — Apply 05a_databricks_account
+    needs: prd-plan-databricks-account
     if: github.event.inputs.skip_databricks != 'true'
     runs-on: ubuntu-latest
     environment: production
+    outputs:
+      workspace_url:   ${{ steps.ws_out.outputs.workspace_url }}
+      workspace_token: ${{ steps.ws_out.outputs.workspace_token }}
     defaults:
       run:
-        working-directory: ${{ env.PRD_ROOT }}/05_databricks
+        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -495,33 +483,103 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - uses: actions/download-artifact@v4
         with:
-          name: tfplan-prd-05_databricks
-          path: ${{ env.PRD_ROOT }}/05_databricks
+          name: tfplan-prd-05a-databricks-account
+          path: ${{ env.PRD_ROOT }}/05a_databricks_account
       - run: terraform init -input=false
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Extract workspace host/token from existing tfstate
-        id: ws
-        run: |
-          WS_JSON=$(terraform output -json 2>/dev/null || echo '{}')
-          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value // empty' 2>/dev/null || echo "")
-          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value // empty' 2>/dev/null || echo "")
-          echo "host=$WS_URL"  >> $GITHUB_OUTPUT
-          echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
-          echo "Workspace URL: ${WS_URL:-'(none - will create new workspace)'}"
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - run: terraform apply -input=false -auto-approve tfplan
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:    ${{ steps.ver.outputs.version }}
-          TF_VAR_workspace_host:     ${{ steps.ws.outputs.host }}
-          TF_VAR_workspace_token:    ${{ steps.ws.outputs.token }}
+          TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
+      - name: Export workspace outputs
+        id: ws_out
+        run: |
+          WS_JSON=$(terraform output -json)
+          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value')
+          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value')
+          echo "workspace_url=$WS_URL"   >> $GITHUB_OUTPUT
+          echo "workspace_token=$WS_TOKEN" >> $GITHUB_OUTPUT
+          echo "Workspace URL: $WS_URL"
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+  # ── PRD Layer 4: 05b_databricks_workspace (após workspace existir) ─
+
+  prd-plan-databricks-workspace:
+    name: PRD — Plan 05b_databricks_workspace
+    needs: prd-apply-databricks-account
+    if: github.event.inputs.skip_databricks != 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_workspace_host:  ${{ needs.prd-apply-databricks-account.outputs.workspace_url }}
+          TF_VAR_workspace_token: ${{ needs.prd-apply-databricks-account.outputs.workspace_token }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-05b-databricks-workspace
+          path: ${{ env.PRD_ROOT }}/05b_databricks_workspace/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/05b_databricks_workspace" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-databricks-workspace:
+    name: PRD — Apply 05b_databricks_workspace
+    needs: [prd-plan-databricks-workspace, prd-apply-databricks-account]
+    if: github.event.inputs.skip_databricks != 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-05b-databricks-workspace
+          path: ${{ env.PRD_ROOT }}/05b_databricks_workspace
+      - run: terraform init -input=false
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+      - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_workspace_host:  ${{ needs.prd-apply-databricks-account.outputs.workspace_url }}
+          TF_VAR_workspace_token: ${{ needs.prd-apply-databricks-account.outputs.workspace_token }}
 
   prd-apply-lambda:
     name: PRD — Plan + Apply 06_lambda

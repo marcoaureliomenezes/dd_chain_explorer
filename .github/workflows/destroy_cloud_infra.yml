@@ -206,16 +206,56 @@ jobs:
       - if: always()
         run: echo "PRD/07_ecs destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
-  # ── PRD Layer 2: Databricks ───────────────────────────────────
+  # ── PRD Layer 2: Databricks workspace (primeiro) ─────────────
 
-  prd-destroy-databricks:
-    name: PRD — Destroy 05_databricks
+  prd-destroy-databricks-workspace:
+    name: PRD — Destroy 05b_databricks_workspace
     needs: [prd-destroy-lambda, prd-destroy-ecs]
     runs-on: ubuntu-latest
     environment: production
     defaults:
       run:
-        working-directory: ${{ env.PRD_ROOT }}/05_databricks
+        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Get workspace host/token from tfstate
+        id: ws
+        run: |
+          WS_JSON=$(terraform output -json 2>/dev/null || echo '{}')
+          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value // empty' 2>/dev/null || echo "")
+          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value // empty' 2>/dev/null || echo "")
+          echo "host=$WS_URL"  >> $GITHUB_OUTPUT
+          echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      - run: terraform destroy -auto-approve -input=false -no-color
+        env:
+          TF_VAR_workspace_host:  ${{ steps.ws.outputs.host }}
+          TF_VAR_workspace_token: ${{ steps.ws.outputs.token }}
+      - if: always()
+        run: echo "PRD/05b_databricks_workspace destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # ── PRD Layer 2: Databricks account (depois do workspace) ─────
+
+  prd-destroy-databricks-account:
+    name: PRD — Destroy 05a_databricks_account
+    needs: prd-destroy-databricks-workspace
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -233,13 +273,13 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - if: always()
-        run: echo "PRD/05_databricks destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: echo "PRD/05a_databricks_account destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
   # ── PRD Layer 1: Peripherals ──────────────────────────────────
 
   prd-destroy-peripherals:
     name: PRD — Destroy 04_peripherals
-    needs: [prd-destroy-lambda, prd-destroy-ecs, prd-destroy-databricks]
+    needs: [prd-destroy-lambda, prd-destroy-ecs, prd-destroy-databricks-account]
     runs-on: ubuntu-latest
     environment: production
     defaults:
