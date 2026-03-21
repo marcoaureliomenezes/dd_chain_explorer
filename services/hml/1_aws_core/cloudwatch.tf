@@ -10,7 +10,7 @@
 ###############################################################################
 
 module "cloudwatch_logs" {
-  source = "../../../modules/cloudwatch_logs"
+  source = "../../modules/cloudwatch_logs"
 
   environment            = var.environment
   region                 = var.region
