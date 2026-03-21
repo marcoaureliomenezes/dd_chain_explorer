@@ -622,34 +622,6 @@ jobs:
       # It persists across CI/CD runs (includes Firehose subscription → S3 raw/app_logs/).
 
   # ----------------------------------------------------------------
-  # Create release branch — only after HML test passes
-  # ----------------------------------------------------------------
-  create-release-branch:
-    name: Create release branch
-    needs: [check-idempotency, build-rc, hml-integration-test, hml-teardown]
-    if: |
-      needs.check-idempotency.outputs.skip != 'true' &&
-      needs.hml-integration-test.outputs.test_passed == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push release branch
-        run: |
-          VERSION="${{ needs.check-idempotency.outputs.version }}"
-          BRANCH="release/onchain-stream-v${VERSION}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git push origin "$BRANCH"
-          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
-          echo "Branch created: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
-          echo "Next: approve the 'Deploy to Production' stage below." >> $GITHUB_STEP_SUMMARY
-
-  # ----------------------------------------------------------------
   # Deploy to Production — requires manual approval
   # (GitHub Environment: production)
   #
@@ -658,8 +630,10 @@ jobs:
   # ----------------------------------------------------------------
   prod-deploy:
     name: Deploy to Production
-    needs: [check-idempotency, build-rc, create-release-branch]
-    if: needs.check-idempotency.outputs.skip != 'true'
+    needs: [check-idempotency, build-rc, hml-integration-test, hml-teardown]
+    if: |
+      needs.check-idempotency.outputs.skip != 'true' &&
+      needs.hml-integration-test.outputs.test_passed == 'true'
     runs-on: ubuntu-latest
     environment: production
     steps:

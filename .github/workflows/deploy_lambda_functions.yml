@@ -432,32 +432,6 @@ jobs:
           echo "HML Lambda resources cleaned up."
 
   # ----------------------------------------------------------------
-  # Create release branch — only after HML test passes
-  # ----------------------------------------------------------------
-  create-release-branch:
-    name: Create release branch
-    needs: [check-version, hml-test]
-    if: needs.hml-test.outputs.test_result == 'passed'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push release branch
-        run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
-          BRANCH="release/lambda-v${VERSION}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git push origin "$BRANCH"
-          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
-          echo "Branch created: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
-          echo "Next: approve the 'Deploy to Production' stage below." >> $GITHUB_STEP_SUMMARY
-
-  # ----------------------------------------------------------------
   # Deploy to Production — requires manual approval
   # (GitHub Environment: production)
   #
@@ -468,7 +442,8 @@ jobs:
   # ----------------------------------------------------------------
   prod-deploy:
     name: Deploy to Production
-    needs: [check-version, build-artifacts, create-release-branch]
+    needs: [check-version, build-artifacts, hml-test]
+    if: needs.hml-test.outputs.test_result == 'passed'
     runs-on: ubuntu-latest
     environment: production
     steps:
