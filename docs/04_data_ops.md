@@ -355,26 +355,20 @@ flowchart LR
 ### 6.1 Estrutura
 
 ```
-dabs/
-├── databricks.yml             ← Config principal (targets dev/prod, variáveis)
+apps/dabs/
+├── databricks.yml             ← Config principal (targets dev/hml/prod, variáveis)
 ├── resources/
 │   ├── dlt/
-│   │   ├── pipeline_ethereum.yml    ← Pipeline DLT principal
-│   │   └── pipeline_app_logs.yml    ← Pipeline DLT de logs
+│   │   ├── pipeline_ethereum.yml    ← Pipeline DLT principal (+ trigger cron 30min)
+│   │   └── pipeline_app_logs.yml    ← Pipeline DLT de logs (+ trigger cron 35min)
 │   └── workflows/
-│       ├── workflow_trigger_dlt_all.yml         ← Consolidado: ethereum → app_logs (5 min)
-│       ├── workflow_trigger_dlt_ethereum.yml      ← Individual (PAUSADO)
-│       ├── workflow_trigger_dlt_app_logs.yml      ← Individual (PAUSADO)
-│       ├── workflow_batch_s3_to_bronze.yml
-│       ├── workflow_batch_bronze_to_silver.yml
 │       ├── workflow_ddl_setup.yml
-│       ├── workflow_maintenance.yml               ← Schedule 12h
-│       ├── workflow_periodic_processing.yml       ← Schedule 1h
-│       ├── workflow_dlt_full_refresh.yml
-│       └── workflow_teardown.yml
+│       ├── workflow_batch_contracts.yml  ← S3 batch/ → Bronze → Silver (unificado)
+│       ├── workflow_maintenance.yml      ← Schedule 12h (4h e 16h)
+│       └── workflow_dlt_full_refresh.yml ← Manual: full refresh ambos os pipelines
 └── src/
-    ├── streaming/             ← Notebooks DLT
-    └── batch/                 ← Scripts batch (DDL, maintenance, periodic, contracts)
+    ├── streaming/             ← Notebooks DLT (4_pipeline_ethereum, 5_pipeline_app_logs)
+    └── batch/                 ← Scripts batch (DDL, maintenance, batch_contracts)
 ```
 
 ### 6.2 Targets
@@ -383,7 +377,7 @@ dabs/
 |--------|-----------|---------|----------|
 | `dev` | Databricks Free Edition | `dev` | `development=true`, serverless |
 | `hml` | Databricks Free Edition | `hml` | `development=false`, serverless |
-| `prod` | AWS Workspace | `prd` | serverless, triggered por schedule |
+| `prod` | AWS Workspace | `dd_chain_explorer` | serverless, triggered por schedule |
 
 ---
 
@@ -408,10 +402,10 @@ dabs/
 | Shared Modules TF | `services/modules/s3/`, `services/modules/lambda/`, `services/modules/ecs/`, etc. |
 | ECR Repositories | `services/prd/07_ecs/ecs.tf` |
 | Shared Library | `utils/src/dm_chain_utils/` + `utils/pyproject.toml` |
-| DABs Config | `dabs/databricks.yml` |
-| DABs Resources | `dabs/resources/dlt/`, `dabs/resources/workflows/` |
-| Dockerfile stream | `docker/onchain-stream-txs/Dockerfile` |
-| Lambda | `lambda/contracts_ingestion/handler.py`, `lambda/gold_to_dynamodb/handler.py` |
+| DABs Config | `apps/dabs/databricks.yml` |
+| DABs Resources | `apps/dabs/resources/dlt/`, `apps/dabs/resources/workflows/` |
+| Dockerfile stream | `apps/docker/onchain-stream-txs/Dockerfile` |
+| Lambda | `apps/lambda/contracts_ingestion/handler.py`, `apps/lambda/gold_to_dynamodb/handler.py` |
 | Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
 
 ---
@@ -421,6 +415,6 @@ dabs/
 - [ ] **TODO-O08**: Implementar monitoramento com CloudWatch Dashboards para métricas de ECS + Kinesis + DynamoDB.
 - [ ] **TODO-O10**: Implementar notificações Slack/Teams para falhas de CI/CD e alertas de infraestrutura.
 - [x] **TODO-O11** 🔴 P0: ~~Hardening do pipeline de CI/CD.~~ Concluído: 8 workflows consolidados em 4 — `deploy_cloud_infra` (DEV+PRD unificado), `destroy_cloud_infra` (DEV+PRD com confirmação dupla), `deploy_dm_applications` (streaming+DABs+Lambda), `deploy_lib_python` (PyPI via OIDC). HML 100% efêmero, infra DEV com 2 módulos separados (`01_peripherals` + `02_lambda`), módulos PRD renumerados.
-- [ ] **TODO-O12** 🔴 P0: Validar ambiente PROD end-to-end. Garantir que o fluxo completo funciona: jobs de streaming no ECS Fargate → Kinesis/Firehose → S3 → DLT Databricks → tabelas Gold populadas. Lambda contracts-ingestion → S3 batch/ → Databricks Workflow → Silver/Gold.
+- [ ] **TODO-O12** 🔴 P0: Validar ambiente PROD end-to-end. Garantir que o fluxo completo funciona: jobs de streaming no ECS Fargate → Kinesis/Firehose → S3 → DLT Databricks → tabelas Gold populadas. Lambda contracts-ingestion → S3 batch/ → `dm-batch-contracts` → Silver/Gold.
 - [ ] **TODO-O13**: Validar `deploy_dm_applications.yml` (app_type=lambda-functions) end-to-end: build artifacts, HML test, PRD deploy via Terraform apply.
 - [x] **TODO-O14**: ~~Implementar infra-as-prerequisite gates nos workflows de deploy de apps.~~ Concluído — todos os 3 tipos em `deploy_dm_applications.yml` possuem jobs `*-check-infra` que verificam ECS cluster, Databricks workspace e IAM roles antes de prosseguir.

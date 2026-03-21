@@ -289,14 +289,14 @@ Tabela: `dm-chain-explorer` (PK=`pk` string, SK=`sk` string, TTL no atributo `tt
 
 | Aspecto | Detalhe |
 |---------|--------|
-| **Arquivo** | `lambda/contracts_ingestion/handler.py` |
+| **Arquivo** | `apps/lambda/contracts_ingestion/handler.py` |
 | **Classe** | `ContractTransactionsCrawler` |
 | **Entrada** | DynamoDB (entidade CONTRACT — PK=`CONTRACT`, SK=`{address}`) + Etherscan API |
 | **Saída** | S3 — `s3://{bucket}/batch/year=Y/month=M/day=D/hour=H/txs_{contract_addr}.json` |
 | **Lógica** | Para cada contrato listado no DynamoDB (query PK=`CONTRACT`), usa Etherscan `txlist` para buscar transações paginadas (page=1, offset=1000). Particiona output por data. |
 | **Frequência** | EventBridge Scheduler — a cada 1 hora |
-| **Terraform** | `services/prd/10_lambda/lambda_contracts_ingestion.tf` |
-| **Processamento** | Workflow Databricks `dm-periodic-processing` carrega S3 → Bronze → Silver |
+| **Terraform** | `services/prd/06_lambda/lambda_contracts_ingestion.tf` |
+| **Processamento** | Workflow Databricks `dm-batch-contracts` carrega S3 → Bronze → Silver |
 
 ### 3.2 Scripts de Ambiente
 
@@ -331,9 +331,9 @@ A biblioteca `dm-chain-utils` (versão 1.0.0) é o pacote Python interno compart
 
 ```dockerfile
 # Build context: dd_chain_explorer/
-COPY docker/onchain-stream-txs/requirements.txt /app/requirements.txt
+COPY apps/docker/onchain-stream-txs/requirements.txt /app/requirements.txt
 COPY utils/src/dm_chain_utils /app/dm_chain_utils
-COPY docker/onchain-stream-txs/src /app
+COPY apps/docker/onchain-stream-txs/src /app
 ```
 
 > **Nota**: A biblioteca anterior `dm-33-utils` não é mais usada. Os módulos `web3_utils.py` e `etherscan_utils.py` que usavam Azure Key Vault foram substituídos por equivalentes que usam exclusivamente AWS SSM.
@@ -344,15 +344,15 @@ COPY docker/onchain-stream-txs/src /app
 
 | Escopo | Arquivos |
 |--------|----------|
-| Jobs Streaming (source) | `docker/onchain-stream-txs/src/1_*.py` a `5_*.py` |
+| Jobs Streaming (source) | `apps/docker/onchain-stream-txs/src/1_*.py` a `5_*.py` |
 | Utilitários streaming | `utils/src/dm_chain_utils/` (pacote compartilhado) |
-| Decode utilities | `docker/onchain-stream-txs/src/utils_decode/abi_cache.py`, `etherscan_multi.py` |
-| Jobs Batch (Lambda) | `lambda/contracts_ingestion/` |
+| Decode utilities | `apps/docker/onchain-stream-txs/src/utils_decode/abi_cache.py`, `etherscan_multi.py` |
+| Jobs Batch (Lambda) | `apps/lambda/contracts_ingestion/` |
 | Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
-| Compose (dev apps) | `services/dev/compose/app_services.yml` |
-| Compose (dev infra) | `services/dev/compose/local_services.yml` |
+| Compose (dev apps) | `services/dev/00_compose/app_services.yml` |
+| Compose (dev infra) | `services/dev/00_compose/local_services.yml` |
 | Utilitários compartilhados | `utils/src/dm_chain_utils/` (pacote `dm-chain-utils` 1.0.0) |
-| Docker (streaming) | `docker/onchain-stream-txs/Dockerfile`, `requirements.txt` |
+| Docker (streaming) | `apps/docker/onchain-stream-txs/Dockerfile`, `requirements.txt` |
 
 ---
 
