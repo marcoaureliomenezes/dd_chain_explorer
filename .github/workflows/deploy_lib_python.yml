@@ -1,4 +1,4 @@
-name: Deploy Lib Python
+name: Deploy Python Lib
 
 on:
   workflow_dispatch:
