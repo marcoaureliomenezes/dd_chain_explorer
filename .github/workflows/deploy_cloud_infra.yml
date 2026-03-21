@@ -501,6 +501,23 @@ jobs:
             tf_import "Metastore assignment" "databricks_metastore_assignment.dm" "${WS_ID}/${MS_ID}"
           fi
 
+          # Import metastore data access (storage credential) if it already exists
+          if [ -n "${MS_ID:-}" ]; then
+            SC_NAME="dm-metastore-data-access"
+            SC_EXISTS=$(curl -sf -H "$AUTH" \
+              "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/storage-credentials" 2>/dev/null \
+              | jq -r --arg n "$SC_NAME" '[.storage_credentials[]? | select(.name==$n)][0].name // empty' 2>/dev/null || true)
+            [ -n "$SC_EXISTS" ] && tf_import "Metastore data access" "databricks_metastore_data_access.default" "${MS_ID}|${SC_NAME}"
+          fi
+
+          # Import MWS permission assignment if workspace exists
+          if [ -n "${WS_ID:-}" ]; then
+            PA_EXISTS=$(curl -sf -H "$AUTH" \
+              "${ACCT}/workspaces/${WS_ID}/permissionassignments" 2>/dev/null \
+              | jq -r '[.permission_assignments[]? | select(any(.permissions[]?; . == "ADMIN"))][0].principal.principal_id // empty' 2>/dev/null || true)
+            [ -n "$PA_EXISTS" ] && tf_import "MWS permission assignment" "databricks_mws_permission_assignment.admin" "${WS_ID}|${PA_EXISTS}"
+          fi
+
           echo "==> Import check complete."
       - name: Read VERSION
         id: ver
