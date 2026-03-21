@@ -10,7 +10,7 @@ terraform {
 
   backend "s3" {
     bucket         = "dm-chain-explorer-terraform-state"
-    key            = "lambda/terraform.tfstate"
+    key            = "prd/lambda/terraform.tfstate"
     region         = "sa-east-1"
     dynamodb_table = "dm-chain-explorer-terraform-lock"
     encrypt        = true
@@ -30,7 +30,7 @@ data "terraform_remote_state" "s3" {
   backend = "s3"
   config = {
     bucket = "dm-chain-explorer-terraform-state"
-    key    = "s3/terraform.tfstate"
+    key    = "prd/peripherals/terraform.tfstate"
     region = "sa-east-1"
   }
 }
@@ -39,7 +39,7 @@ data "terraform_remote_state" "dynamodb" {
   backend = "s3"
   config = {
     bucket = "dm-chain-explorer-terraform-state"
-    key    = "dynamodb/terraform.tfstate"
+    key    = "prd/peripherals/terraform.tfstate"
     region = "sa-east-1"
   }
 }
@@ -48,7 +48,7 @@ data "terraform_remote_state" "kinesis_sqs" {
   backend = "s3"
   config = {
     bucket = "dm-chain-explorer-terraform-state"
-    key    = "kinesis_sqs/terraform.tfstate"
+    key    = "prd/peripherals/terraform.tfstate"
     region = "sa-east-1"
   }
 }

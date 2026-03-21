@@ -1,0 +1,612 @@
+name: Deploy Infra Cloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options:
+          - DEV (Cloud AWS)
+          - prd
+      force_apply:
+        description: 'Force apply / skip version tag check (PRD only)'
+        required: false
+        default: false
+        type: boolean
+      skip_databricks:
+        description: 'Skip 05_databricks module (PRD only)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  AWS_REGION:      sa-east-1
+  TF_VERSION:      1.7.0
+  PRD_ROOT:        services/prd
+  DEV_PERIPHERALS: services/dev/01_peripherals
+  DEV_LAMBDA:      services/dev/02_lambda
+
+jobs:
+
+  # ── Branch guard ───────────────────────────────────────────────
+  branch-guard:
+    name: Branch guard
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
+            exit 1
+          fi
+
+  # ══════════════════════════════════════════════════════════════
+  #  DEV (Cloud AWS)
+  # ══════════════════════════════════════════════════════════════
+
+  dev-detect-changes:
+    name: DEV — Detect changes
+    needs: branch-guard
+    if: github.event.inputs.environment == 'DEV (Cloud AWS)'
+    runs-on: ubuntu-latest
+    outputs:
+      peripherals_changed: ${{ steps.detect.outputs.peripherals_changed }}
+      lambda_changed:      ${{ steps.detect.outputs.lambda_changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Determine changed modules
+        id: detect
+        run: |
+          FORCE="${{ github.event.inputs.force_apply }}"
+          if [ "$FORCE" = "true" ]; then
+            echo "peripherals_changed=true" >> $GITHUB_OUTPUT
+            echo "lambda_changed=true"      >> $GITHUB_OUTPUT
+            echo "Forced — all DEV modules will be applied."
+          else
+            DIFF=$(git diff --name-only origin/develop...HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD)
+            echo "Changed files: $DIFF"
+            if echo "$DIFF" | grep -q "${{ env.DEV_PERIPHERALS }}/"; then
+              echo "peripherals_changed=true" >> $GITHUB_OUTPUT
+            else
+              echo "peripherals_changed=false" >> $GITHUB_OUTPUT
+            fi
+            if echo "$DIFF" | grep -q "${{ env.DEV_LAMBDA }}/"; then
+              echo "lambda_changed=true" >> $GITHUB_OUTPUT
+            else
+              echo "lambda_changed=false" >> $GITHUB_OUTPUT
+            fi
+          fi
+
+  dev-plan-peripherals:
+    name: DEV — Plan 04_peripherals
+    needs: dev-detect-changes
+    if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.DEV_PERIPHERALS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-dev-peripherals
+          path: ${{ env.DEV_PERIPHERALS }}/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan DEV/04_peripherals" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  dev-apply-peripherals:
+    name: DEV — Apply 04_peripherals
+    needs: [dev-detect-changes, dev-plan-peripherals]
+    if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: ${{ env.DEV_PERIPHERALS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-dev-peripherals
+          path: ${{ env.DEV_PERIPHERALS }}
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  dev-plan-lambda:
+    name: DEV — Plan 06_lambda
+    needs: [dev-detect-changes, dev-apply-peripherals]
+    if: |
+      always() &&
+      needs.dev-detect-changes.outputs.lambda_changed == 'true' &&
+      (needs.dev-apply-peripherals.result == 'success' || needs.dev-apply-peripherals.result == 'skipped')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.DEV_LAMBDA }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-dev-lambda
+          path: ${{ env.DEV_LAMBDA }}/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan DEV/06_lambda" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  dev-apply-lambda:
+    name: DEV — Apply 06_lambda
+    needs: [dev-detect-changes, dev-plan-lambda]
+    if: needs.dev-detect-changes.outputs.lambda_changed == 'true'
+    runs-on: ubuntu-latest
+    environment: dev
+    defaults:
+      run:
+        working-directory: ${{ env.DEV_LAMBDA }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-dev-lambda
+          path: ${{ env.DEV_LAMBDA }}
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  # ══════════════════════════════════════════════════════════════
+  #  PRD — Layer 0: version check (gate for all PRD jobs)
+  # ══════════════════════════════════════════════════════════════
+
+  prd-check-version:
+    name: PRD — Check version
+    needs: branch-guard
+    if: github.event.inputs.environment == 'prd'
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate VERSION
+        id: ver
+        run: |
+          VERSION=$(cat VERSION | tr -d '[:space:]')
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          if [ "${{ github.event.inputs.force_apply }}" = "true" ]; then
+            echo "force_apply — skipping tag check."
+          elif git tag --list | grep -qx "v${VERSION}-infra"; then
+            echo "::error::v${VERSION}-infra already tagged. Bump VERSION or use force_apply."
+            exit 1
+          fi
+          echo "Version v${VERSION} — OK."
+
+  # ── PRD Layer 1: 02_vpc + 04_peripherals (parallel) ───────────
+
+  prd-plan-vpc:
+    name: PRD — Plan 02_vpc
+    needs: prd-check-version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-02_vpc
+          path: ${{ env.PRD_ROOT }}/02_vpc/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/02_vpc" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-vpc:
+    name: PRD — Apply 02_vpc
+    needs: prd-plan-vpc
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-02_vpc
+          path: ${{ env.PRD_ROOT }}/02_vpc
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  prd-plan-peripherals:
+    name: PRD — Plan 04_peripherals
+    needs: prd-check-version
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-04_peripherals
+          path: ${{ env.PRD_ROOT }}/04_peripherals/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/04_peripherals" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-peripherals:
+    name: PRD — Apply 04_peripherals
+    needs: prd-plan-peripherals
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-04_peripherals
+          path: ${{ env.PRD_ROOT }}/04_peripherals
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  # ── PRD Layer 2: 03_iam (depends on vpc + peripherals) ─────────
+
+  prd-plan-iam:
+    name: PRD — Plan 03_iam
+    needs: [prd-apply-vpc, prd-apply-peripherals]
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-03_iam
+          path: ${{ env.PRD_ROOT }}/03_iam/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/03_iam" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-iam:
+    name: PRD — Apply 03_iam
+    needs: prd-plan-iam
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-03_iam
+          path: ${{ env.PRD_ROOT }}/03_iam
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  # ── PRD Layer 3: 05_databricks + 06_lambda + 07_ecs (parallel) ─
+
+  prd-plan-databricks:
+    name: PRD — Plan 05_databricks
+    needs: prd-apply-iam
+    if: github.event.inputs.skip_databricks != 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/05_databricks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-05_databricks
+          path: ${{ env.PRD_ROOT }}/05_databricks/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/05_databricks" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-databricks:
+    name: PRD — Apply 05_databricks
+    needs: prd-plan-databricks
+    if: github.event.inputs.skip_databricks != 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/05_databricks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-05_databricks
+          path: ${{ env.PRD_ROOT }}/05_databricks
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+
+  prd-plan-lambda:
+    name: PRD — Plan 06_lambda
+    needs: prd-apply-iam
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/06_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-06_lambda
+          path: ${{ env.PRD_ROOT }}/06_lambda/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/06_lambda" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-lambda:
+    name: PRD — Apply 06_lambda
+    needs: prd-plan-lambda
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/06_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-06_lambda
+          path: ${{ env.PRD_ROOT }}/06_lambda
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  prd-plan-ecs:
+    name: PRD — Plan 07_ecs
+    needs: prd-apply-iam
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/07_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tfplan-prd-07_ecs
+          path: ${{ env.PRD_ROOT }}/07_ecs/tfplan
+          retention-days: 1
+      - if: always()
+        run: |
+          echo "### Plan PRD/07_ecs" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+
+  prd-apply-ecs:
+    name: PRD — Apply 07_ecs
+    needs: prd-plan-ecs
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.PRD_ROOT }}/07_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tfplan-prd-07_ecs
+          path: ${{ env.PRD_ROOT }}/07_ecs
+      - run: terraform init -input=false
+      - run: terraform apply -input=false -auto-approve tfplan
+
+  # ── PRD git tag ────────────────────────────────────────────────
+
+  prd-create-tag:
+    name: PRD — Create git tag
+    needs: [prd-check-version, prd-apply-ecs, prd-apply-lambda]
+    if: |
+      always() &&
+      needs.prd-check-version.result == 'success' &&
+      needs.prd-apply-ecs.result == 'success' &&
+      needs.prd-apply-lambda.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Tag master
+        run: |
+          VERSION="${{ needs.prd-check-version.outputs.version }}"
+          TAG="v${VERSION}-infra"
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin master
+          git checkout master
+          if git tag --list | grep -qx "$TAG"; then
+            echo "Tag $TAG already exists — skipping." >> $GITHUB_STEP_SUMMARY
+          else
+            git tag -a "$TAG" -m "PRD infra v${VERSION}"
+            git push origin "$TAG"
+            echo "## Tag created: \`$TAG\` on master" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,5 +1,5 @@
 ###############################################################################
-# dev/terraform/06_lambda/main.tf
+# dev/02_lambda/main.tf
 ###############################################################################
 
 terraform {
@@ -105,7 +105,7 @@ module "lambda_gold_to_dynamodb" {
   timeout        = 60
   memory_size    = 128
   role_arn       = aws_iam_role.gold_to_dynamodb_lambda.arn
-  source_file    = "${path.module}/../../../../lambda/gold_to_dynamodb/handler.py"
+  source_file    = "${path.module}/../../../apps/lambda/gold_to_dynamodb/handler.py"
   output_zip_path = "${path.module}/.lambda_zip/gold_to_dynamodb.zip"
 
   environment_variables = {

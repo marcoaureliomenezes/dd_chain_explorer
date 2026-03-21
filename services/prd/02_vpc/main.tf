@@ -10,7 +10,7 @@ terraform {
 
   backend "s3" {
     bucket         = "dm-chain-explorer-terraform-state"
-    key            = "vpc/terraform.tfstate"
+    key            = "prd/vpc/terraform.tfstate"
     region         = "sa-east-1"
     dynamodb_table = "dm-chain-explorer-terraform-lock"
     encrypt        = true

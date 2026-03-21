@@ -91,7 +91,7 @@ resource "aws_iam_role_policy" "contracts_ingestion_lambda" {
 
 data "archive_file" "contracts_ingestion" {
   type        = "zip"
-  source_file = "${path.module}/../../../lambda/contracts_ingestion/handler.py"
+  source_file = "${path.module}/../../../apps/lambda/contracts_ingestion/handler.py"
   output_path = "${path.module}/.lambda_zip/contracts_ingestion.zip"
 }
 

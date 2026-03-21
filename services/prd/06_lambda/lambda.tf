@@ -63,7 +63,7 @@ resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
 # ---- Lambda function ----
 data "archive_file" "gold_to_dynamodb" {
   type        = "zip"
-  source_file = "${path.module}/../../../lambda/gold_to_dynamodb/handler.py"
+  source_file = "${path.module}/../../../apps/lambda/gold_to_dynamodb/handler.py"
   output_path = "${path.module}/.lambda_zip/gold_to_dynamodb.zip"
 }
 

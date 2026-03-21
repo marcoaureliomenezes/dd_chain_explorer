@@ -1,0 +1,31 @@
+resources:
+  pipelines:
+    pipeline_app_logs:
+      name: "dm-app-logs"
+
+      catalog: ${var.catalog}
+      target: b_app_logs  # schema padrão para tabelas sem prefixo (bronze)
+                          # tabelas silver usam name="s_logs.*"
+                          # tabelas gold usam name="g_api_keys.*"
+
+      libraries:
+        - notebook:
+            path: ../../src/streaming/5_pipeline_app_logs.py
+
+      configuration:
+        # S3 bucket for ingestion (raw data, DLT external tables, checkpoints)
+        ingestion.s3.bucket: ${var.dev_ingestion_s3_bucket}
+
+      serverless: true
+
+      development: ${var.dlt_development}
+      continuous: ${var.dlt_continuous}
+      channel: CURRENT
+
+      trigger:
+        # Executa a cada 35 min em PROD (offset de 5 min após ethereum)
+        # Em DEV, acionar manualmente via: make dabs_run_dev JOB=dm-app-logs
+        cron:
+          quartz_cron_expression: "0 5/35 * * * ?"
+          timezone_id: "America/Sao_Paulo"
+          pause_status: PAUSED

@@ -5,49 +5,49 @@
 
 ################################################################################
 # DEV: Aplicações Python de captura on-chain
-# Arquivo: services/dev/compose/app_services.yml
+# Arquivo: services/dev/00_compose/app_services.yml
 ################################################################################
 
 deploy_dev_stream:
-	@docker compose -f services/dev/compose/app_services.yml up -d --build
+	@docker compose -f services/dev/00_compose/app_services.yml up -d --build
 
 stop_dev_stream:
-	@docker compose -f services/dev/compose/app_services.yml down
+	@docker compose -f services/dev/00_compose/app_services.yml down
 
 watch_dev_stream:
-	watch docker compose -f services/dev/compose/app_services.yml ps
+	watch docker compose -f services/dev/00_compose/app_services.yml ps
 
 # Deploy para DEV (Databricks Free Edition)
 dabs_deploy_dev:
-	cd dabs && databricks bundle deploy --target dev
+	cd apps/dabs && databricks bundle deploy --target dev
 
 # Deploy para PROD (normalmente feito via CI/CD)
 dabs_deploy_prod:
-	cd dabs && databricks bundle deploy --target prod
+	cd apps/dabs && databricks bundle deploy --target prod
 
 # Executar um workflow em DEV
 # Uso: make dabs_run_dev JOB=dm-ddl-setup
-# Jobs disponíveis: dm-ddl-setup, dm-periodic-processing, dm-iceberg-maintenance, dm-teardown
+# Jobs disponíveis: dm-ddl-setup, dm-batch-contracts, dm-iceberg-maintenance, dm-dlt-full-refresh
 dabs_run_dev:
-	cd dabs && databricks bundle run --target dev $(JOB)
+	cd apps/dabs && databricks bundle run --target dev $(JOB)
 
 # Ver status dos recursos deployados em DEV
 dabs_status_dev:
-	cd dabs && databricks bundle summary --target dev
+	cd apps/dabs && databricks bundle summary --target dev
 
 # Deploy apenas os dashboards em DEV (auto-descobre o warehouse_id via CLI)
 # Requer: databricks CLI autenticado + Python 3
 dabs_deploy_dev_dashboards:
-	$(eval WAREHOUSE_ID := $(shell cd dabs && databricks warehouses list \
+	$(eval WAREHOUSE_ID := $(shell cd apps/dabs && databricks warehouses list \
 	  --output json 2>/dev/null | python3 -c \
 	  "import sys, json; whs=json.load(sys.stdin).get('warehouses',[]); \
 	   print(next((w['id'] for w in whs), ''))" 2>/dev/null))
 	@if [ -z "$(WAREHOUSE_ID)" ]; then \
 	  echo "AVISO: Nenhum SQL Warehouse encontrado. Deployando sem warehouse_id..."; \
-	  cd dabs && databricks bundle deploy --target dev; \
+	  cd apps/dabs && databricks bundle deploy --target dev; \
 	else \
 	  echo ">>> Usando warehouse_id=$(WAREHOUSE_ID)"; \
-	  cd dabs && databricks bundle deploy --target dev --var warehouse_id=$(WAREHOUSE_ID); \
+	  cd apps/dabs && databricks bundle deploy --target dev --var warehouse_id=$(WAREHOUSE_ID); \
 	fi
 
 ################################################################################
@@ -71,10 +71,10 @@ publish_apps:
 	# docker push marcoaureliomenezes/spark-streaming-jobs:$(current_branch)
 
 tf_apply_free_resources:
-	@echo ">>> Aplicando recursos gratuitos: VPC + IAM + S3 ..."
-	cd $(TF_DIR)/1_vpc && terraform apply -auto-approve
-	cd $(TF_DIR)/2_iam && terraform apply -auto-approve
-	cd $(TF_DIR)/4_s3  && terraform apply -auto-approve
+	@echo ">>> Aplicando recursos gratuitos: VPC + peripherals + IAM ..."
+	cd $(TF_DIR)/02_vpc         && terraform apply -auto-approve
+	cd $(TF_DIR)/04_peripherals && terraform apply -auto-approve
+	cd $(TF_DIR)/03_iam         && terraform apply -auto-approve
 	@echo ">>> Recursos gratuitos: OK"
 
 deploy_dev_all:
@@ -96,22 +96,16 @@ deploy_dev_all:
 # =============================================================================
 
 tf_apply_aws_resources:
-	@echo ">>> [1/4] Kinesis + SQS + Firehose ..."
-	cd $(TF_DIR)/3_kinesis_sqs && terraform apply -auto-approve
-	@echo ">>> [2/4] DynamoDB ..."
-	cd $(TF_DIR)/9_dynamodb    && terraform apply -auto-approve
-	@echo ">>> [3/4] ECS Fargate ..."
-	cd $(TF_DIR)/6_ecs         && terraform apply -auto-approve
-	@echo ">>> [4/4] Lambda ..."
-	cd $(TF_DIR)/10_lambda     && terraform apply -auto-approve
+	@echo ">>> [1/2] ECS Fargate ..."
+	cd $(TF_DIR)/07_ecs    && terraform apply -auto-approve
+	@echo ">>> [2/2] Lambda ..."
+	cd $(TF_DIR)/06_lambda && terraform apply -auto-approve
 	@echo ">>> Recursos AWS: OK"
 
 tf_destroy_aws_resources:
-	@echo ">>> Destruindo recursos AWS: Lambda → DynamoDB → ECS → Kinesis ..."
-	cd $(TF_DIR)/10_lambda     && terraform destroy -auto-approve
-	cd $(TF_DIR)/9_dynamodb    && terraform destroy -auto-approve
-	cd $(TF_DIR)/6_ecs         && terraform destroy -auto-approve
-	cd $(TF_DIR)/3_kinesis_sqs && terraform destroy -auto-approve
+	@echo ">>> Destruindo recursos AWS: Lambda → ECS ..."
+	cd $(TF_DIR)/06_lambda && terraform destroy -auto-approve
+	cd $(TF_DIR)/07_ecs    && terraform destroy -auto-approve
 	@echo ">>> Recursos AWS destruídos."
 
 # =============================================================================
@@ -127,12 +121,12 @@ tf_destroy_aws_resources:
 
 tf_apply_databricks:
 	@echo ">>> Aplicando recursos Databricks ..."
-	cd $(TF_DIR)/7_databricks && terraform apply -auto-approve
+	cd $(TF_DIR)/05_databricks && terraform apply -auto-approve
 	@echo ">>> Databricks: OK"
 
 tf_destroy_databricks:
 	@echo ">>> Destruindo recursos Databricks ..."
-	cd $(TF_DIR)/7_databricks && terraform destroy -auto-approve
+	cd $(TF_DIR)/05_databricks && terraform destroy -auto-approve
 	@echo ">>> Databricks destruído."
 
 # =============================================================================
@@ -158,9 +152,8 @@ prod_destroy_infra:
 # ---------------------------------------------------------------------------
 
 tf_init_prd:
-	@for dir in $(TF_DIR)/0_remote_state $(TF_DIR)/1_vpc $(TF_DIR)/2_iam \
-	            $(TF_DIR)/3_kinesis_sqs $(TF_DIR)/4_s3 $(TF_DIR)/6_ecs \
-	            $(TF_DIR)/7_databricks $(TF_DIR)/9_dynamodb $(TF_DIR)/10_lambda; do \
+	@for dir in $(TF_DIR)/02_vpc $(TF_DIR)/03_iam $(TF_DIR)/04_peripherals \
+	            $(TF_DIR)/05_databricks $(TF_DIR)/06_lambda $(TF_DIR)/07_ecs; do \
 	  echo "=== terraform init: $$dir ==="; \
 	  (cd $$dir && terraform init -input=false); \
 	done
@@ -170,7 +163,7 @@ tf_apply_remote_state:
 
 # =============================================================================
 # TERRAFORM DEV — AWS infra para Databricks Free Edition
-# Diretório: services/dev/terraform/1_aws_core/
+# Módulos: services/dev/01_peripherals/ + 02_lambda/
 #
 # Recursos: S3 + Kinesis/SQS + DynamoDB + Lambda + CloudWatch
 # Estado:   S3 remoto (bucket dm-chain-explorer-terraform-state, key dev/)
@@ -180,29 +173,37 @@ tf_apply_remote_state:
 # Destroy: make dev_tf_destroy
 # =============================================================================
 
-DEV_TF_DIR := services/dev/terraform/1_aws_core
+DEV_PERIPHERALS_DIR := services/dev/01_peripherals
+DEV_LAMBDA_DIR      := services/dev/02_lambda
 
 dev_tf_init:
-	cd $(DEV_TF_DIR) && terraform init -input=false
+	cd $(DEV_PERIPHERALS_DIR) && terraform init -input=false
+	cd $(DEV_LAMBDA_DIR)      && terraform init -input=false
 
 dev_tf_plan:
-	cd $(DEV_TF_DIR) && terraform plan
+	cd $(DEV_PERIPHERALS_DIR) && terraform plan
+	cd $(DEV_LAMBDA_DIR)      && terraform plan
 
 dev_tf_apply:
-	cd $(DEV_TF_DIR) && terraform apply -auto-approve
+	@echo ">>> [1/2] DEV peripherals ..."
+	cd $(DEV_PERIPHERALS_DIR) && terraform apply -auto-approve
+	@echo ">>> [2/2] DEV lambda ..."
+	cd $(DEV_LAMBDA_DIR)      && terraform apply -auto-approve
 
 dev_tf_destroy:
-	cd $(DEV_TF_DIR) && terraform destroy -auto-approve
+	@echo ">>> [1/2] DEV lambda ..."
+	cd $(DEV_LAMBDA_DIR)      && terraform destroy -auto-approve
+	@echo ">>> [2/2] DEV peripherals ..."
+	cd $(DEV_PERIPHERALS_DIR) && terraform destroy -auto-approve
 
 dev_tf_output:
-	cd $(DEV_TF_DIR) && terraform output
+	cd $(DEV_PERIPHERALS_DIR) && terraform output
+	cd $(DEV_LAMBDA_DIR)      && terraform output
 
 # =============================================================================
-# TERRAFORM HML — AWS infra persistente para ambiente de homologação
-# Diretório: services/hml/1_aws_core/
+# TERRAFORM HML — AWS infra para ambiente de homologação
+# Módulos: services/hml/02_vpc/ + 03_iam/ + 04_peripherals/ + 05_databricks/ + 07_ecs/
 #
-# Recursos persistentes: S3 (dm-chain-explorer-hml-ingestion) + IAM roles ECS
-# Recursos efêmeros (criados/destruídos por CI/CD): Kinesis, SQS, CloudWatch, DynamoDB
 # Estado:   S3 remoto (bucket dm-chain-explorer-terraform-state, key hml/)
 # Autenticação AWS: perfil padrão (~/.aws/credentials)
 #
@@ -210,22 +211,46 @@ dev_tf_output:
 # Destroy: make hml_tf_destroy
 # =============================================================================
 
-HML_TF_DIR := services/hml/1_aws_core
+HML_ROOT := services/hml
 
 hml_tf_init:
-	cd $(HML_TF_DIR) && terraform init -input=false
+	@for dir in $(HML_ROOT)/02_vpc $(HML_ROOT)/03_iam $(HML_ROOT)/04_peripherals \
+	            $(HML_ROOT)/05_databricks $(HML_ROOT)/07_ecs; do \
+	  echo "=== terraform init: $$dir ==="; \
+	  (cd $$dir && terraform init -input=false); \
+	done
 
 hml_tf_plan:
-	cd $(HML_TF_DIR) && terraform plan
+	@for dir in $(HML_ROOT)/02_vpc $(HML_ROOT)/04_peripherals $(HML_ROOT)/03_iam \
+	            $(HML_ROOT)/07_ecs $(HML_ROOT)/05_databricks; do \
+	  echo "=== terraform plan: $$dir ==="; \
+	  (cd $$dir && terraform plan); \
+	done
 
 hml_tf_apply:
-	cd $(HML_TF_DIR) && terraform apply -auto-approve
+	@echo ">>> [1/3] HML vpc + peripherals (paralelo)..."
+	cd $(HML_ROOT)/02_vpc         && terraform apply -auto-approve
+	cd $(HML_ROOT)/04_peripherals && terraform apply -auto-approve
+	@echo ">>> [2/3] HML iam ..."
+	cd $(HML_ROOT)/03_iam         && terraform apply -auto-approve
+	@echo ">>> [3/3] HML ecs ..."
+	cd $(HML_ROOT)/07_ecs         && terraform apply -auto-approve
 
 hml_tf_destroy:
-	cd $(HML_TF_DIR) && terraform destroy -auto-approve
+	@echo ">>> [1/3] HML ecs ..."
+	cd $(HML_ROOT)/07_ecs         && terraform destroy -auto-approve
+	@echo ">>> [2/3] HML iam ..."
+	cd $(HML_ROOT)/03_iam         && terraform destroy -auto-approve
+	@echo ">>> [3/3] HML peripherals + vpc ..."
+	cd $(HML_ROOT)/04_peripherals && terraform destroy -auto-approve
+	cd $(HML_ROOT)/02_vpc         && terraform destroy -auto-approve
 
 hml_tf_output:
-	cd $(HML_TF_DIR) && terraform output
+	@for dir in $(HML_ROOT)/02_vpc $(HML_ROOT)/03_iam $(HML_ROOT)/04_peripherals \
+	            $(HML_ROOT)/07_ecs; do \
+	  echo "=== outputs: $$dir ==="; \
+	  (cd $$dir && terraform output); \
+	done
 
 ################################################################################
 # Build e push de imagens Docker (uso manual; CI/CD faz isso automaticamente)
@@ -237,7 +262,7 @@ hml_tf_output:
 VERSION ?= latest
 
 build_stream:
-	docker build -t marcoaureliomenezes/onchain-stream-txs:$(VERSION) ./docker/onchain-stream-txs
+	docker build -t marcoaureliomenezes/onchain-stream-txs:$(VERSION) ./apps/docker/onchain-stream-txs
 
 push_stream:
 	docker push marcoaureliomenezes/onchain-stream-txs:$(VERSION)

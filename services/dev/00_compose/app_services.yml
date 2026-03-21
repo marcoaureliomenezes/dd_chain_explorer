@@ -6,9 +6,9 @@ x-conf-dev-onchain-stream-txs: &conf_dev_onchain_stream_txs
     - vpc_dm
   build:
     context: ../../../
-    dockerfile: docker/onchain-stream-txs/Dockerfile
+    dockerfile: apps/docker/onchain-stream-txs/Dockerfile
   volumes:
-    - ../../../docker/onchain-stream-txs/src:/app
+    - ../../../apps/docker/onchain-stream-txs/src:/app
     - ../../../utils/src/dm_chain_utils:/app/dm_chain_utils
     - ~/.aws:/root/.aws:ro   # credenciais reais do host (SSM, Kinesis, SQS, etc.)
 
