@@ -1,0 +1,274 @@
+name: Destroy Cloud Infra PRD
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "DESTROY" to confirm destruction of all PRD infrastructure'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: sa-east-1
+  TF_VERSION: 1.7.0
+  TF_ROOT:    services/prd
+
+jobs:
+
+  # ── Safety gate ────────────────────────────────────────────────
+  safety-check:
+    name: Safety check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce develop branch
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
+            echo "::error::Must be triggered from develop. Got: ${{ github.ref }}"
+            exit 1
+          fi
+      - name: Validate confirmation
+        run: |
+          if [ "${{ github.event.inputs.confirm }}" != "DESTROY" ]; then
+            echo "::error::You must type DESTROY to confirm. Got: ${{ github.event.inputs.confirm }}"
+            exit 1
+          fi
+          echo "Destruction confirmed — proceeding."
+
+  # ── Layer 1: ECS (depends on VPC, IAM) ─────────────────────────
+  destroy-ecs:
+    name: Destroy — 6_ecs
+    needs: safety-check
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/6_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Empty ECR repositories
+        run: |
+          for REPO in onchain-stream-txs onchain-batch-txs; do
+            IMAGES=$(aws ecr list-images --repository-name "$REPO" --region "${{ env.AWS_REGION }}" \
+              --query 'imageIds[*]' --output json 2>/dev/null)
+            if [ "$IMAGES" != "[]" ] && [ -n "$IMAGES" ]; then
+              aws ecr batch-delete-image --repository-name "$REPO" \
+                --image-ids "$IMAGES" --region "${{ env.AWS_REGION }}" 2>/dev/null || true
+            fi
+            echo "ECR $REPO emptied"
+          done
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  # ── Layer 2: Lambda (depends on IAM, S3, DynamoDB) ─────────────
+  destroy-lambda:
+    name: Destroy — 10_lambda
+    needs: safety-check
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/10_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  # ── Layer 3: Databricks (independent) ──────────────────────────
+  destroy-databricks:
+    name: Destroy — 7_databricks
+    needs: safety-check
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/7_databricks
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform destroy
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          terraform init -input=false
+          terraform destroy -auto-approve -input=false -no-color
+
+  # ── Layer 4: Peripherals (kinesis, sqs, dynamodb) ───────────────
+  # Runs after ECS and Lambda are gone (they consume these resources)
+  destroy-kinesis-sqs:
+    name: Destroy — 3_kinesis_sqs
+    needs: [destroy-ecs, destroy-lambda]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/3_kinesis_sqs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  destroy-dynamodb:
+    name: Destroy — 9_dynamodb
+    needs: [destroy-ecs, destroy-lambda]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/9_dynamodb
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  destroy-s3:
+    name: Destroy — 4_s3
+    needs: [destroy-ecs, destroy-lambda, destroy-kinesis-sqs]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/4_s3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Empty lakehouse bucket versions
+        run: |
+          BUCKET="dm-chain-explorer-lakehouse"
+          aws s3api delete-objects \
+            --bucket "$BUCKET" \
+            --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+              --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+              --output json 2>/dev/null)" \
+            --region "${{ env.AWS_REGION }}" 2>/dev/null || true
+          aws s3api delete-objects \
+            --bucket "$BUCKET" \
+            --delete "$(aws s3api list-object-versions --bucket "$BUCKET" \
+              --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+              --output json 2>/dev/null)" \
+            --region "${{ env.AWS_REGION }}" 2>/dev/null || true
+          aws s3 rm "s3://$BUCKET" --recursive --region "${{ env.AWS_REGION }}" 2>/dev/null || true
+          echo "Bucket $BUCKET emptied"
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  # ── Layer 5: IAM (after all consumers destroyed) ────────────────
+  destroy-iam:
+    name: Destroy — 2_iam
+    needs: [destroy-kinesis-sqs, destroy-dynamodb, destroy-databricks, destroy-s3]
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/2_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  # ── Layer 6: VPC (last — everything else must be gone) ──────────
+  destroy-vpc:
+    name: Destroy — 1_vpc
+    needs: destroy-iam
+    runs-on: ubuntu-latest
+    environment: production
+    defaults:
+      run:
+        working-directory: ${{ env.TF_ROOT }}/1_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Terraform init
+        run: terraform init -input=false
+      - name: Terraform destroy
+        run: terraform destroy -auto-approve -input=false -no-color
+
+  # ── Summary ─────────────────────────────────────────────────────
+  summary:
+    name: Destroy complete
+    needs: [destroy-vpc]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print summary
+        run: |
+          echo "## PRD Infrastructure Destroy Complete" >> $GITHUB_STEP_SUMMARY
+          echo "All modules destroyed. \`01_tf_state\` (remote state bucket + DynamoDB lock) preserved." >> $GITHUB_STEP_SUMMARY
+          echo "Run \`deploy_cloud_infra_prd.yml\` with \`force_apply=true\` to redeploy." >> $GITHUB_STEP_SUMMARY
