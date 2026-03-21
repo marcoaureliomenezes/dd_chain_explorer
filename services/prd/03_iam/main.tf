@@ -37,15 +37,10 @@ data "terraform_remote_state" "vpc" {
 
 data "aws_caller_identity" "current" {}
 
-# S3 bucket data sources (avoid remote state dependency during destroy)
-data "aws_s3_bucket" "raw" {
-  bucket = "dm-chain-explorer-raw"
-}
-
-data "aws_s3_bucket" "lakehouse" {
-  bucket = "dm-chain-explorer-lakehouse"
-}
-
-data "aws_s3_bucket" "databricks" {
-  bucket = "dm-chain-explorer-databricks"
+# S3 ARNs derived from account ID — works during both apply and destroy
+locals {
+  account_id             = data.aws_caller_identity.current.account_id
+  raw_bucket_arn         = "arn:aws:s3:::dm-chain-explorer-raw"
+  lakehouse_bucket_arn   = "arn:aws:s3:::dm-chain-explorer-lakehouse"
+  databricks_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-databricks"
 }
