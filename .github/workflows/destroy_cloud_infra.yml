@@ -92,6 +92,17 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Empty DEV S3 buckets before destroy
+        run: |
+          chmod +x scripts/empty_s3_bucket.sh
+          for BUCKET in dm-chain-explorer-dev-ingestion dm-chain-explorer-dev; do
+            if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
+              bash scripts/empty_s3_bucket.sh "$BUCKET" "${{ env.AWS_REGION }}"
+            else
+              echo "Bucket $BUCKET does not exist — skipping."
+            fi
+          done
+        working-directory: ${{ github.workspace }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
