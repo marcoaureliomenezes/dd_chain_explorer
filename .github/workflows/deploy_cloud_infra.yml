@@ -169,7 +169,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-dev-lambda
-          path: ${{ env.DEV_LAMBDA }}/tfplan
+          path: |
+            ${{ env.DEV_LAMBDA }}/tfplan
+            ${{ env.DEV_LAMBDA }}/.lambda_zip/
           retention-days: 1
       - if: always()
         run: |
@@ -199,7 +201,6 @@ jobs:
         with:
           name: tfplan-dev-lambda
           path: ${{ env.DEV_LAMBDA }}
-      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
 
@@ -495,7 +496,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-06_lambda
-          path: ${{ env.PRD_ROOT }}/06_lambda/tfplan
+          path: |
+            ${{ env.PRD_ROOT }}/06_lambda/tfplan
+            ${{ env.PRD_ROOT }}/06_lambda/.lambda_zip/
           retention-days: 1
       - if: always()
         run: |
@@ -524,7 +527,6 @@ jobs:
         with:
           name: tfplan-prd-06_lambda
           path: ${{ env.PRD_ROOT }}/06_lambda
-      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
 
