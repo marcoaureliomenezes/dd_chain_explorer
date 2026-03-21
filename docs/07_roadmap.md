@@ -150,7 +150,7 @@ flowchart TD
 |-----------|---------|-------|
 | 01 — Arquitetura | `docs/01_architecture.md` | A03, ~~A04~~, A06, A07, A10, ~~A11~~, **A12** |
 | 02 — Captura de Dados | `docs/02_data_capture.md` | C08, C10 |
-| 03 — Processamento de Dados | `docs/03_data_processing.md` | TODO-P01, P09 |
+| 03 — Processamento de Dados | `docs/03_data_processing.md` | TODO-P01 |
 | 04 — DataOps | `docs/04_data_ops.md` | TODO-O08, O10, O12, O13 |
 | 05 — Data Serving | `docs/05_data_serving.md` | TODO-S06, S10 |
 

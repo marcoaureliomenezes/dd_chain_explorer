@@ -202,13 +202,13 @@ O ambiente de DEV opera em **duas redes isoladas**:
 
 | Escopo | Arquivos |
 |--------|----------|
-| Jobs Streaming | `docker/onchain-stream-txs/src/1_*.py` a `5_*.py` |
-| Jobs Batch (Lambda) | `lambda/contracts_ingestion/` |
+| Jobs Streaming | `apps/docker/onchain-stream-txs/src/1_*.py` a `5_*.py` |
+| Jobs Batch (Lambda) | `apps/lambda/contracts_ingestion/` |
 | Docker Compose DEV | `services/dev/00_compose/app_services.yml` |
 | Terraform DEV | `services/dev/01_peripherals/` (S3, Kinesis, SQS, DynamoDB, CloudWatch) + `services/dev/02_lambda/` (Lambda) |
 | Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` |
 | Shared Modules | `services/modules/` (s3, dynamodb, kinesis, sqs, lambda, ecs, iam, vpc, cloudwatch_logs) |
-| DABs | `dabs/databricks.yml`, `dabs/resources/`, `dabs/src/` |
+| DABs | `apps/dabs/databricks.yml`, `apps/dabs/resources/`, `apps/dabs/src/` |
 | Scripts Ambiente | `scripts/environment/` |
 | CI/CD | `.github/workflows/` |
 | Makefile | `Makefile` |

@@ -19,31 +19,30 @@ Pipeline unificado Bronze + Silver + Gold definido em `4_pipeline_ethereum.py`. 
 | Parâmetro | DEV | PROD |
 |-----------|-----|------|
 | `source.type` | `s3` (Auto Loader sobre NDJSON) | `s3` (Auto Loader sobre NDJSON via Firehose) |
-| `dlt_continuous` | `false` (triggered por Workflow `dm-trigger-dlt-all` a cada 5 min) | `false` (triggered por Workflow schedule) |
+| `dlt_continuous` | `false` (triggered por schedule cron direto no pipeline, `availableNow`) | `false` (triggered por schedule cron direto no pipeline) |
 | `dlt_development` | `true` | `false` |
 | `serverless` | `true` | `true` |
 | Catalog | `dev` | `dd_chain_explorer` |
 
 #### Bronze — `b_ethereum.kafka_topics_multiplexed`
 
-Tabela única multiplexada com todos os tópicos Kafka, particionada por `topic_name`.
+Tabela única multiplexada com todos os streams Kinesis, particionada por `topic_name`.
 
-**Dual-source:**
-- **DEV**: Lê Parquet do S3 via Auto Loader (`cloudFiles`). Dados previamente escritos pelo job Spark `kafka_to_s3_multiplex`.
-- **PROD**: Lê diretamente do Kafka MSK com autenticação IAM (`SASL_SSL` + `AWS_MSK_IAM`).
+**Fonte (DEV e PROD):**
+- Lê NDJSON do S3 via Auto Loader (`cloudFiles`). Dados escritos pelo Kinesis Firehose em PROD e pelos jobs de streaming em DEV.
 
 | Coluna | Tipo | Descrição |
 |--------|------|-----------|
-| `topic_name` | string | Nome do tópico Kafka (coluna de partição) |
-| `kafka_partition` | int | Partição Kafka original |
-| `kafka_offset` | long | Offset Kafka |
-| `kafka_timestamp` | timestamp | Timestamp do Kafka |
+| `topic_name` | string | Nome do stream Kinesis (coluna de partição) |
+| `kafka_partition` | int | Partição (shard Kinesis) original |
+| `kafka_offset` | long | Sequence number Kinesis |
+| `kafka_timestamp` | timestamp | Timestamp de ingestão |
 | `key` | string | Chave da mensagem (cast para string) |
 | `value` | binary | Payload Avro com header Confluent (5 bytes) |
 
 #### Silver — Tabelas Individuais
 
-A camada Silver deserializa o payload Avro, remove o header Confluent (5 bytes: `substring(value, 6)`), aplica validações (`expect_or_drop`) e produz tabelas limpas.
+A camada Silver deserializa o payload, aplica validações (`expect_or_drop`) e produz tabelas limpas.
 
 **Tabelas no schema `s_apps`:**
 
@@ -220,7 +219,7 @@ flowchart TB
 
 ## 3. Workflows Batch (Databricks)
 
-Definidos como Databricks Workflows via DABs (`dabs/resources/workflows/`):
+Definidos como Databricks Workflows via DABs (`apps/dabs/resources/workflows/`):
 
 ### 3.1 DDL Setup (`dm-ddl-setup`)
 
@@ -233,19 +232,17 @@ create_bronze_tables
           └── create_gold_views
 ```
 
-### 3.2 Teardown (`dm-teardown`)
+### 3.2 Batch Contratos (`dm-batch-contracts`)
 
-Deleta todas as tabelas e schemas. Apenas para ambiente DEV. Parâmetro `purge: "true"`.
+Pipeline unificado: S3 `batch/` → Bronze → Silver para dados de transações de contratos.
 
-### 3.3 Batch S3 → Bronze (`dm-batch-s3-to-bronze`)
+```
+s3_to_bronze_contracts_txs → bronze_to_silver_contracts_txs
+```
 
-Carrega dados JSON de contratos do S3 para a tabela bronze `popular_contracts_txs`.
+Substituiu os workflows individuais `dm-batch-s3-to-bronze` e `dm-batch-bronze-to-silver`.
 
-### 3.4 Batch Bronze → Silver (`dm-batch-bronze-to-silver`)
-
-Transforma dados de contratos da bronze para silver.
-
-### 3.5 Manutenção (`dm-iceberg-maintenance`)
+### 3.3 Manutenção (`dm-iceberg-maintenance`)
 
 Executado a cada 12 horas:
 ```
@@ -255,39 +252,27 @@ optimize_bronze → optimize_silver → vacuum_all → monitor_tables
 - **VACUUM**: Remove arquivos antigos não referenciados (após retention period)
 - **Monitor**: Coleta métricas das tabelas
 
-### 3.6 Processamento Periódico (`dm-periodic-processing`)
+### 3.4 Full Refresh DLT (`dm-dlt-full-refresh`)
 
-Executado a cada 6 horas via cron (`0 0 */6 * * ?`):
-```
-get_popular_contracts → ingest_contracts_txs
-                     ↘ popular_contracts_scd2
-```
-1. Consulta contratos populares e salva no DynamoDB
-2. `ingest_contracts_txs`: ingere transações desses contratos via Etherscan ao S3
-3. `popular_contracts_scd2`: aplica SCD Type 2 em `g_contracts.popular_contracts_history` (tarefas 2 e 3 executam em paralelo, ambas dependem de `get_popular_contracts`)
-
-### 3.7 Full Refresh DLT (`dm-dlt-full-refresh`)
-
-Acionado manualmente via DAG `pipeline_backfill_reprocess`. Executa ambos os pipelines DLT com `full_refresh: true`, descartando checkpoints e reprocessando todos os dados disponíveis na fonte:
+Acionado manualmente. Executa ambos os pipelines DLT com `full_refresh: true`, descartando checkpoints e reprocessando todos os dados disponíveis na fonte:
 ```
 full_refresh_ethereum → full_refresh_app_logs
 ```
-
-### 3.8 Trigger DLT (`dm-trigger-dlt-ethereum` / `dm-trigger-dlt-app-logs`)
-
-Jobs individuais que disparam `pipeline_task` nos pipelines DLT com `full_refresh: false`. **PAUSADOS** — substituídos pelo workflow consolidado `dm-trigger-dlt-all` que dispara ambos sequencialmente.
 
 ---
 
 ## 4. Orquestração (Databricks Workflows + Lambda)
 
-### 4.1 Workflows Agendados
+### 4.1 Pipelines DLT com Schedule
 
-| Workflow | Schedule | Descrição |
-|----------|----------|----------|
-| `dm-trigger-dlt-all` | A cada 5 min | Dispara pipelines DLT Ethereum → App Logs sequencialmente |
-| `dm-periodic-processing` | A cada 1h | get_popular_contracts → ingest_contracts_txs → S3→Bronze → Bronze→Silver → SCD2 |
-| `dm-iceberg-maintenance` | A cada 12h (4 AM/PM) | OPTIMIZE + VACUUM nas tabelas Delta |
+Os schedules dos pipelines DLT são configurados diretamente nos arquivos YAML (`trigger.cron`), sem necessidade de um workflow separado de trigger:
+
+| Pipeline | Schedule (PROD) | Offset |
+|----------|-----------------|--------|
+| `dm-ethereum` | A cada 30 min | minuto 0 |
+| `dm-app-logs` | A cada 35 min | minuto 5 (offset pós-ethereum) |
+
+> **Nota**: Os pipelines são deployados com `pause_status: PAUSED`. Em PROD, despausar manualmente após validação inicial.
 
 ### 4.2 Lambda + EventBridge
 
@@ -295,15 +280,19 @@ Jobs individuais que disparam `pipeline_task` nos pipelines DLT com `full_refres
 |---------|----------|----------|
 | Lambda `contracts-ingestion` | A cada 1h (EventBridge) | Etherscan API → JSON → S3 `batch/` |
 
-### 4.3 Workflows Manuais
+### 4.3 Workflows Agendados
+
+| Workflow | Schedule | Descrição |
+|----------|----------|----------|
+| `dm-iceberg-maintenance` | A cada 12h (4h e 16h) | OPTIMIZE + VACUUM nas tabelas Delta |
+
+### 4.4 Workflows Manuais
 
 | Workflow | Descrição |
 |----------|----------|
 | `dm-ddl-setup` | Criação de tabelas Databricks |
-| `dm-teardown` | Remoção de tabelas |
+| `dm-batch-contracts` | S3 `batch/` → Bronze → Silver (contratos) |
 | `dm-dlt-full-refresh` | Reprocessamento completo DLT (full_refresh) |
-| `dm-batch-s3-to-bronze` | Carga manual S3 → Bronze |
-| `dm-batch-bronze-to-silver` | Carga manual Bronze → Silver |
 
 ### 4.4 Scripts de Limpeza (standalone)
 
@@ -316,8 +305,8 @@ Jobs individuais que disparam `pipeline_task` nos pipelines DLT com `full_refres
 flowchart LR
     EB["EventBridge<br/>(cada 1h)"] --> LAMBDA["Lambda<br/>contracts-ingestion"]
     LAMBDA --> S3["S3 batch/"]
-    DW["Databricks Workflow<br/>(cada 5 min)"] --> DLT["DLT Ethereum + App Logs"]
-    DW2["Databricks Workflow<br/>(cada 1h)"] --> PROC["S3 → Bronze → Silver → Gold"]
+    SCH["DLT Schedule<br/>(cada 30/35 min)"] --> DLT["DLT Ethereum + App Logs"]
+    S3 --> DBW["dm-batch-contracts<br/>(manual)"] --> SILVER["Bronze → Silver"]
 ```
 
 ---
@@ -349,7 +338,7 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 | Aspecto | DEV | PROD |
 |---------|-----|------|
 | **Fonte Bronze** | S3 NDJSON via Auto Loader (`cloudFiles`) | S3 NDJSON via Auto Loader (Firehose) |
-| **DLT Mode** | Triggered (Workflow a cada 5 min, `availableNow`) | Triggered (Workflow schedule) |
+| **DLT Mode** | Triggered (`availableNow`, acionar manualmente em DEV) | Triggered (schedule cron no pipeline, PAUSED até ativação) |
 | **Development Flag** | `true` (permite refresh rápido) | `false` |
 | **Workers** | 0 (single-node) | 1+ |
 | **Catalog** | `dev` | `dd_chain_explorer` |
@@ -361,25 +350,22 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 
 | Escopo | Arquivos |
 |--------|----------|
-| Schemas Avro centralizados | `dabs/src/streaming/avro_schemas.py` |
-| Pipeline Ethereum (Bronze+Silver+Gold) | `dabs/src/streaming/4_pipeline_ethereum.py` |
-| Pipeline App Logs (Silver+Gold) | `dabs/src/streaming/5_pipeline_app_logs.py` |
-| Pipeline Bronze Multiplex (standalone) | `dabs/src/streaming/2_pipeline_bronze_multiplex.py` |
-| Pipeline Silver Topics (standalone) | `dabs/src/streaming/3_pipeline_silver_topics.py` |
-| Config DLT Ethereum | `dabs/resources/dlt/pipeline_ethereum.yml` |
-| Config DLT App Logs | `dabs/resources/dlt/pipeline_app_logs.yml` |
-| Databricks Bundle | `dabs/databricks.yml` |
-| Workflows (batch, DDL, maint) | `dabs/resources/workflows/*.yml` |
-| Batch scripts | `dabs/src/batch/batch_contracts/`, `ddl/`, `maintenance/`, `periodic/` |
-| SCD Type 2 popular contracts | `dabs/src/batch/periodic/3_popular_contracts_scd2.py` |
-| Workflow Full Refresh DLT | `dabs/resources/workflows/workflow_dlt_full_refresh.yml` |
-| Lambda Ingestion | `lambda/contracts_ingestion/handler.py` |
-| Terraform Lambda | `services/prd/10_lambda/lambda_contracts_ingestion.tf` |
+| Pipeline Ethereum (Bronze+Silver+Gold) | `apps/dabs/src/streaming/4_pipeline_ethereum.py` |
+| Pipeline App Logs (Silver+Gold) | `apps/dabs/src/streaming/5_pipeline_app_logs.py` |
+| Config DLT Ethereum (+ schedule) | `apps/dabs/resources/dlt/pipeline_ethereum.yml` |
+| Config DLT App Logs (+ schedule) | `apps/dabs/resources/dlt/pipeline_app_logs.yml` |
+| Databricks Bundle | `apps/dabs/databricks.yml` |
+| Workflows (DDL, batch, maint, refresh) | `apps/dabs/resources/workflows/*.yml` |
+| Batch scripts | `apps/dabs/src/batch/batch_contracts/`, `ddl/`, `maintenance/` |
+| Workflow Batch Contratos | `apps/dabs/resources/workflows/workflow_batch_contracts.yml` |
+| Workflow Full Refresh DLT | `apps/dabs/resources/workflows/workflow_dlt_full_refresh.yml` |
+| Lambda Ingestion | `apps/lambda/contracts_ingestion/handler.py` |
+| Terraform Lambda PRD | `services/prd/06_lambda/lambda_contracts_ingestion.tf` |
 | Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
 
 ---
 
 ## TODOs — Processamento de Dados
 
-- [ ] **TODO-P01** 🔴 P0: Validar DLT triggered end-to-end em PROD. Configurado em `dabs/databricks.yml` (`prod` target), pendente validação E2E em ambiente PROD real. Blocker para validação do ambiente de produção (TODO-O12).
+- [ ] **TODO-P01** 🔴 P0: Validar DLT triggered end-to-end em PROD. Configurado em `apps/dabs/databricks.yml` (`prod` target), pendente validação E2E em ambiente PROD real. Blocker para validação do ambiente de produção (TODO-O12).
 - [x] **TODO-P09**: ~~Avaliar migração do Airflow para MWAA~~ — Cancelado: Airflow removido. Orquestração migrada para Databricks Workflows + Lambda (EventBridge). Ver `docs/rearchitecting_airflow.md`.
