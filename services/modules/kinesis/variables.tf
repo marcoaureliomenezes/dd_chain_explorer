@@ -35,7 +35,7 @@ variable "streams" {
     shard_count          = optional(number, 1)        # ignored when stream_mode = ON_DEMAND
     retention_period     = optional(number, 24)        # hours (24–8760)
     stream_mode          = optional(string, "ON_DEMAND") # ON_DEMAND or PROVISIONED
-    encryption_type      = optional(string, "KMS")     # KMS (recommended) or NONE
+    encryption_type      = optional(string, "NONE")    # KMS or NONE (KMS requires kms_key_id)
   }))
 }
 
