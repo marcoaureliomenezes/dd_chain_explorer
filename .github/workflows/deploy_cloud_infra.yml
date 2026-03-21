@@ -755,12 +755,19 @@ jobs:
 
   prd-create-tag:
     name: PRD — Create git tag
-    needs: [prd-check-version, prd-apply-ecs, prd-apply-lambda]
+    needs:
+      - prd-check-version
+      - prd-apply-ecs
+      - prd-apply-lambda
+      - prd-apply-databricks-account
+      - prd-apply-databricks-workspace
     if: |
       always() &&
       needs.prd-check-version.result == 'success' &&
       needs.prd-apply-ecs.result == 'success' &&
-      needs.prd-apply-lambda.result == 'success'
+      needs.prd-apply-lambda.result == 'success' &&
+      (needs.prd-apply-databricks-account.result == 'success' || needs.prd-apply-databricks-account.result == 'skipped') &&
+      (needs.prd-apply-databricks-workspace.result == 'success' || needs.prd-apply-databricks-workspace.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
