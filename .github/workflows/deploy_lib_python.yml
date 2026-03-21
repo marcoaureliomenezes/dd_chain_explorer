@@ -174,3 +174,4 @@ print(f'OK: {local} > {pypi}')
             --generate-notes
           echo "## Release Complete" >> $GITHUB_STEP_SUMMARY
           echo "PyPI: \`${{ needs.version-check.outputs.name }}==${VERSION}\` | Git tag: \`${TAG}\`" >> $GITHUB_STEP_SUMMARY
+
