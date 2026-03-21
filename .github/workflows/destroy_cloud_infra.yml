@@ -98,7 +98,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
-        run: echo "### DEV/06_lambda destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: echo "### DEV/06_lambda destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY
 
   dev-destroy-peripherals:
     name: DEV — Destroy 04_peripherals
@@ -122,8 +122,8 @@ jobs:
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
         run: |
-          echo "### DEV Infrastructure Destroyed" >> $GITHUB_STEP_SUMMARY
-          echo "Environment: \`DEV (Cloud AWS)\` | Status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "### DEV Infrastructure Destroyed" > $GITHUB_STEP_SUMMARY
+          echo "Environment: \`DEV (Cloud AWS)\` - Status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY
 
   # ══════════════════════════════════════════════════════════════
   #  PRD — destroy in reverse dependency order
@@ -187,7 +187,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
-        run: echo "### PRD/06_lambda destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: 'echo "### PRD/06_lambda destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY'
 
   prd-destroy-ecs:
     name: PRD — Destroy 07_ecs
@@ -210,7 +210,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
-        run: echo "### PRD/07_ecs destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: 'echo "### PRD/07_ecs destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY'
 
   prd-destroy-databricks:
     name: PRD — Destroy 05_databricks
@@ -237,7 +237,7 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - if: always()
-        run: echo "### PRD/05_databricks destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: 'echo "### PRD/05_databricks destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY'
 
   prd-destroy-peripherals:
     name: PRD — Destroy 04_peripherals
@@ -260,7 +260,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
-        run: echo "### PRD/04_peripherals destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: 'echo "### PRD/04_peripherals destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY'
 
   prd-destroy-iam:
     name: PRD — Destroy 03_iam
@@ -283,7 +283,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
-        run: echo "### PRD/03_iam destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: 'echo "### PRD/03_iam destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY'
 
   prd-destroy-vpc:
     name: PRD — Destroy 02_vpc
@@ -306,7 +306,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
-        run: echo "### PRD/02_vpc destroyed | status: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+        run: 'echo "### PRD/02_vpc destroyed - status: ${{ job.status }}" > $GITHUB_STEP_SUMMARY'
 
   prd-summary:
     name: PRD — Destroy summary
@@ -315,6 +315,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "## PRD Infrastructure Destroy Complete" >> $GITHUB_STEP_SUMMARY
-          echo "All modules destroyed. \`01_tf_state\` (remote state bucket + DynamoDB lock) preserved." >> $GITHUB_STEP_SUMMARY
-          echo "Run \`Deploy Infra Cloud\` with \`force_apply=true\` to redeploy." >> $GITHUB_STEP_SUMMARY
+          echo "## PRD Infrastructure Destroy Complete" > $GITHUB_STEP_SUMMARY
+          echo "All modules destroyed. \`01_tf_state\` (remote state bucket + DynamoDB lock) preserved." > $GITHUB_STEP_SUMMARY
+          echo "Run \`Deploy Infra Cloud\` with \`force_apply=true\` to redeploy." > $GITHUB_STEP_SUMMARY
