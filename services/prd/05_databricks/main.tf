@@ -59,8 +59,8 @@ provider "databricks" {
 # ---------------------------------------------------------------------------
 provider "databricks" {
   alias = "workspace"
-  host  = databricks_mws_workspaces.dm.workspace_url
-  token = databricks_mws_workspaces.dm.token[0].token_value
+  host  = var.workspace_host
+  token = var.workspace_token
 }
 
 # ---------------------------------------------------------------------------

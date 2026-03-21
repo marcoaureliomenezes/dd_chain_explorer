@@ -440,20 +440,28 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
-      - run: terraform validate
+      - name: Read VERSION
+        id: ver
+        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+      - name: Extract workspace host/token from existing tfstate
+        id: ws
+        run: |
+          WS_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
+          WS_TOKEN=$(terraform output -raw databricks_token 2>/dev/null || echo "")
+          echo "host=$WS_URL"  >> $GITHUB_OUTPUT
+          echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:           ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version:    ${{ steps.ver.outputs.version }}
+          TF_VAR_workspace_host:     ${{ steps.ws.outputs.host }}
+          TF_VAR_workspace_token:    ${{ steps.ws.outputs.token }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-05_databricks
@@ -491,12 +499,25 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+      - name: Extract workspace host/token from existing tfstate
+        id: ws
+        run: |
+          WS_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
+          WS_TOKEN=$(terraform output -raw databricks_token 2>/dev/null || echo "")
+          echo "host=$WS_URL"  >> $GITHUB_OUTPUT
+          echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - run: terraform apply -input=false -auto-approve tfplan
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:           ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version:    ${{ steps.ver.outputs.version }}
+          TF_VAR_workspace_host:     ${{ steps.ws.outputs.host }}
+          TF_VAR_workspace_token:    ${{ steps.ws.outputs.token }}
 
   prd-apply-lambda:
     name: PRD — Plan + Apply 06_lambda

@@ -44,3 +44,16 @@ variable "project_version" {
   type        = string
   default     = "0.0.0"
 }
+
+variable "workspace_host" {
+  description = "Databricks workspace URL — populated after workspace creation. Set via TF_VAR_workspace_host or outputs of databricks_mws_workspaces."
+  type        = string
+  default     = ""
+}
+
+variable "workspace_token" {
+  description = "Databricks workspace bootstrap token — populated after workspace creation. Set via TF_VAR_workspace_token."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
