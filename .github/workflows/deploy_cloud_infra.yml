@@ -446,10 +446,12 @@ jobs:
       - name: Extract workspace host/token from existing tfstate
         id: ws
         run: |
-          WS_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
-          WS_TOKEN=$(terraform output -raw databricks_token 2>/dev/null || echo "")
+          WS_JSON=$(terraform output -json 2>/dev/null || echo '{}')
+          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value // empty' 2>/dev/null || echo "")
+          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value // empty' 2>/dev/null || echo "")
           echo "host=$WS_URL"  >> $GITHUB_OUTPUT
           echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
+          echo "Workspace URL: ${WS_URL:-'(none - will create new workspace)'}"
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
@@ -502,10 +504,12 @@ jobs:
       - name: Extract workspace host/token from existing tfstate
         id: ws
         run: |
-          WS_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
-          WS_TOKEN=$(terraform output -raw databricks_token 2>/dev/null || echo "")
+          WS_JSON=$(terraform output -json 2>/dev/null || echo '{}')
+          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value // empty' 2>/dev/null || echo "")
+          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value // empty' 2>/dev/null || echo "")
           echo "host=$WS_URL"  >> $GITHUB_OUTPUT
           echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
+          echo "Workspace URL: ${WS_URL:-'(none - will create new workspace)'}"
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
