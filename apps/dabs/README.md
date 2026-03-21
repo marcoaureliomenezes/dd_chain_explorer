@@ -135,7 +135,7 @@ databricks bundle deploy --target prod
 | Variável | DEV | PROD |
 |----------|-----|------|
 | `catalog` | `dev` | `dd_chain_explorer` |
-| `dev_ingestion_s3_bucket` | `dm-chain-explorer-dev-ingestion` | (via TF state) |
+| `ingestion_s3_bucket` | `dm-chain-explorer-dev-ingestion` | `dm-chain-explorer-prd-ingestion` |
 | `dynamodb_table` | `dm-chain-explorer` | `dm-chain-explorer` |
 | `dlt_development` | `true` | `false` |
 | `dlt_continuous` | `false` | `false` |

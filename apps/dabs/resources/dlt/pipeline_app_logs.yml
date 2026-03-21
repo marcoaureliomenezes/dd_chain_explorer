@@ -14,7 +14,7 @@ resources:
 
       configuration:
         # S3 bucket for ingestion (raw data, DLT external tables, checkpoints)
-        ingestion.s3.bucket: ${var.dev_ingestion_s3_bucket}
+        ingestion.s3.bucket: ${var.ingestion_s3_bucket}
 
       serverless: true
 
