@@ -589,10 +589,15 @@ jobs:
       - name: Tag master
         run: |
           VERSION="${{ needs.check-version.outputs.version }}"
+          TAG="v${VERSION}-infra"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git fetch origin master
           git checkout master
-          git tag -a "v${VERSION}-infra" -m "PRD infra v${VERSION}"
-          git push origin "v${VERSION}-infra"
-          echo "## Tag created: \`v${VERSION}-infra\` on master" >> $GITHUB_STEP_SUMMARY
+          if git tag --list | grep -qx "$TAG"; then
+            echo "Tag $TAG already exists — skipping." >> $GITHUB_STEP_SUMMARY
+          else
+            git tag -a "$TAG" -m "PRD infra v${VERSION}"
+            git push origin "$TAG"
+            echo "## Tag created: \`$TAG\` on master" >> $GITHUB_STEP_SUMMARY
+          fi
