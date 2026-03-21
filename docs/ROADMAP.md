@@ -10,6 +10,22 @@ Este documento consolida as melhorias pendentes do projeto, organizadas por prio
 
 ---
 
+## Erros de Deploy — Validação 2026-03-21
+
+### [HARD] Terraform: `version` é nome reservado
+- **Workflow**: `destroy_cloud_infra.yml` (DEV)
+- **Erro**: `Error: Invalid variable name. The variable name "version" is reserved due to its special meaning inside module blocks.`
+- **Causa**: Adicionamos `variable "version"` em todos os módulos TF para propagar a versão, mas `version` é reservado no Terraform
+- **Impacto**: Bloqueia destroy/redeploy de DEV e PRD
+- **Solução necessária**: Renomear `variable "version"` para `variable "project_version"` em todos os 8 módulos e atualizar referências em `locals.tf`/`main.tf` e workflows
+- **Arquivos afetados**:
+  - `services/dev/01_peripherals/variables.tf` e `main.tf`
+  - `services/dev/02_lambda/variables.tf` e `main.tf`
+  - `services/prd/*/variables.tf` e `locals.tf` (6 módulos)
+  - `deploy_cloud_infra.yml` e `deploy_dm_applications.yml` (atualizar `TF_VAR_version` para `TF_VAR_project_version`)
+
+---
+
 ## Fase CI/CD — Deploy Pipelines & Ambiente HML
 
 > **Iniciada em:** 2026-03. Esta fase cobre a implementação de todos os fluxos de deploy com ambiente de homologação efêmero (HML) na AWS e modo standby de produção.

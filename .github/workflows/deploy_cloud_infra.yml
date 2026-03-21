@@ -109,7 +109,7 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-dev-peripherals
@@ -149,7 +149,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   dev-apply-lambda:
     name: DEV — Plan + Apply 06_lambda
@@ -181,14 +181,14 @@ jobs:
       - run: terraform validate
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - if: always()
         run: |
           echo "### Plan DEV/06_lambda" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   # ══════════════════════════════════════════════════════════════
   #  PRD — Layer 0: version check (gate for all PRD jobs)
@@ -246,7 +246,7 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-02_vpc
@@ -285,7 +285,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   prd-plan-peripherals:
     name: PRD — Plan 04_peripherals
@@ -311,7 +311,7 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-04_peripherals
@@ -350,7 +350,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   # ── PRD Layer 2: 03_iam (depends on vpc + peripherals) ─────────
 
@@ -378,7 +378,7 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-03_iam
@@ -417,7 +417,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   # ── PRD Layer 3: 05_databricks + 06_lambda + 07_ecs (parallel) ─
 
@@ -453,7 +453,7 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_version:           ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version:           ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-05_databricks
@@ -496,7 +496,7 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_version:           ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version:           ${{ steps.ver.outputs.version }}
 
   prd-apply-lambda:
     name: PRD — Plan + Apply 06_lambda
@@ -524,14 +524,14 @@ jobs:
       - run: terraform validate
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - if: always()
         run: |
           echo "### Plan PRD/06_lambda" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   prd-plan-ecs:
     name: PRD — Plan 07_ecs
@@ -557,7 +557,7 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prd-07_ecs
@@ -596,7 +596,7 @@ jobs:
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 

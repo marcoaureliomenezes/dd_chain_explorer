@@ -891,7 +891,7 @@ jobs:
       - name: Terraform init & apply
         working-directory: ${{ env.PRD_TF_LAMBDA }}
         env:
-          TF_VAR_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
         run: |
           terraform init -input=false
           terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt

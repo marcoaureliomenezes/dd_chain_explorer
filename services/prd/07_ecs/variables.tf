@@ -11,7 +11,7 @@ variable "docker_image_batch" {
   default     = "latest"
 }
 
-variable "version" {
+variable "project_version" {
   description = "Project version from VERSION file — propagated to resource tags"
   type        = string
   default     = "0.0.0"
