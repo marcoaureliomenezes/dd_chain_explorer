@@ -141,44 +141,13 @@ jobs:
       - run: terraform init -input=false
       - run: terraform apply -input=false -auto-approve tfplan
 
-  dev-plan-lambda:
-    name: DEV — Plan 06_lambda
+  dev-apply-lambda:
+    name: DEV — Plan + Apply 06_lambda
     needs: [dev-detect-changes, dev-apply-peripherals]
     if: |
       always() &&
       needs.dev-detect-changes.outputs.lambda_changed == 'true' &&
       (needs.dev-apply-peripherals.result == 'success' || needs.dev-apply-peripherals.result == 'skipped')
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.DEV_LAMBDA }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-dev-lambda
-          path: ${{ env.DEV_LAMBDA }}/tfplan
-          retention-days: 1
-      - if: always()
-        run: |
-          echo "### Plan DEV/06_lambda" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  dev-apply-lambda:
-    name: DEV — Apply 06_lambda
-    needs: [dev-detect-changes, dev-plan-lambda]
-    if: needs.dev-detect-changes.outputs.lambda_changed == 'true'
     runs-on: ubuntu-latest
     environment: dev
     defaults:
@@ -194,11 +163,14 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-dev-lambda
-          path: ${{ env.DEV_LAMBDA }}
+      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - if: always()
+        run: |
+          echo "### Plan DEV/06_lambda" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - run: terraform apply -input=false -auto-approve tfplan
 
   # ══════════════════════════════════════════════════════════════
@@ -469,39 +441,9 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
 
-  prd-plan-lambda:
-    name: PRD — Plan 06_lambda
-    needs: prd-apply-iam
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/06_lambda
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-06_lambda
-          path: ${{ env.PRD_ROOT }}/06_lambda/tfplan
-          retention-days: 1
-      - if: always()
-        run: |
-          echo "### Plan PRD/06_lambda" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
   prd-apply-lambda:
-    name: PRD — Apply 06_lambda
-    needs: prd-plan-lambda
+    name: PRD — Plan + Apply 06_lambda
+    needs: prd-apply-iam
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -517,11 +459,14 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-06_lambda
-          path: ${{ env.PRD_ROOT }}/06_lambda
+      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
+      - run: terraform validate
+      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - if: always()
+        run: |
+          echo "### Plan PRD/06_lambda" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - run: terraform apply -input=false -auto-approve tfplan
 
   prd-plan-ecs:
