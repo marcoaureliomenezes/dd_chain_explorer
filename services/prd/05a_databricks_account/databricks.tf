@@ -193,6 +193,8 @@ resource "databricks_metastore_data_access" "default" {
   aws_iam_role {
     role_arn = data.terraform_remote_state.iam.outputs.databricks_cross_account_role_arn
   }
+
+  depends_on = [databricks_metastore_assignment.dm]
 }
 
 # -----------------------------------------------------------------------
@@ -208,4 +210,6 @@ resource "databricks_mws_permission_assignment" "admin" {
   workspace_id = databricks_mws_workspaces.dm.workspace_id
   principal_id = data.databricks_user.admin.id
   permissions  = ["ADMIN"]
+
+  depends_on = [databricks_metastore_assignment.dm]
 }
