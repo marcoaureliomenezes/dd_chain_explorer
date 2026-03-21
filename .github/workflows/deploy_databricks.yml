@@ -228,31 +228,6 @@ jobs:
           fi
 
   # ----------------------------------------------------------------
-  # Create release branch — only after HML deploy + integration test
-  # ----------------------------------------------------------------
-  create-release-branch:
-    name: Create release branch
-    needs: [check-version, deploy-hml, hml-dlt-integration-test]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Create and push release branch
-        run: |
-          VERSION="${{ needs.check-version.outputs.version }}"
-          BRANCH="release/dabs-v${VERSION}"
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git push origin "$BRANCH"
-          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
-          echo "Branch created: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
-          echo "Next: approve the 'Deploy to Production' stage below." >> $GITHUB_STEP_SUMMARY
-
-  # ----------------------------------------------------------------
   # Deploy to Production — requires manual approval
   # (GitHub Environment: production)
   #
@@ -261,7 +236,7 @@ jobs:
   # ----------------------------------------------------------------
   deploy-prod:
     name: Deploy to Production
-    needs: [check-version, check-infra-prd, create-release-branch]
+    needs: [check-version, check-infra-prd, hml-dlt-integration-test]
     runs-on: ubuntu-latest
     environment: production
     defaults:
