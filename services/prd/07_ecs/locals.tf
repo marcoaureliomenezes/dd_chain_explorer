@@ -12,7 +12,7 @@ locals {
     "environment" = var.environment
     "project"     = "dd-chain-explorer"
 
-    "version"     = var.version
+    "project_version" = var.project_version
   }
 
   # Variáveis de ambiente comuns a todos os jobs de streaming.
