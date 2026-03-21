@@ -176,16 +176,14 @@ O ambiente de DEV opera em **duas redes isoladas**:
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Recursos Terraform (PROD)**:
-- **0_remote_state**: S3 backend + DynamoDB lock
-- **1_vpc**: VPC, subnets, IGW, security groups, S3 endpoint
-- **2_iam**: Roles para ECS (execution + task), Databricks (cross-account + cluster)
-- **3_kinesis_sqs**: Kinesis Data Streams, Firehose Delivery Streams, SQS Queues, CloudWatch Logs
-- **4_s3**: 3 buckets (raw, lakehouse, databricks) com lifecycle rules
-- **6_ecs**: Cluster Fargate + 6 task definitions + services + Cloud Map
-- **7_databricks**: Workspace MWS, Unity Catalog, metastore, external locations, cluster
-- **9_dynamodb**: Tabela DynamoDB single-table (PK/SK, TTL, PITR, SSE)
-- **10_lambda**: Lambda gold_to_dynamodb (S3 event → DynamoDB sync) + Lambda contracts_ingestion (EventBridge hourly → Etherscan → S3)
+**Recursos Terraform (PROD)** — módulos em `services/prd/`, ordem de deploy `01→02→03→04→05→06+07`:
+- **01_tf_state**: S3 backend + DynamoDB lock para state remoto
+- **02_vpc**: VPC, subnets, IGW, security groups, S3 endpoint
+- **03_iam**: Roles para ECS (execution + task), Databricks (cross-account + cluster)
+- **04_peripherals**: Kinesis Data Streams, Firehose, SQS, CloudWatch Logs, S3 (raw/lakehouse/databricks), DynamoDB
+- **05_databricks**: Workspace MWS, Unity Catalog, metastore, external locations, cluster
+- **06_lambda**: Lambda gold_to_dynamodb (S3 event → DynamoDB sync) + Lambda contracts_ingestion (EventBridge hourly → Etherscan → S3)
+- **07_ecs**: Cluster Fargate + task definitions + ECR repos
 
 ### Segurança
 
@@ -206,15 +204,15 @@ O ambiente de DEV opera em **duas redes isoladas**:
 |--------|----------|
 | Jobs Streaming | `docker/onchain-stream-txs/src/1_*.py` a `5_*.py` |
 | Jobs Batch (Lambda) | `lambda/contracts_ingestion/` |
-| Docker Compose DEV | `services/dev/compose/app_services.yml` (único arquivo compose) |
-| Terraform DEV | `services/dev/terraform/1_aws_core/` (s3.tf, kinesis.tf, sqs.tf, cloudwatch.tf, dynamodb.tf, lambda.tf) |
-| Terraform HML | `services/hml/1_aws_core/` (s3.tf, iam.tf, cloudwatch.tf) |
-| Terraform PRD | `services/prd/` — `0_remote_state/` a `10_lambda/` (sem sub-pasta `terraform/`) |
+| Docker Compose DEV | `services/dev/00_compose/app_services.yml` |
+| Terraform DEV | `services/dev/01_peripherals/` (S3, Kinesis, SQS, DynamoDB, CloudWatch) + `services/dev/02_lambda/` (Lambda) |
+| Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` |
+| Shared Modules | `services/modules/` (s3, dynamodb, kinesis, sqs, lambda, ecs, iam, vpc, cloudwatch_logs) |
 | DABs | `dabs/databricks.yml`, `dabs/resources/`, `dabs/src/` |
 | Scripts Ambiente | `scripts/environment/` |
 | CI/CD | `.github/workflows/` |
 | Makefile | `Makefile` |
-| Configs Compose | `services/dev/compose/conf/` |
+| Configs Compose | `services/dev/00_compose/conf/` |
 
 ---
 
@@ -225,6 +223,6 @@ O ambiente de DEV opera em **duas redes isoladas**:
 - [x] **TODO-A04**: ~~Implementar TLS para comunicação Kafka em PROD.~~ Eliminado — Kafka removido. Kinesis/SQS/CloudWatch usam TLS nativo via AWS SDK.
 - [x] **TODO-A06**: ~~Implementar observabilidade em PROD.~~ CloudWatch Logs + Metrics nativos com a migração. Dashboards podem ser criados sobre CloudWatch.
 - [ ] **TODO-A07**: Avaliar necessidade de NAT Gateway na VPC de PROD. Atualmente ECS tasks têm IP público para acesso à internet (APIs Web3). NAT Gateway é mais seguro, porém tem custo.
-- [x] **TODO-A10**: ~~Criar ambiente de staging/homologação.~~ Resolvido — ambiente HML criado com infra persistente (S3, IAM, CloudWatch Logs + Firehose) em `services/hml/1_aws_core/` e recursos efêmeros (Kinesis, SQS, DynamoDB, ECS) provisionados por CI/CD em `deploy_streaming_apps.yml`. DABs HML deployados via `deploy_databricks.yml`.
+- [x] **TODO-A10**: ~~Criar ambiente de staging/homologação.~~ Resolvido — ambiente HML opera com recursos 100% efêmeros provisionados e destruídos dentro dos workflows de deploy de apps (`deploy_dm_applications.yml` — jobs `stream-hml-*`, `dabs-hml-*`, `lambda-hml-*`). Infra persistente de HML removida.
 - [x] **TODO-A11**: ~~Substituir Spark Streaming Kafka→S3 por Kafka Connect S3 Sink.~~ Eliminado — Firehose entrega NDJSON no S3 nativamente. Spark Streaming removido.
 - [ ] **TODO-A12**: Estudo de custo **ECS Fargate vs EC2/EKS**. Duplicar os services de streaming em um cluster EC2 (capacity provider) ou EKS, rodar ambos por 24h e comparar custos. Workload previsível (5 jobs + 6 réplicas do job 4) favorece EC2 com instâncias reservadas.

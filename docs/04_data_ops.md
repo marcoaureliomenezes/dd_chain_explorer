@@ -64,39 +64,28 @@ flowchart TD
 
 ### 2.1 Organização dos Módulos
 
-**DEV** (`services/dev/terraform/1_aws_core/`) — módulo único, estado S3 remoto (`dev/terraform.tfstate`):
+**DEV** — dois módulos independentes, estado S3 remoto (`dev/peripherals/terraform.tfstate` e `dev/lambda/terraform.tfstate`):
 
-| Arquivo tf | Recursos |
-|------------|----------|
-| `s3.tf` | Bucket S3 `dm-chain-explorer-dev-ingestion` (ingestão) |
-| `dynamodb.tf` | Tabela DynamoDB `dm-chain-explorer` (single-table, PK/SK, TTL, on-demand) |
-| `kinesis.tf` | 3 Kinesis Data Streams + Firehose (blocks, txs, txs-decoded) |
-| `sqs.tf` | SQS + DLQs (mined-blocks-events, block-txs-hash-id) |
-| `lambda.tf` | Lambda `dd-chain-explorer-dev-gold-to-dynamodb` (S3 event → DynamoDB sync) |
-| `cloudwatch.tf` | Log groups CloudWatch → Firehose subscription |
+| Módulo | Arquivo tf | Recursos |
+|--------|------------|----------|
+| `services/dev/01_peripherals/` | `main.tf` | S3, DynamoDB, Kinesis (3 streams + Firehose), SQS + DLQs, CloudWatch Logs + Firehose |
+| `services/dev/02_lambda/` | `main.tf` | Lambda `dm-chain-explorer-dev-gold-to-dynamodb` (S3 event → DynamoDB sync) |
 
-**HML** (`services/hml/1_aws_core/`) — módulo único, estado S3 remoto (`hml/terraform.tfstate`).
-**Apenas recursos persistentes** (DynamoDB, Kinesis, SQS, ECS cluster são efêmeros — criados/destruídos pelo CI/CD de apps):
+> **HML**: todos os recursos são **100% efêmeros** — criados e destruídos dentro dos workflows de deploy de apps (`deploy_dm_applications.yml`). Não há infra persistente de HML gerenciada por Terraform.
 
-| Arquivo tf | Recursos |
-|------------|----------|
-| `s3.tf` | Bucket S3 `dm-chain-explorer-hml-ingestion` (7-day lifecycle, versioning, AES256) |
-| `iam.tf` | IAM roles ECS: `dm-hml-ecs-task-execution-role` + `dm-hml-ecs-task-role` (scoped) |
-| `cloudwatch.tf` | Log group `/apps/dm-chain-explorer-hml` + Firehose `firehose-app-logs-hml` → S3 `raw/app_logs/` |
-
-**PROD** (`services/prd/`) — módulos numerados, estado S3 remoto. Ordem de deploy: `0→1→2→3→4→6→7→9→10`:
+**PROD** (`services/prd/`) — módulos numerados, estado S3 remoto. Ordem de deploy: `01→02→03→04→05→06+07` (06 e 07 em paralelo):
 
 | Módulo | Recursos | Custo |
 |--------|----------|-------|
-| `0_remote_state/` | S3 backend + DynamoDB lock para state remoto | Gratuito |
-| `1_vpc/` | VPC, subnets (pub/priv), IGW, security groups, VPC endpoints | Gratuito |
-| `2_iam/` | Roles: ECS execution, ECS task, Databricks cross-account, Lambda | Gratuito |
-| `3_kinesis_sqs/` | 3 Kinesis Data Streams + Firehose + 2 SQS + DLQs + CloudWatch | **Pago** |
-| `4_s3/` | Buckets: raw ingestion + lakehouse + lifecycle rules | Gratuito |
-| `6_ecs/` | Cluster Fargate + task definitions + ECR repos | **Pago** |
-| `7_databricks/` | Workspace MWS, Unity Catalog, metastore, external locations | **Pago** |
-| `9_dynamodb/` | Tabela DynamoDB single-table (PK/SK, TTL, PITR, SSE) | Gratuito (on-demand) |
-| `10_lambda/` | Lambda `contracts-ingestion` + Layer + EventBridge Scheduler | Gratuito |
+| `01_tf_state/` | S3 backend + DynamoDB lock para state remoto | Gratuito |
+| `02_vpc/` | VPC, subnets (pub/priv), IGW, security groups, VPC endpoints | Gratuito |
+| `03_iam/` | Roles: ECS execution, ECS task, Databricks cross-account, Lambda | Gratuito |
+| `04_peripherals/` | Kinesis (3 streams + Firehose) + SQS + DLQs + CloudWatch + S3 (raw/lakehouse/databricks) + DynamoDB | **Pago** |
+| `05_databricks/` | Workspace MWS, Unity Catalog, metastore, external locations | **Pago** |
+| `06_lambda/` | Lambda `contracts-ingestion` + `gold-to-dynamodb` + Layer + EventBridge Scheduler | Gratuito |
+| `07_ecs/` | Cluster Fargate + task definitions + ECR repos | **Pago** |
+
+> **S3 Versioning**: por padrão desabilitado em todos os buckets de dados (`versioning_enabled = false` no módulo `services/modules/s3/`). O bucket de TF state (`01_tf_state`) gerencia versionamento diretamente.
 
 ### 2.2 Comandos Terraform via Makefile
 
@@ -130,155 +119,133 @@ make prod_destroy_infra   # Grupo 3 → 2 → 1
 
 ## 3. CI/CD — GitHub Actions
 
-### 3.1 Deploy Lib Utils (`deploy_lib_utils.yml`)
+A plataforma usa **4 workflows consolidados** (reduzidos de 8 anteriores):
+
+| Workflow | Trigger | Propósito |
+|----------|---------|----------|
+| `deploy_cloud_infra.yml` | `workflow_dispatch` (develop) | Terraform DEV e PRD |
+| `destroy_cloud_infra.yml` | `workflow_dispatch` (develop) | Destruição com confirmação |
+| `deploy_dm_applications.yml` | `workflow_dispatch` (develop) | Streaming apps, DABs e Lambda |
+| `deploy_lib_python.yml` | `workflow_dispatch` (develop) | Publicação da lib `dm-chain-utils` no PyPI |
+
+### 3.1 Deploy Infra Cloud (`deploy_cloud_infra.yml`)
+
+**Inputs**: `environment` (DEV/prd), `force_apply`, `skip_databricks`.
+
+```mermaid
+flowchart TD
+    BG["branch-guard<br/>enforce develop"] --> ENV{environment?}
+    ENV -->|DEV| DD["dev-detect-changes"]
+    DD --> DP["dev-plan-peripherals"] --> DA["dev-apply-peripherals"]
+    DA --> DLP["dev-plan-lambda"] --> DLA["dev-apply-lambda"]
+    ENV -->|prd| PV["prd-check-version"]
+    PV --> PVP["prd-plan-vpc"] & PPA["prd-plan-peripherals"]
+    PVP & PPA --> PI["prd-apply-iam"]
+    PI --> PD["prd-apply-databricks<br/>(optional)"] & PL["prd-apply-lambda"] & PE["prd-apply-ecs"]
+    PD & PL & PE --> GT["create-git-tag"]
+```
+
+**Detalhes:**
+- DEV: detecção de mudanças por `git diff`; aplica `01_peripherals` → `02_lambda` sequencialmente
+- PRD: verifica tag de versão; aplica VPC+peripherals em paralelo → IAM → Databricks+Lambda+ECS em paralelo → git tag `v{VERSION}`
+- `force_apply=true` ignora detecção de mudanças (DEV) e verificação de versão (PRD)
+- `skip_databricks=true` ignora `05_databricks` no PRD
+
+### 3.2 Destroy Infra Cloud (`destroy_cloud_infra.yml`)
+
+**Inputs**: `environment` (DEV/prd), `confirm` (deve digitar `DESTROY`).
+
+**Detalhes:**
+- Validação dupla: branch guard + confirmação textual
+- DEV: esvazia buckets S3 → destroy `02_lambda` → destroy `01_peripherals`
+- PRD: esvazia buckets S3 + ECR → destroy `06_lambda` + `07_ecs` → `05_databricks` → `04_peripherals` → `03_iam` → `02_vpc`
+- `01_tf_state` **nunca é destruído** (preserva o state remoto)
+- Usa `scripts/empty_s3_bucket.sh` para esvaziar buckets antes do destroy
+
+### 3.3 Deploy DM Applications (`deploy_dm_applications.yml`)
+
+**Input**: `app_type` (streaming-apps / databricks-dabs / lambda-functions).
+
+```mermaid
+flowchart TD
+    BG["branch-guard"] --> AT{app_type?}
+
+    AT -->|streaming-apps| SC["stream-check-infra"]
+    SC --> SV["stream-check-version"] --> SL["stream-lint-and-test"]
+    SL --> SI["stream-check-idempotency"]
+    SI --> SB["stream-build-rc"] --> SH["stream-hml-provision"]
+    SH --> ST["stream-hml-integration-test"] --> SW["stream-hml-teardown"]
+    ST --> SP["stream-prod-deploy"]
+
+    AT -->|databricks-dabs| DC["dabs-check-infra"]
+    DC --> DV["dabs-check-version"] --> DVal["dabs-validate"]
+    DVal --> DH["dabs-deploy-hml"] --> DT["dabs-hml-integration-test"]
+    DT --> DP["dabs-deploy-prod"]
+
+    AT -->|lambda-functions| LC["lambda-check-infra"]
+    LC --> LV["lambda-check-version"] --> LB["lambda-build-artifacts"]
+    LB --> LT["lambda-hml-test"] --> LP["lambda-prod-deploy"]
+```
+
+**Detalhes comuns:**
+- Branch guard enforce develop em todos
+- Todos criam git tag no deploy PRD: `v{VERSION}` / `v{VERSION}-dabs` / `v{VERSION}-lambda`
+- HML 100% efêmero (todos os recursos criados/destruídos no pipeline)
+- Infra PRD verificada como pré-requisito antes de deployar
+
+### 3.4 Deploy Lib Python (`deploy_lib_python.yml`)
 
 **Trigger**: `workflow_dispatch` na branch `develop`.
 
-**Fluxo**: branch-guard → check-version → test → build wheel → publish PyPI → create release branch → git tag `v{VERSION}-lib`
+**Fluxo**: branch-guard → check-version (valida VERSION == pyproject.toml) → test → build wheel → verify PyPI version → publish PyPI (OIDC) → create release branch → GitHub Release + git tag `v{VERSION}-lib`
 
 **Detalhes:**
 - Python 3.12, instala extras `[dev]` do `pyproject.toml`
-- Testes unitários com mocks (sem dependências de serviços externos)
-- Publicação via OIDC trusted publisher no PyPI
+- Versão validada contra PyPI (nova versão deve ser maior)
+- Publicação via OIDC trusted publisher no PyPI (sem token hardcoded)
 
-### 3.2 Deploy Streaming Apps (`deploy_streaming_apps.yml`)
-
-**Trigger**: `workflow_dispatch` na branch `develop`.
-
-```mermaid
-flowchart TD
-    A["lint-and-test"] --> B["build-rc<br/>Docker build + push ECR :rc-sha"]
-    B --> C["hml-provision<br/>ECS cluster + SG efêmero"]
-    C --> D["hml-integration-test<br/>10 min, < 10 ERRORs"]
-    D --> E["hml-teardown<br/>(always)"]
-    D --> F["prod-deploy<br/>(environment: production)"]
-```
-
-**Detalhes:**
-- **HML efêmero**: cria ECS cluster, SG, DynamoDB table; destrói após teste
-- **Idempotency**: compara SHA do HEAD com última tag no ECR
-- Tag da imagem: `git rev-parse --short HEAD`
-- Registry: **Amazon ECR** (`<account>.dkr.ecr.sa-east-1.amazonaws.com`)
-- ECS services PRD: `dm-mined-blocks-watcher`, `dm-orphan-blocks-watcher`, `dm-block-data-crawler`, `dm-mined-txs-crawler`, `dm-txs-input-decoder`
-- Circuit breaker: `aws ecs wait services-stable` falha se rollback ocorrer
-
-### 3.3 Deploy Databricks (`deploy_databricks.yml`)
-
-**Trigger**: Push na `main` com mudanças em `dabs/`. Também via `workflow_dispatch`.
-
-```mermaid
-flowchart TD
-    A["validate<br/>databricks bundle validate --target prod"] --> B["deploy-prod<br/>databricks bundle deploy --target prod"]
-    B --> C["verify<br/>lista pipelines + workflows"]
-```
-
-**Detalhes:**
-- Environment: `production` (requer aprovação manual)
-- Variáveis de deploy: `prod_workspace_host`, `dynamodb_table`, `lakehouse_s3_bucket`
-- Secrets: `DATABRICKS_PROD_HOST`, `DATABRICKS_PROD_TOKEN`
-
-### 3.4 Deploy Infrastructure DEV (`deploy_cloud_infra_dev.yml`)
-
-**Trigger**: `workflow_dispatch` na branch `develop`.
-
-**Detalhes:**
-- Input: `force_apply` (força apply mesmo sem mudanças)
-- Detecção de mudanças via `git diff` em `services/dev/terraform/1_aws_core`
-- DEV: plan → apply (environment: `dev`)
-- Estado remoto S3 (`dev/terraform.tfstate`)
-
-> **Nota**: HML possui infra **persistente** (`services/hml/1_aws_core/`) gerenciada pelo `deploy_cloud_infra_prd.yml` (flag `apply_hml=true`). Recursos efêmeros (ECS cluster, Kinesis, SQS, DynamoDB) são criados/destruídos dentro dos workflows de apps (`deploy_streaming_apps.yml`, `deploy_databricks.yml`, `deploy_lambda_functions.yml`).
-
-### 3.5 Deploy Infrastructure PRD (`deploy_cloud_infra_prd.yml`)
-
-**Trigger**: `workflow_dispatch` na branch `develop`.
-
-```mermaid
-flowchart TD
-    A["detect-changes<br/>Identifica módulos alterados"] --> B["terraform-plan<br/>(matrix: módulo × runner)"]
-    B --> C["Upload artifact<br/>tfplan-{module}"]
-    C --> D["terraform-apply<br/>(environment: production)"]
-```
-
-**Detalhes:**
-- Detecção de módulos: `git diff` extrai pastas alteradas em `services/prd/`
-- Strategy matrix: aplica cada módulo alterado independentemente
-- HML apply automático antes do PRD (quando há mudanças)
-- Aprovação manual via GitHub environment `production`
-- Secrets Databricks: `DATABRICKS_ACCOUNT_ID`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`
-
-### 3.6 Destroy Infrastructure (`destroy_cloud_infra.yml`)
-
-**Trigger**: `workflow_dispatch` na branch `develop`.
-
-**Detalhes:**
-- Input: `environment` (choice: `dev`, `hml`, `prd`)
-- DEV/HML: plan -destroy → approval via GitHub Environment → destroy
-- PRD: plan -destroy por módulo → approval via `production` → destroy sequencial em ordem reversa de dependências
-- `0_remote_state` é **excluído** do destroy (gerencia o próprio state)
-
-### 3.7 Deploy Lambda Functions (`deploy_lambda_functions.yml`)
-
-**Trigger**: `workflow_dispatch` na branch `develop`.
-
-```mermaid
-flowchart TD
-    A["build-artifacts<br/>Layer zip + handler zips"] --> B["hml-test<br/>Deploy efêmero + invoke"]
-    B --> C["hml-teardown<br/>(always)"]
-    B --> D["prod-deploy<br/>(Terraform apply, environment: production)"]
-```
-
-**Detalhes:**
-- **Build**: layer zip (`dm_chain_utils` + deps) + handler zips (`contracts_ingestion`, `gold_to_dynamodb`)
-- **HML efêmero**: cria Lambda functions temporárias, invoca com payload de teste, limpa após validação
-- **PRD deploy**: copia artifacts para `services/prd/10_lambda/.lambda_zip/`, executa `terraform apply`
-- **Dependências**: lê outputs do Terraform remote state (DynamoDB, S3, CloudWatch) para configurar env vars
-- Git tag: `v{VERSION}-lambda`
-
-### 3.9 Secrets Necessários no GitHub
+### 3.5 Secrets Necessários no GitHub
 
 | Secret | Usado por | Descrição |
 |--------|-----------|----------|
 | `AWS_ACCESS_KEY_ID` | Todos os workflows | Credencial AWS |
 | `AWS_SECRET_ACCESS_KEY` | Todos os workflows | Credencial AWS |
-| `DATABRICKS_PROD_HOST` | deploy_databricks | URL do workspace PROD |
-| `DATABRICKS_HML_HOST` | deploy_databricks | URL do workspace HML (Free Edition) |
-| `DATABRICKS_HML_TOKEN` | deploy_databricks | PAT do Databricks HML |
-| `DATABRICKS_ACCOUNT_ID` | deploy_cloud_infra_prd, destroy_cloud_infra | Account ID Databricks |
-| `DATABRICKS_CLIENT_ID` | deploy_cloud_infra_prd, destroy_cloud_infra | Service Principal client ID |
-| `DATABRICKS_CLIENT_SECRET` | deploy_cloud_infra_prd, destroy_cloud_infra | Service Principal secret |
-| `HML_VPC_ID` | deploy_streaming_apps | VPC ID do ambiente HML |
-| `HML_SUBNET_ID` | deploy_streaming_apps | Subnet pública do HML |
-| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_streaming_apps | IAM role para execução de ECS tasks HML |
-| `ECS_TASK_ROLE_ARN` | deploy_streaming_apps | IAM role para ECS tasks HML |
+| `DATABRICKS_PROD_HOST` | deploy_dm_applications, deploy_cloud_infra | URL do workspace PROD |
+| `DATABRICKS_HML_HOST` | deploy_dm_applications | URL do workspace HML (Free Edition) |
+| `DATABRICKS_HML_TOKEN` | deploy_dm_applications | PAT do Databricks HML |
+| `DATABRICKS_ACCOUNT_ID` | deploy_cloud_infra, destroy_cloud_infra | Account ID Databricks |
+| `DATABRICKS_CLIENT_ID` | deploy_cloud_infra, destroy_cloud_infra | Service Principal client ID |
+| `DATABRICKS_CLIENT_SECRET` | deploy_cloud_infra, destroy_cloud_infra | Service Principal secret |
+| `HML_VPC_ID` | deploy_dm_applications (streaming) | VPC ID do ambiente HML |
+| `HML_SUBNET_ID` | deploy_dm_applications (streaming) | Subnet pública do HML |
+| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_dm_applications (streaming) | IAM role para execução de ECS tasks HML |
+| `ECS_TASK_ROLE_ARN` | deploy_dm_applications (streaming) | IAM role para ECS tasks HML |
 
 > Execute `scripts/setup_github_secrets.sh` para configurar todos os secrets via `gh` CLI.
-> **GitHub Environments**: `dev`, `hml`, `production` (PRD requer aprovação manual).
+> **GitHub Environments**: `dev`, `production` (PRD requer aprovação manual).
 
-### 3.10 Dependências entre Workflows
+### 3.6 Dependências entre Workflows
 
 ```mermaid
 flowchart TD
-    INFRA_PRD["deploy_cloud_infra_prd<br/>VPC, IAM, S3, Kinesis, ECS,<br/>Databricks, DynamoDB, Lambda"]
-    INFRA_DEV["deploy_cloud_infra_dev<br/>S3, Kinesis/SQS, DynamoDB, Lambda"]
-    STREAM["deploy_streaming_apps<br/>Docker images → ECS"]
-    DABS["deploy_databricks<br/>DABs → Databricks"]
-    LAMBDA["deploy_lambda_functions<br/>Layer + handlers"]
-    LIB["deploy_lib_utils<br/>PyPI"]
+    INFRA["deploy_cloud_infra<br/>prd: 02_vpc → 03_iam → 04_peripherals<br/>→ 05_databricks + 06_lambda + 07_ecs"]
+    INFRA_DEV["deploy_cloud_infra<br/>DEV: 01_peripherals → 02_lambda"]
+    APPS["deploy_dm_applications<br/>streaming-apps / databricks-dabs / lambda-functions"]
+    LIB["deploy_lib_python<br/>PyPI"]
 
-    INFRA_PRD -->|"ECS cluster, IAM roles,<br/>VPC, Kinesis, SQS"| STREAM
-    INFRA_PRD -->|"Workspace URL,<br/>catalog, S3 buckets"| DABS
-    INFRA_PRD -->|"DynamoDB, S3,<br/>CloudWatch, IAM"| LAMBDA
-    LIB -->|"dm-chain-utils<br/>(Lambda layer)"| LAMBDA
-    INFRA_DEV -.->|"Recursos para<br/>dev local"| STREAM
+    INFRA -->|"ECS cluster, IAM roles,<br/>VPC, Kinesis, SQS"| APPS
+    INFRA -->|"Workspace URL,<br/>catalog, S3 buckets"| APPS
+    INFRA -->|"DynamoDB, S3,<br/>CloudWatch, IAM"| APPS
+    LIB -->|"dm-chain-utils<br/>(Lambda layer)"| APPS
+    INFRA_DEV -.->|"Recursos para<br/>dev local"| APPS
 ```
 
 | Workflow | Pré-requisito Infra PRD | Dados obtidos via |
 |----------|-------------------------|-------------------|
-| `deploy_streaming_apps` | Módulos 1–6, 9 (ECS, VPC, IAM, Kinesis, SQS, DynamoDB) | TF remote state + GitHub Secrets (HML VPC/subnet) |
-| `deploy_databricks` | Módulo 7 (Workspace Databricks) | GitHub Secrets (OAuth creds, workspace URL) |
-| `deploy_lambda_functions` | Módulos 3, 4, 9, 10 (Kinesis, S3, DynamoDB, Lambda) | TF remote state (S3) |
-| `deploy_cloud_infra_dev` | Nenhum (independente) | — |
+| `deploy_dm_applications` (streaming) | `02_vpc`, `03_iam`, `04_peripherals`, `07_ecs` | TF remote state + GitHub Secrets (HML VPC/subnet) |
+| `deploy_dm_applications` (dabs) | `05_databricks` | GitHub Secrets (OAuth creds, workspace URL) |
+| `deploy_dm_applications` (lambda) | `03_iam`, `04_peripherals`, `06_lambda` | TF remote state (S3) |
+| `deploy_cloud_infra` (DEV) | Nenhum (independente) | — |
 
 **Fontes de dados cross-workflow:**
 
@@ -288,21 +255,19 @@ flowchart TD
 | **SSM Parameter Store** | Secrets de aplicação não gerenciados por TF | Etherscan API keys |
 | **GitHub Secrets** | Credenciais de autenticação | AWS keys, Databricks OAuth, PATs |
 
-### 3.11 DevOps Best Practices & Sugestões
+### 3.7 DevOps Best Practices
 
-1. **Infra-as-prerequisite gates** — Workflows de deploy de apps devem verificar se a infra PRD existe antes de deployar. Exemplo: checar se o ECS cluster está ativo via `aws ecs describe-clusters` antes de atualizar services.
+1. **Infra-as-prerequisite gates** — Todos os jobs de deploy de apps verificam existência da infra PRD antes de prosseguir (ECS cluster ativo, Databricks workspace acessível, IAM roles existentes).
 
-2. **HML efêmero como padrão** — Todos os workflows de deploy de apps (streaming, DABs, Lambda) devem provisionar/destruir recursos HML dentro do próprio pipeline. Isso evita custo de recursos ociosos e garante ambientes limpos.
+2. **HML 100% efêmero** — Todos os recursos HML (ECS cluster, Kinesis, SQS, DynamoDB, Firehose, SG) são criados e destruídos dentro do próprio pipeline. Zero custo de recursos ociosos.
 
-3. **TF remote state como service discovery** — Usar `terraform output -json` ou leitura direta do state S3 para obter ARNs, nomes e IDs de recursos. Evitar hardcode de valores em workflows.
+3. **TF remote state como service discovery** — Leitura direta do state S3 para obter ARNs, nomes e IDs de recursos. Sem hardcode de valores em workflows.
 
-4. **Idempotency checks em todos os workflows** — Já implementado em `deploy_streaming_apps` (comparação SHA no ECR). Replicar padrão em DABs (comparar bundle hash) e Lambda (comparar layer hash).
+4. **Idempotency checks** — Streaming apps compara SHA do HEAD com tag no ECR; DABs e Lambda verificam tag de versão antes de deployar.
 
-5. **Lambda layer versionado** — Cada deploy de Lambda deve publicar nova versão do layer com `dm_chain_utils`. Handlers referenciam a versão específica para rollback seguro.
+5. **Destroy com confirmação dupla** — `destroy_cloud_infra.yml` exige branch develop + digitação literal de `DESTROY` para prevenir destruição acidental.
 
-6. **Dependency injection via TF outputs** — Configurar env vars de Lambda/ECS dinamicamente a partir de outputs do Terraform, não hardcoded. Exemplo: `DYNAMODB_TABLE` lido de `9_dynamodb/outputs.tf`.
-
-7. **Pipeline de Lambda Functions** — Workflow dedicado (`deploy_lambda_functions.yml`) com build de artifacts, teste HML efêmero e deploy PRD via Terraform. Evolução futura: adicionar testes de integração mais robustos e canary deploys.
+6. **Esvaziamento S3 antes do destroy** — `scripts/empty_s3_bucket.sh` remove todos os objetos, versões e delete markers antes do `terraform destroy`, evitando falhas por buckets não-vazios.
 
 ---
 
@@ -375,6 +340,7 @@ flowchart LR
 | `python scripts/pause_databricks_clusters.py` | `scripts/pause_databricks_clusters.py` | Termina clusters interativos (economia de custo) |
 | `bash scripts/prod_standby.sh` | `scripts/prod_standby.sh` | Escala ECS para 0 + pausa clusters Databricks |
 | `bash scripts/prod_resume.sh` | `scripts/prod_resume.sh` | Restaura ECS + clusters a partir do standby |
+| `bash scripts/empty_s3_bucket.sh <bucket> [region]` | `scripts/empty_s3_bucket.sh` | Esvazia bucket S3 (objetos, versões e delete markers) — usado pelo `destroy_cloud_infra.yml` |
 
 ### 5.2 Monitoramento de Estado
 
@@ -426,23 +392,21 @@ dabs/
 | Escopo | Arquivos |
 |--------|----------|
 | Makefile | `Makefile` |
-| CI/CD Lib | `.github/workflows/deploy_lib_utils.yml` |
-| CI/CD Streaming Apps | `.github/workflows/deploy_streaming_apps.yml` |
-| CI/CD Databricks | `.github/workflows/deploy_databricks.yml` |
-| CI/CD Lambda | `.github/workflows/deploy_lambda_functions.yml` |
-| CI/CD Infra DEV | `.github/workflows/deploy_cloud_infra_dev.yml` |
-| CI/CD Infra PRD | `.github/workflows/deploy_cloud_infra_prd.yml` |
+| CI/CD Infra | `.github/workflows/deploy_cloud_infra.yml` |
 | CI/CD Destroy | `.github/workflows/destroy_cloud_infra.yml` |
+| CI/CD Aplicações | `.github/workflows/deploy_dm_applications.yml` |
+| CI/CD Lib Python | `.github/workflows/deploy_lib_python.yml` |
 | PR Template | `.github/PULL_REQUEST_TEMPLATE.md` |
 | Docs CI/CD | `.github/README.md` |
 | Scripts Monitoring | `scripts/prod_ecs_logs.py`, `scripts/prod_standby.sh`, `scripts/prod_resume.sh` |
+| Scripts Destroy | `scripts/empty_s3_bucket.sh` |
 | Scripts Setup | `scripts/setup_databricks_profiles.sh`, `scripts/setup_github_secrets.sh`, `scripts/setup_github_environments.sh` |
 | Scripts Cost | `scripts/pause_databricks_clusters.py`, `scripts/resume_databricks_clusters.py` |
-| Compose DEV | `services/dev/compose/app_services.yml` |
-| Terraform DEV | `services/dev/terraform/1_aws_core/` |
-| Terraform HML | `services/hml/1_aws_core/` |
-| Terraform PRD | `services/prd/0_remote_state/` a `10_lambda/` |
-| ECR Repositories | `services/prd/6_ecs/ecs.tf` |
+| Compose DEV | `services/dev/00_compose/app_services.yml` |
+| Terraform DEV | `services/dev/01_peripherals/` (S3, Kinesis, SQS, DynamoDB, CloudWatch) + `services/dev/02_lambda/` (Lambda) |
+| Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` |
+| Shared Modules TF | `services/modules/s3/`, `services/modules/lambda/`, `services/modules/ecs/`, etc. |
+| ECR Repositories | `services/prd/07_ecs/ecs.tf` |
 | Shared Library | `utils/src/dm_chain_utils/` + `utils/pyproject.toml` |
 | DABs Config | `dabs/databricks.yml` |
 | DABs Resources | `dabs/resources/dlt/`, `dabs/resources/workflows/` |
@@ -456,7 +420,7 @@ dabs/
 
 - [ ] **TODO-O08**: Implementar monitoramento com CloudWatch Dashboards para métricas de ECS + Kinesis + DynamoDB.
 - [ ] **TODO-O10**: Implementar notificações Slack/Teams para falhas de CI/CD e alertas de infraestrutura.
-- [x] **TODO-O11** 🔴 P0: ~~Hardening do pipeline de CI/CD.~~ Concluído: 6 workflows implementados e testados — `deploy_streaming_apps`, `deploy_databricks`, `deploy_lib_utils`, `deploy_cloud_infra_dev`, `deploy_cloud_infra_prd`, `deploy_lambda_functions`. Destroy workflow (`destroy_cloud_infra`) com approval gates. HML efêmero integrado nos workflows de app.
+- [x] **TODO-O11** 🔴 P0: ~~Hardening do pipeline de CI/CD.~~ Concluído: 8 workflows consolidados em 4 — `deploy_cloud_infra` (DEV+PRD unificado), `destroy_cloud_infra` (DEV+PRD com confirmação dupla), `deploy_dm_applications` (streaming+DABs+Lambda), `deploy_lib_python` (PyPI via OIDC). HML 100% efêmero, infra DEV com 2 módulos separados (`01_peripherals` + `02_lambda`), módulos PRD renumerados.
 - [ ] **TODO-O12** 🔴 P0: Validar ambiente PROD end-to-end. Garantir que o fluxo completo funciona: jobs de streaming no ECS Fargate → Kinesis/Firehose → S3 → DLT Databricks → tabelas Gold populadas. Lambda contracts-ingestion → S3 batch/ → Databricks Workflow → Silver/Gold.
-- [ ] **TODO-O13**: Validar `deploy_lambda_functions.yml` end-to-end: build artifacts, HML test, PRD deploy via Terraform apply.
-- [ ] **TODO-O14**: Implementar infra-as-prerequisite gates nos workflows de deploy de apps (verificar existência de ECS cluster/Databricks workspace antes de deployar).
+- [ ] **TODO-O13**: Validar `deploy_dm_applications.yml` (app_type=lambda-functions) end-to-end: build artifacts, HML test, PRD deploy via Terraform apply.
+- [x] **TODO-O14**: ~~Implementar infra-as-prerequisite gates nos workflows de deploy de apps.~~ Concluído — todos os 3 tipos em `deploy_dm_applications.yml` possuem jobs `*-check-infra` que verificam ECS cluster, Databricks workspace e IAM roles antes de prosseguir.

@@ -22,7 +22,7 @@ Este documento consolida as melhorias pendentes do projeto, organizadas por prio
 | Branch de integração | `develop` (padronizado) |
 | Deploy prod | Mesmo workflow, 2ª stage com **GitHub Environment `production`** (approval gate) |
 | Mensageria | Kinesis/SQS/CloudWatch/Firehose (MSK e Schema Registry eliminados) |
-| HML infra | **Todos os recursos efêmeros** (Kinesis, SQS, CloudWatch, DynamoDB, ECS cluster, SG) criados/destruídos por CI/CD via AWS CLI. **Persistente**: S3 `dm-chain-explorer-hml-ingestion` (Databricks) + IAM roles ECS (`services/hml/1_aws_core/`) |
+| HML infra | **100% efêmero** — todos os recursos (Kinesis, SQS, CloudWatch, DynamoDB, ECS cluster, SG, S3, IAM) criados/destruídos dentro de `deploy_dm_applications.yml`. Sem infra persistente de HML. |
 | HML Databricks | Databricks Free Edition (mesmo workspace do DEV), catálogo `hml` |
 
 ### Gitflow Revisado
@@ -42,21 +42,21 @@ master  (push direto proibido)
 | VAL-01 | `Deploy Streaming Apps` executado end-to-end: HML passa 10 min, prod atualizado, ECS estável | 🔲 |
 | VAL-02 | ~~`Deploy Batch Apps`~~ — **N/A**: batch apps substituídas por Lambda `contracts-ingestion` (EventBridge). Sem Docker. | ❌ N/A |
 | VAL-03 | `Deploy DABs` executado end-to-end (HML Free Edition + deploy prod Databricks) | 🔲 |
-| VAL-04 | `Deploy Lib Utils` publicação PyPI validada | 🔲 |
-| VAL-05 | `Deploy Cloud Infrastructure` HML all-up + email OK + destroy + release branch | 🔲 |
+| VAL-04 | `Deploy Lib Python` publicação PyPI validada | 🔲 |
+| VAL-05 | `Deploy Cloud Infra` DEV e PRD validados end-to-end (plan + apply + destroy) | 🔲 |
 | VAL-06 | `make prod_standby` → custo ~$0/h; `make prod_resume` → ambiente funcional | 🔲 |
 
 ### Novos Secrets Necessários para HML
 
 | Secret | Usado por | Status |
 |---|---|---|
-| `HML_VPC_ID` | deploy_streaming_apps | Adicionado em `setup_github_secrets.sh` |
-| `HML_SUBNET_ID` | deploy_streaming_apps | Adicionado em `setup_github_secrets.sh` |
-| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_streaming_apps | Adicionado em `setup_github_secrets.sh` |
-| `ECS_TASK_ROLE_ARN` | deploy_streaming_apps | Adicionado em `setup_github_secrets.sh` |
-| `DATABRICKS_HML_HOST` | deploy_databricks | Adicionado em `setup_github_secrets.sh` |
-| `DATABRICKS_HML_TOKEN` | deploy_databricks | Adicionado em `setup_github_secrets.sh` |
-| `HML_ETHERSCAN_SSM_PATH` | deploy_streaming_apps (HML integration test) | Adicionado em `setup_github_secrets.sh` |
+| `HML_VPC_ID` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `HML_SUBNET_ID` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `ECS_TASK_ROLE_ARN` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `DATABRICKS_HML_HOST` | deploy_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
+| `DATABRICKS_HML_TOKEN` | deploy_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
+| `HML_ETHERSCAN_SSM_PATH` | deploy_dm_applications (streaming, HML test) | Adicionado em `setup_github_secrets.sh` |
 
 ---
 
@@ -151,6 +151,6 @@ flowchart TD
 | 01 — Arquitetura | `docs/01_architecture.md` | A03, ~~A04~~, A06, A07, A10, ~~A11~~, **A12** |
 | 02 — Captura de Dados | `docs/02_data_capture.md` | C08, C10 |
 | 03 — Processamento de Dados | `docs/03_data_processing.md` | TODO-P01, P09 |
-| 04 — DataOps | `docs/04_data_ops.md` | TODO-O08, O10, **O11**, **O12** |
+| 04 — DataOps | `docs/04_data_ops.md` | TODO-O08, O10, O12, O13 |
 | 05 — Data Serving | `docs/05_data_serving.md` | TODO-S06, S10 |
 
