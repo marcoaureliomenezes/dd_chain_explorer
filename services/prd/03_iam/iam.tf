@@ -93,10 +93,10 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "s3:GetBucketLocation",
     ]
     resources = [
-      data.terraform_remote_state.s3.outputs.raw_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.raw_bucket_arn}/*",
-      data.terraform_remote_state.s3.outputs.lakehouse_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.lakehouse_bucket_arn}/*",
+      data.aws_s3_bucket.raw.arn,
+      "${data.aws_s3_bucket.raw.arn}/*",
+      data.aws_s3_bucket.lakehouse.arn,
+      "${data.aws_s3_bucket.lakehouse.arn}/*",
     ]
   }
 
@@ -224,12 +224,12 @@ data "aws_iam_policy_document" "databricks_s3_access" {
       "s3:PutLifecycleConfiguration",
     ]
     resources = [
-      data.terraform_remote_state.s3.outputs.lakehouse_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.lakehouse_bucket_arn}/*",
-      data.terraform_remote_state.s3.outputs.raw_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.raw_bucket_arn}/*",
-      data.terraform_remote_state.s3.outputs.databricks_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.databricks_bucket_arn}/*",
+      data.aws_s3_bucket.lakehouse.arn,
+      "${data.aws_s3_bucket.lakehouse.arn}/*",
+      data.aws_s3_bucket.raw.arn,
+      "${data.aws_s3_bucket.raw.arn}/*",
+      data.aws_s3_bucket.databricks.arn,
+      "${data.aws_s3_bucket.databricks.arn}/*",
     ]
   }
 }
@@ -402,12 +402,12 @@ data "aws_iam_policy_document" "databricks_cluster_permissions" {
       "s3:GetEncryptionConfiguration",
     ]
     resources = [
-      data.terraform_remote_state.s3.outputs.raw_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.raw_bucket_arn}/*",
-      data.terraform_remote_state.s3.outputs.lakehouse_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.lakehouse_bucket_arn}/*",
-      data.terraform_remote_state.s3.outputs.databricks_bucket_arn,
-      "${data.terraform_remote_state.s3.outputs.databricks_bucket_arn}/*",
+      data.aws_s3_bucket.raw.arn,
+      "${data.aws_s3_bucket.raw.arn}/*",
+      data.aws_s3_bucket.lakehouse.arn,
+      "${data.aws_s3_bucket.lakehouse.arn}/*",
+      data.aws_s3_bucket.databricks.arn,
+      "${data.aws_s3_bucket.databricks.arn}/*",
     ]
   }
 

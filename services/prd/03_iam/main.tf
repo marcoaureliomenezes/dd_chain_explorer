@@ -37,12 +37,15 @@ data "terraform_remote_state" "vpc" {
 
 data "aws_caller_identity" "current" {}
 
-# Remote state — S3 outputs
-data "terraform_remote_state" "s3" {
-  backend = "s3"
-  config = {
-    bucket = "dm-chain-explorer-terraform-state"
-    key    = "prd/peripherals/terraform.tfstate"
-    region = "sa-east-1"
-  }
+# S3 bucket data sources (avoid remote state dependency during destroy)
+data "aws_s3_bucket" "raw" {
+  bucket = "dm-chain-explorer-raw"
+}
+
+data "aws_s3_bucket" "lakehouse" {
+  bucket = "dm-chain-explorer-lakehouse"
+}
+
+data "aws_s3_bucket" "databricks" {
+  bucket = "dm-chain-explorer-databricks"
 }
