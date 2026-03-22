@@ -29,6 +29,12 @@ variable "databricks_bucket_name" {
   type        = string
 }
 
+variable "databricks_client_id" {
+  description = "Client ID do service principal Terraform — injetado via TF_VAR_databricks_client_id no CI. Usado para adicionar o SP ao workspace como admin."
+  type        = string
+  sensitive   = true
+}
+
 variable "project_version" {
   description = "Project version from VERSION file"
   type        = string

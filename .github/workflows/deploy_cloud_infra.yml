@@ -385,9 +385,10 @@ jobs:
       - run: terraform init -input=false
       - name: Import existing Databricks account resources (idempotent)
         env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          DATABRICKS_ACCOUNT_ID:       ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:        ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET:    ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
         run: |
           # Acquire OAuth token via M2M client credentials
           TOKEN=$(curl -sf -X POST \
@@ -453,12 +454,26 @@ jobs:
             [ -n "$SC_EXISTS" ] && tf_import "Metastore data access" "databricks_metastore_data_access.default" "${MS_ID}|${SC_NAME}"
           fi
 
-          # Import MWS permission assignment if workspace exists
+          # Import MWS permission assignments if workspace exists
           if [ -n "${WS_ID:-}" ]; then
-            PA_EXISTS=$(curl -sf -H "$AUTH" \
+            PA_JSON=$(curl -sf -H "$AUTH" \
               "${ACCT}/workspaces/${WS_ID}/permissionassignments" 2>/dev/null \
-              | jq -r '[.permission_assignments[]? | select(any(.permissions[]?; . == "ADMIN"))][0].principal.principal_id // empty' 2>/dev/null || true)
-            [ -n "$PA_EXISTS" ] && tf_import "MWS permission assignment" "databricks_mws_permission_assignment.admin" "${WS_ID}|${PA_EXISTS}"
+              | jq -r '[.permission_assignments[]? | select(any(.permissions[]?; . == "ADMIN")) | .principal.principal_id]' 2>/dev/null || true)
+
+            # Import user admin assignment (first non-SP principal that is a user)
+            PA_USER=$(echo "$PA_JSON" | jq -r '.[0] // empty' 2>/dev/null || true)
+            [ -n "$PA_USER" ] && tf_import "MWS permission assignment (admin user)" "databricks_mws_permission_assignment.admin" "${WS_ID}|${PA_USER}"
+
+            # Import SP admin assignment (service principal = DATABRICKS_CLIENT_ID)
+            # SP application_id matches TF_VAR_databricks_client_id; look up its principal_id
+            SP_PRINCIPAL_ID=$(curl -sf -H "$AUTH" \
+              "${ACCT}/servicePrincipals" 2>/dev/null \
+              | jq -r --arg cid "${TF_VAR_databricks_client_id}" \
+                '[.ServicePrincipals[]? | select(.applicationId==($cid|tonumber))][0].id // empty' 2>/dev/null || true)
+            if [ -n "$SP_PRINCIPAL_ID" ]; then
+              SP_PA_ID=$(echo "$PA_JSON" | jq -r --arg pid "$SP_PRINCIPAL_ID" 'map(select(. == ($pid|tonumber))) | .[0] // empty' 2>/dev/null || true)
+              [ -n "$SP_PA_ID" ] && tf_import "MWS permission assignment (terraform SP)" "databricks_mws_permission_assignment.terraform_sp" "${WS_ID}|${SP_PA_ID}"
+            fi
           fi
 
           echo "==> Import check complete."
@@ -483,6 +498,7 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
       - if: always()
         run: |
           echo "### Plan PRD/Databricks Account" >> $GITHUB_STEP_SUMMARY
@@ -495,6 +511,7 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
       - name: Dump apply errors
         if: failure()
         run: |
@@ -513,6 +530,7 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
 
   prd-deploy-lambda:
     name: PRD — Deploy Lambda AWS
