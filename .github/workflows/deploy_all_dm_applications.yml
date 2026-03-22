@@ -630,17 +630,13 @@ jobs:
       - uses: databricks/setup-cli@v0.218.0
       - name: Deploy bundle to PROD
         env:
-          DATABRICKS_HOST:          ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle deploy --target prod
       - name: Verify PROD deployment
         env:
-          DATABRICKS_HOST:          ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
           databricks pipelines list --output json | jq '.[] | .name'
           databricks jobs list --output json | jq '.jobs[] | .settings.name'
