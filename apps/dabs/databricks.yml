@@ -77,7 +77,7 @@ targets:
       root_path: "~/.bundle/${bundle.name}/hml"
     variables:
       catalog: "hml"
-      ingestion_s3_bucket: "dm-chain-explorer-hml-ingestion"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
       dynamodb_table: "dm-chain-explorer-hml"
       dlt_num_workers: 0
       dlt_development: false
@@ -94,7 +94,7 @@ targets:
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "dd_chain_explorer"
-      ingestion_s3_bucket: "dm-chain-explorer-prd-ingestion"
+      ingestion_s3_bucket: "dm-chain-explorer-prd-lakehouse"
       dlt_num_workers: 1
       dlt_development: false
       dlt_continuous: false

@@ -85,7 +85,7 @@ echo "sqs_url_txs_hash_ids=${URL_TXS}"  >> "${GITHUB_OUTPUT}"
 # ── Firehose delivery streams ─────────────────────────────────────────────────
 echo "==> Creating HML Firehose delivery streams..."
 FIREHOSE_ROLE_ARN="arn:aws:iam::${ACCOUNT_ID}:role/dm-hml-firehose-role"
-BUCKET_ARN="arn:aws:s3:::dm-chain-explorer-hml-raw"
+BUCKET_ARN="arn:aws:s3:::dm-chain-explorer-hml-lakehouse"
 
 for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
   KINESIS_ARN="arn:aws:kinesis:${REGION}:${ACCOUNT_ID}:stream/${STREAM}-hml"

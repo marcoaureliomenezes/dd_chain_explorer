@@ -8,7 +8,8 @@ resources:
             notebook_path: ../../src/batch/ddl/1_create_bronze_tables.py
             source: WORKSPACE
             base_parameters:
-              catalog: ${var.catalog}
+              catalog:             ${var.catalog}
+              lakehouse_s3_bucket: ${var.ingestion_s3_bucket}
 
         - task_key: create_silver_apps_tables
           depends_on:

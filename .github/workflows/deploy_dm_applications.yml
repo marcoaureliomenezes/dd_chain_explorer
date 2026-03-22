@@ -232,7 +232,7 @@ jobs:
         env:
           ENV: hml
           REGION: ${{ env.AWS_REGION }}
-          S3_BUCKET: dm-chain-explorer-hml-raw
+          S3_BUCKET: dm-chain-explorer-hml-lakehouse
           DYNAMODB_TABLE: dm-chain-explorer-hml
           KINESIS_STREAM_BLOCKS: mainnet-blocks-data-hml
           KINESIS_STREAM_TRANSACTIONS: mainnet-transactions-data-hml

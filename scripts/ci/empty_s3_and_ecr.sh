@@ -12,7 +12,7 @@ set -euo pipefail
 # ── S3 buckets ────────────────────────────────────────────────────────────────
 echo "==> Emptying PRD S3 buckets..."
 chmod +x "${GITHUB_WORKSPACE}/scripts/empty_s3_bucket.sh"
-for BUCKET in dm-chain-explorer-raw-data dm-chain-explorer-lakehouse dm-chain-explorer-databricks; do
+for BUCKET in dm-chain-explorer-raw-data dm-chain-explorer-prd-lakehouse dm-chain-explorer-databricks; do
   if aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
     bash "${GITHUB_WORKSPACE}/scripts/empty_s3_bucket.sh" "${BUCKET}" "${AWS_REGION}"
   else

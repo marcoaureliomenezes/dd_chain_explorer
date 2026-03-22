@@ -16,7 +16,10 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.b_ethereum")
 # NÃO criar aqui — o DLT precisa ser o dono exclusivo da tabela.
 
 # popular_contracts_txs — batch ingestão de transações de contratos populares
-lakehouse_bucket = spark.conf.get("lakehouse.s3.bucket", "dm-chain-explorer-lakehouse")
+try:
+    lakehouse_bucket = dbutils.widgets.get("lakehouse_s3_bucket")
+except Exception:
+    lakehouse_bucket = spark.conf.get("lakehouse.s3.bucket", "dm-chain-explorer-prd-lakehouse")
 
 spark.sql(f"""
   CREATE TABLE IF NOT EXISTS `{catalog}`.b_ethereum.popular_contracts_txs (
