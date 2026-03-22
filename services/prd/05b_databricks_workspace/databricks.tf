@@ -59,11 +59,13 @@ resource "databricks_instance_profile" "cluster" {
 # Databricks Cluster (workspace-level)
 # -----------------------------------------------------------------------
 data "databricks_spark_version" "latest_lts" {
+  count             = var.create_cluster ? 1 : 0
   provider          = databricks.workspace
   long_term_support = true
 }
 
 data "databricks_node_type" "smallest" {
+  count         = var.create_cluster ? 1 : 0
   provider      = databricks.workspace
   min_memory_gb = 4
 }
@@ -72,8 +74,8 @@ resource "databricks_cluster" "dm" {
   count                   = var.create_cluster ? 1 : 0
   provider                = databricks.workspace
   cluster_name            = "dm-chain-explorer-cluster"
-  spark_version           = data.databricks_spark_version.latest_lts.id
-  node_type_id            = data.databricks_node_type.smallest.id
+  spark_version           = data.databricks_spark_version.latest_lts[0].id
+  node_type_id            = data.databricks_node_type.smallest[0].id
   num_workers             = 1
   autotermination_minutes = 60
 
