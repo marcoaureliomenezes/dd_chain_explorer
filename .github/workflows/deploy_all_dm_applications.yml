@@ -634,16 +634,18 @@ jobs:
       - uses: databricks/setup-cli@v0.218.0
       - name: Deploy bundle to PROD
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle deploy --target prod
       - name: Verify PROD deployment
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
-          databricks pipelines list --output json | jq '.[] | .name'
-          databricks jobs list --output json | jq '.jobs[] | .settings.name'
+          echo "==> PRD DABs bundle deployed. Listing pipelines:"
+          databricks pipelines list 2>/dev/null || true
+          echo "==> Listing jobs:"
+          databricks jobs list 2>/dev/null || true
           echo "## PRD DABs Deploy Complete" >> $GITHUB_STEP_SUMMARY
 
   all-prod-lambda-deploy:

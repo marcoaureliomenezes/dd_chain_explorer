@@ -90,7 +90,7 @@ targets:
   prod:
     mode: production
     workspace:
-      host: ${var.prod_workspace_host}
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "dd_chain_explorer"
