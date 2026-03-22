@@ -170,20 +170,25 @@ O ambiente de DEV opera em **duas redes isoladas**:
 
 ┌─── Databricks Workspace ─────────────────────────────────────────┐
 │  Unity Catalog: dd_chain_explorer                                │
-│  Cluster: 1 worker, LTS Spark, auto-terminate 60 min            │
-│  External Locations: raw S3, lakehouse S3, databricks S3         │
+│  Cluster: 1 worker, LTS Spark, SPOT c/ fallback, auto-terminate 60 min │
+│  External Locations: raw S3, lakehouse S3                        │
+│  Storage Credential: cross-account IAM role                      │
+│  Auth: Service Principal OAuth (client_id/client_secret)         │
 │  Acesso S3 via IAM (External Locations)                          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-**Recursos Terraform (PROD)** — módulos em `services/prd/`, ordem de deploy `01→02→03→04→05→06+07`:
+**Recursos Terraform (PROD)** — módulos em `services/prd/`, ordem de deploy `01→02→03→04→05a→(05b+06+07)`:
 - **01_tf_state**: S3 backend + DynamoDB lock para state remoto
 - **02_vpc**: VPC, subnets, IGW, security groups, S3 endpoint
-- **03_iam**: Roles para ECS (execution + task), Databricks (cross-account + cluster)
+- **03_iam**: Roles para ECS (execution + task), Databricks (cross-account + cluster). Referencia S3 ARNs via locals hardcoded (não mais via `terraform_remote_state.s3`), permitindo destroy independente.
 - **04_peripherals**: Kinesis Data Streams, Firehose, SQS, CloudWatch Logs, S3 (raw/lakehouse/databricks), DynamoDB
-- **05_databricks**: Workspace MWS, Unity Catalog, metastore, external locations, cluster
+- **05a_databricks_account**: Recursos account-level — MWS credentials, storage configuration, network, workspace, metastore Unity Catalog, metastore assignment e data access
+- **05b_databricks_workspace**: Recursos workspace-level — storage credentials, external locations (raw + lakehouse), catálogo, instance profile, cluster (1 worker, SPOT, auto-terminate 60 min)
 - **06_lambda**: Lambda gold_to_dynamodb (S3 event → DynamoDB sync) + Lambda contracts_ingestion (EventBridge hourly → Etherscan → S3)
 - **07_ecs**: Cluster Fargate + task definitions + ECR repos
+
+> **Nota:** O antigo módulo monolítico `05_databricks` foi desmembrado em `05a` (account-level) e `05b` (workspace-level) para respeitar dependências de providers Terraform. O módulo `05_databricks` permanece no repositório como referência, mas não é mais utilizado nos workflows.
 
 ### Segurança
 
@@ -193,7 +198,7 @@ O ambiente de DEV opera em **duas redes isoladas**:
 | **Kinesis/SQS Encryption** | KMS (padrão do módulo) | KMS (padrão do módulo) |
 | **DynamoDB** | Credenciais ~/.aws (perfil padrão) | IAM task role (ECS Fargate) |
 | **API Keys** | SSM Parameter Store (AWS) | SSM Parameter Store (AWS) — compartilhado |
-| **Databricks** | Personal Access Token (PAT) | Service Principal (OAuth M2M) |
+| **Databricks** | Personal Access Token (PAT) | Service Principal (OAuth M2M — `client_id`/`client_secret`) |
 | **ECS** | N/A | IAM roles (task execution + task role) |
 
 ---
@@ -206,7 +211,7 @@ O ambiente de DEV opera em **duas redes isoladas**:
 | Jobs Batch (Lambda) | `apps/lambda/contracts_ingestion/` |
 | Docker Compose DEV | `services/dev/00_compose/app_services.yml` |
 | Terraform DEV | `services/dev/01_peripherals/` (S3, Kinesis, SQS, DynamoDB, CloudWatch) + `services/dev/02_lambda/` (Lambda) |
-| Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` |
+| Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` (inclui `05a_databricks_account/` e `05b_databricks_workspace/`) |
 | Shared Modules | `services/modules/` (s3, dynamodb, kinesis, sqs, lambda, ecs, iam, vpc, cloudwatch_logs) |
 | DABs | `apps/dabs/databricks.yml`, `apps/dabs/resources/`, `apps/dabs/src/` |
 | Scripts Ambiente | `scripts/environment/` |

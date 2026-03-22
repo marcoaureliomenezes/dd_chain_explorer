@@ -1,6 +1,6 @@
 # dd-chain-explorer
 
-> **Versão:** `0.1.0` | **Região AWS:** `sa-east-1` | **Branch principal:** `develop`
+> **Versão:** `0.2.9` | **Região AWS:** `sa-east-1` | **Branch principal:** `develop`
 
 Pipeline de dados on-chain para extração, processamento e análise de transações Ethereum. Captura dados em tempo real via streaming (ECS Fargate + Kinesis), processa com Delta Live Tables no Databricks e disponibiliza em um lakehouse Delta (Bronze → Silver → Gold) no Unity Catalog.
 
@@ -26,7 +26,7 @@ Ethereum APIs (Alchemy/Infura)
 | DLT pipelines + batch workflows | Databricks Asset Bundles | `apps/dabs/` |
 | Lambda functions (2) | Python + AWS Lambda | `apps/lambda/` |
 | Infra DEV | Terraform (2 módulos) | `services/dev/` |
-| Infra PRD | Terraform (6 módulos) | `services/prd/` |
+| Infra PRD | Terraform (8 módulos: 01–07 + 05a/05b) | `services/prd/` |
 | Biblioteca compartilhada | `dm-chain-utils` (PyPI) | `utils/` |
 
 ---
@@ -114,10 +114,11 @@ dd_chain_explorer/
 │   └── lambda/        ← AWS Lambda handlers (2 funções)
 ├── docs/              ← Documentação técnica
 ├── scripts/           ← Scripts operacionais permanentes
+│   ├── ci/            ← Scripts CI compartilhados (12 scripts)
 │   └── tmp/           ← Scripts de setup e utilitários pontuais
 ├── services/
 │   ├── dev/           ← Terraform DEV (2 módulos) + Docker Compose
-│   ├── prd/           ← Terraform PRD (6 módulos numerados)
+│   ├── prd/           ← Terraform PRD (8 módulos numerados, incl. 05a/05b)
 │   └── modules/       ← Módulos Terraform compartilhados
 ├── utils/             ← Biblioteca Python compartilhada (dm-chain-utils)
 ├── Makefile
@@ -135,4 +136,5 @@ master  ←─ release/* (após aprovação PRD)
 
 - Bump `VERSION` antes de qualquer deploy PRD
 - Cada pipeline usa suffix de tag: `-infra`, `-dabs`, `-lambda`, `-lib`
-- Exemplo: `v0.1.0-infra`, `v0.1.0-dabs`
+- Exemplo: `v0.2.9-infra`, `v0.2.9-dabs`
+- Auto-bump de versão via `auto-bump-version.yml` após merge de PRs

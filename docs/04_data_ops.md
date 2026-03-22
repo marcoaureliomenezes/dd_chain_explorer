@@ -73,17 +73,20 @@ flowchart TD
 
 > **HML**: todos os recursos são **100% efêmeros** — criados e destruídos dentro dos workflows de deploy de apps (`deploy_dm_applications.yml`). Não há infra persistente de HML gerenciada por Terraform.
 
-**PROD** (`services/prd/`) — módulos numerados, estado S3 remoto. Ordem de deploy: `01→02→03→04→05→06+07` (06 e 07 em paralelo):
+**PROD** (`services/prd/`) — módulos numerados, estado S3 remoto. Ordem de deploy: `01→02→03→04→05a→(05b+06+07)` (05b, 06 e 07 em paralelo):
 
 | Módulo | Recursos | Custo |
 |--------|----------|-------|
 | `01_tf_state/` | S3 backend + DynamoDB lock para state remoto | Gratuito |
 | `02_vpc/` | VPC, subnets (pub/priv), IGW, security groups, VPC endpoints | Gratuito |
-| `03_iam/` | Roles: ECS execution, ECS task, Databricks cross-account, Lambda | Gratuito |
+| `03_iam/` | Roles: ECS execution, ECS task, Databricks cross-account, Lambda. S3 ARNs via locals hardcoded (sem `terraform_remote_state.s3`) | Gratuito |
 | `04_peripherals/` | Kinesis (3 streams + Firehose) + SQS + DLQs + CloudWatch + S3 (raw/lakehouse/databricks) + DynamoDB | **Pago** |
-| `05_databricks/` | Workspace MWS, Unity Catalog, metastore, external locations | **Pago** |
+| `05a_databricks_account/` | MWS credentials, storage config, network, workspace, metastore Unity Catalog, metastore assignment + data access | **Pago** |
+| `05b_databricks_workspace/` | Storage credentials, external locations (raw + lakehouse), catálogo, instance profile, cluster (1 worker, SPOT, 60 min) | **Pago** |
 | `06_lambda/` | Lambda `contracts-ingestion` + `gold-to-dynamodb` + Layer + EventBridge Scheduler | Gratuito |
 | `07_ecs/` | Cluster Fargate + task definitions + ECR repos | **Pago** |
+
+> **Nota:** O antigo módulo monolítico `05_databricks/` foi desmembrado em `05a` (account-level) e `05b` (workspace-level) para respeitar dependências de providers Terraform. O split permite autenticar com OAuth no nível de conta (Databricks Account API) e no nível de workspace (Databricks Workspace API) separadamente.
 
 > **S3 Versioning**: por padrão desabilitado em todos os buckets de dados (`versioning_enabled = false` no módulo `services/modules/s3/`). O bucket de TF state (`01_tf_state`) gerencia versionamento diretamente.
 
@@ -119,14 +122,17 @@ make prod_destroy_infra   # Grupo 3 → 2 → 1
 
 ## 3. CI/CD — GitHub Actions
 
-A plataforma usa **4 workflows consolidados** (reduzidos de 8 anteriores):
+A plataforma usa **5 workflows** consolidados:
 
 | Workflow | Trigger | Propósito |
 |----------|---------|----------|
 | `deploy_cloud_infra.yml` | `workflow_dispatch` (develop) | Terraform DEV e PRD |
 | `destroy_cloud_infra.yml` | `workflow_dispatch` (develop) | Destruição com confirmação |
 | `deploy_dm_applications.yml` | `workflow_dispatch` (develop) | Streaming apps, DABs e Lambda |
-| `deploy_lib_python.yml` | `workflow_dispatch` (develop) | Publicação da lib `dm-chain-utils` no PyPI |
+| `lib_release.yml` | `workflow_dispatch` (develop) | Publicação da lib `dm-chain-utils` no PyPI |
+| `auto-bump-version.yml` | `push` (develop, merged PRs) | Auto-bump de versão após merge |
+
+Todos os workflows utilizam scripts extraídos para `scripts/ci/` (branch guard, version checks, TF plan, HML provision/teardown, etc.) em vez de shell inline.
 
 ### 3.1 Deploy Infra Cloud (`deploy_cloud_infra.yml`)
 
@@ -136,31 +142,33 @@ A plataforma usa **4 workflows consolidados** (reduzidos de 8 anteriores):
 flowchart TD
     BG["branch-guard<br/>enforce develop"] --> ENV{environment?}
     ENV -->|DEV| DD["dev-detect-changes"]
-    DD --> DP["dev-plan-peripherals"] --> DA["dev-apply-peripherals"]
-    DA --> DLP["dev-plan-lambda"] --> DLA["dev-apply-lambda"]
+    DD --> DDP["dev-deploy-peripherals"]
+    DDP --> DDL["dev-deploy-lambda"]
     ENV -->|prd| PV["prd-check-version"]
-    PV --> PVP["prd-plan-vpc"] & PPA["prd-plan-peripherals"]
-    PVP & PPA --> PI["prd-apply-iam"]
-    PI --> PD["prd-apply-databricks<br/>(optional)"] & PL["prd-apply-lambda"] & PE["prd-apply-ecs"]
-    PD & PL & PE --> GT["create-git-tag"]
+    PV --> PVP["prd-deploy-vpc"] & PDP["prd-deploy-peripherals"]
+    PVP & PDP --> PI["prd-deploy-iam"]
+    PI --> PDA["prd-deploy-databricks-account"] & PL["prd-deploy-lambda"] & PE["prd-deploy-ecs"]
+    PDA --> PDW["prd-deploy-databricks-workspace"]
+    PDW & PL & PE --> GT["prd-create-tag"]
 ```
 
 **Detalhes:**
-- DEV: detecção de mudanças por `git diff`; aplica `01_peripherals` → `02_lambda` sequencialmente
-- PRD: verifica tag de versão; aplica VPC+peripherals em paralelo → IAM → Databricks+Lambda+ECS em paralelo → git tag `v{VERSION}`
+- DEV: detecção de mudanças por `git diff`; aplica `01_peripherals` → `02_lambda` sequencialmente (jobs unificados plan+apply)
+- PRD: verifica tag de versão; aplica VPC+peripherals em paralelo → IAM → Databricks Account + Lambda + ECS em paralelo → Databricks Workspace → git tag `v{VERSION}`
+- Databricks split: `05a_databricks_account` (metastore, workspace creation) → `05b_databricks_workspace` (catalogs, credentials, cluster)
 - `force_apply=true` ignora detecção de mudanças (DEV) e verificação de versão (PRD)
-- `skip_databricks=true` ignora `05_databricks` no PRD
+- `skip_databricks=true` ignora `05a`/`05b` no PRD
 
 ### 3.2 Destroy Infra Cloud (`destroy_cloud_infra.yml`)
 
 **Inputs**: `environment` (DEV/prd), `confirm` (deve digitar `DESTROY`).
 
 **Detalhes:**
-- Validação dupla: branch guard + confirmação textual
-- DEV: esvazia buckets S3 → destroy `02_lambda` → destroy `01_peripherals`
-- PRD: esvazia buckets S3 + ECR → destroy `06_lambda` + `07_ecs` → `05_databricks` → `04_peripherals` → `03_iam` → `02_vpc`
+- `safety-check` job valida branch develop + confirmação textual `DESTROY`
+- DEV: destroy `02_lambda` → destroy `01_peripherals`
+- PRD: `prd-empty-s3-and-ecr` (esvazia S3 + ECR) → destroy `06_lambda` + `07_ecs` em paralelo → `05b_databricks_workspace` → `05a_databricks_account` → `04_peripherals` → `03_iam` → `02_vpc`
 - `01_tf_state` **nunca é destruído** (preserva o state remoto)
-- Usa `scripts/empty_s3_bucket.sh` para esvaziar buckets antes do destroy
+- Usa `scripts/ci/empty_s3_and_ecr.sh` e `scripts/empty_s3_bucket.sh` para limpeza antes do destroy
 
 ### 3.3 Deploy DM Applications (`deploy_dm_applications.yml`)
 
@@ -193,7 +201,15 @@ flowchart TD
 - HML 100% efêmero (todos os recursos criados/destruídos no pipeline)
 - Infra PRD verificada como pré-requisito antes de deployar
 
-### 3.4 Deploy Lib Python (`deploy_lib_python.yml`)
+### 3.4 Auto Bump Version (`auto-bump-version.yml`)
+
+**Trigger**: `push` na branch `develop` (merged PRs com label `patch`/`minor`/`major`).
+
+**Fluxo**: Lê VERSION → calcula próxima versão com base no label do PR → atualiza `VERSION` + `utils/pyproject.toml` → commit + push automático.
+
+> O script `scripts/ci/bump_version.sh` é responsável por todo o fluxo de bump.
+
+### 3.5 Deploy Lib Python (`lib_release.yml`)
 
 **Trigger**: `workflow_dispatch` na branch `develop`.
 
@@ -204,7 +220,26 @@ flowchart TD
 - Versão validada contra PyPI (nova versão deve ser maior)
 - Publicação via OIDC trusted publisher no PyPI (sem token hardcoded)
 
-### 3.5 Secrets Necessários no GitHub
+### 3.6 Scripts CI Compartilhados (`scripts/ci/`)
+
+Todos os workflows utilizam scripts shell modulares extraídos de inline para `scripts/ci/`:
+
+| Script | Propósito |
+|--------|----------|
+| `branch_guard.sh` | Valida que o workflow roda na branch `develop` |
+| `detect_changes.sh` | Detecta módulos TF modificados por `git diff` (DEV) |
+| `check_prd_version.sh` | Valida que a tag `v{VERSION}` não existe (PRD) |
+| `tf_plan.sh` | Executa `terraform plan` + injeta summary no job |
+| `databricks_account_import.sh` | Obtém OAuth token + import idempotente de recursos account-level |
+| `hml_provision.sh` | Provisiona ambiente HML efêmero (VPC, Kinesis, SQS, etc.) |
+| `hml_teardown.sh` | Destrói ambiente HML |
+| `empty_s3_and_ecr.sh` | Esvazia buckets S3 + ECR repos antes de destroy PRD |
+| `bump_version.sh` | Auto-bump de versão semver + commit |
+| `check_commit_confirmation.sh` | Valida input `CONFIRM == DESTROY` |
+| `check_infra_prerequisites.sh` | Verifica pré-requisitos de infra por `APP_TYPE` |
+| `check_app_version.sh` | Valida tag de versão de app com `TAG_SUFFIX` |
+
+### 3.7 Secrets Necessários no GitHub
 
 | Secret | Usado por | Descrição |
 |--------|-----------|----------|
@@ -224,7 +259,7 @@ flowchart TD
 > Execute `scripts/setup_github_secrets.sh` para configurar todos os secrets via `gh` CLI.
 > **GitHub Environments**: `dev`, `production` (PRD requer aprovação manual).
 
-### 3.6 Dependências entre Workflows
+### 3.8 Dependências entre Workflows
 
 ```mermaid
 flowchart TD
@@ -255,7 +290,7 @@ flowchart TD
 | **SSM Parameter Store** | Secrets de aplicação não gerenciados por TF | Etherscan API keys |
 | **GitHub Secrets** | Credenciais de autenticação | AWS keys, Databricks OAuth, PATs |
 
-### 3.7 DevOps Best Practices
+### 3.9 DevOps Best Practices
 
 1. **Infra-as-prerequisite gates** — Todos os jobs de deploy de apps verificam existência da infra PRD antes de prosseguir (ECS cluster ativo, Databricks workspace acessível, IAM roles existentes).
 
@@ -389,16 +424,18 @@ apps/dabs/
 | CI/CD Infra | `.github/workflows/deploy_cloud_infra.yml` |
 | CI/CD Destroy | `.github/workflows/destroy_cloud_infra.yml` |
 | CI/CD Aplicações | `.github/workflows/deploy_dm_applications.yml` |
-| CI/CD Lib Python | `.github/workflows/deploy_lib_python.yml` |
+| CI/CD Lib Python | `.github/workflows/lib_release.yml` |
+| CI/CD Auto-bump | `.github/workflows/auto-bump-version.yml` |
+| Scripts CI | `scripts/ci/` (12 scripts: branch_guard, tf_plan, detect_changes, etc.) |
 | PR Template | `.github/PULL_REQUEST_TEMPLATE.md` |
 | Docs CI/CD | `.github/README.md` |
 | Scripts Monitoring | `scripts/prod_ecs_logs.py`, `scripts/prod_standby.sh`, `scripts/prod_resume.sh` |
 | Scripts Destroy | `scripts/empty_s3_bucket.sh` |
-| Scripts Setup | `scripts/setup_databricks_profiles.sh`, `scripts/setup_github_secrets.sh`, `scripts/setup_github_environments.sh` |
+| Scripts Setup | `scripts/tmp/setup_databricks_profiles.sh`, `scripts/tmp/setup_github_secrets.sh`, `scripts/tmp/setup_github_environments.sh` |
 | Scripts Cost | `scripts/pause_databricks_clusters.py`, `scripts/resume_databricks_clusters.py` |
 | Compose DEV | `services/dev/00_compose/app_services.yml` |
 | Terraform DEV | `services/dev/01_peripherals/` (S3, Kinesis, SQS, DynamoDB, CloudWatch) + `services/dev/02_lambda/` (Lambda) |
-| Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` |
+| Terraform PRD | `services/prd/01_tf_state/` a `07_ecs/` (inclui `05a_databricks_account/` e `05b_databricks_workspace/`) |
 | Shared Modules TF | `services/modules/s3/`, `services/modules/lambda/`, `services/modules/ecs/`, etc. |
 | ECR Repositories | `services/prd/07_ecs/ecs.tf` |
 | Shared Library | `utils/src/dm_chain_utils/` + `utils/pyproject.toml` |
@@ -406,5 +443,5 @@ apps/dabs/
 | DABs Resources | `apps/dabs/resources/dlt/`, `apps/dabs/resources/workflows/` |
 | Dockerfile stream | `apps/docker/onchain-stream-txs/Dockerfile` |
 | Lambda | `apps/lambda/contracts_ingestion/handler.py`, `apps/lambda/gold_to_dynamodb/handler.py` |
-| Scripts Ambiente | `scripts/environment/cleanup_s3.py`, `cleanup_dynamodb.py` |
+| Scripts Destroy | `scripts/empty_s3_bucket.sh` |
 
