@@ -177,27 +177,27 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
       values   = [var.databricks_account_uuid]
     }
   }
-
-  # Self-assuming: Unity Catalog requires the role to be able to assume itself.
-  # Uses account root + condition to avoid chicken-and-egg on fresh deploy.
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
-    }
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:PrincipalArn"
-      values   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cross-account-role"]
-    }
-  }
 }
 
 resource "aws_iam_role" "databricks_cross_account" {
   name               = "dm-chain-explorer-databricks-cross-account-role"
   assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume.json
   tags               = local.common_tags
+
+  # After creation, add self-assume to trust policy (Unity Catalog requirement).
+  # Cannot include in assume_role_policy directly — AWS rejects self-referencing
+  # principals on initial role creation (chicken-and-egg).
+  provisioner "local-exec" {
+    command = <<-EOT
+      aws iam update-assume-role-policy \
+        --role-name '${self.name}' \
+        --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::${var.databricks_account_id}:root"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"sts:ExternalId":"${var.databricks_account_uuid}"}}},{"Effect":"Allow","Principal":{"AWS":"${self.arn}"},"Action":"sts:AssumeRole"}]}'
+    EOT
+  }
+
+  lifecycle {
+    ignore_changes = [assume_role_policy]
+  }
 }
 
 data "aws_iam_policy_document" "databricks_s3_access" {
