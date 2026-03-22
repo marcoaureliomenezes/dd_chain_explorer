@@ -33,15 +33,6 @@ resource "databricks_external_location" "raw" {
   comment         = "External location for raw ingestion data"
 }
 
-resource "databricks_external_location" "databricks" {
-  provider        = databricks.workspace
-  name            = "dm-databricks-location"
-  url             = "s3://${var.databricks_bucket_name}"
-  credential_name = databricks_storage_credential.lakehouse.id
-  comment         = "External location for Databricks checkpoints, staging and Unity Catalog"
-
-  depends_on = [databricks_storage_credential.lakehouse]
-}
 
 # -----------------------------------------------------------------------
 # Unity Catalog — prd catalog (workspace-level)
@@ -104,5 +95,9 @@ resource "databricks_cluster" "dm" {
     "environment" = var.environment
     "project"     = "dd-chain-explorer"
     "managed-by"  = "terraform"
+  }
+
+  timeouts {
+    create = "60m"
   }
 }
