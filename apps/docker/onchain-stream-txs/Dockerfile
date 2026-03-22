@@ -6,7 +6,7 @@ FROM python:3.12-slim
 WORKDIR /app
 
 # Install Python dependencies
-COPY docker/onchain-stream-txs/requirements.txt /app/requirements.txt
+COPY apps/docker/onchain-stream-txs/requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip && \
     pip install -r requirements.txt && \
     ln -sf /usr/local/bin/python3 /usr/local/bin/python
@@ -15,4 +15,4 @@ RUN pip install --upgrade pip && \
 COPY utils/src/dm_chain_utils /app/dm_chain_utils
 
 # Copy application source
-COPY docker/onchain-stream-txs/src /app
+COPY apps/docker/onchain-stream-txs/src /app
