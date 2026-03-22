@@ -216,8 +216,8 @@ resource "databricks_mws_permission_assignment" "admin" {
 # workspace via OAuth para o módulo 05b_databricks_workspace.
 # -----------------------------------------------------------------------
 data "databricks_service_principal" "terraform" {
-  provider  = databricks.accounts
-  client_id = var.databricks_client_id
+  provider       = databricks.accounts
+  application_id = var.databricks_client_id
 }
 
 resource "databricks_mws_permission_assignment" "terraform_sp" {
