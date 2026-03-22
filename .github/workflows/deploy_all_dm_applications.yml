@@ -227,7 +227,7 @@ jobs:
 
   all-hml-stream-launch:
     name: HML — Launch streaming ECS tasks (RC image)
-    needs: all-hml-provision
+    needs: [all-hml-provision, all-stream-build-rc]
     runs-on: ubuntu-latest
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
@@ -237,8 +237,8 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - name: Register task definitions and launch ECS tasks
         run: |
-          EXEC_ROLE="${{ secrets.ECS_TASK_EXECUTION_ROLE_ARN }}"
-          TASK_ROLE="${{ secrets.ECS_TASK_ROLE_ARN }}"
+          EXEC_ROLE=$(aws iam get-role --role-name dm-chain-explorer-ecs-task-execution-role-hml --query 'Role.Arn' --output text)
+          TASK_ROLE=$(aws iam get-role --role-name dm-chain-explorer-ecs-task-role-hml --query 'Role.Arn' --output text)
           SUBNET="${{ secrets.HML_SUBNET_ID }}"
           HML_SG="${{ needs.all-hml-provision.outputs.hml_sg_id }}"
           RC_IMAGE="${{ needs.all-stream-build-rc.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ needs.all-stream-build-rc.outputs.rc_tag }}"
