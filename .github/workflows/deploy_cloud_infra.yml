@@ -475,7 +475,7 @@ jobs:
             SP_PRINCIPAL_ID=$(curl -sf -H "$AUTH" \
               "${ACCT}/servicePrincipals" 2>/dev/null \
               | jq -r --arg cid "${TF_VAR_databricks_client_id}" \
-                '[.ServicePrincipals[]? | select(.applicationId==($cid|tonumber))][0].id // empty' 2>/dev/null || true)
+                '[.Resources[]? | select(.applicationId==($cid|tonumber))][0].id // empty' 2>/dev/null || true)
             if [ -n "$SP_PRINCIPAL_ID" ]; then
               SP_PA_ID=$(echo "$PA_JSON" | jq -r --arg pid "$SP_PRINCIPAL_ID" 'map(select(. == ($pid|tonumber))) | .[0] // empty' 2>/dev/null || true)
               [ -n "$SP_PA_ID" ] && tf_import "MWS permission assignment (terraform SP)" "databricks_mws_permission_assignment.terraform_sp" "${WS_ID}|${SP_PA_ID}"
@@ -511,7 +511,7 @@ jobs:
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan > apply.txt 2>&1; exit $?
+        run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
