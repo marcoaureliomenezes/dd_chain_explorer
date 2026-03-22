@@ -33,6 +33,9 @@ echo '```' >> "${GITHUB_STEP_SUMMARY}"
 
 if [ "${PLAN_EXIT}" -eq 1 ]; then
   echo "::error::Terraform plan failed"
+  echo "--- terraform plan output (tail) ---"
+  tail -80 plan.txt || true
+  echo "--- end terraform plan output ---"
   exit 1
 fi
 
