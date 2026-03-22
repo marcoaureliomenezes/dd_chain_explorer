@@ -33,3 +33,9 @@ variable "project_version" {
   type        = string
   default     = "0.0.0"
 }
+
+variable "create_cluster" {
+  description = "Whether to create the Databricks interactive cluster in PRD workspace module"
+  type        = bool
+  default     = true
+}

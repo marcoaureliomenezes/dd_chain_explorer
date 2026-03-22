@@ -20,6 +20,11 @@ on:
         required: false
         default: false
         type: boolean
+      fast_mode:
+        description: 'PRD only: speed up 05b by skipping Databricks cluster creation'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -458,6 +463,7 @@ jobs:
         env:
           MODULE_NAME: PRD/Databricks Workspace
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_create_cluster: ${{ github.event.inputs.fast_mode == 'true' && 'false' || 'true' }}
           TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
           TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
@@ -466,6 +472,7 @@ jobs:
         run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_create_cluster: ${{ github.event.inputs.fast_mode == 'true' && 'false' || 'true' }}
           TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
           TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}

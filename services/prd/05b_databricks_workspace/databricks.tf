@@ -50,6 +50,7 @@ resource "databricks_catalog" "prd" {
 # Databricks Instance Profile (workspace-level)
 # -----------------------------------------------------------------------
 resource "databricks_instance_profile" "cluster" {
+  count                = var.create_cluster ? 1 : 0
   provider             = databricks.workspace
   instance_profile_arn = data.terraform_remote_state.iam.outputs.databricks_cluster_instance_profile_arn
 }
@@ -68,6 +69,7 @@ data "databricks_node_type" "smallest" {
 }
 
 resource "databricks_cluster" "dm" {
+  count                   = var.create_cluster ? 1 : 0
   provider                = databricks.workspace
   cluster_name            = "dm-chain-explorer-cluster"
   spark_version           = data.databricks_spark_version.latest_lts.id
@@ -76,7 +78,7 @@ resource "databricks_cluster" "dm" {
   autotermination_minutes = 60
 
   aws_attributes {
-    instance_profile_arn   = databricks_instance_profile.cluster.id
+    instance_profile_arn   = databricks_instance_profile.cluster[0].id
     availability           = "SPOT_WITH_FALLBACK"
     zone_id                = "auto"
     ebs_volume_type        = "GENERAL_PURPOSE_SSD"
