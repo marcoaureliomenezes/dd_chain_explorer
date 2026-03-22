@@ -112,8 +112,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -164,8 +164,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -243,8 +243,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -290,8 +290,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -339,8 +339,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -485,8 +485,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -505,7 +505,7 @@ jobs:
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
+        run: terraform apply -input=false -auto-approve tfplan > apply.txt 2>&1; exit $?
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
@@ -560,8 +560,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -607,8 +607,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
@@ -657,8 +657,8 @@ jobs:
         id: plan
         run: |
           set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
           set -e
           if [ $PLAN_EXIT -eq 1 ]; then
             echo "::error::Terraform plan failed"
