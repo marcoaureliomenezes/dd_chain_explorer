@@ -31,15 +31,14 @@ provider "aws" {
 
 # ---------------------------------------------------------------------------
 # Databricks workspace-level provider
-# host e token vêm dos outputs do módulo 05a_databricks_account via
-# TF_VAR_workspace_host e TF_VAR_workspace_token injetados pelo CI.
-# Localmente: configure ~/.databrickscfg [prd-workspace] com host + token,
-# ou exporte TF_VAR_workspace_host / TF_VAR_workspace_token manualmente.
+# Autenticação via OAuth (Service Principal) — client_id e client_secret
+# vêm dos secrets do CI; workspace_host vem do output de 05a.
 # ---------------------------------------------------------------------------
 provider "databricks" {
-  alias = "workspace"
-  host  = var.workspace_host
-  token = var.workspace_token
+  alias         = "workspace"
+  host          = var.workspace_host
+  client_id     = var.databricks_client_id
+  client_secret = var.databricks_client_secret
 }
 
 # Remote states

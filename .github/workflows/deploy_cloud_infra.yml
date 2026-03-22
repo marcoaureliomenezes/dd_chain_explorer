@@ -369,7 +369,6 @@ jobs:
     environment: production
     outputs:
       workspace_url:   ${{ steps.ws_out.outputs.workspace_url }}
-      workspace_token: ${{ steps.ws_out.outputs.workspace_token }}
     defaults:
       run:
         working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
@@ -508,9 +507,7 @@ jobs:
         run: |
           WS_JSON=$(terraform output -json)
           WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value')
-          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value')
           echo "workspace_url=$WS_URL"   >> $GITHUB_OUTPUT
-          echo "workspace_token=$WS_TOKEN" >> $GITHUB_OUTPUT
           echo "Workspace URL: $WS_URL"
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
@@ -653,7 +650,8 @@ jobs:
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
           TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
-          TF_VAR_workspace_token: ${{ needs.prd-deploy-databricks-account.outputs.workspace_token }}
+          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - if: always()
         run: |
           echo "### Plan PRD/Databricks Workspace" >> $GITHUB_STEP_SUMMARY
@@ -664,7 +662,8 @@ jobs:
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
           TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
-          TF_VAR_workspace_token: ${{ needs.prd-deploy-databricks-account.outputs.workspace_token }}
+          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 

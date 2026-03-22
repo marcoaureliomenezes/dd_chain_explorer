@@ -11,8 +11,13 @@ variable "workspace_host" {
   type        = string
 }
 
-variable "workspace_token" {
-  description = "Databricks workspace bootstrap token — output do módulo 05a_databricks_account. Injetado via TF_VAR_workspace_token no CI."
+variable "databricks_client_id" {
+  description = "Databricks service principal client ID — injetado via TF_VAR_databricks_client_id no CI."
+  type        = string
+}
+
+variable "databricks_client_secret" {
+  description = "Databricks service principal client secret — injetado via TF_VAR_databricks_client_secret no CI."
   type        = string
   sensitive   = true
 }
