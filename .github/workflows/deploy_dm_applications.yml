@@ -391,9 +391,7 @@ jobs:
       - name: Validate bundle
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle validate --target hml
 
   dabs-deploy-hml:
@@ -410,16 +408,12 @@ jobs:
       - name: Deploy bundle to HML
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle deploy --target hml
       - name: Verify HML deployment
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
           databricks pipelines list --output json | jq '.[] | .name'
           databricks jobs list --output json | jq '.jobs[] | .settings.name'
@@ -442,24 +436,18 @@ jobs:
       - name: Trigger pipeline_ethereum
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle run --target hml dm-trigger-dlt-ethereum 2>&1 | tee /tmp/dlt_ethereum.log
       - name: Trigger pipeline_app_logs
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle run --target hml dm-trigger-dlt-app-logs 2>&1 | tee /tmp/dlt_app_logs.log
       - name: Discover SQL Warehouse ID
         id: warehouse
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
           WH_ID=$(databricks warehouses list --output json 2>/dev/null | jq -r '.warehouses[0].id // empty') || WH_ID=""
           if [ -z "$WH_ID" ]; then echo "::error::No SQL Warehouse found."; exit 1; fi
@@ -469,9 +457,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
           CATALOG:          hml
           WAREHOUSE_ID:     ${{ steps.warehouse.outputs.warehouse_id }}
         run: |
