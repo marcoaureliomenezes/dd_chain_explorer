@@ -445,19 +445,22 @@ jobs:
 
           MS_ID=$(curl -sf -H "$AUTH" "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/metastores" 2>/dev/null \
             | jq -r '[.metastores[]? | select(.name=="dm-chain-explorer-metastore")][0].metastore_id // empty' 2>/dev/null || true)
+          # Fallback: read metastore_id from TF state if API returned nothing
+          if [ -z "${MS_ID:-}" ]; then
+            MS_ID=$(terraform state show databricks_metastore.dm 2>/dev/null \
+              | grep -E '^\s+id\s*=' | head -1 | sed 's/.*=\s*"\(.*\)"/\1/' || true)
+            [ -n "$MS_ID" ] && echo "  Metastore ID read from TF state: $MS_ID"
+          fi
           [ -n "$MS_ID" ] && tf_import "Unity Catalog metastore" "databricks_metastore.dm" "$MS_ID"
 
           if [ -n "${WS_ID:-}" ] && [ -n "${MS_ID:-}" ]; then
             tf_import "Metastore assignment" "databricks_metastore_assignment.dm" "${WS_ID}/${MS_ID}"
           fi
 
-          # Import metastore data access (storage credential) if it already exists
+          # Import metastore data access (storage credential) — always attempt; tf_import is idempotent
           if [ -n "${MS_ID:-}" ]; then
             SC_NAME="dm-metastore-data-access"
-            SC_EXISTS=$(curl -sf -H "$AUTH" \
-              "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/storage-credentials" 2>/dev/null \
-              | jq -r --arg n "$SC_NAME" '[.storage_credentials[]? | select(.name==$n)][0].name // empty' 2>/dev/null || true)
-            [ -n "$SC_EXISTS" ] && tf_import "Metastore data access" "databricks_metastore_data_access.default" "${MS_ID}|${SC_NAME}"
+            tf_import "Metastore data access" "databricks_metastore_data_access.default" "${MS_ID}|${SC_NAME}"
           fi
 
           # Import MWS permission assignments if workspace exists
