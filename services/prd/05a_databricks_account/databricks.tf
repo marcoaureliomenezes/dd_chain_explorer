@@ -209,3 +209,22 @@ resource "databricks_mws_permission_assignment" "admin" {
 
   depends_on = [databricks_metastore_assignment.dm]
 }
+
+# -----------------------------------------------------------------------
+# Workspace admin — service principal (account-level)
+# Permite que o service principal (DATABRICKS_CLIENT_ID) autentique no
+# workspace via OAuth para o módulo 05b_databricks_workspace.
+# -----------------------------------------------------------------------
+data "databricks_service_principal" "terraform" {
+  provider  = databricks.accounts
+  client_id = var.databricks_client_id
+}
+
+resource "databricks_mws_permission_assignment" "terraform_sp" {
+  provider     = databricks.accounts
+  workspace_id = databricks_mws_workspaces.dm.workspace_id
+  principal_id = data.databricks_service_principal.terraform.id
+  permissions  = ["ADMIN"]
+
+  depends_on = [databricks_metastore_assignment.dm]
+}
