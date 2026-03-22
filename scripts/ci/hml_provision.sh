@@ -33,11 +33,10 @@ aws ecs create-cluster \
   --tags key=Environment,value=hml key=ManagedBy,value=cicd \
   --region "${REGION}" 2>/dev/null || echo "Cluster already exists"
 
-aws logs describe-log-groups \
-  --log-group-name-prefix "/apps/dm-chain-explorer-hml" \
-  --query 'logGroups[0].logGroupName' --output text --region "${REGION}" \
-  | grep -q "/apps/dm-chain-explorer-hml" \
-  || { echo "::error::CW Log Group /apps/dm-chain-explorer-hml not found. Run Deploy Infra Cloud (HML) first."; exit 1; }
+echo "==> Ensuring HML CloudWatch log group exists..."
+aws logs create-log-group \
+  --log-group-name "/apps/dm-chain-explorer-hml" \
+  --region "${REGION}" 2>/dev/null || echo "Log group /apps/dm-chain-explorer-hml already exists"
 
 # ── Kinesis streams ───────────────────────────────────────────────────────────
 echo "==> Creating HML Kinesis streams..."

@@ -66,4 +66,9 @@ for Q in mainnet-mined-blocks-events-hml mainnet-block-txs-hash-id-hml \
   [ -n "$URL" ] && aws sqs delete-queue --queue-url "$URL" --region "${REGION}" 2>/dev/null || true
 done
 
+echo "==> Deleting HML CloudWatch log group..."
+aws logs delete-log-group \
+  --log-group-name "/apps/dm-chain-explorer-hml" \
+  --region "${REGION}" 2>/dev/null || true
+
 echo "==> HML teardown complete."
