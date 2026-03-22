@@ -178,20 +178,13 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
     }
   }
 
-  # Self-assuming: Unity Catalog exige que a role possa assumir a si mesma
-  # para validar storage credentials e external locations.
-  # Usa account root + condition ArnEquals para evitar erro de principal
-  # inexistente durante a criação inicial do role.
+  # Self-assuming: Unity Catalog requires the role to be able to assume itself
+  # directly (role ARN as principal) for storage credential validation.
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:root"]
-    }
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:PrincipalArn"
-      values   = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cross-account-role"]
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cross-account-role"]
     }
   }
 }
