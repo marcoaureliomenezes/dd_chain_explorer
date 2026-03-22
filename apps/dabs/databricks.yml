@@ -94,7 +94,7 @@ targets:
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "dd_chain_explorer"
-      ingestion_s3_bucket: "dm-chain-explorer-prd-lakehouse"
+      ingestion_s3_bucket: "dm-chain-explorer-lakehouse"
       dlt_num_workers: 1
       dlt_development: false
       dlt_continuous: false

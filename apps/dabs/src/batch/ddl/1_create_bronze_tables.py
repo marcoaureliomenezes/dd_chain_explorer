@@ -19,7 +19,7 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{catalog}`.b_ethereum")
 try:
     lakehouse_bucket = dbutils.widgets.get("lakehouse_s3_bucket")
 except Exception:
-    lakehouse_bucket = spark.conf.get("lakehouse.s3.bucket", "dm-chain-explorer-prd-lakehouse")
+    lakehouse_bucket = spark.conf.get("lakehouse.s3.bucket", "dm-chain-explorer-lakehouse")
 
 spark.sql(f"""
   CREATE TABLE IF NOT EXISTS `{catalog}`.b_ethereum.popular_contracts_txs (

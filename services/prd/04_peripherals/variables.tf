@@ -23,7 +23,7 @@ variable "raw_bucket_name" {
 variable "lakehouse_bucket_name" {
   description = "Name of the lakehouse S3 bucket"
   type        = string
-  default     = "dm-chain-explorer-prd-lakehouse"
+  default     = "dm-chain-explorer-lakehouse"
 }
 
 variable "databricks_bucket_name" {

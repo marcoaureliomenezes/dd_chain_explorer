@@ -41,6 +41,6 @@ data "aws_caller_identity" "current" {}
 locals {
   account_id             = data.aws_caller_identity.current.account_id
   raw_bucket_arn         = "arn:aws:s3:::dm-chain-explorer-raw-data"
-  lakehouse_bucket_arn   = "arn:aws:s3:::dm-chain-explorer-prd-lakehouse"
+  lakehouse_bucket_arn   = "arn:aws:s3:::dm-chain-explorer-lakehouse"
   databricks_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-databricks"
 }

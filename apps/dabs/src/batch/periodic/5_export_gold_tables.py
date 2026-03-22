@@ -11,7 +11,7 @@ try:
     export_date    = dbutils.widgets.get("export_date")
 except Exception:
     catalog        = "dev"
-    export_s3_path = "s3://dm-chain-explorer-prd-lakehouse/exports"
+    export_s3_path = "s3://dm-chain-explorer-lakehouse/exports"
     export_date    = date.today().strftime("%Y-%m-%d")
 
 # (table_ref, table_name, date_filter_col_or_None)
