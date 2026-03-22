@@ -201,9 +201,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
+      - name: Get workspace URL from 05a state
+        id: ws_url
+        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
+        run: |
+          terraform init -input=false
+          WS_HOST=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
+          echo "host=$WS_HOST" >> $GITHUB_OUTPUT
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
-          TF_VAR_workspace_host:           "https://dbc-f23d552d-c976.cloud.databricks.com"
+          TF_VAR_workspace_host:           ${{ steps.ws_url.outputs.host }}
           TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - if: always()
