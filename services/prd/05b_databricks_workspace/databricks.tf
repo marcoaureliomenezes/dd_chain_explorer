@@ -11,7 +11,7 @@ resource "databricks_storage_credential" "lakehouse" {
 
   comment = "Storage credential for dd-chain-explorer lakehouse S3 bucket"
 
-  lifecycle { prevent_destroy = true }
+  lifecycle { prevent_destroy = false }
 }
 
 # -----------------------------------------------------------------------
@@ -44,7 +44,7 @@ resource "databricks_catalog" "prd" {
 
   depends_on = [databricks_external_location.lakehouse]
 
-  lifecycle { prevent_destroy = true }
+  lifecycle { prevent_destroy = false }
 }
 
 # -----------------------------------------------------------------------

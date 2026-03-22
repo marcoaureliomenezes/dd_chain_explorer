@@ -31,6 +31,7 @@ jobs:
     name: Safety check
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - name: Enforce develop branch
         run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
       - name: Validate confirmation
@@ -200,22 +201,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
       - run: terraform init -input=false
-      - name: Get workspace host/token from tfstate
-        id: ws
-        run: |
-          WS_JSON=$(terraform output -json 2>/dev/null || echo '{}')
-          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value // empty' 2>/dev/null || echo "")
-          WS_TOKEN=$(echo "$WS_JSON" | jq -r '.databricks_token.value // empty' 2>/dev/null || echo "")
-          echo "host=$WS_URL"  >> $GITHUB_OUTPUT
-          echo "token=$WS_TOKEN" >> $GITHUB_OUTPUT
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
-          TF_VAR_workspace_host:  ${{ steps.ws.outputs.host }}
-          TF_VAR_workspace_token: ${{ steps.ws.outputs.token }}
+          TF_VAR_workspace_host:           "https://dbc-f23d552d-c976.cloud.databricks.com"
+          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - if: always()
         run: echo "PRD/05b_databricks_workspace destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
@@ -245,6 +235,7 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
       - if: always()
         run: echo "PRD/05a_databricks_account destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 

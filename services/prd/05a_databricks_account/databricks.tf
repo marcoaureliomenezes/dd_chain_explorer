@@ -169,9 +169,9 @@ resource "databricks_metastore" "dm" {
   provider      = databricks.accounts
   name          = "dm-chain-explorer-metastore"
   region        = var.region
-  force_destroy = false
+  force_destroy = true
 
-  lifecycle { prevent_destroy = true }
+  lifecycle { prevent_destroy = false }
 }
 
 resource "databricks_metastore_assignment" "dm" {
