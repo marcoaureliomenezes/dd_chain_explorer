@@ -468,6 +468,7 @@ jobs:
           HML_ECS_CLUSTER:            ${{ env.HML_ECS_CLUSTER }}
           WAIT_PHASE1_SECS:           "60"
           WAIT_PHASE2_SECS:           "120"
+          CLOUDWATCH_LOG_GROUP:       "/apps/dm-chain-explorer-hml"
         run: |
           if bash scripts/hml_integration_test.sh 2>&1 | tee /tmp/hml_stream_test.txt; then
             echo "test_passed=true" >> $GITHUB_OUTPUT
@@ -481,7 +482,8 @@ jobs:
 
   all-hml-test-dabs:
     name: HML Test — DABs (DLT pipelines / Gold MVs)
-    needs: all-hml-lambda-deploy
+    needs: [all-hml-lambda-deploy, all-hml-test-streaming]
+    if: needs.all-hml-test-streaming.result == 'success'
     runs-on: ubuntu-latest
     outputs:
       test_passed: ${{ steps.validate.outputs.test_passed }}

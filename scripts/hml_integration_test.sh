@@ -3,12 +3,17 @@
 # HML Integration Test — onchain-stream-txs
 #
 # Validates that all peripheral AWS services receive data after ECS containers
-# start. Designed to mirror the healthy DEV baseline observed on 2026-03-19:
-#   • SQS: both queues processing messages in real-time (0 visible = healthy)
-#   • Kinesis: all 3 streams ACTIVE, receiving records
-#   • DynamoDB: BLOCK_CACHE items written by containers
-#   • Firehose: all delivery streams ACTIVE
-#   • S3: .gz files delivered to raw/ by Firehose
+# start. Phases run sequentially with fail-fast: any failure in a phase stops
+# execution immediately, avoiding wasted timeout burns on downstream phases.
+#
+# Phases:
+#   0 — ECS task health check (≥1 task RUNNING)
+#   1 — CloudWatch log events per ECS service (proves containers are logging)
+#   2 — SQS NumberOfMessagesSent > 0
+#   3 — Kinesis IncomingRecords > 0
+#   4 — DynamoDB items written
+#   5 — Firehose delivery streams ACTIVE
+#   6 — S3 .gz files delivered by Firehose
 #
 # Usage (HML — default):
 #   bash scripts/hml_integration_test.sh
@@ -36,11 +41,17 @@ KINESIS_STREAM_DECODED="${KINESIS_STREAM_DECODED:-mainnet-transactions-decoded-$
 SQS_QUEUE_MINED_BLOCKS="${SQS_QUEUE_MINED_BLOCKS:-mainnet-mined-blocks-events-${ENV}}"
 SQS_QUEUE_TXS_HASH_IDS="${SQS_QUEUE_TXS_HASH_IDS:-mainnet-block-txs-hash-id-${ENV}}"
 
-# Timeout (seconds) for each phase
-WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-60}"   # SQS + Kinesis + DynamoDB
-WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"  # Firehose + S3
+CLOUDWATCH_LOG_GROUP="${CLOUDWATCH_LOG_GROUP:-/apps/dm-chain-explorer-${ENV}}"
+# shellcheck disable=SC2089
+ECS_SERVICES="dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder"
 
-POLL_INTERVAL=15   # seconds between retries
+# Timeout (seconds) for each phase
+WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"      # Phase 1 — CW log events per service
+WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-60}"  # Phases 2-4 — SQS + Kinesis + DynamoDB
+WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}" # Phases 5-6 — Firehose + S3
+
+POLL_INTERVAL=15     # seconds between retries (SQS/Kinesis/DynamoDB/S3)
+LOG_POLL_INTERVAL=10 # seconds between retries (CW log events)
 
 # ── Counters ──────────────────────────────────────────────────────────────────
 PASS=0
@@ -51,6 +62,15 @@ SCRIPT_START=$(date +%s)
 log()  { echo "[$(date -u '+%H:%M:%S')] $*"; }
 ok()   { log "✅ PASS — $*"; PASS=$((PASS + 1)); }
 fail() { log "❌ FAIL — $*"; FAIL=$((FAIL + 1)); }
+
+# fail_fast <phase_label> — exits immediately if any FAIL has been recorded
+fail_fast() {
+  if [ "$FAIL" -gt 0 ]; then
+    log ""
+    log "💥 $1: ${FAIL} check(s) failed — parando execução (fail-fast)"
+    exit 1
+  fi
+}
 
 # cw_sum <namespace> <metric> <dim_name> <dim_value> [window_secs=300]
 # Returns the SUM of a CloudWatch metric over the last <window_secs>.
@@ -106,6 +126,7 @@ log "═════════════════════════
 log "  HML Integration Test   ENV=${ENV}   REGION=${REGION}"
 log "  S3_BUCKET=${S3_BUCKET}"
 log "  DYNAMODB_TABLE=${DYNAMODB_TABLE}"
+log "  CLOUDWATCH_LOG_GROUP=${CLOUDWATCH_LOG_GROUP}"
 log "══════════════════════════════════════════════════════════════════════"
 
 # =============================================================================
@@ -119,22 +140,47 @@ if [ -n "${HML_ECS_CLUSTER:-}" ]; then
     ok "ECS cluster ${HML_ECS_CLUSTER} — ${RUNNING} task(s) RUNNING"
   else
     fail "ECS cluster ${HML_ECS_CLUSTER} — 0 tasks RUNNING (containers didn't start)"
-    exit 1
   fi
 fi
+fail_fast "Phase 0 — ECS task health check"
 
 # =============================================================================
-# Phase 1 — SQS + Kinesis + DynamoDB
-# Expected behaviour from DEV baseline:
-#   • SQS queues stay near-empty (consumers keep up) but NumberOfMessagesSent > 0
-#   • Kinesis IncomingRecords > 0 as containers push blocks/txs
-#   • DynamoDB accumulates BLOCK_CACHE items written by orphan-blocks-watcher
+# Phase 1 — CloudWatch Logs per ECS service
+# Proves each container is running and emitting logs. Uses a 5-minute look-back
+# window so that containers started before this script still pass.
+# Log stream prefix convention: <service-name>/<container-name>/<task-id>
 # =============================================================================
-log ""
-log "──── Phase 1: SQS / Kinesis / DynamoDB  (timeout=${WAIT_PHASE1_SECS}s) ────"
-log ""
+log ""; log "──── Phase 1: CloudWatch Logs per ECS service  (timeout=${WAIT_LOGS_SECS}s each) ────"; log ""
+LOOK_START_MS=$(( ($(date +%s) - 300) * 1000 ))
+# shellcheck disable=SC2090
+for SVC in $ECS_SERVICES; do
+  log "⏳ CW Logs ${SVC} — checking for log events in the last 5 min ..."
+  DEADLINE=$(( $(date +%s) + WAIT_LOGS_SECS ))
+  FOUND=false
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    EVENTS=$(aws logs filter-log-events \
+      --log-group-name        "$CLOUDWATCH_LOG_GROUP" \
+      --log-stream-name-prefix "${SVC}/" \
+      --start-time             "$LOOK_START_MS" \
+      --limit                  1 \
+      --query                  'length(events)' \
+      --output text --region   "$REGION" 2>/dev/null || echo "0")
+    if [ "${EVENTS:-0}" -ge 1 ] 2>/dev/null; then
+      ok "CW Logs ${SVC} — ${EVENTS} event(s) found"
+      FOUND=true
+      break
+    fi
+    log "   → no log events yet, retrying in ${LOG_POLL_INTERVAL}s ..."
+    sleep "$LOG_POLL_INTERVAL"
+  done
+  $FOUND || fail "CW Logs ${SVC} — no log events found after ${WAIT_LOGS_SECS}s"
+done
+fail_fast "Phase 1 — ECS container logs"
 
-# ── Check 1: SQS NumberOfMessagesSent > 0 ─────────────────────────────────────
+# =============================================================================
+# Phase 2 — SQS
+# =============================================================================
+log ""; log "──── Phase 2: SQS  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
 for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
   log "⏳ SQS ${QUEUE} — polling CloudWatch NumberOfMessagesSent ..."
   DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
@@ -151,8 +197,12 @@ for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
   done
   $FOUND || fail "SQS ${QUEUE} — no messages sent within ${WAIT_PHASE1_SECS}s"
 done
+fail_fast "Phase 2 — SQS"
 
-# ── Check 2: Kinesis IncomingRecords > 0 ──────────────────────────────────────
+# =============================================================================
+# Phase 3 — Kinesis
+# =============================================================================
+log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
 for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_STREAM_DECODED"; do
   log "⏳ Kinesis ${STREAM} — polling CloudWatch IncomingRecords ..."
   DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
@@ -169,8 +219,12 @@ for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_
   done
   $FOUND || fail "Kinesis ${STREAM} — no IncomingRecords within ${WAIT_PHASE1_SECS}s"
 done
+fail_fast "Phase 3 — Kinesis"
 
-# ── Check 3: DynamoDB — at least 1 item written ───────────────────────────────
+# =============================================================================
+# Phase 4 — DynamoDB
+# =============================================================================
+log ""; log "──── Phase 4: DynamoDB  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
 log "⏳ DynamoDB ${DYNAMODB_TABLE} — polling for items ..."
 DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
 FOUND=false
@@ -191,36 +245,46 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
   sleep "$POLL_INTERVAL"
 done
 $FOUND || fail "DynamoDB ${DYNAMODB_TABLE} — no items within ${WAIT_PHASE1_SECS}s"
+fail_fast "Phase 4 — DynamoDB"
 
 # =============================================================================
-# Phase 2 — Firehose status + S3 delivery
-# Firehose buffers data from Kinesis and flushes to S3 (buffer 60s / 1MB).
-# Expected: files appear under s3://<bucket>/raw/<stream>/year=.../
+# Phase 5 — Firehose status
+# Firehose streams must be ACTIVE before they can deliver data to S3.
 # =============================================================================
-log ""
-log "──── Phase 2: Firehose / S3 delivery  (timeout=${WAIT_PHASE2_SECS}s) ────"
-log ""
-
-# ── Check 4: Firehose delivery streams ACTIVE ─────────────────────────────────
+log ""; log "──── Phase 5: Firehose  (timeout=${WAIT_PHASE2_SECS}s) ────"; log ""
 for FH in \
   "firehose-mainnet-blocks-data-${ENV}" \
   "firehose-mainnet-transactions-data-${ENV}" \
   "firehose-mainnet-transactions-decoded-${ENV}"
 do
-  STATUS=$(aws firehose describe-delivery-stream \
-    --region               "$REGION" \
-    --delivery-stream-name "$FH" \
-    --query  'DeliveryStreamDescription.DeliveryStreamStatus' \
-    --output text 2>/dev/null || echo "NOT_FOUND")
-  if [ "$STATUS" = "ACTIVE" ]; then
-    ok "Firehose ${FH} — status=ACTIVE"
-  else
-    fail "Firehose ${FH} — status=${STATUS} (expected ACTIVE)"
-  fi
+  log "⏳ Firehose ${FH} — waiting for ACTIVE status ..."
+  DEADLINE=$(( $(date +%s) + WAIT_PHASE2_SECS ))
+  FH_STATUS="NOT_FOUND"
+  FOUND=false
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    FH_STATUS=$(aws firehose describe-delivery-stream \
+      --region               "$REGION" \
+      --delivery-stream-name "$FH" \
+      --query  'DeliveryStreamDescription.DeliveryStreamStatus' \
+      --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$FH_STATUS" = "ACTIVE" ]; then
+      ok "Firehose ${FH} — status=ACTIVE"
+      FOUND=true
+      break
+    fi
+    log "   → status=${FH_STATUS}, retrying in ${POLL_INTERVAL}s ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "Firehose ${FH} — status=${FH_STATUS} after ${WAIT_PHASE2_SECS}s (expected ACTIVE)"
 done
+fail_fast "Phase 5 — Firehose"
 
-# ── Check 5: S3 — ≥1 .gz file delivered to raw/ within last 10 minutes ─────
-# Each Kinesis stream has its own prefix; check at least the blocks stream.
+# =============================================================================
+# Phase 6 — S3 delivery
+# Firehose buffers data from Kinesis and flushes to S3 (buffer 60s / 1MB).
+# Expected: .gz files appear under s3://<bucket>/raw/<stream>/year=.../
+# =============================================================================
+log ""; log "──── Phase 6: S3 Firehose delivery  (timeout=${WAIT_PHASE2_SECS}s) ────"; log ""
 for STREAM_PREFIX in \
   "raw/mainnet-blocks-data/" \
   "raw/mainnet-transactions-data/" \
