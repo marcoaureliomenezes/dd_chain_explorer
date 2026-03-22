@@ -189,9 +189,15 @@ resource "aws_iam_role" "databricks_cross_account" {
   # principals on initial role creation (chicken-and-egg).
   provisioner "local-exec" {
     command = <<-EOT
-      aws iam update-assume-role-policy \
-        --role-name '${self.name}' \
-        --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::${var.databricks_account_id}:root"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"sts:ExternalId":"${var.databricks_account_uuid}"}}},{"Effect":"Allow","Principal":{"AWS":"${self.arn}"},"Action":"sts:AssumeRole"}]}'
+      echo "Waiting for IAM role propagation..."
+      for i in 1 2 3; do
+        sleep 15
+        aws iam update-assume-role-policy \
+          --role-name '${self.name}' \
+          --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::${var.databricks_account_id}:root"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"sts:ExternalId":"${var.databricks_account_uuid}"}}},{"Effect":"Allow","Principal":{"AWS":"${self.arn}"},"Action":"sts:AssumeRole"}]}' \
+          && break
+        echo "Attempt $i failed, retrying..."
+      done
     EOT
   }
 
