@@ -1,5 +1,5 @@
 output "databricks_cluster_id" {
-  value = databricks_cluster.dm.id
+  value = var.create_cluster ? databricks_cluster.dm[0].id : null
 }
 
 output "databricks_catalog_prd" {
