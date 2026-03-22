@@ -415,8 +415,10 @@ jobs:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
-          databricks pipelines list --output json | jq '.[] | .name'
-          databricks jobs list --output json | jq '.jobs[] | .settings.name'
+          echo "==> HML DABs bundle deployed. Listing pipelines:"
+          databricks pipelines list 2>/dev/null || true
+          echo "==> Listing jobs:"
+          databricks jobs list 2>/dev/null || true
           echo "## HML Deploy Complete" >> $GITHUB_STEP_SUMMARY
           echo "Target: \`hml\` | Version: \`${{ needs.dabs-check-version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
 
