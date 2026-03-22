@@ -84,11 +84,12 @@ jobs:
             fi
           fi
 
-  dev-plan-peripherals:
-    name: DEV — Plan 04_peripherals
+  dev-deploy-peripherals:
+    name: DEV — Deploy Peripherals AWS
     needs: dev-detect-changes
     if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
     runs-on: ubuntu-latest
+    environment: dev
     defaults:
       run:
         working-directory: ${{ env.DEV_PERIPHERALS }}
@@ -107,57 +108,37 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-dev-peripherals
-          path: ${{ env.DEV_PERIPHERALS }}/tfplan
-          retention-days: 1
       - if: always()
         run: |
-          echo "### Plan DEV/04_peripherals" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan DEV/Peripherals" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  dev-apply-peripherals:
-    name: DEV — Apply 04_peripherals
-    needs: [dev-detect-changes, dev-plan-peripherals]
-    if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
-    runs-on: ubuntu-latest
-    environment: dev
-    defaults:
-      run:
-        working-directory: ${{ env.DEV_PERIPHERALS }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-dev-peripherals
-          path: ${{ env.DEV_PERIPHERALS }}
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  dev-apply-lambda:
-    name: DEV — Plan + Apply 06_lambda
-    needs: [dev-detect-changes, dev-apply-peripherals]
+  dev-deploy-lambda:
+    name: DEV — Deploy Lambda AWS
+    needs: [dev-detect-changes, dev-deploy-peripherals]
     if: |
       always() &&
       needs.dev-detect-changes.outputs.lambda_changed == 'true' &&
-      (needs.dev-apply-peripherals.result == 'success' || needs.dev-apply-peripherals.result == 'skipped')
+      (needs.dev-deploy-peripherals.result == 'success' || needs.dev-deploy-peripherals.result == 'skipped')
     runs-on: ubuntu-latest
     environment: dev
     defaults:
@@ -179,14 +160,27 @@ jobs:
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform validate
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - if: always()
         run: |
-          echo "### Plan DEV/06_lambda" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan DEV/Lambda" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
@@ -220,12 +214,13 @@ jobs:
           echo "## Version Check" >> $GITHUB_STEP_SUMMARY
           echo "Deploying PRD infra **v${VERSION}**" >> $GITHUB_STEP_SUMMARY
 
-  # ── PRD Layer 1: 02_vpc + 04_peripherals (parallel) ───────────
+  # ── PRD Layer 1: VPC + Peripherals (parallel) ─────────────────
 
-  prd-plan-vpc:
-    name: PRD — Plan 02_vpc
+  prd-deploy-vpc:
+    name: PRD — Deploy VPC AWS
     needs: prd-check-version
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: ${{ env.PRD_ROOT }}/02_vpc
@@ -244,53 +239,35 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-02_vpc
-          path: ${{ env.PRD_ROOT }}/02_vpc/tfplan
-          retention-days: 1
       - if: always()
         run: |
-          echo "### Plan PRD/02_vpc" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/VPC" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  prd-apply-vpc:
-    name: PRD — Apply 02_vpc
-    needs: prd-plan-vpc
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/02_vpc
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-02_vpc
-          path: ${{ env.PRD_ROOT }}/02_vpc
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  prd-plan-peripherals:
-    name: PRD — Plan 04_peripherals
+  prd-deploy-peripherals:
+    name: PRD — Deploy Peripherals AWS
     needs: prd-check-version
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: ${{ env.PRD_ROOT }}/04_peripherals
@@ -309,55 +286,37 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-04_peripherals
-          path: ${{ env.PRD_ROOT }}/04_peripherals/tfplan
-          retention-days: 1
       - if: always()
         run: |
-          echo "### Plan PRD/04_peripherals" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/Peripherals" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  prd-apply-peripherals:
-    name: PRD — Apply 04_peripherals
-    needs: prd-plan-peripherals
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/04_peripherals
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-04_peripherals
-          path: ${{ env.PRD_ROOT }}/04_peripherals
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  # ── PRD Layer 2: 03_iam (depends on vpc + peripherals) ─────────
+  # ── PRD Layer 2: IAM (depends on VPC + Peripherals) ────────────
 
-  prd-plan-iam:
-    name: PRD — Plan 03_iam
-    needs: [prd-apply-vpc, prd-apply-peripherals]
+  prd-deploy-iam:
+    name: PRD — Deploy IAM AWS
+    needs: [prd-deploy-vpc, prd-deploy-peripherals]
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: ${{ env.PRD_ROOT }}/03_iam
@@ -376,56 +335,41 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-03_iam
-          path: ${{ env.PRD_ROOT }}/03_iam/tfplan
-          retention-days: 1
       - if: always()
         run: |
-          echo "### Plan PRD/03_iam" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/IAM" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  prd-apply-iam:
-    name: PRD — Apply 03_iam
-    needs: prd-plan-iam
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/03_iam
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-03_iam
-          path: ${{ env.PRD_ROOT }}/03_iam
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  # ── PRD Layer 3: 05a_databricks_account + 06_lambda + 07_ecs (parallel) ─
+  # ── PRD Layer 3: Databricks Account + Lambda + ECS (parallel) ──
 
-  prd-plan-databricks-account:
-    name: PRD — Plan 05a_databricks_account
-    needs: prd-apply-iam
+  prd-deploy-databricks-account:
+    name: PRD — Deploy Databricks Part 1 - Account
+    needs: prd-deploy-iam
     if: github.event.inputs.skip_databricks != 'true'
     runs-on: ubuntu-latest
+    environment: production
+    outputs:
+      workspace_url:   ${{ steps.ws_out.outputs.workspace_url }}
+      workspace_token: ${{ steps.ws_out.outputs.workspace_token }}
     defaults:
       run:
         working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
@@ -519,56 +463,33 @@ jobs:
           fi
 
           echo "==> Import check complete."
+      - run: terraform validate
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-05a-databricks-account
-          path: ${{ env.PRD_ROOT }}/05a_databricks_account/tfplan
-          retention-days: 1
       - if: always()
         run: |
-          echo "### Plan PRD/05a_databricks_account" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/Databricks Account" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  prd-apply-databricks-account:
-    name: PRD — Apply 05a_databricks_account
-    needs: prd-plan-databricks-account
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    environment: production
-    outputs:
-      workspace_url:   ${{ steps.ws_out.outputs.workspace_url }}
-      workspace_token: ${{ steps.ws_out.outputs.workspace_token }}
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-05a-databricks-account
-          path: ${{ env.PRD_ROOT }}/05a_databricks_account
-      - run: terraform init -input=false
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Apply 05a_databricks_account
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
@@ -578,7 +499,7 @@ jobs:
       - name: Dump apply errors
         if: failure()
         run: |
-          echo "### Apply Error — PRD/05a_databricks_account" >> $GITHUB_STEP_SUMMARY
+          echo "### Apply Error — PRD/Databricks Account" >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
           tail -100 apply.txt >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
@@ -596,81 +517,9 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
 
-  # ── PRD Layer 4: 05b_databricks_workspace (após workspace existir) ─
-
-  prd-plan-databricks-workspace:
-    name: PRD — Plan 05b_databricks_workspace
-    needs: prd-apply-databricks-account
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-          TF_VAR_workspace_host:  ${{ needs.prd-apply-databricks-account.outputs.workspace_url }}
-          TF_VAR_workspace_token: ${{ needs.prd-apply-databricks-account.outputs.workspace_token }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-05b-databricks-workspace
-          path: ${{ env.PRD_ROOT }}/05b_databricks_workspace/tfplan
-          retention-days: 1
-      - if: always()
-        run: |
-          echo "### Plan PRD/05b_databricks_workspace" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-
-  prd-apply-databricks-workspace:
-    name: PRD — Apply 05b_databricks_workspace
-    needs: [prd-plan-databricks-workspace, prd-apply-databricks-account]
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-05b-databricks-workspace
-          path: ${{ env.PRD_ROOT }}/05b_databricks_workspace
-      - run: terraform init -input=false
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-          TF_VAR_workspace_host:  ${{ needs.prd-apply-databricks-account.outputs.workspace_url }}
-          TF_VAR_workspace_token: ${{ needs.prd-apply-databricks-account.outputs.workspace_token }}
-
-  prd-apply-lambda:
-    name: PRD — Plan + Apply 06_lambda
-    needs: prd-apply-iam
+  prd-deploy-lambda:
+    name: PRD — Deploy Lambda AWS
+    needs: prd-deploy-iam
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -692,21 +541,35 @@ jobs:
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform validate
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
       - if: always()
         run: |
-          echo "### Plan PRD/06_lambda" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/Lambda" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  prd-plan-ecs:
-    name: PRD — Plan 07_ecs
-    needs: prd-apply-iam
+  prd-deploy-ecs:
+    name: PRD — Deploy ECS AWS
+    needs: prd-deploy-iam
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: ${{ env.PRD_ROOT }}/07_ecs
@@ -725,27 +588,41 @@ jobs:
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prd-07_ecs
-          path: ${{ env.PRD_ROOT }}/07_ecs/tfplan
-          retention-days: 1
       - if: always()
         run: |
-          echo "### Plan PRD/07_ecs" >> $GITHUB_STEP_SUMMARY
+          echo "### Plan PRD/ECS" >> $GITHUB_STEP_SUMMARY
           echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
 
-  prd-apply-ecs:
-    name: PRD — Apply 07_ecs
-    needs: prd-plan-ecs
+  # ── PRD Layer 4: Databricks Workspace (depends on Account) ─────
+
+  prd-deploy-databricks-workspace:
+    name: PRD — Deploy Databricks Part 2 - Workspace
+    needs: prd-deploy-databricks-account
+    if: github.event.inputs.skip_databricks != 'true'
     runs-on: ubuntu-latest
     environment: production
     defaults:
       run:
-        working-directory: ${{ env.PRD_ROOT }}/07_ecs
+        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -756,17 +633,38 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
-        with:
-          name: tfplan-prd-07_ecs
-          path: ${{ env.PRD_ROOT }}/07_ecs
+      - run: terraform init -input=false
+      - run: terraform validate
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve tfplan
+      - name: Terraform Plan
+        id: plan
+        run: |
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
+          PLAN_EXIT=${PIPESTATUS[0]}
+          set -e
+          if [ $PLAN_EXIT -eq 1 ]; then
+            echo "::error::Terraform plan failed"
+            exit 1
+          fi
+          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
+          TF_VAR_workspace_token: ${{ needs.prd-deploy-databricks-account.outputs.workspace_token }}
+      - if: always()
+        run: |
+          echo "### Plan PRD/Databricks Workspace" >> $GITHUB_STEP_SUMMARY
+          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+        env:
+          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
+          TF_VAR_workspace_token: ${{ needs.prd-deploy-databricks-account.outputs.workspace_token }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 
@@ -774,17 +672,17 @@ jobs:
     name: PRD — Create git tag
     needs:
       - prd-check-version
-      - prd-apply-ecs
-      - prd-apply-lambda
-      - prd-apply-databricks-account
-      - prd-apply-databricks-workspace
+      - prd-deploy-ecs
+      - prd-deploy-lambda
+      - prd-deploy-databricks-account
+      - prd-deploy-databricks-workspace
     if: |
       always() &&
       needs.prd-check-version.result == 'success' &&
-      needs.prd-apply-ecs.result == 'success' &&
-      needs.prd-apply-lambda.result == 'success' &&
-      (needs.prd-apply-databricks-account.result == 'success' || needs.prd-apply-databricks-account.result == 'skipped') &&
-      (needs.prd-apply-databricks-workspace.result == 'success' || needs.prd-apply-databricks-workspace.result == 'skipped')
+      needs.prd-deploy-ecs.result == 'success' &&
+      needs.prd-deploy-lambda.result == 'success' &&
+      (needs.prd-deploy-databricks-account.result == 'success' || needs.prd-deploy-databricks-account.result == 'skipped') &&
+      (needs.prd-deploy-databricks-workspace.result == 'success' || needs.prd-deploy-databricks-workspace.result == 'skipped')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
