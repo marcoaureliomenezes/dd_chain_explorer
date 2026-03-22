@@ -39,11 +39,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Enforce develop branch
-        run: |
-          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
-            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
-            exit 1
-          fi
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
 
   # ══════════════════════════════════════════════════════════════
   #  DEV (Cloud AWS)
@@ -63,26 +59,9 @@ jobs:
           fetch-depth: 0
       - name: Determine changed modules
         id: detect
-        run: |
-          FORCE="${{ github.event.inputs.force_apply }}"
-          if [ "$FORCE" = "true" ]; then
-            echo "peripherals_changed=true" >> $GITHUB_OUTPUT
-            echo "lambda_changed=true"      >> $GITHUB_OUTPUT
-            echo "Forced — all DEV modules will be applied."
-          else
-            DIFF=$(git diff --name-only origin/develop...HEAD 2>/dev/null || git diff --name-only HEAD~1 HEAD)
-            echo "Changed files: $DIFF"
-            if echo "$DIFF" | grep -q "${{ env.DEV_PERIPHERALS }}/"; then
-              echo "peripherals_changed=true" >> $GITHUB_OUTPUT
-            else
-              echo "peripherals_changed=false" >> $GITHUB_OUTPUT
-            fi
-            if echo "$DIFF" | grep -q "${{ env.DEV_LAMBDA }}/"; then
-              echo "lambda_changed=true" >> $GITHUB_OUTPUT
-            else
-              echo "lambda_changed=false" >> $GITHUB_OUTPUT
-            fi
-          fi
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/detect_changes.sh"
+        env:
+          FORCE: ${{ github.event.inputs.force_apply }}
 
   dev-deploy-peripherals:
     name: DEV — Deploy Peripherals AWS
@@ -98,6 +77,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -110,22 +90,11 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: DEV/Peripherals
+          TAIL_LINES: "20"
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan DEV/Peripherals" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -149,6 +118,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -162,22 +132,11 @@ jobs:
       - run: terraform validate
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: DEV/Lambda
+          TAIL_LINES: "20"
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan DEV/Lambda" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -201,18 +160,9 @@ jobs:
           fetch-depth: 0
       - name: Read and validate VERSION
         id: ver
-        run: |
-          VERSION=$(cat VERSION | tr -d '[:space:]')
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          if [ "${{ github.event.inputs.force_apply }}" = "true" ]; then
-            echo "force_apply — skipping tag check."
-          elif git tag --list | grep -qx "v${VERSION}-infra"; then
-            echo "::error::v${VERSION}-infra already tagged. A new PR merge to develop is required to bump VERSION."
-            exit 1
-          fi
-          echo "Version v${VERSION} — OK."
-          echo "## Version Check" >> $GITHUB_STEP_SUMMARY
-          echo "Deploying PRD infra **v${VERSION}**" >> $GITHUB_STEP_SUMMARY
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_prd_version.sh"
+        env:
+          FORCE_APPLY: ${{ github.event.inputs.force_apply }}
 
   # ── PRD Layer 1: VPC + Peripherals (parallel) ─────────────────
 
@@ -229,6 +179,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -241,22 +192,10 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/VPC
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/VPC" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -276,6 +215,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -288,22 +228,10 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/Peripherals
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/Peripherals" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -325,6 +253,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -337,22 +266,10 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/IAM
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/IAM" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -377,6 +294,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -385,108 +303,25 @@ jobs:
       - run: terraform init -input=false
       - name: Import existing Databricks account resources (idempotent)
         env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-        run: |
-          # Acquire OAuth token via M2M client credentials
-          TOKEN=$(curl -sf -X POST \
-            "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
-            -H "Content-Type: application/x-www-form-urlencoded" \
-            --data-urlencode "grant_type=client_credentials" \
-            --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
-            --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
-            --data-urlencode "scope=all-apis" \
-            | jq -r '.access_token' 2>/dev/null || true)
-          if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-            echo "::error::Could not acquire Databricks OAuth token — check DATABRICKS_CLIENT_ID/SECRET secrets."
-            exit 1
-          fi
-          ACCT="https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}"
-          AUTH="Authorization: Bearer $TOKEN"
-
-          tf_import() {
-            local label="$1" addr="$2" id="$3"
-            if terraform state show "$addr" &>/dev/null; then
-              echo "  ${label}: already in state — skipping."
-              return 0
-            fi
-            if terraform import "$addr" "$id"; then
-              echo "  ${label}: imported OK."
-            else
-              echo "  ${label}: not found in Databricks — will be created by apply."
-            fi
-          }
-
-          echo "==> Checking for pre-existing Databricks account resources to import..."
-
-          CRED_ID=$(curl -sf -H "$AUTH" "${ACCT}/credentials" 2>/dev/null \
-            | jq -r '[.[] | select(.credentials_name=="dm-chain-explorer-credentials")][0].credentials_id // empty' 2>/dev/null || true)
-          [ -n "$CRED_ID" ] && tf_import "MWS credentials" "databricks_mws_credentials.dm" "${DATABRICKS_ACCOUNT_ID}/${CRED_ID}"
-
-          STOR_ID=$(curl -sf -H "$AUTH" "${ACCT}/storage-configurations" 2>/dev/null \
-            | jq -r '[.[] | select(.storage_configuration_name=="dm-chain-explorer-storage")][0].storage_configuration_id // empty' 2>/dev/null || true)
-          [ -n "$STOR_ID" ] && tf_import "MWS storage config" "databricks_mws_storage_configurations.dm" "${DATABRICKS_ACCOUNT_ID}/${STOR_ID}"
-
-          NET_ID=$(curl -sf -H "$AUTH" "${ACCT}/networks" 2>/dev/null \
-            | jq -r '[.[] | select(.network_name=="dm-chain-explorer-network")][0].network_id // empty' 2>/dev/null || true)
-          [ -n "$NET_ID" ] && tf_import "MWS network" "databricks_mws_networks.dm" "${DATABRICKS_ACCOUNT_ID}/${NET_ID}"
-
-          WS_ID=$(curl -sf -H "$AUTH" "${ACCT}/workspaces" 2>/dev/null \
-            | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_id // empty' 2>/dev/null || true)
-          [ -n "$WS_ID" ] && tf_import "MWS workspace" "databricks_mws_workspaces.dm" "${DATABRICKS_ACCOUNT_ID}/${WS_ID}"
-
-          MS_ID=$(curl -sf -H "$AUTH" "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/metastores" 2>/dev/null \
-            | jq -r '[.metastores[]? | select(.name=="dm-chain-explorer-metastore")][0].metastore_id // empty' 2>/dev/null || true)
-          [ -n "$MS_ID" ] && tf_import "Unity Catalog metastore" "databricks_metastore.dm" "$MS_ID"
-
-          if [ -n "${WS_ID:-}" ] && [ -n "${MS_ID:-}" ]; then
-            tf_import "Metastore assignment" "databricks_metastore_assignment.dm" "${WS_ID}/${MS_ID}"
-          fi
-
-          # Import metastore data access (storage credential) if it already exists
-          if [ -n "${MS_ID:-}" ]; then
-            SC_NAME="dm-metastore-data-access"
-            SC_EXISTS=$(curl -sf -H "$AUTH" \
-              "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/storage-credentials" 2>/dev/null \
-              | jq -r --arg n "$SC_NAME" '[.storage_credentials[]? | select(.name==$n)][0].name // empty' 2>/dev/null || true)
-            [ -n "$SC_EXISTS" ] && tf_import "Metastore data access" "databricks_metastore_data_access.default" "${MS_ID}|${SC_NAME}"
-          fi
-
-          # Import MWS permission assignment if workspace exists
-          if [ -n "${WS_ID:-}" ]; then
-            PA_EXISTS=$(curl -sf -H "$AUTH" \
-              "${ACCT}/workspaces/${WS_ID}/permissionassignments" 2>/dev/null \
-              | jq -r '[.permission_assignments[]? | select(any(.permissions[]?; . == "ADMIN"))][0].principal.principal_id // empty' 2>/dev/null || true)
-            [ -n "$PA_EXISTS" ] && tf_import "MWS permission assignment" "databricks_mws_permission_assignment.admin" "${WS_ID}|${PA_EXISTS}"
-          fi
-
-          echo "==> Import check complete."
+          DATABRICKS_ACCOUNT_ID:       ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:        ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET:    ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/databricks_account_import.sh"
       - run: terraform validate
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/Databricks Account
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/Databricks Account" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
@@ -495,6 +330,7 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
       - name: Dump apply errors
         if: failure()
         run: |
@@ -513,6 +349,7 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
 
   prd-deploy-lambda:
     name: PRD — Deploy Lambda AWS
@@ -527,6 +364,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -540,22 +378,10 @@ jobs:
       - run: terraform validate
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/Lambda
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/Lambda" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -575,6 +401,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -587,22 +414,10 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/ECS
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/ECS" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
@@ -625,6 +440,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -637,25 +453,13 @@ jobs:
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
       - name: Terraform Plan
         id: plan
-        run: |
-          set +e
-          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode 2>&1 | tee plan.txt
-          PLAN_EXIT=${PIPESTATUS[0]}
-          set -e
-          if [ $PLAN_EXIT -eq 1 ]; then
-            echo "::error::Terraform plan failed"
-            exit 1
-          fi
-          echo "plan_has_changes=$([ $PLAN_EXIT -eq 2 ] && echo true || echo false)" >> $GITHUB_OUTPUT
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
+          MODULE_NAME: PRD/Databricks Workspace
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
           TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
           TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      - if: always()
-        run: |
-          echo "### Plan PRD/Databricks Workspace" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -15 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan

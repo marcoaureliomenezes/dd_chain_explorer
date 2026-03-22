@@ -32,17 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Enforce develop branch
-        run: |
-          if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
-            echo "::error::Must be triggered from develop. Got: ${{ github.ref }}"
-            exit 1
-          fi
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
       - name: Validate confirmation
-        run: |
-          if [ "${{ github.event.inputs.confirm }}" != "DESTROY" ]; then
-            echo "::error::Confirmation must be exactly 'DESTROY'. Got: ${{ github.event.inputs.confirm }}"
-            exit 1
-          fi
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_commit_confirmation.sh"
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm }}
 
   # ══════════════════════════════════════════════════════════════
   #  DEV
@@ -133,29 +127,8 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - name: Empty PRD data buckets
-        run: |
-          chmod +x scripts/empty_s3_bucket.sh
-          for BUCKET in dm-chain-explorer-raw dm-chain-explorer-lakehouse dm-chain-explorer-databricks; do
-            if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-              bash scripts/empty_s3_bucket.sh "$BUCKET" "${{ env.AWS_REGION }}"
-            else
-              echo "Bucket $BUCKET does not exist — skipping."
-            fi
-          done
-      - name: Empty ECR repositories
-        run: |
-          for REPO in onchain-stream-txs onchain-batch-txs; do
-            IMAGES=$(aws ecr list-images --repository-name "$REPO" --region "${{ env.AWS_REGION }}" \
-              --query 'imageIds[*]' --output json 2>/dev/null) || IMAGES="[]"
-            if [ "$IMAGES" != "[]" ] && [ -n "$IMAGES" ]; then
-              aws ecr batch-delete-image --repository-name "$REPO" \
-                --image-ids "$IMAGES" --region "${{ env.AWS_REGION }}" 2>/dev/null || true
-              echo "ECR $REPO emptied"
-            else
-              echo "ECR $REPO is empty or does not exist — skipping."
-            fi
-          done
+      - name: Empty PRD S3 buckets + ECR repos
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/empty_s3_and_ecr.sh"
 
   # ── PRD Layer 3: Lambda + ECS (parallel) ──────────────────────
 
