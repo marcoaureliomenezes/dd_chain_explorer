@@ -7,7 +7,7 @@ output "databricks_workspace_id" {
 }
 
 output "databricks_token" {
-  value     = databricks_mws_workspaces.dm.token[0].token_value
+  value     = try(databricks_mws_workspaces.dm.token[0].token_value, "")
   sensitive = true
 }
 

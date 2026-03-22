@@ -20,7 +20,7 @@ jobs:
       - name: Enforce develop branch
         run: |
           if [ "${{ github.ref }}" != "refs/heads/develop" ]; then
-            echo "::error::This workflow must be triggered from the develop branch. Got: ${{ github.ref }}"
+            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${{ github.ref }}"
             exit 1
           fi
 
@@ -34,8 +34,8 @@ jobs:
           fetch-depth: 0
       - name: Validate VERSION file matches pyproject.toml
         run: |
-          FILE_VERSION=$(cat VERSION | tr -d "[:space:]")
-          TOML_VERSION=$(grep -m1 "^version" ${{ env.LIB_PATH }}/pyproject.toml | sed "s/.*=[[:space:]]*//" | tr -d "\"" | tr -d "'" | tr -d "[:space:]")
+          FILE_VERSION=$(cat VERSION | tr -d '[:space:]')
+          TOML_VERSION=$(grep -m1 '^version' ${{ env.LIB_PATH }}/pyproject.toml | sed 's/.*=[[:space:]]*//' | tr -d '"' | tr -d "'" | tr -d '[:space:]')
           echo "VERSION file  : $FILE_VERSION"
           echo "pyproject.toml: $TOML_VERSION"
           if [ "$FILE_VERSION" != "$TOML_VERSION" ]; then
@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
           if git tag --list | grep -qx "v${FILE_VERSION}-lib"; then
-            echo "::error::Version v${FILE_VERSION}-lib is already tagged. Bump before deploying."
+            echo "::error::Version v${FILE_VERSION}-lib is already tagged. Merge a new PR to develop to trigger auto-bump before deploying."
             exit 1
           fi
           echo "Version v${FILE_VERSION} is consistent and new — proceeding."
@@ -90,19 +90,20 @@ jobs:
       - name: Extract local version
         id: local
         run: |
-          VERSION=$(grep -m1 "^version" ${{ env.LIB_PATH }}/pyproject.toml | sed "s/.*=[[:space:]]*//" | tr -d "\"" | tr -d "'" | tr -d "[:space:]")
-          NAME=$(grep -m1 "^name" ${{ env.LIB_PATH }}/pyproject.toml | sed "s/.*=[[:space:]]*//" | tr -d "\"" | tr -d "'" | tr -d "[:space:]")
+          VERSION=$(grep -m1 '^version' ${{ env.LIB_PATH }}/pyproject.toml | sed 's/.*=[[:space:]]*//' | tr -d '"' | tr -d "'" | tr -d '[:space:]')
+          NAME=$(grep -m1 '^name' ${{ env.LIB_PATH }}/pyproject.toml | sed 's/.*=[[:space:]]*//' | tr -d '"' | tr -d "'" | tr -d '[:space:]')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "name=$NAME"       >> $GITHUB_OUTPUT
           echo "Local: $NAME==$VERSION"
       - name: Compare with PyPI
         run: |
-          PYPI_VERSION=$(curl -sf "https://pypi.org/pypi/${{ steps.local.outputs.name }}/json" | jq -r ".info.version" 2>/dev/null) || PYPI_VERSION="0.0.0"
-          LOCAL_VER="${{ steps.local.outputs.version }}"
+          PYPI_VERSION=$(curl -sf "https://pypi.org/pypi/${{ steps.local.outputs.name }}/json" \
+            | jq -r '.info.version' 2>/dev/null) || PYPI_VERSION="0.0.0"
           echo "PyPI version : $PYPI_VERSION"
-          echo "Local version: $LOCAL_VER"
-          if [ "$(printf "%s\n" "$PYPI_VERSION" "$LOCAL_VER" | sort -V | head -1)" != "$PYPI_VERSION" ] || [ "$LOCAL_VER" = "$PYPI_VERSION" ]; then
-            echo "::error::Local $LOCAL_VER is not newer than PyPI $PYPI_VERSION. Bump the version."
+          echo "Local version: ${{ steps.local.outputs.version }}"
+          LOCAL_VER="${{ steps.local.outputs.version }}"
+          if [ "$(printf '%s\n' "$PYPI_VERSION" "$LOCAL_VER" | sort -V | head -1)" != "$PYPI_VERSION" ] || [ "$LOCAL_VER" = "$PYPI_VERSION" ]; then
+            echo "::error::Local $LOCAL_VER is not newer than PyPI $PYPI_VERSION. Bump the version in pyproject.toml."
             exit 1
           fi
           echo "OK: $LOCAL_VER > $PYPI_VERSION"
@@ -140,7 +141,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git push origin "$BRANCH"
-          echo "Branch: $BRANCH" >> $GITHUB_STEP_SUMMARY
+          echo "## Release Branch" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: \`$BRANCH\`" >> $GITHUB_STEP_SUMMARY
 
   github-release:
     name: Create GitHub Release
@@ -161,5 +163,8 @@ jobs:
           TAG="v${VERSION}-lib"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          gh release create "$TAG" dist/* --title "${{ needs.version-check.outputs.name }} v${VERSION}" --generate-notes
-          echo "PyPI: ${{ needs.version-check.outputs.name }}==${VERSION} | Tag: ${TAG}" >> $GITHUB_STEP_SUMMARY
+          gh release create "$TAG" dist/* \
+            --title "${{ needs.version-check.outputs.name }} v${VERSION}" \
+            --generate-notes
+          echo "## Release Complete" >> $GITHUB_STEP_SUMMARY
+          echo "PyPI: \`${{ needs.version-check.outputs.name }}==${VERSION}\` | Git tag: \`${TAG}\`" >> $GITHUB_STEP_SUMMARY

@@ -160,10 +160,6 @@ resource "databricks_mws_workspaces" "dm" {
   network_id      = databricks_mws_networks.dm.network_id
 
   is_no_public_ip_enabled = true
-
-  token {
-    comment = "Terraform bootstrap token"
-  }
 }
 
 # -----------------------------------------------------------------------
