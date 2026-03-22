@@ -435,11 +435,13 @@ jobs:
         run: databricks bundle run --target hml dm-trigger-dlt-app-logs 2>&1 | tee /tmp/dlt_app_logs.log
       - name: Discover SQL Warehouse ID
         id: warehouse
+        working-directory: ${{ github.workspace }}
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
-          WH_ID=$(databricks warehouses list --output json 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['id'] if d else '')" 2>/dev/null) || WH_ID=""
+          WH_RESP=$(curl -sf -H "Authorization: Bearer ${DATABRICKS_TOKEN}" "${DATABRICKS_HOST}/api/2.0/sql/warehouses" 2>/dev/null) || WH_RESP="{}"
+          WH_ID=$(echo "$WH_RESP" | python3 -c "import sys,json; wh=json.load(sys.stdin).get('warehouses',[]); print(wh[0]['id'] if wh else '')" 2>/dev/null) || WH_ID=""
           if [ -z "$WH_ID" ]; then echo "::error::No SQL Warehouse found in HML workspace."; exit 1; fi
           echo "warehouse_id=$WH_ID" >> $GITHUB_OUTPUT
       - name: Validate Gold MVs
