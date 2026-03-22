@@ -33,6 +33,13 @@ resource "databricks_external_location" "raw" {
   comment         = "External location for raw ingestion data"
 }
 
+resource "databricks_external_location" "databricks" {
+  provider        = databricks.workspace
+  name            = "dm-databricks-location"
+  url             = "s3://${data.terraform_remote_state.s3.outputs.databricks_bucket_name}"
+  credential_name = databricks_storage_credential.lakehouse.id
+  comment         = "External location for Databricks system data and Unity Catalog storage"
+}
 
 # -----------------------------------------------------------------------
 # Unity Catalog — prd catalog (workspace-level)
@@ -42,6 +49,8 @@ resource "databricks_catalog" "prd" {
   name         = "prd"
   comment      = "Production Unity Catalog"
   storage_root = "s3://${data.terraform_remote_state.s3.outputs.databricks_bucket_name}/unity-catalog/prd"
+
+  depends_on = [databricks_external_location.databricks]
 
   lifecycle { prevent_destroy = true }
 }
