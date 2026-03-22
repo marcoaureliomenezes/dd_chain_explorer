@@ -555,7 +555,7 @@ jobs:
           cat /tmp/ci-response.json 2>/dev/null || true
           if [ -n "$FUNC_ERROR" ]; then echo "::error::contracts_ingestion FunctionError: $FUNC_ERROR"; exit 1; fi
           ETH_KEYS=$(cat /tmp/ci-response.json 2>/dev/null \
-            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('etherscan_keys', d.get('body',{}).get('etherscan_keys',0) if isinstance(d.get('body'),dict) else 0))" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); body=d.get('body',{}); body=json.loads(body) if isinstance(body,str) else body; print(d.get('etherscan_keys', body.get('etherscan_keys',0) if isinstance(body,dict) else 0))" \
             2>/dev/null || echo "0")
           if [ "${ETH_KEYS:-0}" -lt 1 ] 2>/dev/null; then
             echo "::error::No Etherscan keys found in SSM."; exit 1
