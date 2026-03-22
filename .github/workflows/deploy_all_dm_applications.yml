@@ -246,10 +246,57 @@ jobs:
           SQS_MINED="${{ needs.all-hml-provision.outputs.sqs_url_mined_blocks }}"
           SQS_TXS="${{ needs.all-hml-provision.outputs.sqs_url_txs_hash_ids }}"
           for SVC in dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder; do
-            aws ecs register-task-definition --cli-input-json "$(jq -n \
-              --arg svc "$SVC" --arg img "$RC_IMAGE" --arg exec "$EXEC_ROLE" --arg task "$TASK_ROLE" \
-              --arg region "$REGION" --arg sqs_mined "$SQS_MINED" --arg sqs_txs "$SQS_TXS" \
-              '{"family":("hml-"+$svc),"networkMode":"awsvpc","requiresCompatibilities":["FARGATE"],"cpu":"256","memory":"512","executionRoleArn":$exec,"taskRoleArn":$task,"containerDefinitions":[{"name":$svc,"image":$img,"essential":true,"environment":[{"name":"DYNAMODB_TABLE","value":"dm-chain-explorer-hml"},{"name":"CLOUDWATCH_LOG_GROUP","value":"/apps/dm-chain-explorer-hml"},{"name":"ENV","value":"hml"},{"name":"JOB_NAME","value":$svc},{"name":"SQS_QUEUE_URL_MINED_BLOCKS","value":$sqs_mined},{"name":"SQS_QUEUE_URL_TXS_HASH_IDS","value":$sqs_txs},{"name":"KINESIS_STREAM_BLOCKS","value":"mainnet-blocks-data-hml"},{"name":"KINESIS_STREAM_TRANSACTIONS","value":"mainnet-transactions-data-hml"},{"name":"KINESIS_STREAM_DECODED","value":"mainnet-transactions-decoded-hml"},{"name":"NETWORK","value":"mainnet"},{"name":"SSM_ETHERSCAN_PATH","value":"/etherscan-api-keys"}],"logConfiguration":{"logDriver":"awslogs","options":{"awslogs-group":"/apps/dm-chain-explorer-hml","awslogs-region":$region,"awslogs-stream-prefix":$svc}}}]}')" \
+            case "$SVC" in
+              dm-mined-blocks-watcher)
+                SCRIPT="1_mined_blocks_watcher.py"
+                EXTRA_ENV='[{"name":"SSM_SECRET_NAME","value":"/web3-api-keys/alchemy/api-key-1"},{"name":"CLOCK_FREQUENCY","value":"1"}]'
+                ;;
+              dm-orphan-blocks-watcher)
+                SCRIPT="2_orphan_blocks_watcher.py"
+                EXTRA_ENV='[{"name":"SSM_SECRET_NAME","value":"/web3-api-keys/alchemy/api-key-2"},{"name":"NUM_CONFIRMATIONS","value":"10"}]'
+                ;;
+              dm-block-data-crawler)
+                SCRIPT="3_block_data_crawler.py"
+                EXTRA_ENV='[{"name":"SSM_SECRET_NAME","value":"/web3-api-keys/alchemy/api-key-2"},{"name":"TXS_PER_BLOCK","value":"50"}]'
+                ;;
+              dm-mined-txs-crawler)
+                SCRIPT="4_mined_txs_crawler.py"
+                EXTRA_ENV='[{"name":"SSM_SECRET_NAMES","value":"/web3-api-keys/infura/api-key-1-17"}]'
+                ;;
+              dm-txs-input-decoder)
+                SCRIPT="5_txs_input_decoder.py"
+                EXTRA_ENV='[]'
+                ;;
+            esac
+            TASK_DEF=$(jq -n \
+              --arg svc    "$SVC" --arg img "$RC_IMAGE" --arg exec "$EXEC_ROLE" --arg task "$TASK_ROLE" \
+              --arg region "$REGION" --arg smined "$SQS_MINED" --arg stxs "$SQS_TXS" --arg script "$SCRIPT" \
+              --argjson extra_env "$EXTRA_ENV" \
+              '{
+                "family": ("hml-" + $svc), "networkMode": "awsvpc",
+                "requiresCompatibilities": ["FARGATE"], "cpu": "256", "memory": "512",
+                "executionRoleArn": $exec, "taskRoleArn": $task,
+                "containerDefinitions": [{
+                  "name": $svc, "image": $img, "essential": true,
+                  "command": ["python", "-u", ("/app/" + $script)],
+                  "environment": ([
+                    {"name":"DYNAMODB_TABLE","value":"dm-chain-explorer-hml"},
+                    {"name":"CLOUDWATCH_LOG_GROUP","value":"/apps/dm-chain-explorer-hml"},
+                    {"name":"ENV","value":"hml"}, {"name":"JOB_NAME","value":$svc},
+                    {"name":"SQS_QUEUE_URL_MINED_BLOCKS","value":$smined},
+                    {"name":"SQS_QUEUE_URL_TXS_HASH_IDS","value":$stxs},
+                    {"name":"KINESIS_STREAM_BLOCKS","value":"mainnet-blocks-data-hml"},
+                    {"name":"KINESIS_STREAM_TRANSACTIONS","value":"mainnet-transactions-data-hml"},
+                    {"name":"KINESIS_STREAM_DECODED","value":"mainnet-transactions-decoded-hml"},
+                    {"name":"NETWORK","value":"mainnet"},
+                    {"name":"SSM_ETHERSCAN_PATH","value":"/etherscan-api-keys"}
+                  ] + $extra_env),
+                  "logConfiguration": {"logDriver":"awslogs","options":{
+                    "awslogs-group":"/apps/dm-chain-explorer-hml","awslogs-region":$region,
+                    "awslogs-stream-prefix":$svc}}
+                }]
+              }')
+            aws ecs register-task-definition --cli-input-json "$TASK_DEF" \
               --query 'taskDefinition.taskDefinitionArn' --output text
             aws ecs run-task \
               --cluster "${{ env.HML_ECS_CLUSTER }}" --task-definition "hml-${SVC}" \
@@ -258,6 +305,26 @@ jobs:
               --count 1 --query 'tasks[0].taskArn' --output text
             echo "Launched: hml-${SVC}"
           done
+
+      - name: Wait for ECS tasks to reach RUNNING state
+        run: |
+          CLUSTER="${{ env.HML_ECS_CLUSTER }}"
+          DEADLINE=$(( $(date +%s) + 180 ))
+          while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+            RUNNING=$(aws ecs list-tasks --cluster "$CLUSTER" --desired-status RUNNING \
+              --query 'length(taskArns)' --output text 2>/dev/null || echo "0")
+            [ "${RUNNING:-0}" -ge 5 ] && echo "All 5 ECS tasks RUNNING" && break
+            STOPPED=$(aws ecs list-tasks --cluster "$CLUSTER" --desired-status STOPPED \
+              --query 'length(taskArns)' --output text 2>/dev/null || echo "0")
+            echo "Running: ${RUNNING}/5, Stopped: ${STOPPED} — waiting 15s..."
+            sleep 15
+          done
+          RUNNING=$(aws ecs list-tasks --cluster "$CLUSTER" --desired-status RUNNING \
+            --query 'length(taskArns)' --output text 2>/dev/null || echo "0")
+          if [ "${RUNNING:-0}" -lt 5 ]; then
+            echo "::error::Only ${RUNNING}/5 ECS tasks reached RUNNING state after 3 minutes"
+            exit 1
+          fi
 
   all-hml-dabs-deploy:
     name: HML — Deploy DABs bundle
@@ -398,8 +465,9 @@ jobs:
           KINESIS_STREAM_DECODED:     mainnet-transactions-decoded-hml
           SQS_QUEUE_MINED_BLOCKS:     mainnet-mined-blocks-events-hml
           SQS_QUEUE_TXS_HASH_IDS:     mainnet-block-txs-hash-id-hml
-          WAIT_PHASE1_SECS:           "180"
-          WAIT_PHASE2_SECS:           "480"
+          HML_ECS_CLUSTER:            ${{ env.HML_ECS_CLUSTER }}
+          WAIT_PHASE1_SECS:           "60"
+          WAIT_PHASE2_SECS:           "120"
         run: |
           if bash scripts/hml_integration_test.sh 2>&1 | tee /tmp/hml_stream_test.txt; then
             echo "test_passed=true" >> $GITHUB_OUTPUT
@@ -479,13 +547,20 @@ jobs:
         id: invoke-ci
         run: |
           FUNC_NAME="${{ needs.all-hml-lambda-deploy.outputs.func_ci }}"
-          INVOKE_META=$(aws lambda invoke --function-name "$FUNC_NAME" --payload '{"dry_run": true}' /tmp/ci-response.json) || INVOKE_META="{}"
-          FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty')
+          INVOKE_META=$(aws lambda invoke --function-name "$FUNC_NAME" \
+            --payload '{"dry_run": true}' \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/ci-response.json 2>&1) || true
+          FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty' 2>/dev/null || echo "")
           cat /tmp/ci-response.json 2>/dev/null || true
           if [ -n "$FUNC_ERROR" ]; then echo "::error::contracts_ingestion FunctionError: $FUNC_ERROR"; exit 1; fi
-          ETH_KEYS=$(cat /tmp/ci-response.json 2>/dev/null | jq -r '.body // "{}"' | jq -r '.etherscan_keys // 0')
-          if [ "$ETH_KEYS" -lt 1 ]; then echo "::error::No Etherscan keys found in SSM."; exit 1; fi
-          echo "contracts_ingestion dry_run: etherscan_keys=$ETH_KEYS ✅"
+          ETH_KEYS=$(cat /tmp/ci-response.json 2>/dev/null \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('etherscan_keys', d.get('body',{}).get('etherscan_keys',0) if isinstance(d.get('body'),dict) else 0))" \
+            2>/dev/null || echo "0")
+          if [ "${ETH_KEYS:-0}" -lt 1 ] 2>/dev/null; then
+            echo "::error::No Etherscan keys found in SSM."; exit 1
+          fi
+          echo "contracts_ingestion dry_run: etherscan_keys=${ETH_KEYS} ✅"
       - name: Invoke gold_to_dynamodb (fixture)
         id: invoke-gld
         run: |
@@ -494,12 +569,17 @@ jobs:
           FIXTURE_KEY="${{ needs.all-hml-lambda-deploy.outputs.fixture_key }}"
           PAYLOAD=$(jq -n --arg bucket "$BUCKET" --arg key "$FIXTURE_KEY" \
             '{Records:[{s3:{bucket:{name:$bucket},object:{key:$key}}}]}')
-          INVOKE_META=$(aws lambda invoke --function-name "$FUNC_NAME" --payload "$PAYLOAD" /tmp/gld-response.json) || true
-          FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty')
+          INVOKE_META=$(aws lambda invoke --function-name "$FUNC_NAME" \
+            --payload "$PAYLOAD" \
+            --cli-binary-format raw-in-base64-out \
+            /tmp/gld-response.json 2>&1) || true
+          FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty' 2>/dev/null || echo "")
           if [ -n "$FUNC_ERROR" ]; then echo "::error::gold_to_dynamodb FunctionError: $FUNC_ERROR"; exit 1; fi
-          RECORDS=$(cat /tmp/gld-response.json 2>/dev/null | jq -r '.records_processed // 0')
-          if [ "$RECORDS" -lt 1 ]; then echo "::error::gold_to_dynamodb: 0 records processed."; exit 1; fi
-          echo "gold_to_dynamodb: $RECORDS record(s) processed ✅"
+          RECORDS=$(cat /tmp/gld-response.json 2>/dev/null | jq -r '.records_processed // 0' 2>/dev/null || echo "0")
+          if [ "${RECORDS:-0}" -lt 1 ] 2>/dev/null; then
+            echo "::error::gold_to_dynamodb: 0 records processed."; exit 1
+          fi
+          echo "gold_to_dynamodb: ${RECORDS} record(s) processed ✅"
       - name: Set overall Lambda test result
         id: run-test
         run: |

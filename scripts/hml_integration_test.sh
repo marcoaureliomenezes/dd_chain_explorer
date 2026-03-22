@@ -37,8 +37,8 @@ SQS_QUEUE_MINED_BLOCKS="${SQS_QUEUE_MINED_BLOCKS:-mainnet-mined-blocks-events-${
 SQS_QUEUE_TXS_HASH_IDS="${SQS_QUEUE_TXS_HASH_IDS:-mainnet-block-txs-hash-id-${ENV}}"
 
 # Timeout (seconds) for each phase
-WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-180}"   # SQS + Kinesis + DynamoDB
-WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-480}"   # Firehose + S3
+WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-60}"   # SQS + Kinesis + DynamoDB
+WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"  # Firehose + S3
 
 POLL_INTERVAL=15   # seconds between retries
 
@@ -107,6 +107,21 @@ log "  HML Integration Test   ENV=${ENV}   REGION=${REGION}"
 log "  S3_BUCKET=${S3_BUCKET}"
 log "  DYNAMODB_TABLE=${DYNAMODB_TABLE}"
 log "══════════════════════════════════════════════════════════════════════"
+
+# =============================================================================
+# Phase 0 — ECS task health check
+# =============================================================================
+if [ -n "${HML_ECS_CLUSTER:-}" ]; then
+  log ""; log "──── Phase 0: ECS task health check ────"; log ""
+  RUNNING=$(aws ecs list-tasks --cluster "$HML_ECS_CLUSTER" --desired-status RUNNING \
+    --query 'length(taskArns)' --output text --region "$REGION" 2>/dev/null || echo "0")
+  if [ "${RUNNING:-0}" -ge 1 ]; then
+    ok "ECS cluster ${HML_ECS_CLUSTER} — ${RUNNING} task(s) RUNNING"
+  else
+    fail "ECS cluster ${HML_ECS_CLUSTER} — 0 tasks RUNNING (containers didn't start)"
+    exit 1
+  fi
+fi
 
 # =============================================================================
 # Phase 1 — SQS + Kinesis + DynamoDB

@@ -52,6 +52,16 @@ for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions
     --region "${REGION}" 2>/dev/null || true
 done
 
+echo "==> Waiting for Kinesis streams to become ACTIVE..."
+for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
+  for i in $(seq 1 24); do
+    STATUS=$(aws kinesis describe-stream-summary --stream-name "${STREAM}-hml" \
+      --query 'StreamDescriptionSummary.StreamStatus' --output text --region "${REGION}" 2>/dev/null || echo "CREATING")
+    if [ "$STATUS" = "ACTIVE" ]; then echo "  ${STREAM}-hml is ACTIVE"; break; fi
+    echo "  ${STREAM}-hml status=${STATUS}, waiting 5s..."; sleep 5
+  done
+done
+
 # ── SQS queues + DLQs ────────────────────────────────────────────────────────
 echo "==> Creating HML SQS queues + DLQs..."
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
@@ -98,6 +108,15 @@ for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions
       --arg stream "${STREAM}" \
       '{DeliveryStreamName:$name,DeliveryStreamType:"KinesisStreamAsSource",KinesisStreamSourceConfiguration:{KinesisStreamARN:$karn,RoleARN:$frole},ExtendedS3DestinationConfiguration:{RoleARN:$frole,BucketARN:$barn,Prefix:("raw/"+$stream+"/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"),ErrorOutputPrefix:("raw/"+$stream+"_errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/"),BufferingHints:{SizeInMBs:1,IntervalInSeconds:60},CompressionFormat:"GZIP"}}')" \
     2>/dev/null || echo "Firehose ${FIREHOSE_NAME} already exists"
+  echo "==> Waiting for Firehose ${FIREHOSE_NAME} to become ACTIVE..."
+  for i in $(seq 1 18); do
+    FH_STATUS=$(aws firehose describe-delivery-stream \
+      --delivery-stream-name "$FIREHOSE_NAME" \
+      --query 'DeliveryStreamDescription.DeliveryStreamStatus' \
+      --output text --region "${REGION}" 2>/dev/null || echo "CREATING")
+    if [ "$FH_STATUS" = "ACTIVE" ]; then echo "  ${FIREHOSE_NAME} is ACTIVE"; break; fi
+    echo "  ${FIREHOSE_NAME} status=${FH_STATUS}, waiting 10s..."; sleep 10
+  done
 done
 
 # ── Ephemeral security group ──────────────────────────────────────────────────
