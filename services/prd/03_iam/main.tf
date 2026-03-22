@@ -40,7 +40,7 @@ data "aws_caller_identity" "current" {}
 # S3 ARNs derived from account ID — works during both apply and destroy
 locals {
   account_id             = data.aws_caller_identity.current.account_id
-  raw_bucket_arn         = "arn:aws:s3:::dm-chain-explorer-raw"
+  raw_bucket_arn         = "arn:aws:s3:::dm-chain-explorer-raw-data"
   lakehouse_bucket_arn   = "arn:aws:s3:::dm-chain-explorer-lakehouse"
   databricks_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-databricks"
 }
