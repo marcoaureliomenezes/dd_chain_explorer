@@ -46,9 +46,10 @@ CLOUDWATCH_LOG_GROUP="${CLOUDWATCH_LOG_GROUP:-/apps/dm-chain-explorer-${ENV}}"
 ECS_SERVICES="dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder"
 
 # Timeout (seconds) for each phase
-WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"      # Phase 1 — CW log events per service
-WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-60}"  # Phases 2-4 — SQS + Kinesis + DynamoDB
-WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}" # Phases 5-6 — Firehose + S3
+WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"       # Phase 1 — CW log events per service
+WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-60}"   # Phases 2, 4 — SQS + DynamoDB
+WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-300}" # Phase 3 — Kinesis (multi-hop chain + CW ingest delay)
+WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"  # Phases 5-6 — Firehose + S3
 
 POLL_INTERVAL=15     # seconds between retries (SQS/Kinesis/DynamoDB/S3)
 LOG_POLL_INTERVAL=10 # seconds between retries (CW log events)
@@ -202,10 +203,10 @@ fail_fast "Phase 2 — SQS"
 # =============================================================================
 # Phase 3 — Kinesis
 # =============================================================================
-log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
+log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
 for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_STREAM_DECODED"; do
   log "⏳ Kinesis ${STREAM} — polling CloudWatch IncomingRecords ..."
-  DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
+  DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
   FOUND=false
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
     VAL=$(cw_sum "AWS/Kinesis" "IncomingRecords" "StreamName" "$STREAM" 300)
@@ -217,7 +218,7 @@ for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_
     log "   → not yet (value=${VAL}), retrying in ${POLL_INTERVAL}s ..."
     sleep "$POLL_INTERVAL"
   done
-  $FOUND || fail "Kinesis ${STREAM} — no IncomingRecords within ${WAIT_PHASE1_SECS}s"
+  $FOUND || fail "Kinesis ${STREAM} — no IncomingRecords within ${WAIT_KINESIS_SECS}s"
 done
 fail_fast "Phase 3 — Kinesis"
 
