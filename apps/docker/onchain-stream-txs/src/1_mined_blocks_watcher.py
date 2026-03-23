@@ -34,9 +34,9 @@ class MinedBlocksWatcher:
       actual_block = self.handler_web3.extract_block_data()
       if actual_block:
         actual_block_number = actual_block.get('number')
-        if actual_block_number == prev_block_number + 1:
+        if actual_block_number > prev_block_number:
           yield actual_block
-      prev_block_number = actual_block_number
+          prev_block_number = actual_block_number
       time.sleep(float(frequency))
       
 

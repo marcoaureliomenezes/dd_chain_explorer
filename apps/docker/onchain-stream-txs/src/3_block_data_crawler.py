@@ -47,6 +47,9 @@ class BlockDataCrawler:
       block_event = json.loads(msg["Body"])
       self.sqs_handler.delete_message(self.sqs_queue_url_mined_blocks, msg["ReceiptHandle"])
       block_data = self.handler_web3.extract_block_data(block_event["block_number"])
+      if not block_data:
+        self.logger.warning(f"Block data unavailable for block {block_event.get('block_number')}; skipping.")
+        continue
       cleaned_data = self.handler_web3.parse_block_data(block_data)
       key = str(cleaned_data['number'])
       # Produce block data to Kinesis (→ Firehose → S3)

@@ -48,6 +48,22 @@ for i in $(seq 1 30); do
   echo "  DynamoDB table status=${DDB_STATUS}, waiting 10s for it to settle..."
   sleep 10
 done
+# If the table exists with the wrong (uppercase PK/SK) key schema from a prior
+# Terraform-managed environment, delete it so we can recreate with the correct
+# lowercase pk/sk schema that the application code expects.
+DDB_HASH_KEY=$(aws dynamodb describe-table --table-name "dm-chain-explorer-hml" \
+  --query 'Table.KeySchema[?KeyType==`HASH`].AttributeName | [0]' \
+  --output text --region "${REGION}" 2>/dev/null || echo "NOT_FOUND")
+if [ "$DDB_HASH_KEY" = "PK" ] || [ "$DDB_HASH_KEY" = "SK" ]; then
+  echo "  Table has uppercase PK/SK schema (legacy Terraform). Deleting to recreate with lowercase pk/sk..."
+  aws dynamodb delete-table --table-name "dm-chain-explorer-hml" --region "${REGION}" 2>/dev/null || true
+  for i in $(seq 1 30); do
+    DDB_STATUS=$(aws dynamodb describe-table --table-name "dm-chain-explorer-hml" \
+      --query 'Table.TableStatus' --output text --region "${REGION}" 2>/dev/null || echo "NOT_FOUND")
+    [ "$DDB_STATUS" = "NOT_FOUND" ] && echo "  Table deleted." && break
+    echo "  Waiting for deletion, status=${DDB_STATUS}..."; sleep 10
+  done
+fi
 aws dynamodb create-table \
   --table-name "dm-chain-explorer-hml" \
   --attribute-definitions \

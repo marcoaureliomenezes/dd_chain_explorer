@@ -46,10 +46,11 @@ CLOUDWATCH_LOG_GROUP="${CLOUDWATCH_LOG_GROUP:-/apps/dm-chain-explorer-${ENV}}"
 ECS_SERVICES="dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder"
 
 # Timeout (seconds) for each phase
-WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"       # Phase 1 — CW log events per service
-WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-60}"   # Phases 2, 4 — SQS + DynamoDB
-WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-300}" # Phase 3 — Kinesis (multi-hop chain + CW ingest delay)
-WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"  # Phases 5-6 — Firehose + S3
+WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"        # Phase 1 — CW log events per service
+WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-120}"   # Phase 2 — SQS (anchored to SCRIPT_START; CloudWatch may lag 1-2 min)
+WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-300}"  # Phase 3 — Kinesis (multi-hop chain + CW ingest delay)
+WAIT_DYNAMODB_SECS="${WAIT_DYNAMODB_SECS:-120}" # Phase 4 — DynamoDB
+WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"   # Phases 5-6 — Firehose + S3
 
 POLL_INTERVAL=15     # seconds between retries (SQS/Kinesis/DynamoDB/S3)
 LOG_POLL_INTERVAL=10 # seconds between retries (CW log events)
@@ -202,6 +203,8 @@ fail_fast "Phase 1 — ECS container logs"
 
 # =============================================================================
 # Phase 2 — SQS
+# Uses SCRIPT_START as the lower bound so that messages sent by a previous CI
+# run sharing the same queue names do not cause false-positives.
 # =============================================================================
 log ""; log "──── Phase 2: SQS  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
 for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
@@ -209,7 +212,7 @@ for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
   DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
   FOUND=false
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    VAL=$(cw_sum "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" 300)
+    VAL=$(cw_sum_since "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" "$SCRIPT_START")
     if is_positive "$VAL" 2>/dev/null; then
       ok "SQS ${QUEUE} — NumberOfMessagesSent=$(printf '%.0f' "$VAL")"
       FOUND=true
@@ -249,9 +252,9 @@ fail_fast "Phase 3 — Kinesis"
 # =============================================================================
 # Phase 4 — DynamoDB
 # =============================================================================
-log ""; log "──── Phase 4: DynamoDB  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
+log ""; log "──── Phase 4: DynamoDB  (timeout=${WAIT_DYNAMODB_SECS}s) ────"; log ""
 log "⏳ DynamoDB ${DYNAMODB_TABLE} — polling for items ..."
-DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
+DEADLINE=$(( $(date +%s) + WAIT_DYNAMODB_SECS ))
 FOUND=false
 while [ "$(date +%s)" -lt "$DEADLINE" ]; do
   COUNT=$(aws dynamodb scan \
@@ -269,7 +272,7 @@ while [ "$(date +%s)" -lt "$DEADLINE" ]; do
   log "   → not yet (Count=${COUNT}), retrying in ${POLL_INTERVAL}s ..."
   sleep "$POLL_INTERVAL"
 done
-$FOUND || fail "DynamoDB ${DYNAMODB_TABLE} — no items within ${WAIT_PHASE1_SECS}s"
+$FOUND || fail "DynamoDB ${DYNAMODB_TABLE} — no items within ${WAIT_DYNAMODB_SECS}s"
 fail_fast "Phase 4 — DynamoDB"
 
 # =============================================================================
