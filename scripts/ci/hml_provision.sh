@@ -40,6 +40,14 @@ aws logs create-log-group \
 
 # ── DynamoDB table ─────────────────────────────────────────────────────────────
 echo "==> Creating HML DynamoDB table..."
+# If a previous run left the table in DELETING state, wait for it to disappear first
+for i in $(seq 1 30); do
+  DDB_STATUS=$(aws dynamodb describe-table --table-name "dm-chain-explorer-hml" \
+    --query 'Table.TableStatus' --output text --region "${REGION}" 2>/dev/null || echo "NOT_FOUND")
+  if [ "$DDB_STATUS" = "NOT_FOUND" ] || [ "$DDB_STATUS" = "ACTIVE" ]; then break; fi
+  echo "  DynamoDB table status=${DDB_STATUS}, waiting 10s for it to settle..."
+  sleep 10
+done
 aws dynamodb create-table \
   --table-name "dm-chain-explorer-hml" \
   --attribute-definitions \
@@ -56,7 +64,12 @@ aws dynamodb update-time-to-live \
   --time-to-live-specification "Enabled=true,AttributeName=ttl" \
   --region "${REGION}" 2>/dev/null || true
 echo "==> Waiting for DynamoDB table to become ACTIVE..."
-aws dynamodb wait table-exists --table-name "dm-chain-explorer-hml" --region "${REGION}" 2>/dev/null
+for i in $(seq 1 30); do
+  DDB_STATUS=$(aws dynamodb describe-table --table-name "dm-chain-explorer-hml" \
+    --query 'Table.TableStatus' --output text --region "${REGION}" 2>/dev/null || echo "NOT_FOUND")
+  if [ "$DDB_STATUS" = "ACTIVE" ]; then echo "  dm-chain-explorer-hml is ACTIVE"; break; fi
+  echo "  status=${DDB_STATUS}, waiting 5s..."; sleep 5
+done
 
 # ── Kinesis streams ───────────────────────────────────────────────────────────
 echo "==> Creating HML Kinesis streams..."
