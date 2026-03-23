@@ -203,25 +203,48 @@ fail_fast "Phase 1 — ECS container logs"
 
 # =============================================================================
 # Phase 2 — SQS
-# Uses SCRIPT_START as the lower bound so that messages sent by a previous CI
-# run sharing the same queue names do not cause false-positives.
+# Two-path check to handle CloudWatch SQS metric lag (~5 min granularity):
+#   Fast path : SQS API ApproximateNumberOfMessages + ApproximateNumberOfMessagesNotVisible
+#               (near-realtime — catches messages in queue or in-flight)
+#   Slow path : CloudWatch NumberOfMessagesSent anchored to SCRIPT_START
+#               (may lag 5-15 min; WAIT_PHASE1_SECS should be ≥ 360 for this to work)
 # =============================================================================
 log ""; log "──── Phase 2: SQS  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
 for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
-  log "⏳ SQS ${QUEUE} — polling CloudWatch NumberOfMessagesSent ..."
+  log "⏳ SQS ${QUEUE} — polling queue attributes + CloudWatch NumberOfMessagesSent ..."
   DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
   FOUND=false
+  SQS_URL=$(aws sqs get-queue-url --queue-name "$QUEUE" --region "$REGION" \
+    --query 'QueueUrl' --output text 2>/dev/null || echo "")
+  VISIBLE="0"; INFLIGHT="0"; CW_VAL="None"
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    VAL=$(cw_sum_since "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" "$SCRIPT_START")
-    if is_positive "$VAL" 2>/dev/null; then
-      ok "SQS ${QUEUE} — NumberOfMessagesSent=$(printf '%.0f' "$VAL")"
+    # Fast path: SQS API attributes (near-realtime, no CloudWatch lag)
+    if [ -n "$SQS_URL" ]; then
+      VISIBLE=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" \
+        --attribute-names ApproximateNumberOfMessages \
+        --region "$REGION" \
+        --query 'Attributes.ApproximateNumberOfMessages' --output text 2>/dev/null || echo "0")
+      INFLIGHT=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" \
+        --attribute-names ApproximateNumberOfMessagesNotVisible \
+        --region "$REGION" \
+        --query 'Attributes.ApproximateNumberOfMessagesNotVisible' --output text 2>/dev/null || echo "0")
+      if [ "$(( ${VISIBLE:-0} + ${INFLIGHT:-0} ))" -gt 0 ] 2>/dev/null; then
+        ok "SQS ${QUEUE} — active traffic (visible=${VISIBLE}, in-flight=${INFLIGHT})"
+        FOUND=true
+        break
+      fi
+    fi
+    # Slow path: CloudWatch metric (5-min granularity; used as reliable historical confirmation)
+    CW_VAL=$(cw_sum_since "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" "$SCRIPT_START")
+    if is_positive "$CW_VAL" 2>/dev/null; then
+      ok "SQS ${QUEUE} — NumberOfMessagesSent=$(printf '%.0f' "$CW_VAL")"
       FOUND=true
       break
     fi
-    log "   → not yet (value=${VAL}), retrying in ${POLL_INTERVAL}s ..."
+    log "   → not yet (visible=${VISIBLE}, in-flight=${INFLIGHT}, cw=${CW_VAL}), retrying in ${POLL_INTERVAL}s ..."
     sleep "$POLL_INTERVAL"
   done
-  $FOUND || fail "SQS ${QUEUE} — no messages sent within ${WAIT_PHASE1_SECS}s"
+  $FOUND || fail "SQS ${QUEUE} — no messages detected within ${WAIT_PHASE1_SECS}s"
 done
 fail_fast "Phase 2 — SQS"
 
