@@ -38,6 +38,26 @@ aws logs create-log-group \
   --log-group-name "/apps/dm-chain-explorer-hml" \
   --region "${REGION}" 2>/dev/null || echo "Log group /apps/dm-chain-explorer-hml already exists"
 
+# ── DynamoDB table ─────────────────────────────────────────────────────────────
+echo "==> Creating HML DynamoDB table..."
+aws dynamodb create-table \
+  --table-name "dm-chain-explorer-hml" \
+  --attribute-definitions \
+    AttributeName=pk,AttributeType=S \
+    AttributeName=sk,AttributeType=S \
+  --key-schema \
+    AttributeName=pk,KeyType=HASH \
+    AttributeName=sk,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST \
+  --sse-specification Enabled=true,SSEType=AES256 \
+  --region "${REGION}" 2>/dev/null || echo "DynamoDB table dm-chain-explorer-hml already exists"
+aws dynamodb update-time-to-live \
+  --table-name "dm-chain-explorer-hml" \
+  --time-to-live-specification "Enabled=true,AttributeName=ttl" \
+  --region "${REGION}" 2>/dev/null || true
+echo "==> Waiting for DynamoDB table to become ACTIVE..."
+aws dynamodb wait table-exists --table-name "dm-chain-explorer-hml" --region "${REGION}" 2>/dev/null
+
 # ── Kinesis streams ───────────────────────────────────────────────────────────
 echo "==> Creating HML Kinesis streams..."
 for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do

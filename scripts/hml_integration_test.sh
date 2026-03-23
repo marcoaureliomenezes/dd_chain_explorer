@@ -93,6 +93,28 @@ cw_sum() {
     --output text 2>/dev/null || echo "None"
 }
 
+# cw_sum_since <namespace> <metric> <dim_name> <dim_value> <epoch_start>
+# Returns the SUM of a CloudWatch metric from a fixed epoch timestamp to now.
+# Used to prevent false-positives from carry-over data of previous CI runs.
+cw_sum_since() {
+  local ns="$1" metric="$2" dn="$3" dv="$4" epoch_start="$5"
+  local end; end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local start; start=$(date -u -d "@${epoch_start}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -r "${epoch_start}" +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
+  local win; win=$(( $(date +%s) - epoch_start + 1 ))
+  aws cloudwatch get-metric-statistics \
+    --region    "$REGION"  \
+    --namespace "$ns"      \
+    --metric-name "$metric" \
+    --dimensions "Name=${dn},Value=${dv}" \
+    --start-time "$start"  \
+    --end-time   "$end"    \
+    --period     "$win"    \
+    --statistics Sum       \
+    --query 'Datapoints[0].Sum' \
+    --output text 2>/dev/null || echo "None"
+}
+
 # is_positive <value> — returns 0 if value is a number > 0
 is_positive() {
   local v="$1"
@@ -202,6 +224,8 @@ fail_fast "Phase 2 — SQS"
 
 # =============================================================================
 # Phase 3 — Kinesis
+# Uses SCRIPT_START as the lower bound of the CW query window so that data from
+# previous CI runs sharing the same stream names do not cause false-positives.
 # =============================================================================
 log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
 for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_STREAM_DECODED"; do
@@ -209,7 +233,7 @@ for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_
   DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
   FOUND=false
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    VAL=$(cw_sum "AWS/Kinesis" "IncomingRecords" "StreamName" "$STREAM" 300)
+    VAL=$(cw_sum_since "AWS/Kinesis" "IncomingRecords" "StreamName" "$STREAM" "$SCRIPT_START")
     if is_positive "$VAL" 2>/dev/null; then
       ok "Kinesis ${STREAM} — IncomingRecords=$(printf '%.0f' "$VAL")"
       FOUND=true

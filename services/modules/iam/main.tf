@@ -85,7 +85,11 @@ resource "aws_iam_role_policy" "ecs_task" {
         Sid    = "SSMParameterStore"
         Effect = "Allow"
         Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-        Resource = ["arn:aws:ssm:*:*:parameter/web3-api-keys/*", "arn:aws:ssm:*:*:parameter/etherscan-api-keys/*"]
+        Resource = [
+          "arn:aws:ssm:*:*:parameter/web3-api-keys/*",
+          "arn:aws:ssm:*:*:parameter/etherscan-api-keys",
+          "arn:aws:ssm:*:*:parameter/etherscan-api-keys/*",
+        ]
       },
       {
         Sid    = "SecretsManagerAccess"
@@ -223,6 +227,7 @@ resource "aws_iam_role_policy" "databricks_cluster" {
         Effect = "Allow"
         Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
         Resource = [
+          "arn:aws:ssm:${var.region}:${var.account_id}:parameter/etherscan-api-keys",
           "arn:aws:ssm:${var.region}:${var.account_id}:parameter/etherscan-api-keys/*",
           "arn:aws:ssm:${var.region}:${var.account_id}:parameter/web3-api-keys/*",
         ]

@@ -242,6 +242,7 @@ jobs:
           WAIT_PHASE1_SECS: "180"
           WAIT_PHASE2_SECS: "480"
         run: |
+          set -o pipefail
           if bash scripts/hml_integration_test.sh 2>&1 | tee /tmp/hml_test_output.txt; then
             echo "test_passed=true" >> $GITHUB_OUTPUT
             echo "✅ HML integration test PASSED" >> $GITHUB_STEP_SUMMARY

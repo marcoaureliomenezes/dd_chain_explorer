@@ -472,6 +472,7 @@ jobs:
           WAIT_PHASE2_SECS:           "120"
           CLOUDWATCH_LOG_GROUP:       "/apps/dm-chain-explorer-hml"
         run: |
+          set -o pipefail
           if bash scripts/hml_integration_test.sh 2>&1 | tee /tmp/hml_stream_test.txt; then
             echo "test_passed=true" >> $GITHUB_OUTPUT
             echo "✅ HML streaming integration test PASSED" >> $GITHUB_STEP_SUMMARY
