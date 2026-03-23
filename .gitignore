@@ -67,3 +67,6 @@ services/prd/compose/conf/prd.secrets.conf
 # Airflow runtime config — varia por ambiente e contém credenciais de BD
 mnt/airflow/airflow.cfg
 dabs/.databricks/
+# Terraform plan files
+tfplan
+*.tfplan
