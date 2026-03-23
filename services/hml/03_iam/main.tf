@@ -31,16 +31,12 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
-data "terraform_remote_state" "peripherals" {
-  backend = "s3"
-  config = {
-    bucket = "dm-chain-explorer-terraform-state"
-    key    = "hml/peripherals/terraform.tfstate"
-    region = "sa-east-1"
-  }
-}
-
 locals {
+  # S3 bucket ARNs — hardcoded to avoid remote-state dependency during destroy
+  raw_bucket_arn        = "arn:aws:s3:::dm-chain-explorer-hml-raw"
+  lakehouse_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-hml-lakehouse"
+  databricks_bucket_arn = "arn:aws:s3:::dm-chain-explorer-hml-databricks"
+
   common_tags = {
     "owner"       = "marco-menezes"
     "managed-by"  = "terraform"
@@ -62,13 +58,13 @@ module "iam" {
   kinesis_stream_suffix = "hml"
   sqs_queue_suffix      = "hml"
   dynamodb_table_name   = var.dynamodb_table_name
-  raw_bucket_arn        = data.terraform_remote_state.peripherals.outputs.raw_bucket_arn
-  lakehouse_bucket_arn  = data.terraform_remote_state.peripherals.outputs.lakehouse_bucket_arn
+  raw_bucket_arn        = local.raw_bucket_arn
+  lakehouse_bucket_arn  = local.lakehouse_bucket_arn
 
   create_databricks_roles = true
   databricks_account_id   = var.databricks_account_id
   databricks_account_uuid = var.databricks_account_uuid
-  databricks_bucket_arn   = data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn
+  databricks_bucket_arn   = local.databricks_bucket_arn
 }
 
 # Firehose role (HML-specific — não está no módulo iam genérico)
@@ -108,8 +104,8 @@ resource "aws_iam_role_policy" "firehose_s3" {
           "s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:PutObject",
         ]
         Resource = [
-          data.terraform_remote_state.peripherals.outputs.raw_bucket_arn,
-          "${data.terraform_remote_state.peripherals.outputs.raw_bucket_arn}/*",
+          local.raw_bucket_arn,
+          "${local.raw_bucket_arn}/*",
         ]
       },
       {
