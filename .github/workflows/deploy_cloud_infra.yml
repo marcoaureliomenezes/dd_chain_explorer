@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - DEV (Cloud AWS)
+          - hml
           - prd
       force_apply:
         description: 'Force apply / skip version tag check (PRD only)'
@@ -33,6 +34,7 @@ env:
   AWS_REGION:      sa-east-1
   TF_VERSION:      1.7.0
   PRD_ROOT:        services/prd
+  HML_ROOT:        services/hml
   DEV_PERIPHERALS: services/dev/01_peripherals
   DEV_LAMBDA:      services/dev/02_lambda
 
@@ -515,3 +517,141 @@ jobs:
             git push origin "$TAG"
             echo "## Tag created: \`$TAG\` on master" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # ══════════════════════════════════════════════════════════════
+  #  HML — Layer 1: VPC + Peripherals (parallel, both need branch-guard)
+  # ══════════════════════════════════════════════════════════════
+
+  hml-deploy-vpc:
+    name: HML — Deploy VPC
+    needs: branch-guard
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - name: Terraform Plan
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/VPC
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+      - if: always()
+        run: echo "HML/02_vpc applied — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  hml-deploy-peripherals:
+    name: HML — Deploy Peripherals
+    needs: branch-guard
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - name: Terraform Plan
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/Peripherals
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+      - if: always()
+        run: echo "HML/04_peripherals applied — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # ── HML Layer 2: IAM (depends on VPC + Peripherals) ──────────
+
+  hml-deploy-iam:
+    name: HML — Deploy IAM
+    needs: [hml-deploy-vpc, hml-deploy-peripherals]
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - name: Terraform Plan
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/IAM
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+      - if: always()
+        run: echo "HML/03_iam applied — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  # ── HML Layer 3: ECS cluster + ECR (depends on IAM) ──────────
+
+  hml-deploy-ecs:
+    name: HML — Deploy ECS + ECR
+    needs: hml-deploy-iam
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/07_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - name: Terraform Plan
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/ECS
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+      - if: always()
+        run: echo "HML/07_ecs applied — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

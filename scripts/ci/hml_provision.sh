@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Creates the ephemeral HML environment for streaming integration tests:
-#   - ECS cluster
-#   - Security group
+# Creates the ephemeral per-run HML resources for streaming integration tests:
+#   - Security group (unique per CI run)
 #
-# Persistent resources (Kinesis, SQS, Firehose, DynamoDB, CloudWatch, S3) are
-# managed by Terraform (services/hml/04_peripherals) and always present.
+# Persistent resources (ECS cluster, ECR, Kinesis, SQS, Firehose, DynamoDB,
+# CloudWatch, S3, VPC, IAM) are ALL Terraform-managed (services/hml/).
+# Run 'Deploy Infra Cloud' (hml) once before using this workflow.
+# Kinesis is re-created by all-hml-infra-apply at the start of each pipeline run.
 #
 # Workflow-level env vars used directly (auto-available on runner):
-#   HML_ECS_CLUSTER — e.g. dm-hml-ecs
+#   HML_ECS_CLUSTER — e.g. dm-chain-explorer-ecs-hml
 #   AWS_REGION      — e.g. sa-east-1
 #
 # Required env vars (must be set in workflow step env:):
@@ -23,15 +24,6 @@
 set -euo pipefail
 
 REGION="${AWS_REGION}"
-
-# ── ECS cluster ───────────────────────────────────────────────────────────────
-echo "==> Creating HML ECS cluster..."
-aws ecs create-cluster \
-  --cluster-name "${HML_ECS_CLUSTER}" \
-  --capacity-providers FARGATE \
-  --default-capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
-  --tags key=Environment,value=hml key=ManagedBy,value=cicd \
-  --region "${REGION}" 2>/dev/null || echo "Cluster already exists"
 
 # ── Retrieve SQS queue URLs (Terraform-managed, always present) ───────────────
 echo "==> Retrieving HML SQS queue URLs..."

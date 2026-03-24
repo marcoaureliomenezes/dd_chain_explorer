@@ -148,7 +148,7 @@ jobs:
     name: HML — Destroy 05_databricks
     needs: hml-empty-s3
     runs-on: ubuntu-latest
-    environment: dev
+    environment: hml
     defaults:
       run:
         working-directory: ${{ env.HML_ROOT }}/05_databricks
@@ -175,7 +175,7 @@ jobs:
     name: HML — Destroy 07_ecs
     needs: hml-empty-s3
     runs-on: ubuntu-latest
-    environment: dev
+    environment: hml
     defaults:
       run:
         working-directory: ${{ env.HML_ROOT }}/07_ecs
@@ -200,7 +200,7 @@ jobs:
     name: HML — Destroy 04_peripherals
     needs: [hml-destroy-databricks, hml-destroy-ecs]
     runs-on: ubuntu-latest
-    environment: dev
+    environment: hml
     defaults:
       run:
         working-directory: ${{ env.HML_ROOT }}/04_peripherals
@@ -225,7 +225,7 @@ jobs:
     name: HML — Destroy 03_iam
     needs: hml-destroy-peripherals
     runs-on: ubuntu-latest
-    environment: dev
+    environment: hml
     defaults:
       run:
         working-directory: ${{ env.HML_ROOT }}/03_iam
@@ -250,7 +250,7 @@ jobs:
     name: HML — Destroy 02_vpc
     needs: hml-destroy-iam
     runs-on: ubuntu-latest
-    environment: dev
+    environment: hml
     defaults:
       run:
         working-directory: ${{ env.HML_ROOT }}/02_vpc

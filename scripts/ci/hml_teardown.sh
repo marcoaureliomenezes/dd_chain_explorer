@@ -37,10 +37,9 @@ for FAMILY in hml-dm-mined-blocks-watcher hml-dm-orphan-blocks-watcher \
   done
 done
 
-# ── Delete ECS cluster + security group ───────────────────────────────────────
-echo "==> Deleting HML ECS cluster..."
-aws ecs delete-cluster --cluster "${HML_ECS_CLUSTER}" 2>/dev/null || true
-
+# ── Delete security group ─────────────────────────────────────────────────────
+# ECS cluster is Terraform-managed (services/hml/07_ecs) — NOT deleted here.
+# Kinesis is destroyed by the Terraform targeted-destroy step in the workflow.
 if [ -n "${HML_SG_ID:-}" ]; then
   echo "==> Deleting HML security group ${HML_SG_ID} (waiting 20s for tasks to stop)..."
   sleep 20
