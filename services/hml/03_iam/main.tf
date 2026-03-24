@@ -197,7 +197,7 @@ resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
       {
         Effect   = "Allow"
         Action   = ["s3:GetObject"]
-        Resource = "${local.lakehouse_bucket_arn}/exports/*"
+        Resource = "${local.databricks_bucket_arn}/exports/*"
       },
       {
         Effect   = "Allow"
