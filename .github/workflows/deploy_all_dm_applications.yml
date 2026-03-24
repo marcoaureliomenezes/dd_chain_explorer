@@ -1,7 +1,7 @@
 name: Deploy All DM Applications
 
 # Deploys all three application types in a single coordinated pipeline:
-#   1. CHECK    — version + infra prerequisites (parallel)
+#   1. CHECK    — version only (PRD infra check deferred until after HML tests pass)
 #   2. BUILD    — Docker RC image + Lambda artifacts + DABs bundle validate (parallel)
 #   3. HML DEPLOY (sequential)
 #        a. Provision ephemeral HML environment (ECS cluster, Kinesis, SQS, Firehose, DynamoDB, SG)
@@ -10,7 +10,8 @@ name: Deploy All DM Applications
 #        d. Deploy ephemeral Lambda functions for HML testing
 #   4. HML TEST  — streaming + DABs + Lambda (parallel, all after HML deploy)
 #   5. HML TEARDOWN (always)
-#   6. PRD DEPLOY (sequential, approval gate on first job)
+#   6. CHECK PRD INFRA — only runs if all HML tests passed (avoids touching PRD infra on failed HML)
+#   7. PRD DEPLOY (sequential, approval gate on first job)
 #        a. Streaming — promote RC → release, update ECS task definitions, wait stabilize
 #        b. DABs      — bundle deploy --target prod
 #        c. Lambda    — Terraform init + apply
@@ -53,7 +54,7 @@ jobs:
           echo "Branch check passed: ${GITHUB_REF}"
 
   # ══════════════════════════════════════════════════════════════════════════
-  #  CHECK PHASE — parallel
+  #  CHECK PHASE — version only
   # ══════════════════════════════════════════════════════════════════════════
 
   all-check-version:
@@ -80,38 +81,13 @@ jobs:
             echo "Version ${EXPECTED_TAG} is new — OK."
           done
 
-  all-check-infra:
-    name: Check — PRD infra prerequisites (all apps)
-    needs: branch-guard
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - name: Check streaming prerequisites (ECS cluster + ECR repo)
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
-        env:
-          APP_TYPE: streaming-apps
-      - name: Check DABs prerequisites (Databricks workspace reachable)
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
-        env:
-          APP_TYPE:             databricks-dabs
-          DATABRICKS_PROD_HOST: ${{ secrets.DATABRICKS_PROD_HOST }}
-      - name: Check Lambda prerequisites (IAM role + DynamoDB TF state)
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
-        env:
-          APP_TYPE: lambda-functions
-
   # ══════════════════════════════════════════════════════════════════════════
   #  BUILD PHASE — parallel
   # ══════════════════════════════════════════════════════════════════════════
 
   all-stream-build-rc:
     name: Stream — Build & push RC image
-    needs: [all-check-version, all-check-infra]
+    needs: [all-check-version]
     runs-on: ubuntu-latest
     outputs:
       rc_tag:       ${{ steps.meta.outputs.rc_tag }}
@@ -147,7 +123,7 @@ jobs:
 
   all-lambda-build-artifacts:
     name: Lambda — Build artifacts
-    needs: [all-check-version, all-check-infra]
+    needs: [all-check-version]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -179,7 +155,7 @@ jobs:
 
   all-dabs-validate:
     name: DABs — Validate bundle
-    needs: [all-check-version, all-check-infra]
+    needs: [all-check-version]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -468,7 +444,7 @@ jobs:
           SQS_QUEUE_TXS_HASH_IDS:     mainnet-block-txs-hash-id-hml
           HML_ECS_CLUSTER:            ${{ env.HML_ECS_CLUSTER }}
           WAIT_PHASE1_SECS:           "360"  # SQS: 6 min — CW SQS metrics lag up to 5 min; fast-path SQS API also available
-          WAIT_KINESIS_SECS:           "300"
+          WAIT_KINESIS_SECS:           "420"  # CW IncomingRecords lag ~5 min; 420s = lag + ECS startup buffer
           WAIT_PHASE2_SECS:           "120"
           CLOUDWATCH_LOG_GROUP:       "/apps/dm-chain-explorer-hml"
         run: |
@@ -495,6 +471,28 @@ jobs:
         working-directory: ${{ env.DABS_PATH }}
     steps:
       - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Verify raw data exists in S3 before triggering DLT
+        working-directory: ${{ github.workspace }}
+        run: |
+          # DLT pipelines need raw/ data to produce non-empty Gold MVs.
+          # If Firehose hasn't delivered yet, DLT succeeds but all row_counts = 0.
+          # Root cause identified: Firehose buffer (60s/1MB) may not have flushed
+          # when DLT trigger fires immediately after streaming test passes.
+          RAW_COUNT=$(aws s3 ls s3://dm-chain-explorer-hml-lakehouse/raw/ \
+            --recursive --region "${{ env.AWS_REGION }}" 2>/dev/null | wc -l || echo "0")
+          echo "Raw files found in S3: ${RAW_COUNT}"
+          if [ "${RAW_COUNT:-0}" -eq 0 ]; then
+            echo "::error::No raw data in s3://dm-chain-explorer-hml-lakehouse/raw/ — Firehose may not have delivered yet."
+            echo "DLT cannot produce non-empty Gold MVs without upstream raw data."
+            echo "Check Firehose delivery stream status and S3 bucket."
+            exit 1
+          fi
+          echo "✅ Raw data pre-condition satisfied: ${RAW_COUNT} file(s) in raw/" >> $GITHUB_STEP_SUMMARY
       - uses: databricks/setup-cli@v0.218.0
       - name: Trigger pipeline_ethereum DLT
         env:
@@ -638,6 +636,43 @@ jobs:
               --key '{"pk":{"S":"CONSUMPTION"},"sk":{"S":"hml-test#test-key-001"}}' 2>/dev/null || true
 
   # ══════════════════════════════════════════════════════════════════════════
+  #  CHECK PRD INFRA — runs only after HML tests pass
+  # ══════════════════════════════════════════════════════════════════════════
+
+  all-check-infra:
+    name: Check — PRD infra prerequisites (all apps)
+    needs:
+      - all-hml-test-streaming
+      - all-hml-test-dabs
+      - all-hml-test-lambda
+      - all-hml-teardown
+    if: |
+      needs.all-hml-test-streaming.outputs.test_passed == 'true' &&
+      needs.all-hml-test-dabs.result == 'success' &&
+      needs.all-hml-test-lambda.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Check streaming prerequisites (ECS cluster + ECR repo)
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
+        env:
+          APP_TYPE: streaming-apps
+      - name: Check DABs prerequisites (Databricks workspace reachable)
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
+        env:
+          APP_TYPE:             databricks-dabs
+          DATABRICKS_PROD_HOST: ${{ secrets.DATABRICKS_PROD_HOST }}
+      - name: Check Lambda prerequisites (IAM role + DynamoDB TF state)
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
+        env:
+          APP_TYPE: lambda-functions
+
+  # ══════════════════════════════════════════════════════════════════════════
   #  PRD DEPLOY PHASE — sequential, approval gate on first job
   # ══════════════════════════════════════════════════════════════════════════
 
@@ -645,6 +680,7 @@ jobs:
     name: PRD — Deploy Streaming (ECS)
     needs:
       - all-check-version
+      - all-check-infra
       - all-stream-build-rc
       - all-hml-test-streaming
       - all-hml-test-dabs
@@ -652,7 +688,8 @@ jobs:
     if: |
       needs.all-hml-test-streaming.outputs.test_passed == 'true' &&
       needs.all-hml-test-dabs.result == 'success' &&
-      needs.all-hml-test-lambda.result == 'success'
+      needs.all-hml-test-lambda.result == 'success' &&
+      needs.all-check-infra.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     steps:

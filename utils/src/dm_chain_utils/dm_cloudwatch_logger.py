@@ -20,6 +20,13 @@ Batching:
     reaches ``batch_size`` or when ``flush_interval`` seconds have elapsed
     since the last flush — whichever comes first.  ``emit()`` is
     non-blocking unless the buffer is full.
+
+Log format:
+    Each log event message is a JSON object with the fields:
+        timestamp, logger, level, filename, function_name, message
+    This allows the Databricks DLT pipeline (5_pipeline_app_logs.py) to
+    parse the ``logger`` field for Silver-layer filtering and the ``message``
+    field for Gold-layer API key consumption aggregation.
 """
 
 import json
@@ -31,6 +38,28 @@ from typing import List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
+
+
+class _JsonFormatter(logging.Formatter):
+    """Formats log records as a single-line JSON string.
+
+    Produces the schema expected by the DLT pipeline ``5_pipeline_app_logs.py``:
+        {"timestamp": <epoch_ms>, "logger": <name>, "level": <levelname>,
+         "filename": <filename>, "function_name": <funcName>, "message": <msg>}
+    """
+
+    def format(self, record: logging.LogRecord) -> str:
+        return json.dumps(
+            {
+                "timestamp": int(record.created * 1000),
+                "logger": record.name,
+                "level": record.levelname,
+                "filename": record.filename,
+                "function_name": record.funcName,
+                "message": record.getMessage(),
+            },
+            ensure_ascii=False,
+        )
 
 
 class CloudWatchLoggingHandler(logging.Handler):
@@ -67,6 +96,9 @@ class CloudWatchLoggingHandler(logging.Handler):
         self.log_stream = log_stream
         self.batch_size = batch_size
         self.flush_interval = flush_interval
+
+        # Use JSON formatter by default so the DLT pipeline can parse structured fields
+        self.setFormatter(_JsonFormatter())
 
         self._client = boto3.client("logs", region_name=region)
         self._buffer: List[dict] = []

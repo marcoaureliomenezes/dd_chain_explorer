@@ -25,10 +25,9 @@ resources:
       continuous: ${var.dlt_continuous}
       channel: CURRENT
 
-      trigger:
+      schedule:
         # Executa a cada 30 min em PROD (despausar após validação)
         # Em DEV, acionar manualmente via: make dabs_run_dev JOB=dm-ethereum
-        cron:
-          quartz_cron_expression: "0 0/30 * * * ?"
-          timezone_id: "America/Sao_Paulo"
-          pause_status: PAUSED
+        quartz_cron_expression: "0 0/30 * * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED

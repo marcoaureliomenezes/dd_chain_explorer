@@ -48,7 +48,7 @@ ECS_SERVICES="dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-cra
 # Timeout (seconds) for each phase
 WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"        # Phase 1 — CW log events per service
 WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-120}"   # Phase 2 — SQS (anchored to SCRIPT_START; CloudWatch may lag 1-2 min)
-WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-300}"  # Phase 3 — Kinesis (multi-hop chain + CW ingest delay)
+WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-420}"  # Phase 3 — Kinesis (CW IncomingRecords lag ~5 min; 420s = lag + startup buffer)
 WAIT_DYNAMODB_SECS="${WAIT_DYNAMODB_SECS:-120}" # Phase 4 — DynamoDB
 WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"   # Phases 5-6 — Firehose + S3
 

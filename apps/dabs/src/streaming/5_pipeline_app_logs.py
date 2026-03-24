@@ -141,7 +141,12 @@ def _auto_loader_cwlogs(stream_name: str):
         .withColumn("_parsed", F.from_json("raw_message", "timestamp LONG, logger STRING, level STRING, filename STRING, function_name STRING, message STRING"))
         .select(
             F.col("timestamp"),
-            F.coalesce(F.col("_parsed.logger"),  F.col("log_stream")).alias("logger"),
+            # Fallback: strip proc-id suffix (e.g. "raw_txs_crawler-job-19dde43e" → "RAW_TXS_CRAWLER")
+            # so the Silver filter matches STREAMING_APP_NAMES regardless of log format (plain/JSON).
+            F.coalesce(
+                F.col("_parsed.logger"),
+                F.upper(F.regexp_replace(F.col("log_stream"), r"-job-[0-9a-f]+$", "")),
+            ).alias("logger"),
             F.coalesce(F.col("_parsed.level"),   F.lit("INFO")).alias("level"),
             F.col("_parsed.filename").alias("filename"),
             F.col("_parsed.function_name").alias("function_name"),

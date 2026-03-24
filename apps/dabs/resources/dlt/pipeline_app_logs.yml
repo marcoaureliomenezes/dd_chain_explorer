@@ -22,10 +22,9 @@ resources:
       continuous: ${var.dlt_continuous}
       channel: CURRENT
 
-      trigger:
+      schedule:
         # Executa a cada 35 min em PROD (offset de 5 min após ethereum)
         # Em DEV, acionar manualmente via: make dabs_run_dev JOB=dm-app-logs
-        cron:
-          quartz_cron_expression: "0 5/35 * * * ?"
-          timezone_id: "America/Sao_Paulo"
-          pause_status: PAUSED
+        quartz_cron_expression: "0 5/35 * * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED

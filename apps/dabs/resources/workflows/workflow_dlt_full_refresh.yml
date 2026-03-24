@@ -23,6 +23,16 @@ resources:
             pipeline_id: ${resources.pipelines.pipeline_app_logs.id}
             full_refresh: true
 
+        - task_key: export_gold_to_s3
+          depends_on:
+            - task_key: full_refresh_app_logs
+          notebook_task:
+            notebook_path: ../../src/batch/periodic/4_export_gold_to_s3.py
+            source: WORKSPACE
+            base_parameters:
+              catalog:         ${var.catalog}
+              export_s3_path:  s3://${var.ingestion_s3_bucket}/exports
+
       tags:
         layer: streaming
         project: dd-chain-explorer
