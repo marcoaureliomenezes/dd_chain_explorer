@@ -97,12 +97,14 @@ cw_sum() {
 # cw_sum_since <namespace> <metric> <dim_name> <dim_value> <epoch_start>
 # Returns the SUM of a CloudWatch metric from a fixed epoch timestamp to now.
 # Used to prevent false-positives from carry-over data of previous CI runs.
+# NOTE: AWS requires --period to be a multiple of 60; we ceil-round to satisfy this.
 cw_sum_since() {
   local ns="$1" metric="$2" dn="$3" dv="$4" epoch_start="$5"
   local end; end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   local start; start=$(date -u -d "@${epoch_start}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || date -u -r "${epoch_start}" +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
-  local win; win=$(( $(date +%s) - epoch_start + 1 ))
+  local win_raw; win_raw=$(( $(date +%s) - epoch_start + 1 ))
+  local win; win=$(( ((win_raw + 59) / 60) * 60 ))  # ceil to nearest 60s (AWS API requirement)
   aws cloudwatch get-metric-statistics \
     --region    "$REGION"  \
     --namespace "$ns"      \
