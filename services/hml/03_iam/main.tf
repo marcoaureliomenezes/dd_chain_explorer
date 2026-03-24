@@ -61,7 +61,7 @@ module "iam" {
   raw_bucket_arn        = local.raw_bucket_arn
   lakehouse_bucket_arn  = local.lakehouse_bucket_arn
 
-  create_databricks_roles = true
+  create_databricks_roles = var.databricks_account_id != "" ? true : false
   databricks_account_id   = var.databricks_account_id
   databricks_account_uuid = var.databricks_account_uuid
   databricks_bucket_arn   = local.databricks_bucket_arn
