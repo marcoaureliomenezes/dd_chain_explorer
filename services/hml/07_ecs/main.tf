@@ -62,8 +62,6 @@ module "ecs" {
   cloudwatch_log_group_name = "/ecs/dm-chain-explorer-hml"
   vpc_id                    = data.terraform_remote_state.vpc.outputs.vpc_id
 
-  ecr_repositories = {
-    "onchain-stream-txs" = {}
-    "onchain-batch-txs"  = {}
-  }
+  # ECR repositories are account-level and managed by prd/07_ecs — do not re-declare here
+  ecr_repositories = {}
 }
