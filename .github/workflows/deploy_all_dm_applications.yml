@@ -366,23 +366,23 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: lambda-artifacts
-      - name: Read PRD Terraform outputs
+      - name: Read HML Terraform outputs
         id: tf-outputs
         run: |
-          DYNAMODB_TABLE=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/peripherals/terraform.tfstate - 2>/dev/null \
+          DYNAMODB_TABLE=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/hml/peripherals/terraform.tfstate - 2>/dev/null \
             | jq -r '.outputs.dynamodb_table_name.value // empty') || DYNAMODB_TABLE=""
-          RAW_BUCKET=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/peripherals/terraform.tfstate - 2>/dev/null \
+          RAW_BUCKET=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/hml/peripherals/terraform.tfstate - 2>/dev/null \
             | jq -r '.outputs.raw_bucket_name.value // empty') || RAW_BUCKET=""
-          CW_LOG_GROUP=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/peripherals/terraform.tfstate - 2>/dev/null \
+          CW_LOG_GROUP=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/hml/peripherals/terraform.tfstate - 2>/dev/null \
             | jq -r '.outputs.cloudwatch_log_group_name.value // empty') || CW_LOG_GROUP=""
-          LAKEHOUSE_BUCKET=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/peripherals/terraform.tfstate - 2>/dev/null \
+          LAKEHOUSE_BUCKET=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/hml/peripherals/terraform.tfstate - 2>/dev/null \
             | jq -r '.outputs.databricks_bucket_name.value // empty') || LAKEHOUSE_BUCKET=""
           echo "dynamodb_table=${DYNAMODB_TABLE}"     >> $GITHUB_OUTPUT
           echo "raw_bucket=${RAW_BUCKET}"             >> $GITHUB_OUTPUT
           echo "cw_log_group=${CW_LOG_GROUP}"         >> $GITHUB_OUTPUT
           echo "lakehouse_bucket=${LAKEHOUSE_BUCKET}" >> $GITHUB_OUTPUT
           if [ -z "$DYNAMODB_TABLE" ] || [ -z "$RAW_BUCKET" ]; then
-            echo "::error::Required TF state outputs missing. Ensure PRD infra (04_peripherals) is deployed."
+            echo "::error::Required TF state outputs missing. Ensure HML infra (04_peripherals) is deployed."
             exit 1
           fi
       - name: Publish HML test Lambda layer
