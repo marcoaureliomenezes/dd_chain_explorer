@@ -37,6 +37,8 @@ env:
   TF_STATE_BUCKET:         dm-chain-explorer-terraform-state
   PRD_LAMBDA_ROLE:         dm-dd-chain-explorer-prd-contracts-ingestion-lambda
   PRD_LAMBDA_ROLE_GLD:     dm-dd-chain-explorer-prd-gold-to-dynamodb-lambda
+  HML_LAMBDA_ROLE:         dm-chain-explorer-hml-contracts-ingestion-lambda
+  HML_LAMBDA_ROLE_GLD:     dm-chain-explorer-hml-gold-to-dynamodb-lambda
 
 jobs:
 
@@ -398,7 +400,7 @@ jobs:
         id: deploy-ci
         run: |
           FUNC_NAME="hml-contracts-ingestion-${{ github.run_id }}"
-          ROLE_ARN=$(aws iam get-role --role-name "${{ env.PRD_LAMBDA_ROLE }}" --query 'Role.Arn' --output text)
+          ROLE_ARN=$(aws iam get-role --role-name "${{ env.HML_LAMBDA_ROLE }}" --query 'Role.Arn' --output text)
           aws lambda create-function --function-name "$FUNC_NAME" --runtime python3.12 \
             --handler handler.handler --role "$ROLE_ARN" \
             --zip-file fileb://contracts_ingestion.zip \
@@ -413,7 +415,7 @@ jobs:
         run: |
           RUN_ID="${{ github.run_id }}"
           FUNC_NAME="hml-gold-to-dynamodb-${RUN_ID}"
-          ROLE_ARN=$(aws iam get-role --role-name "${{ env.PRD_LAMBDA_ROLE_GLD }}" --query 'Role.Arn' --output text)
+          ROLE_ARN=$(aws iam get-role --role-name "${{ env.HML_LAMBDA_ROLE_GLD }}" --query 'Role.Arn' --output text)
           BUCKET="${{ steps.tf-outputs.outputs.lakehouse_bucket }}"
           FIXTURE_KEY="exports/gold_api_keys/hml-test-${RUN_ID}.json"
           echo '{"source":"hml-test","api_key_name":"test-key-001","calls_total":42,"calls_ok_total":40,"calls_error_total":2,"calls_24h":10,"vendor":"etherscan","computed_at":"2026-01-01T00:00:00"}' \

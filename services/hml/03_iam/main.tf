@@ -36,6 +36,7 @@ locals {
   raw_bucket_arn        = "arn:aws:s3:::dm-chain-explorer-hml-raw"
   lakehouse_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-hml-lakehouse"
   databricks_bucket_arn = "arn:aws:s3:::dm-chain-explorer-hml-databricks"
+  dynamodb_table_arn    = "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/dm-chain-explorer-hml"
 
   common_tags = {
     "owner"       = "marco-menezes"
@@ -116,6 +117,92 @@ resource "aws_iam_role_policy" "firehose_s3" {
           "kinesis:GetRecords", "kinesis:ListShards",
         ]
         Resource = ["arn:aws:kinesis:${var.region}:*:stream/*-hml"]
+      }
+    ]
+  })
+}
+
+# ── Lambda Roles (HML ephemeral tests) ───────────────────────────────────────
+
+resource "aws_iam_role" "contracts_ingestion_lambda" {
+  name = "dm-chain-explorer-hml-contracts-ingestion-lambda"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "contracts_ingestion_lambda" {
+  name = "dm-chain-explorer-hml-contracts-ingestion-policy"
+  role = aws_iam_role.contracts_ingestion_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:Scan"]
+        Resource = local.dynamodb_table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:HeadObject"]
+        Resource = "${local.raw_bucket_arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParametersByPath", "ssm:GetParameter"]
+        Resource = [
+          "arn:aws:ssm:${var.region}:*:parameter/etherscan-api-keys/*",
+          "arn:aws:ssm:${var.region}:*:parameter/etherscan-api-keys",
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "gold_to_dynamodb_lambda" {
+  name = "dm-chain-explorer-hml-gold-to-dynamodb-lambda"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
+  name = "dm-chain-explorer-hml-gold-to-dynamodb-policy"
+  role = aws_iam_role.gold_to_dynamodb_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:BatchWriteItem", "dynamodb:PutItem"]
+        Resource = local.dynamodb_table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${local.lakehouse_bucket_arn}/exports/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
       }
     ]
   })
