@@ -251,6 +251,7 @@ jobs:
   prd-deploy-iam:
     name: PRD — Deploy IAM AWS
     needs: [prd-deploy-vpc, prd-deploy-peripherals]
+    if: always() && needs.prd-deploy-peripherals.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     defaults:
