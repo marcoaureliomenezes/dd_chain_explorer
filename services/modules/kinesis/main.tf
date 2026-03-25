@@ -158,3 +158,82 @@ resource "aws_kinesis_firehose_delivery_stream" "this" {
     Name = "firehose-${each.key}-${var.environment}"
   })
 }
+
+# ---------------------------------------------------------------------------
+# Firehose Direct Put Streams (app → Firehose → S3, no Kinesis source)
+# ---------------------------------------------------------------------------
+
+locals {
+  create_direct_put_role = length(var.firehose_direct_put_streams) > 0 && var.firehose_role_arn == ""
+  direct_put_role_arn    = local.create_direct_put_role ? aws_iam_role.firehose_direct_put[0].arn : var.firehose_role_arn
+}
+
+resource "aws_iam_role" "firehose_direct_put" {
+  count = local.create_direct_put_role ? 1 : 0
+
+  name = "dm-${var.environment}-firehose-direct-put-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "firehose.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+      Condition = {
+        StringEquals = { "sts:ExternalId" = data.aws_caller_identity.current.account_id }
+      }
+    }]
+  })
+
+  tags = var.common_tags
+}
+
+resource "aws_iam_role_policy" "firehose_direct_put" {
+  count = local.create_direct_put_role ? 1 : 0
+
+  name = "dm-${var.environment}-firehose-direct-put-policy"
+  role = aws_iam_role.firehose_direct_put[0].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "S3WriteAccess"
+      Effect = "Allow"
+      Action = [
+        "s3:AbortMultipartUpload",
+        "s3:GetBucketLocation",
+        "s3:GetObject",
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads",
+        "s3:PutObject",
+      ]
+      Resource = [
+        var.firehose_s3_bucket_arn,
+        "${var.firehose_s3_bucket_arn}/*",
+      ]
+    }]
+  })
+}
+
+resource "aws_kinesis_firehose_delivery_stream" "direct_put" {
+  for_each = var.firehose_direct_put_streams
+
+  name        = "firehose-${each.key}-${var.environment}"
+  destination = "extended_s3"
+
+  extended_s3_configuration {
+    role_arn   = local.direct_put_role_arn
+    bucket_arn = var.firehose_s3_bucket_arn
+
+    prefix              = "${var.firehose_s3_prefix}${each.key}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"
+    error_output_prefix = "${var.firehose_s3_prefix}${each.key}_errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/"
+
+    buffering_size     = var.firehose_buffer_size_mb
+    buffering_interval = var.firehose_buffer_interval_seconds
+    compression_format = var.firehose_compression
+  }
+
+  tags = merge(var.common_tags, {
+    Name = "firehose-${each.key}-${var.environment}"
+  })
+}

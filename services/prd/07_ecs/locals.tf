@@ -35,18 +35,19 @@ locals {
       name  = "DYNAMODB_TABLE"
       value = data.terraform_remote_state.dynamodb.outputs.dynamodb_table_name
     },
-    # --- Kinesis Data Streams ---
-    {
-      name  = "KINESIS_STREAM_BLOCKS"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.kinesis_stream_names["mainnet-blocks-data"]
-    },
+    # --- Kinesis Data Stream (transactions only — blocks and decoded use Firehose Direct Put) ---
     {
       name  = "KINESIS_STREAM_TRANSACTIONS"
       value = data.terraform_remote_state.kinesis_sqs.outputs.kinesis_stream_names["mainnet-transactions-data"]
     },
+    # --- Firehose Direct Put Streams ---
     {
-      name  = "KINESIS_STREAM_DECODED"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.kinesis_stream_names["mainnet-transactions-decoded"]
+      name  = "FIREHOSE_STREAM_BLOCKS"
+      value = data.terraform_remote_state.kinesis_sqs.outputs.firehose_direct_put_stream_names["mainnet-blocks-data"]
+    },
+    {
+      name  = "FIREHOSE_STREAM_DECODED"
+      value = data.terraform_remote_state.kinesis_sqs.outputs.firehose_direct_put_stream_names["mainnet-transactions-decoded"]
     },
     # --- SQS Queues ---
     {

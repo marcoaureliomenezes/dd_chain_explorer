@@ -159,9 +159,7 @@ module "kinesis" {
   common_tags = local.common_tags
 
   streams = {
-    "mainnet-blocks-data"          = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
-    "mainnet-transactions-data"    = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
-    "mainnet-transactions-decoded" = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
+    "mainnet-transactions-data" = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
   }
 
   firehose_enabled               = true
@@ -169,6 +167,11 @@ module "kinesis" {
   firehose_s3_prefix             = "raw/"
   firehose_buffer_size_mb        = 1
   firehose_buffer_interval_seconds = 60
+
+  firehose_direct_put_streams = {
+    "mainnet-blocks-data"          = {}
+    "mainnet-transactions-decoded" = {}
+  }
 }
 
 # ---------------------------------------------------------------------------

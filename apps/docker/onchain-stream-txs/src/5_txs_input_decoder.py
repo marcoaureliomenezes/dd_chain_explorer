@@ -32,6 +32,7 @@ from web3 import Web3
 
 from dm_chain_utils.dm_parameter_store import ParameterStoreClient
 from dm_chain_utils.dm_kinesis import KinesisHandler
+from dm_chain_utils.dm_firehose import FirehoseHandler
 from dm_chain_utils.dm_cloudwatch_logger import CloudWatchLoggingHandler
 
 from utils_decode.abi_cache import ABICache
@@ -129,9 +130,9 @@ class TransactionInputDecoder:
         return self
 
     def sink_config(self, sink_properties: Dict[str, Any]) -> "TransactionInputDecoder":
-        self._kinesis_handler_out: KinesisHandler = sink_properties["kinesis_handler"]
-        self._stream_out = sink_properties["stream_out"]
-        self.logger.info(f"Sink configured — Kinesis stream: {self._stream_out}")
+        self._firehose_handler: FirehoseHandler = sink_properties["firehose_handler"]
+        self._firehose_out = sink_properties["firehose_out"]
+        self.logger.info(f"Sink configured — Firehose stream: {self._firehose_out}")
         return self
 
     def run(self) -> None:
@@ -184,10 +185,9 @@ class TransactionInputDecoder:
                 continue
 
             try:
-                self._kinesis_handler_out.put_record(
-                    self._stream_out,
+                self._firehose_handler.put_record(
+                    self._firehose_out,
                     data=json.dumps(out_record, default=str),
-                    partition_key=tx["hash"],
                 )
                 decoded_count += 1
             except Exception as exc:
@@ -348,7 +348,7 @@ if __name__ == "__main__":
     NETWORK              = os.getenv("NETWORK", "mainnet")
     CLOUDWATCH_LOG_GROUP = os.getenv("CLOUDWATCH_LOG_GROUP")
     KINESIS_STREAM_TRANSACTIONS = os.getenv("KINESIS_STREAM_TRANSACTIONS")
-    KINESIS_STREAM_DECODED      = os.getenv("KINESIS_STREAM_DECODED")
+    FIREHOSE_STREAM_DECODED     = os.getenv("FIREHOSE_STREAM_DECODED")
     SSM_ETHERSCAN_PATH   = os.getenv("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
     UNVERIFIED_TTL       = int(os.getenv("UNVERIFIED_TTL", "86400"))  # 24 h
 
@@ -368,7 +368,8 @@ if __name__ == "__main__":
     logger.info("CloudWatch logging handler configured.")
 
     kinesis_handler = KinesisHandler(logger)
-    logger.info("Kinesis handler configured.")
+    firehose_handler = FirehoseHandler(logger)
+    logger.info("Kinesis (src) and Firehose (sink) handlers configured.")
 
     # ---- ABI cache (DynamoDB) ----
     abi_cache = ABICache(logger, unverified_ttl=UNVERIFIED_TTL)
@@ -403,8 +404,8 @@ if __name__ == "__main__":
         "stream_in": KINESIS_STREAM_TRANSACTIONS,
     }
     sink_properties = {
-        "kinesis_handler": kinesis_handler,
-        "stream_out": KINESIS_STREAM_DECODED,
+        "firehose_handler": firehose_handler,
+        "firehose_out": FIREHOSE_STREAM_DECODED,
     }
 
     _ = (

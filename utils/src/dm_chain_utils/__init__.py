@@ -7,6 +7,7 @@ from dm_chain_utils.dm_cloudwatch_logger import CloudWatchLoggingHandler
 from dm_chain_utils.dm_dynamodb import DMDynamoDB
 from dm_chain_utils.dm_etherscan import EtherscanClient
 from dm_chain_utils.dm_kinesis import KinesisHandler
+from dm_chain_utils.dm_firehose import FirehoseHandler
 from dm_chain_utils.dm_parameter_store import ParameterStoreClient
 from dm_chain_utils.dm_sqs import SQSHandler
 from dm_chain_utils.dm_web3_client import Web3Handler
@@ -18,6 +19,7 @@ __all__ = [
     "DMDynamoDB",
     "EtherscanClient",
     "KinesisHandler",
+    "FirehoseHandler",
     "ParameterStoreClient",
     "SQSHandler",
     "Web3Handler",

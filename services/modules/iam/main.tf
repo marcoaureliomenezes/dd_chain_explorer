@@ -106,6 +106,12 @@ resource "aws_iam_role_policy" "ecs_task" {
           "dynamodb:BatchGetItem", "dynamodb:Scan", "dynamodb:DescribeTable",
         ]
         Resource = "arn:aws:dynamodb:*:*:table/${var.dynamodb_table_name}"
+      },
+      {
+        Sid    = "FirehoseAccess"
+        Effect = "Allow"
+        Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+        Resource = "arn:aws:firehose:*:*:deliverystream/firehose-mainnet-*-${var.kinesis_stream_suffix}"
       }],
       var.raw_bucket_arn != "" ? [{
         Sid    = "S3Access"

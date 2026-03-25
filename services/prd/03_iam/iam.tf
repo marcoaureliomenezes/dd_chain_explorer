@@ -67,6 +67,16 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
     resources = ["arn:aws:kinesis:*:*:stream/mainnet-*-prd"]
   }
 
+  # Firehose Direct Put: write blocks and decoded txs directly to delivery streams
+  statement {
+    sid = "FirehoseAccess"
+    actions = [
+      "firehose:PutRecord",
+      "firehose:PutRecordBatch",
+    ]
+    resources = ["arn:aws:firehose:*:*:deliverystream/firehose-mainnet-*-prd"]
+  }
+
   # SQS: send and receive messages between streaming jobs
   statement {
     sid = "SQSAccess"

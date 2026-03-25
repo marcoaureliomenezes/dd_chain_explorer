@@ -278,9 +278,9 @@ jobs:
                     {"name":"ENV","value":"hml"}, {"name":"JOB_NAME","value":$svc},
                     {"name":"SQS_QUEUE_URL_MINED_BLOCKS","value":$smined},
                     {"name":"SQS_QUEUE_URL_TXS_HASH_IDS","value":$stxs},
-                    {"name":"KINESIS_STREAM_BLOCKS","value":"mainnet-blocks-data-hml"},
                     {"name":"KINESIS_STREAM_TRANSACTIONS","value":"mainnet-transactions-data-hml"},
-                    {"name":"KINESIS_STREAM_DECODED","value":"mainnet-transactions-decoded-hml"},
+                    {"name":"FIREHOSE_STREAM_BLOCKS","value":"firehose-mainnet-blocks-data-hml"},
+                    {"name":"FIREHOSE_STREAM_DECODED","value":"firehose-mainnet-transactions-decoded-hml"},
                     {"name":"NETWORK","value":"mainnet"},
                     {"name":"SSM_ETHERSCAN_PATH","value":"/etherscan-api-keys"}
                   ] + $extra_env),

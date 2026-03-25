@@ -32,6 +32,9 @@ output "kinesis_stream_arns" {
 output "firehose_arns" {
   value = module.kinesis.firehose_arns
 }
+output "firehose_direct_put_stream_names" {
+  value = module.kinesis.firehose_direct_put_stream_names
+}
 
 # SQS
 output "sqs_queue_urls" {
