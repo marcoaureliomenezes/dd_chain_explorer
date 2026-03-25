@@ -31,11 +31,14 @@ while true; do
     break
   fi
 
-  DELETE_PAYLOAD=$(echo "${VERSIONS}" | jq '{"Objects": ., "Quiet": true}')
+  # Write payload to a temp file to avoid "Argument list too long" with large buckets
+  TMP_PAYLOAD=$(mktemp /tmp/s3_delete_payload.XXXXXX.json)
+  echo "${VERSIONS}" | jq '{"Objects": ., "Quiet": true}' > "${TMP_PAYLOAD}"
   aws s3api delete-objects \
     --bucket "${BUCKET}" \
-    --delete "${DELETE_PAYLOAD}" \
+    --delete "file://${TMP_PAYLOAD}" \
     --region "${REGION}" > /dev/null
+  rm -f "${TMP_PAYLOAD}"
 done
 
 # ── 3. Delete all delete markers ─────────────────────────────────────────────
@@ -51,11 +54,14 @@ while true; do
     break
   fi
 
-  DELETE_PAYLOAD=$(echo "${MARKERS}" | jq '{"Objects": ., "Quiet": true}')
+  # Write payload to a temp file to avoid "Argument list too long" with large buckets
+  TMP_PAYLOAD=$(mktemp /tmp/s3_delete_payload.XXXXXX.json)
+  echo "${MARKERS}" | jq '{"Objects": ., "Quiet": true}' > "${TMP_PAYLOAD}"
   aws s3api delete-objects \
     --bucket "${BUCKET}" \
-    --delete "${DELETE_PAYLOAD}" \
+    --delete "file://${TMP_PAYLOAD}" \
     --region "${REGION}" > /dev/null
+  rm -f "${TMP_PAYLOAD}"
 done
 
 echo ">>> Bucket s3://${BUCKET} is now empty."
