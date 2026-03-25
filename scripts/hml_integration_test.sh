@@ -10,9 +10,9 @@
 #   0 — ECS task health check (≥1 task RUNNING)
 #   1 — CloudWatch log events per ECS service (proves containers are logging)
 #   2 — SQS NumberOfMessagesSent > 0
-#   3 — Kinesis IncomingRecords > 0
+#   3 — Kinesis IncomingRecords > 0  (mainnet-transactions-data only)
 #   4 — DynamoDB items written
-#   5 — Firehose delivery streams ACTIVE
+#   5 — Firehose ACTIVE + Direct Put IncomingRecords > 0
 #   6 — S3 .gz files delivered by Firehose
 #
 # Usage (HML — default):
@@ -34,9 +34,10 @@ REGION="${REGION:-sa-east-1}"
 S3_BUCKET="${S3_BUCKET:-dm-chain-explorer-${ENV}-ingestion}"
 DYNAMODB_TABLE="${DYNAMODB_TABLE:-dm-chain-explorer-${ENV}}"
 
-KINESIS_STREAM_BLOCKS="${KINESIS_STREAM_BLOCKS:-mainnet-blocks-data-${ENV}}"
 KINESIS_STREAM_TRANSACTIONS="${KINESIS_STREAM_TRANSACTIONS:-mainnet-transactions-data-${ENV}}"
-KINESIS_STREAM_DECODED="${KINESIS_STREAM_DECODED:-mainnet-transactions-decoded-${ENV}}"
+
+FIREHOSE_STREAM_BLOCKS="${FIREHOSE_STREAM_BLOCKS:-firehose-mainnet-blocks-data-${ENV}}"
+FIREHOSE_STREAM_DECODED="${FIREHOSE_STREAM_DECODED:-firehose-mainnet-transactions-decoded-${ENV}}"
 
 SQS_QUEUE_MINED_BLOCKS="${SQS_QUEUE_MINED_BLOCKS:-mainnet-mined-blocks-events-${ENV}}"
 SQS_QUEUE_TXS_HASH_IDS="${SQS_QUEUE_TXS_HASH_IDS:-mainnet-block-txs-hash-id-${ENV}}"
@@ -252,11 +253,13 @@ fail_fast "Phase 2 — SQS"
 
 # =============================================================================
 # Phase 3 — Kinesis
-# Uses SCRIPT_START as the lower bound of the CW query window so that data from
-# previous CI runs sharing the same stream names do not cause false-positives.
+# Only mainnet-transactions-data remains as a Kinesis stream.
+# mainnet-blocks-data and mainnet-transactions-decoded are now Firehose Direct Put
+# (checked in Phase 5 via IncomingRecords metric).
+# Uses SCRIPT_START as the lower bound to avoid false-positives from prior runs.
 # =============================================================================
 log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
-for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_STREAM_DECODED"; do
+for STREAM in "$KINESIS_STREAM_TRANSACTIONS"; do
   log "⏳ Kinesis ${STREAM} — polling CloudWatch IncomingRecords ..."
   DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
   FOUND=false
@@ -301,8 +304,10 @@ $FOUND || fail "DynamoDB ${DYNAMODB_TABLE} — no items within ${WAIT_DYNAMODB_S
 fail_fast "Phase 4 — DynamoDB"
 
 # =============================================================================
-# Phase 5 — Firehose status
-# Firehose streams must be ACTIVE before they can deliver data to S3.
+# Phase 5 — Firehose status + Direct Put IncomingRecords
+# All 3 Firehose streams must be ACTIVE.
+# For Direct Put streams (blocks-data, transactions-decoded), also verify
+# IncomingRecords > 0 via CloudWatch to confirm apps are writing to them.
 # =============================================================================
 log ""; log "──── Phase 5: Firehose  (timeout=${WAIT_PHASE2_SECS}s) ────"; log ""
 for FH in \
@@ -330,7 +335,27 @@ do
   done
   $FOUND || fail "Firehose ${FH} — status=${FH_STATUS} after ${WAIT_PHASE2_SECS}s (expected ACTIVE)"
 done
-fail_fast "Phase 5 — Firehose"
+fail_fast "Phase 5 — Firehose ACTIVE"
+
+# Direct Put streams: verify IncomingRecords > 0 (apps are putting records)
+log ""; log "──── Phase 5b: Firehose Direct Put IncomingRecords  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
+for FH in "$FIREHOSE_STREAM_BLOCKS" "$FIREHOSE_STREAM_DECODED"; do
+  log "⏳ Firehose Direct Put ${FH} — polling CloudWatch IncomingRecords ..."
+  DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
+  FOUND=false
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    VAL=$(cw_sum_since "AWS/Firehose" "IncomingRecords" "DeliveryStreamName" "$FH" "$SCRIPT_START")
+    if is_positive "$VAL" 2>/dev/null; then
+      ok "Firehose Direct Put ${FH} — IncomingRecords=$(printf '%.0f' "$VAL")"
+      FOUND=true
+      break
+    fi
+    log "   → not yet (value=${VAL}), retrying in ${POLL_INTERVAL}s ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "Firehose Direct Put ${FH} — no IncomingRecords within ${WAIT_KINESIS_SECS}s"
+done
+fail_fast "Phase 5b — Firehose Direct Put IncomingRecords"
 
 # =============================================================================
 # Phase 6 — S3 delivery
