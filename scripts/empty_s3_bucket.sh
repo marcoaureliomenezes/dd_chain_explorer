@@ -33,7 +33,12 @@ while true; do
 
   # Write payload to a temp file to avoid "Argument list too long" with large buckets
   TMP_PAYLOAD=$(mktemp /tmp/s3_delete_payload.XXXXXX.json)
-  echo "${VERSIONS}" | jq '{"Objects": ., "Quiet": true}' > "${TMP_PAYLOAD}"
+  echo "${VERSIONS}" | jq '{Objects: [.[] | select(.Key and .VersionId) | {Key,VersionId}], Quiet: true}' > "${TMP_PAYLOAD}"
+  OBJCOUNT=$(jq '.Objects | length' < "${TMP_PAYLOAD}")
+  if [ "${OBJCOUNT}" -eq 0 ]; then
+    rm -f "${TMP_PAYLOAD}"
+    break
+  fi
   aws s3api delete-objects \
     --bucket "${BUCKET}" \
     --delete "file://${TMP_PAYLOAD}" \
@@ -56,7 +61,12 @@ while true; do
 
   # Write payload to a temp file to avoid "Argument list too long" with large buckets
   TMP_PAYLOAD=$(mktemp /tmp/s3_delete_payload.XXXXXX.json)
-  echo "${MARKERS}" | jq '{"Objects": ., "Quiet": true}' > "${TMP_PAYLOAD}"
+  echo "${MARKERS}" | jq '{Objects: [.[] | select(.Key and .VersionId) | {Key,VersionId}], Quiet: true}' > "${TMP_PAYLOAD}"
+  OBJCOUNT=$(jq '.Objects | length' < "${TMP_PAYLOAD}")
+  if [ "${OBJCOUNT}" -eq 0 ]; then
+    rm -f "${TMP_PAYLOAD}"
+    break
+  fi
   aws s3api delete-objects \
     --bucket "${BUCKET}" \
     --delete "file://${TMP_PAYLOAD}" \
