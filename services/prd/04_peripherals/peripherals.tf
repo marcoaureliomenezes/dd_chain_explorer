@@ -90,17 +90,20 @@ module "kinesis" {
 
   streams = {
     "mainnet-blocks-data" = {
-      stream_mode      = "ON_DEMAND"
+      stream_mode      = "PROVISIONED"
+      shard_count      = 1
       retention_period = 24
       encryption_type  = "NONE"
     }
     "mainnet-transactions-data" = {
-      stream_mode      = "ON_DEMAND"
+      stream_mode      = "PROVISIONED"
+      shard_count      = 1
       retention_period = 24
       encryption_type  = "NONE"
     }
     "mainnet-transactions-decoded" = {
-      stream_mode      = "ON_DEMAND"
+      stream_mode      = "PROVISIONED"
+      shard_count      = 1
       retention_period = 24
       encryption_type  = "NONE"
     }

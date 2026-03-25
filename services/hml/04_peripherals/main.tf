@@ -159,9 +159,9 @@ module "kinesis" {
   common_tags = local.common_tags
 
   streams = {
-    "mainnet-blocks-data"          = { stream_mode = "ON_DEMAND", retention_period = 24, encryption_type = "NONE" }
-    "mainnet-transactions-data"    = { stream_mode = "ON_DEMAND", retention_period = 24, encryption_type = "NONE" }
-    "mainnet-transactions-decoded" = { stream_mode = "ON_DEMAND", retention_period = 24, encryption_type = "NONE" }
+    "mainnet-blocks-data"          = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
+    "mainnet-transactions-data"    = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
+    "mainnet-transactions-decoded" = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
   }
 
   firehose_enabled               = true
