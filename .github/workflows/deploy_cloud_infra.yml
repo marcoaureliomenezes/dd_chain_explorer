@@ -363,6 +363,7 @@ jobs:
   prd-deploy-lambda:
     name: PRD — Deploy Lambda AWS
     needs: prd-deploy-iam
+    if: always() && needs.prd-deploy-iam.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -400,6 +401,7 @@ jobs:
   prd-deploy-ecs:
     name: PRD — Deploy ECS AWS
     needs: prd-deploy-iam
+    if: always() && needs.prd-deploy-iam.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     defaults:
