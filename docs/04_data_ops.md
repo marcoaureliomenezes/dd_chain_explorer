@@ -127,9 +127,9 @@ A plataforma usa **5 workflows** consolidados:
 | Workflow | Trigger | Propósito |
 |----------|---------|----------|
 | `deploy_cloud_infra.yml` | `workflow_dispatch` (develop) | Terraform DEV e PRD |
-| `destroy_cloud_infra.yml` | `workflow_dispatch` (develop) | Destruição com confirmação |
+| `destroy_cloud_infra.yml` | `workflow_dispatch` (develop) | Destruição parcial (por ambiente) |
+| `destroy_all_cloud_infra.yml` | `workflow_dispatch` (develop) | Destruição total — todos os recursos em Cloud |
 | `deploy_dm_applications.yml` | `workflow_dispatch` (develop) | Streaming apps, DABs e Lambda |
-| `lib_release.yml` | `workflow_dispatch` (develop) | Publicação da lib `dm-chain-utils` no PyPI |
 | `auto-bump-version.yml` | `push` (develop, merged PRs) | Auto-bump de versão após merge |
 
 Todos os workflows utilizam scripts extraídos para `scripts/ci/` (branch guard, version checks, TF plan, HML provision/teardown, etc.) em vez de shell inline.
@@ -209,16 +209,20 @@ flowchart TD
 
 > O script `scripts/ci/bump_version.sh` é responsável por todo o fluxo de bump.
 
-### 3.5 Deploy Lib Python (`lib_release.yml`)
+### 3.5 Destroy ALL Cloud Infra (`destroy_all_cloud_infra.yml`)
 
 **Trigger**: `workflow_dispatch` na branch `develop`.
 
-**Fluxo**: branch-guard → check-version (valida VERSION == pyproject.toml) → test → build wheel → verify PyPI version → publish PyPI (OIDC) → create release branch → GitHub Release + git tag `v{VERSION}-lib`
+**Input**: `confirm` (deve digitar `DESTROY ALL`).
+
+**Fluxo**: safety-check → [DEV lambda + HML databricks + PRD lambda/ECS em paralelo] → [camadas intermediárias] → destruição completa de todas as camadas (VPC, IAM, periféricos com S3, Databricks) → `01_tf_state` (ÚLTIMO: destrói o bucket de state remoto e a tabela DynamoDB de lock).
 
 **Detalhes:**
-- Python 3.12, instala extras `[dev]` do `pyproject.toml`
-- Versão validada contra PyPI (nova versão deve ser maior)
-- Publicação via OIDC trusted publisher no PyPI (sem token hardcoded)
+- Destrói **todos** os recursos em Cloud: PRD, HML e DEV simultaneamente
+- Handles `prevent_destroy = true` nos S3 buckets via esvazimento + `terraform state rm` + `aws s3api delete-bucket`
+- `01_tf_state` é destruído por último (aguarda todos os outros jobs finalizarem)
+- Idempotente: jobs passam com sucesso se os recursos não estiverem no state
+- Requer environment `production` (aprovação manual para execução)
 
 ### 3.6 Scripts CI Compartilhados (`scripts/ci/`)
 
@@ -266,12 +270,10 @@ flowchart TD
     INFRA["deploy_cloud_infra<br/>prd: 02_vpc → 03_iam → 04_peripherals<br/>→ 05_databricks + 06_lambda + 07_ecs"]
     INFRA_DEV["deploy_cloud_infra<br/>DEV: 01_peripherals → 02_lambda"]
     APPS["deploy_dm_applications<br/>streaming-apps / databricks-dabs / lambda-functions"]
-    LIB["deploy_lib_python<br/>PyPI"]
 
     INFRA -->|"ECS cluster, IAM roles,<br/>VPC, Kinesis, SQS"| APPS
     INFRA -->|"Workspace URL,<br/>catalog, S3 buckets"| APPS
     INFRA -->|"DynamoDB, S3,<br/>CloudWatch, IAM"| APPS
-    LIB -->|"dm-chain-utils<br/>(Lambda layer)"| APPS
     INFRA_DEV -.->|"Recursos para<br/>dev local"| APPS
 ```
 
@@ -424,7 +426,7 @@ apps/dabs/
 | CI/CD Infra | `.github/workflows/deploy_cloud_infra.yml` |
 | CI/CD Destroy | `.github/workflows/destroy_cloud_infra.yml` |
 | CI/CD Aplicações | `.github/workflows/deploy_dm_applications.yml` |
-| CI/CD Lib Python | `.github/workflows/lib_release.yml` |
+| CI/CD Destroy ALL | `.github/workflows/destroy_all_cloud_infra.yml` |
 | CI/CD Auto-bump | `.github/workflows/auto-bump-version.yml` |
 | Scripts CI | `scripts/ci/` (12 scripts: branch_guard, tf_plan, detect_changes, etc.) |
 | PR Template | `.github/PULL_REQUEST_TEMPLATE.md` |

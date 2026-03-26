@@ -61,8 +61,8 @@ Todos os deploys de PRD são feitos via **GitHub Actions** a partir da branch `d
 | Streaming apps | `Deploy DM Applications` → `streaming-apps` | Infra PRD deployada |
 | DABs Databricks | `Deploy DM Applications` → `databricks-dabs` | Workspace Databricks acessível |
 | Lambda functions | `Deploy DM Applications` → `lambda-functions` | IAM roles PRD criados |
-| Python lib (`dm-chain-utils`) | `Deploy Python Lib` | PyPI version nova |
 | Destruição de infra | `Destroy Infra Cloud` | Digitar `DESTROY` para confirmar |
+| Destruição total | `Destroy ALL Cloud Infra` | Digitar `DESTROY ALL` para confirmar |
 
 > Use o workflow `/deploy-infra` no Windsurf para guia interativo de deploy.
 

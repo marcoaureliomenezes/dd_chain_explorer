@@ -48,7 +48,7 @@ master  (push direto proibido)
 | VAL-01 | `Deploy Streaming Apps` executado end-to-end: HML passa 10 min, prod atualizado, ECS estável | 🔲 |
 | VAL-02 | ~~`Deploy Batch Apps`~~ — **N/A**: batch apps substituídas por Lambda `contracts-ingestion` (EventBridge). Sem Docker. | ❌ N/A |
 | VAL-03 | `Deploy DABs` executado end-to-end (HML Free Edition + deploy prod Databricks) | 🔲 |
-| VAL-04 | `Deploy Lib Python` publicação PyPI validada | 🔲 |
+| VAL-04 | `Destroy ALL Cloud Infra` executado end-to-end: todos os recursos destruídos (PRD + HML + DEV) | 🔲 |
 | VAL-05 | `Deploy Cloud Infra` DEV e PRD validados end-to-end (plan + apply + destroy) | 🔲 |
 | VAL-06 | `make prod_standby` → custo ~$0/h; `make prod_resume` → ambiente funcional | 🔲 |
 
