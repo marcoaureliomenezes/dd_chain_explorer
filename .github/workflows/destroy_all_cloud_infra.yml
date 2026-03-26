@@ -363,11 +363,13 @@ jobs:
       - run: terraform init -input=false
       - name: Get workspace URL from 05a state
         id: ws_url
+        continue-on-error: true
         working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
         run: |
           terraform init -input=false
-          WS_HOST=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
-          echo "host=$WS_HOST" >> $GITHUB_OUTPUT
+          WS_HOST=$(terraform output -raw -no-color databricks_workspace_url 2>/dev/null | \
+            sed 's/\x1B\[[0-9;]*[mK]//g' | tr -d '\n' || true)
+          echo "host=${WS_HOST}" >> $GITHUB_OUTPUT
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
