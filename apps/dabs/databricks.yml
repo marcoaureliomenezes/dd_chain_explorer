@@ -3,7 +3,8 @@ bundle:
 
 include:
   - resources/dlt/*.yml
-  - resources/workflows/*.yml
+  - resources/workflows/workflow_trigger_dlt_ethereum.yml
+  - resources/workflows/workflow_trigger_dlt_app_logs.yml
   - resources/dashboards/*.yml
   - resources/alerts/*.yml
   - resources/genie/*.yml
@@ -94,6 +95,8 @@ targets:
       dlt_num_workers: 0
       dlt_development: false
       dlt_continuous: false
+    include:
+      - resources/workflows/*.yml  # Enable all workflows for HML (has compute)
 
   # ----------------------------------------------------------------
   # PROD: Databricks on AWS (created via terraform/7_databricks)
@@ -112,6 +115,8 @@ targets:
       dlt_num_workers: 1
       dlt_development: false
       dlt_continuous: false
+    include:
+      - resources/workflows/*.yml  # Enable all workflows for PROD (full compute)
     resources:
       pipelines:
         pipeline_ethereum:

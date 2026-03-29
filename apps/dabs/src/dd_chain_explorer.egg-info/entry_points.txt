@@ -1,0 +1,3 @@
+[console_scripts]
+dd-bronze-to-silver = dd_chain_explorer.batch_contracts.bronze_to_silver:main
+dd-s3-to-bronze = dd_chain_explorer.batch_contracts.s3_to_bronze:main

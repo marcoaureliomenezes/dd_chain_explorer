@@ -1,6 +1,6 @@
 # Lake Schemas Report
 
-> Gerado em: 2026-03-29 21:22 UTC | Ambiente: dev | Catálogo: `dev` | Hash: `94d126df05044559`
+> Gerado em: 2026-03-29 21:32 UTC | Ambiente: dev | Catálogo: `dev` | Hash: `aec92185c0499495`
 
 ## Resumo
 
