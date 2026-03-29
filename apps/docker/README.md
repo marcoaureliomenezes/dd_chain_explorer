@@ -6,7 +6,7 @@ Aplicações Python de captura de dados on-chain da rede Ethereum, empacotadas e
 
 ## Visão Geral
 
-Pipeline de 5 jobs que operam em cadeia, publicando dados em **AWS Kinesis Data Streams** e consumindo de **AWS SQS**:
+Pipeline de 5 jobs que operam em cadeia. Jobs 3 e 5 publicam dados diretamente no **Firehose Direct Put** (sem Kinesis); Jobs 2 e 4 publicam em **Kinesis Data Streams** (`mainnet-transactions-data`). Coordenação inter-job via **AWS SQS**:
 
 ```
 Ethereum RPC (Alchemy / Infura)
@@ -16,7 +16,7 @@ Ethereum RPC (Alchemy / Infura)
 │ Job 1: Mined Blocks      │  polling a cada N segundos
 │ Watcher                  │
 └─────────────┬───────────┘
-              │ Kinesis: mainnet.1.mined-blocks-events
+              │ SQS: mainnet-mined-blocks-events
        ┌──────┴──────┐
        ▼             ▼
 ┌──────────┐  ┌──────────────────┐
@@ -24,20 +24,20 @@ Ethereum RPC (Alchemy / Infura)
 │ Orphan   │  │ Block Data       │
 │ Blocks   │  │ Crawler          │
 └──────────┘  └────────┬─────────┘
-                       │ Kinesis: mainnet.2.blocks-data
-                       │ SQS:     mainnet.3.block-txs-hash-id
+                       │ Firehose Direct Put: firehose-mainnet-blocks-data
+                       │ SQS: mainnet-block-txs-hash-id
                        ▼
               ┌──────────────────┐
               │ Job 4:           │  ×6 réplicas
               │ Raw Txs Crawler  │
               └────────┬─────────┘
-                       │ Kinesis: mainnet.4.transactions-data
+                       │ Kinesis: mainnet-transactions-data
                        ▼
               ┌──────────────────┐
               │ Job 5:           │
               │ Tx Input Decoder │
               └────────┬─────────┘
-                       │ Firehose → S3 raw/
+                       │ Firehose Direct Put: firehose-mainnet-txs-decoded
                        ▼
               CloudWatch Logs (todos os jobs)
 ```
@@ -115,8 +115,9 @@ Arquivo de compose: `services/dev/00_compose/app_services.yml`
 |----------|-------|-------|-------|-------|-------|
 | `NETWORK` | mainnet | mainnet | mainnet | mainnet | mainnet |
 | `KINESIS_STREAM_MINED_BLOCKS` | sink | src+sink | src | — | — |
-| `KINESIS_STREAM_BLOCKS_DATA` | — | — | sink | — | — |
+| `FIREHOSE_STREAM_BLOCKS` | — | — | sink (Direct Put) | — | — |
 | `KINESIS_STREAM_TXS_DATA` | — | — | — | sink | src |
+| `FIREHOSE_STREAM_DECODED` | — | — | — | — | sink (Direct Put) |
 | `SQS_QUEUE_TXS_HASH_ID` | — | — | sink | src | — |
 | `SSM_SECRET_NAME` | api-key-1 | api-key-2 | api-key-2 | — | — |
 | `SSM_SECRET_NAMES` | — | — | — | infura-1-17 | — |
@@ -141,7 +142,7 @@ Em produção, cada job é um ECS service no cluster `dm-chain-explorer-ecs`.
 | `dm-txs-input-decoder` | Job 5 |
 
 Infraestrutura provisionada por Terraform em `services/prd/07_ecs/`.  
-Deploy via CI/CD: `.github/workflows/deploy_dm_applications.yml` (app_type=streaming-apps).
+Deploy via CI/CD: `.github/workflows/deploy_all_dm_applications.yml` (streaming apps):
 
 ---
 
@@ -167,4 +168,4 @@ make build_stream VERSION=1.0.0
 make push_stream  VERSION=1.0.0
 ```
 
-Em CI/CD, a imagem é construída e publicada no ECR automaticamente com tag `{SHA}` pelo workflow `deploy_dm_applications.yml`.
+Em CI/CD, a imagem é construída e publicada no ECR automaticamente com tag `{SHA}` pelo workflow `deploy_all_dm_applications.yml`.

@@ -28,7 +28,7 @@ Este documento consolida as melhorias pendentes do projeto, organizadas por prio
 | Branch de integração | `develop` (padronizado) |
 | Deploy prod | Mesmo workflow, 2ª stage com **GitHub Environment `production`** (approval gate) |
 | Mensageria | Kinesis/SQS/CloudWatch/Firehose (MSK e Schema Registry eliminados) |
-| HML infra | **100% efêmero** — todos os recursos (Kinesis, SQS, CloudWatch, DynamoDB, ECS cluster, SG, S3, IAM) criados/destruídos dentro de `deploy_dm_applications.yml`. Sem infra persistente de HML. |
+| HML infra | Parcialmente gerenciada por Terraform em `services/hml/` (IAM, Firehose, periféricos, ECS). Recursos efêmeros criados/destruídos dentro de `deploy_all_dm_applications.yml`. |
 | HML Databricks | Databricks Free Edition (mesmo workspace do DEV), catálogo `hml` |
 
 ### Gitflow Revisado
@@ -56,13 +56,13 @@ master  (push direto proibido)
 
 | Secret | Usado por | Status |
 |---|---|---|
-| `HML_VPC_ID` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `HML_SUBNET_ID` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `ECS_TASK_ROLE_ARN` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `DATABRICKS_HML_HOST` | deploy_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
-| `DATABRICKS_HML_TOKEN` | deploy_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
-| `HML_ETHERSCAN_SSM_PATH` | deploy_dm_applications (streaming, HML test) | Adicionado em `setup_github_secrets.sh` |
+| `HML_VPC_ID` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `HML_SUBNET_ID` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `ECS_TASK_ROLE_ARN` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `DATABRICKS_HML_HOST` | deploy_all_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
+| `DATABRICKS_HML_TOKEN` | deploy_all_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
+| `HML_ETHERSCAN_SSM_PATH` | deploy_all_dm_applications (streaming, HML test) | Adicionado em `setup_github_secrets.sh` |
 
 ---
 
@@ -86,7 +86,7 @@ Melhorias que aumentam a confiabilidade, visibilidade e paridade DEV/PROD.
 | 🟡 P1 | TODO-O08 | DataOps | CloudWatch Dashboards ou Grafana para ECS + Kinesis + DynamoDB | Alto |
 | 🟡 P1 | TODO-C08 | Captura | Métricas CloudWatch nos jobs de streaming (throughput, latência, erros) | Médio |
 | 🟡 P1 | TODO-O10 | DataOps | Notificações Slack/Teams para falhas CI/CD e alertas de infra | Médio |
-| 🟡 P1 | TODO-O13 | DataOps | Validar `deploy_dm_applications.yml` (app_type=lambda-functions) end-to-end: build, HML test, PRD deploy via Terraform | Médio |
+| 🟡 P1 | TODO-O13 | DataOps | Validar `deploy_all_dm_applications.yml` end-to-end: streaming + DABs + lambda em pipeline unificado |  Médio |
 
 ---
 
