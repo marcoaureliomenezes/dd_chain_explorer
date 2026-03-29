@@ -5,9 +5,9 @@ resources:
       description: "Trigger sequencial DEV/HML — ethereum → app_logs. Nunca viola a quota de 1 pipeline ativo no workspace compartilhado."
       max_concurrent_runs: 1
       schedule:
-        # Em DEV: UNPAUSED via override em databricks.yml (target dev)
+        # Em DEV: UNPAUSED via override em databricks.yml (target dev) — a cada 1 hora
         # Em HML e PROD: PAUSED — acionado via CI (bundle run) ou make run_dev_pipelines
-        quartz_cron_expression: "0 0/10 * * * ?"
+        quartz_cron_expression: "0 0 * * * ?"
         timezone_id: "America/Sao_Paulo"
         pause_status: PAUSED
       tasks:
