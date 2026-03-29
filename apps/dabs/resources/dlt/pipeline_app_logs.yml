@@ -23,8 +23,8 @@ resources:
       channel: CURRENT
 
       schedule:
-        # Executa a cada 35 min em PROD (offset de 5 min após ethereum)
-        # Em DEV, acionar manualmente via: make dabs_run_dev JOB=dm-app-logs
-        quartz_cron_expression: "0 5/35 * * * ?"
+        # PROD: a cada 3 min, offset 2 min após ethereum, UNPAUSED (override em databricks.yml target prod)
+        # DEV/HML: PAUSED — acionar via dm-trigger-all-dlts ou make run_dev_pipelines
+        quartz_cron_expression: "0 2/3 * * * ?"
         timezone_id: "America/Sao_Paulo"
         pause_status: PAUSED

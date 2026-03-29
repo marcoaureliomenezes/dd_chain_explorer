@@ -369,7 +369,10 @@ fail_fast "Phase 2 — SQS"
 # =============================================================================
 log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_KINESIS_SECS}s — CW lag ~5 min) ────"; log ""
 
-for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_STREAM_DECODED"; do
+# NOTE: mainnet-blocks-data and mainnet-transactions-decoded are Firehose direct-put
+# streams (not regular Kinesis streams) — they are verified in Phase 5.
+# Only mainnet-transactions-data is a real Kinesis stream.
+for STREAM in "$KINESIS_STREAM_TRANSACTIONS"; do
   log "⏳ Kinesis ${STREAM} — polling CW IncomingRecords (anchored + rolling) ..."
 
   STREAM_STATUS=$(aws kinesis describe-stream-summary \

@@ -8,6 +8,11 @@ include:
   - resources/alerts/*.yml
   - resources/genie/*.yml
 
+artifacts:
+  dd_chain_explorer:
+    type: whl
+    path: ./src
+
 variables:
   dev_workspace_host:
     description: "Databricks workspace URL for DEV (Free Edition)"
@@ -64,6 +69,13 @@ targets:
       dlt_development: true
       dlt_continuous: false
       warehouse_id: "a2a66f2adb0faf18"
+    resources:
+      jobs:
+        dm-trigger-all-dlts:
+          schedule:
+            quartz_cron_expression: "0 0/10 * * * ?"
+            timezone_id: "America/Sao_Paulo"
+            pause_status: UNPAUSED
 
   # ----------------------------------------------------------------
   # HML: Databricks Free Edition (same workspace as DEV)
@@ -92,7 +104,7 @@ targets:
     run_as:
       user_name: marcoaurelioreislima@gmail.com
     workspace:
-      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      host: ${var.prod_workspace_host}   # passed via --var at deploy time (read from TF state prd/05_databricks)
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "dd_chain_explorer"
@@ -100,3 +112,11 @@ targets:
       dlt_num_workers: 1
       dlt_development: false
       dlt_continuous: false
+    resources:
+      pipelines:
+        pipeline_ethereum:
+          schedule:
+            pause_status: UNPAUSED
+        pipeline_app_logs:
+          schedule:
+            pause_status: UNPAUSED

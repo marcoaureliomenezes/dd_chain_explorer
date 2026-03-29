@@ -35,6 +35,27 @@ dabs_run_dev:
 dabs_status_dev:
 	cd apps/dabs && databricks bundle summary --target dev
 
+# Executa dm-trigger-all-dlts em DEV (sequencial: ethereum → app_logs)
+# Uso: make run_dev_pipelines
+run_dev_pipelines:
+	cd apps/dabs && databricks bundle run --target dev dm-trigger-all-dlts
+
+# Pausa o schedule de dm-trigger-all-dlts em DEV antes de um deploy HML
+# Uso: make pause_dlt_pipelines
+# Para reativar o schedule: make dabs_deploy_dev
+pause_dlt_pipelines:
+	@cd apps/dabs && \
+	JOB_ID=$$(databricks jobs list --output json 2>/dev/null \
+	  | python3 -c "import sys,json; jobs=json.load(sys.stdin).get('jobs',[]); \
+	    print(next((str(j['job_id']) for j in jobs \
+	    if 'dm-trigger-all-dlts' in j.get('settings',{}).get('name','')), ''))"); \
+	if [ -z "$$JOB_ID" ]; then \
+	  echo "ERRO: job dm-trigger-all-dlts não encontrado. Rode 'make dabs_deploy_dev' primeiro."; exit 1; \
+	fi; \
+	databricks jobs update $$JOB_ID \
+	  --json '{"schedule":{"quartz_cron_expression":"0 0/10 * * * ?","timezone_id":"America/Sao_Paulo","pause_status":"PAUSED"}}' \
+	  && echo ">>> Schedule pausado. Para reativar: make dabs_deploy_dev"
+
 # Deploy apenas os dashboards em DEV (auto-descobre o warehouse_id via CLI)
 # Requer: databricks CLI autenticado + Python 3
 dabs_deploy_dev_dashboards:

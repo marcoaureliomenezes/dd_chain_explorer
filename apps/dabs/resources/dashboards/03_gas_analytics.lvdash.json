@@ -9,6 +9,11 @@
       "name": "gas_hourly",
       "displayName": "Gas Price por Hora e Tipo",
       "query": "SELECT\n  DATE_TRUNC('hour', tx_timestamp)                      AS hour_bucket,\n  type_transaction,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.s_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1 ASC, 2 ASC\nLIMIT 2000"
+    },
+    {
+      "name": "gas_price_daily",
+      "displayName": "Percentis de Gas Price por Dia",
+      "query": "SELECT\n  DATE_TRUNC('day', tx_timestamp)                                                         AS day_bucket,\n  ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY CAST(gas_price AS DOUBLE) / 1e9), 4) AS p50_gwei,\n  ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY CAST(gas_price AS DOUBLE) / 1e9), 4) AS p75_gwei,\n  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY CAST(gas_price AS DOUBLE) / 1e9), 4) AS p95_gwei,\n  COUNT(*)                                                                                   AS tx_count\nFROM dev.s_apps.ethereum_gas_consume\nWHERE tx_timestamp IS NOT NULL\nGROUP BY 1\nORDER BY 1 ASC\nLIMIT 365"
     }
   ],
   "pages": [
@@ -179,6 +184,101 @@
             }
           },
           "position": {"x": 0, "y": 13, "width": 6, "height": 6}
+        },
+        {
+          "widget": {
+            "name": "line_gas_price_percentiles",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "gas_price_daily",
+                  "fields": [
+                    {"name": "day_bucket", "expression": "day_bucket"},
+                    {"name": "p50_gwei",   "expression": "p50_gwei"},
+                    {"name": "p75_gwei",   "expression": "p75_gwei"},
+                    {"name": "p95_gwei",   "expression": "p95_gwei"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "xy",
+              "encodings": {
+                "x": {
+                  "fieldName": "day_bucket",
+                  "scale": {"type": "temporal"},
+                  "displayName": "Dia"
+                },
+                "y": [
+                  {
+                    "fieldName": "p50_gwei",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "P50 (Gwei)"
+                  },
+                  {
+                    "fieldName": "p75_gwei",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "P75 (Gwei)"
+                  },
+                  {
+                    "fieldName": "p95_gwei",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "P95 (Gwei)"
+                  }
+                ]
+              },
+              "mark": {"type": "line"},
+              "frame": {
+                "showTitle": true,
+                "title": "Volatilidade de Gas Price — P50 / P75 / P95 por Dia (Gwei)"
+              }
+            }
+          },
+          "position": {"x": 0, "y": 19, "width": 6, "height": 7}
+        },
+        {
+          "widget": {
+            "name": "bar_daily_tx_volume",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "gas_price_daily",
+                  "fields": [
+                    {"name": "day_bucket", "expression": "day_bucket"},
+                    {"name": "tx_count",   "expression": "tx_count"}
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "day_bucket",
+                  "scale": {"type": "temporal"},
+                  "displayName": "Dia"
+                },
+                "y": [
+                  {
+                    "fieldName": "tx_count",
+                    "scale": {"type": "quantitative"},
+                    "displayName": "Total de Transações"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Volume Diário de Transações"
+              }
+            }
+          },
+          "position": {"x": 0, "y": 26, "width": 6, "height": 6}
         }
       ]
     }

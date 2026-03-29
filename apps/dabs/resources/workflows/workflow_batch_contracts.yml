@@ -11,24 +11,30 @@ resources:
 
       tasks:
         - task_key: s3_to_bronze_contracts_txs
-          notebook_task:
-            notebook_path: ../../src/batch/batch_contracts/1_s3_to_bronze_contracts_txs.py
-            source: WORKSPACE
-            base_parameters:
-              catalog:    ${var.catalog}
-              s3_bucket:  ${var.ingestion_s3_bucket}
-              s3_prefix:  batch
-              exec_date:  "1970-01-01T00"
+          python_wheel_task:
+            package_name: dd_chain_explorer
+            entry_point: dd-s3-to-bronze
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--s3-bucket"
+              - ${var.ingestion_s3_bucket}
+              - "--s3-prefix"
+              - batch
+              - "--exec-date"
+              - "1970-01-01T00"
 
         - task_key: bronze_to_silver_contracts_txs
           depends_on:
             - task_key: s3_to_bronze_contracts_txs
-          notebook_task:
-            notebook_path: ../../src/batch/batch_contracts/2_bronze_to_silver_contracts_txs.py
-            source: WORKSPACE
-            base_parameters:
-              catalog:   ${var.catalog}
-              exec_date: "1970-01-01T00"
+          python_wheel_task:
+            package_name: dd_chain_explorer
+            entry_point: dd-bronze-to-silver
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--exec-date"
+              - "1970-01-01T00"
 
       tags:
         layer:   silver

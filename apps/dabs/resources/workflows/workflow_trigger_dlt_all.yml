@@ -1,0 +1,28 @@
+resources:
+  jobs:
+    dm-trigger-all-dlts:
+      name: "dm-trigger-all-dlts"
+      description: "Trigger sequencial DEV/HML — ethereum → app_logs. Nunca viola a quota de 1 pipeline ativo no workspace compartilhado."
+      max_concurrent_runs: 1
+      schedule:
+        # Em DEV: UNPAUSED via override em databricks.yml (target dev)
+        # Em HML e PROD: PAUSED — acionado via CI (bundle run) ou make run_dev_pipelines
+        quartz_cron_expression: "0 0/10 * * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED
+      tasks:
+        - task_key: run_dlt_ethereum
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pipeline_ethereum.id}
+            full_refresh: false
+
+        - task_key: run_dlt_app_logs
+          depends_on:
+            - task_key: run_dlt_ethereum
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.pipeline_app_logs.id}
+            full_refresh: false
+      tags:
+        layer:   streaming
+        project: dd-chain-explorer
+        trigger: sequential

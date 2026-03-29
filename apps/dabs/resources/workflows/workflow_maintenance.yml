@@ -13,35 +13,47 @@ resources:
 
       tasks:
         - task_key: optimize_bronze
-          notebook_task:
-            notebook_path: ../../src/batch/maintenance/1_optimize_bronze.py
-            source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
+          spark_python_task:
+            python_file: ../../src/batch/maintenance/maintenance.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--step"
+              - "optimize-bronze"
+
         - task_key: optimize_silver
           depends_on:
             - task_key: optimize_bronze
-          notebook_task:
-            notebook_path: ../../src/batch/maintenance/2_optimize_silver.py
-            source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
+          spark_python_task:
+            python_file: ../../src/batch/maintenance/maintenance.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--step"
+              - "optimize-silver"
+
         - task_key: vacuum_all
           depends_on:
             - task_key: optimize_silver
-          notebook_task:
-            notebook_path: ../../src/batch/maintenance/3_vacuum_all.py
-            source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
+          spark_python_task:
+            python_file: ../../src/batch/maintenance/maintenance.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--step"
+              - "vacuum"
+
         - task_key: monitor_tables
           depends_on:
             - task_key: vacuum_all
-          notebook_task:
-            notebook_path: ../../src/batch/maintenance/4_monitor_tables.py
-            source: WORKSPACE
-            base_parameters:
-              catalog: ${var.catalog}
+          spark_python_task:
+            python_file: ../../src/batch/maintenance/maintenance.py
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--step"
+              - "monitor"
+
       tags:
         layer: maintenance
         project: dd-chain-explorer

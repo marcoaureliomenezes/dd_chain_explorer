@@ -510,16 +510,11 @@ jobs:
           fi
           echo "✅ Raw data pre-condition satisfied: ${RAW_COUNT} file(s) in raw/" >> $GITHUB_STEP_SUMMARY
       - uses: databricks/setup-cli@v0.218.0
-      - name: Trigger pipeline_ethereum DLT
+      - name: Trigger all DLT pipelines — sequential (ethereum → app_logs)
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
-        run: databricks bundle run --target hml dm-trigger-dlt-ethereum 2>&1 | tee /tmp/dlt_ethereum.log
-      - name: Trigger pipeline_app_logs DLT
-        env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
-        run: databricks bundle run --target hml dm-trigger-dlt-app-logs 2>&1 | tee /tmp/dlt_app_logs.log
+        run: databricks bundle run --target hml dm-trigger-all-dlts 2>&1 | tee /tmp/dlt_all.log
       - name: Discover SQL Warehouse ID
         id: warehouse
         working-directory: ${{ github.workspace }}
@@ -780,16 +775,46 @@ jobs:
         working-directory: ${{ env.DABS_PATH }}
     steps:
       - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Read PROD Databricks workspace URL from Terraform state
+        id: prod-ws
+        working-directory: ${{ github.workspace }}
+        run: |
+          PROD_HOST=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/05_databricks/terraform.tfstate - \
+            | jq -r '.outputs.databricks_workspace_url.value')
+          if [ -z "$PROD_HOST" ]; then
+            echo "::error::Could not read databricks_workspace_url from TF state. Ensure prd/05_databricks is deployed."
+            exit 1
+          fi
+          echo "prod_host=$PROD_HOST" >> $GITHUB_OUTPUT
+      - name: Read PROD Databricks token from Terraform state
+        id: prod-token
+        working-directory: ${{ github.workspace }}
+        run: |
+          PROD_TOKEN=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/05_databricks/terraform.tfstate - \
+            | jq -r '.outputs.databricks_token.value')
+          if [ -z "$PROD_TOKEN" ]; then
+            echo "::error::Could not read databricks_token from TF state."
+            exit 1
+          fi
+          echo "::add-mask::$PROD_TOKEN"
+          echo "prod_token=$PROD_TOKEN" >> $GITHUB_OUTPUT
       - uses: databricks/setup-cli@v0.218.0
       - name: Deploy bundle to PROD
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
-        run: databricks bundle deploy --target prod
+          DATABRICKS_HOST:  ${{ steps.prod-ws.outputs.prod_host }}
+          DATABRICKS_TOKEN: ${{ steps.prod-token.outputs.prod_token }}
+        run: |
+          databricks bundle deploy --target prod \
+            --var prod_workspace_host=${{ steps.prod-ws.outputs.prod_host }}
       - name: Verify PROD deployment
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+          DATABRICKS_HOST:  ${{ steps.prod-ws.outputs.prod_host }}
+          DATABRICKS_TOKEN: ${{ steps.prod-token.outputs.prod_token }}
         run: |
           echo "==> PRD DABs bundle deployed. Listing pipelines:"
           databricks pipelines list 2>/dev/null || true
