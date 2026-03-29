@@ -65,6 +65,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -89,6 +91,8 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - name: Destroy DEV peripherals (S3 buckets preserved)
         run: |
@@ -138,6 +142,8 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
@@ -199,6 +205,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -222,6 +230,8 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -247,13 +257,42 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
-      - name: Get workspace URL from 05a state
+      - name: Get workspace URL from 05a state (with API fallback)
         id: ws_url
         working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           terraform init -input=false
           WS_HOST=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
+          if [ -z "$WS_HOST" ]; then
+            echo "::warning::TF output returned empty workspace URL — trying Databricks Account API as fallback..."
+            TOKEN=$(curl -sf -X POST \
+              "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
+              -H "Content-Type: application/x-www-form-urlencoded" \
+              --data-urlencode "grant_type=client_credentials" \
+              --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
+              --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
+              --data-urlencode "scope=all-apis" \
+              | jq -r '.access_token' 2>/dev/null || true)
+            if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
+              WS_HOST=$(curl -sf \
+                -H "Authorization: Bearer $TOKEN" \
+                "https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}/workspaces" \
+                2>/dev/null \
+                | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_url // empty' \
+                2>/dev/null || true)
+              [ -n "$WS_HOST" ] && echo "Workspace URL from API: $WS_HOST"
+            fi
+          fi
+          if [ -z "$WS_HOST" ]; then
+            echo "::warning::Could not determine workspace URL — 05b destroy may fail"
+          fi
           echo "host=$WS_HOST" >> $GITHUB_OUTPUT
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
@@ -283,7 +322,16 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
+      - name: Re-import Databricks account resources before destroy
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/databricks_account_import.sh"
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
@@ -313,6 +361,8 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - name: Destroy PRD peripherals (S3 buckets preserved)
         run: |
@@ -344,6 +394,8 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -369,7 +421,14 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
       - run: terraform init -input=false
+      - name: Wait for ECS/Lambda ENIs to be released before VPC destroy
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/wait_eni_release.sh"
+        env:
+          VPC_NAME_TAG: dm-chain-explorer-prd
+          AWS_REGION: ${{ env.AWS_REGION }}
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
         run: echo "PRD/02_vpc destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
