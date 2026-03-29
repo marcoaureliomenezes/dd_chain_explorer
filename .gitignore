@@ -2,6 +2,11 @@
 .idea
 .ipynb_checkpoints
 __pycache__
+
+# DABs Python wheel build artifacts
+apps/dabs/src/build/
+apps/dabs/src/dist/
+apps/dabs/src/*.egg-info/
 src/.infura_auth.txt
 .history
 **/*.pyc

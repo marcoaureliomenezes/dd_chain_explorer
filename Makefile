@@ -71,6 +71,30 @@ dabs_deploy_dev_dashboards:
 	  cd apps/dabs && databricks bundle deploy --target dev --var warehouse_id=$(WAREHOUSE_ID); \
 	fi
 
+# Executa setup DDL no DEV via SQL Warehouse (Free Edition — sem Spark cluster)
+# Uso: make dabs_ddl_dev            → cria schemas + tabelas + comentários
+#      make dabs_ddl_dev DROP=1     → DROP CASCADE + recria tudo
+#      make dabs_ddl_dev COMMENTS=1 → aplica somente comentários
+DEV_WAREHOUSE_ID   ?= a2a66f2adb0faf18
+DEV_CATALOG        ?= dev
+DEV_S3_BUCKET      ?= dm-chain-explorer-dev-ingestion
+_DDL_SCRIPT        := apps/dabs/src/batch/ddl/setup_ddl.py
+_DDL_BASE_ARGS      = --catalog $(DEV_CATALOG) \
+                      --lakehouse-s3-bucket $(DEV_S3_BUCKET) \
+                      --warehouse-id $(DEV_WAREHOUSE_ID)
+
+dabs_ddl_dev:
+	@if [ "$(DROP)" = "1" ]; then \
+	  echo ">>> DROP + setup DDL no DEV (catalog=$(DEV_CATALOG))"; \
+	  python3 $(_DDL_SCRIPT) $(_DDL_BASE_ARGS) --drop; \
+	elif [ "$(COMMENTS)" = "1" ]; then \
+	  echo ">>> Aplicando somente comentários no DEV (catalog=$(DEV_CATALOG))"; \
+	  python3 $(_DDL_SCRIPT) $(_DDL_BASE_ARGS) --comments-only; \
+	else \
+	  echo ">>> Setup DDL no DEV (catalog=$(DEV_CATALOG))"; \
+	  python3 $(_DDL_SCRIPT) $(_DDL_BASE_ARGS); \
+	fi
+
 ################################################################################
 # Terraform — atalhos para módulos individuais
 # Diretório: terraform/
