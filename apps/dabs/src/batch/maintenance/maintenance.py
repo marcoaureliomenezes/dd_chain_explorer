@@ -9,35 +9,28 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(messag
 
 class DeltaMaintenance:
     BRONZE_TABLES = [
-        ("b_ethereum", "kafka_topics_multiplexed", "kafka_timestamp"),
-        ("b_ethereum", "popular_contracts_txs",    "contract_address"),
+        ("b_ethereum", "popular_contracts_txs", "contract_address"),
     ]
 
     SILVER_TABLES = [
         ("s_apps", "transactions_fast",         "block_number"),
         ("s_apps", "blocks_fast",               "event_time"),
-        ("s_apps", "mined_blocks_events",       "event_time"),
         ("s_apps", "transactions_batch",        "block_number"),
         ("s_apps", "popular_contracts_ranking", "contract_address"),
         ("s_apps", "transactions_lambda",       "contract_address"),
-        ("s_logs", "application_logs",          "logger"),
-        ("s_logs", "apps_logs_fast",            "job_name"),
-        ("s_logs", "api_key_consumption",       "provider"),
+        ("s_logs", "logs_streaming",            "job_name"),
+        ("s_logs", "logs_batch",                "job_name"),
     ]
 
     ALL_TABLES = [
-        "b_ethereum.kafka_topics_multiplexed",
         "b_ethereum.popular_contracts_txs",
         "s_apps.transactions_fast",
         "s_apps.blocks_fast",
-        "s_apps.mined_blocks_events",
-        "s_apps.transaction_hash_ids",
         "s_apps.transactions_batch",
         "s_apps.popular_contracts_ranking",
         "s_apps.transactions_lambda",
-        "s_logs.application_logs",
-        "s_logs.apps_logs_fast",
-        "s_logs.api_key_consumption",
+        "s_logs.logs_streaming",
+        "s_logs.logs_batch",
     ]
 
     def __init__(self, spark: SparkSession, catalog: str) -> None:

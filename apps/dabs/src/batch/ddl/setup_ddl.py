@@ -17,13 +17,12 @@ class DDChainExplorerDDL:
         self._create_schemas()
         self._create_bronze_tables()
         self._create_silver_tables()
-        self._create_gold_views()
         self._apply_rls(admin_group)
         _log.info("DDL setup complete for catalog '%s'", self.catalog)
 
     def _create_schemas(self) -> None:
         cat = self.catalog
-        for schema in ("b_ethereum", "s_apps", "s_logs", "gold", "g_api_keys"):
+        for schema in ("b_ethereum", "s_apps", "s_logs", "g_api_keys"):
             self.spark.sql(f"CREATE SCHEMA IF NOT EXISTS `{cat}`.{schema}")
             _log.info("Schema ensured: %s.%s", cat, schema)
 
@@ -77,74 +76,6 @@ class DDChainExplorerDDL:
           TBLPROPERTIES ('quality' = 'silver')
         """)
         _log.info("Table ensured: %s.s_apps.transactions_batch", cat)
-
-        self.spark.sql(f"""
-          CREATE TABLE IF NOT EXISTS `{cat}`.s_logs.apps_logs_fast (
-            level           STRING    COMMENT 'Nível do log: INFO, WARN, ERROR',
-            logger          STRING    COMMENT 'Nome do logger (classe ou módulo)',
-            message         STRING    COMMENT 'Mensagem do log',
-            timestamp       BIGINT    COMMENT 'Timestamp Unix em milissegundos',
-            job_name        STRING    COMMENT 'Nome do job gerador do log (partição)',
-            api_key         STRING    COMMENT 'API key associada ao log (mascarada)',
-            event_time      TIMESTAMP COMMENT 'Timestamp do evento convertido para UTC',
-            kafka_timestamp TIMESTAMP COMMENT 'Timestamp de ingestão no tópico Kafka'
-          )
-          COMMENT 'Logs de aplicação do Lambda consumer Kafka ingeridos pelo pipeline DLT'
-          USING DELTA
-          PARTITIONED BY (job_name)
-          LOCATION 's3://{bucket}/s_logs/apps_logs_fast'
-          TBLPROPERTIES ('quality' = 'silver')
-        """)
-        _log.info("Table ensured: %s.s_logs.apps_logs_fast", cat)
-
-    def _create_gold_views(self) -> None:
-        cat = self.catalog
-        self.spark.sql(f"""
-          CREATE OR REPLACE VIEW `{cat}`.gold.blocks_with_tx_count
-          COMMENT 'Blocos Ethereum com contagem de transações por bloco'
-          AS
-          SELECT
-            b.block_number,
-            b.block_hash,
-            b.miner,
-            b.gas_used,
-            b.gas_limit,
-            b.base_fee_per_gas,
-            b.transaction_count,
-            b.block_time AS event_time
-          FROM `{cat}`.s_apps.blocks_fast b
-        """)
-        _log.info("View ensured: %s.gold.blocks_with_tx_count", cat)
-
-        self.spark.sql(f"""
-          CREATE OR REPLACE VIEW `{cat}`.gold.top_contracts_by_volume
-          COMMENT 'Contratos com maior volume de transações por hora'
-          AS
-          SELECT
-            to_address                               AS contract_address,
-            COUNT(*)                                 AS tx_count,
-            SUM(CAST(value AS DOUBLE))               AS total_value_wei,
-            DATE_TRUNC('hour', _ingested_at)         AS hour_bucket
-          FROM `{cat}`.s_apps.transactions_fast
-          WHERE to_address IS NOT NULL
-          GROUP BY to_address, DATE_TRUNC('hour', _ingested_at)
-        """)
-        _log.info("View ensured: %s.gold.top_contracts_by_volume", cat)
-
-        self.spark.sql(f"""
-          CREATE OR REPLACE VIEW `{cat}`.gold.blocks_hourly_summary
-          COMMENT 'Resumo horário de blocos: contagem, gás médio e taxa base média'
-          AS
-          SELECT
-            DATE_TRUNC('hour', block_time) AS hour_bucket,
-            COUNT(*)                        AS block_count,
-            AVG(transaction_count)          AS avg_tx_per_block,
-            AVG(gas_used)                   AS avg_gas_used,
-            AVG(base_fee_per_gas)           AS avg_base_fee
-          FROM `{cat}`.s_apps.blocks_fast
-          GROUP BY DATE_TRUNC('hour', block_time)
-        """)
-        _log.info("View ensured: %s.gold.blocks_hourly_summary", cat)
 
     def _apply_rls(self, admin_group: str) -> None:
         cat = self.catalog
