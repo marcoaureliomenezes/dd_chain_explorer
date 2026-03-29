@@ -70,3 +70,6 @@ dabs/.databricks/
 # Terraform plan files
 tfplan
 *.tfplan
+
+# Lake schemas workflow — estado local de idempotência (não versionar)
+docs/.lake-schemas-hash
