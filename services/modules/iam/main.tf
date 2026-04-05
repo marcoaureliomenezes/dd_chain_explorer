@@ -141,16 +141,12 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
       values   = [var.databricks_account_uuid]
     }
   }
+  # Self-assume required by Databricks Unity Catalog storage credential validation
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${var.account_id}:root"]
-    }
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:PrincipalArn"
-      values   = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}-databricks-cross-account-role"]
+      identifiers = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}-databricks-cross-account-role"]
     }
   }
 }
@@ -182,6 +178,21 @@ resource "aws_iam_role_policy" "databricks_s3" {
         var.raw_bucket_arn, "${var.raw_bucket_arn}/*",
         var.databricks_bucket_arn, "${var.databricks_bucket_arn}/*",
       ]
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "databricks_pass_cluster_role" {
+  count = var.create_databricks_roles ? 1 : 0
+  name  = "${var.name_prefix}-databricks-pass-cluster-role"
+  role  = aws_iam_role.databricks_cross_account[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "PassClusterRole"
+      Effect   = "Allow"
+      Action   = "iam:PassRole"
+      Resource = aws_iam_role.databricks_cluster[0].arn
     }]
   })
 }
