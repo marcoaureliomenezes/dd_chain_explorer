@@ -1,0 +1,8 @@
+# Bootstrap module uses local state (cannot use S3 remote state to bootstrap itself).
+# These files must NEVER be committed — remove them from git history with:
+#   git filter-repo --invert-paths --path services/prd/01_tf_state/terraform.tfstate
+#   git filter-repo --invert-paths --path services/prd/01_tf_state/terraform.tfstate.backup
+terraform.tfstate
+terraform.tfstate.backup
+.terraform/
+.terraform.lock.hcl
