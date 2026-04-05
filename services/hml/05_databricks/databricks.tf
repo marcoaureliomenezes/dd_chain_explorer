@@ -34,6 +34,62 @@ resource "aws_s3_bucket_policy" "databricks_lakehouse_access" {
   })
 }
 
+data "aws_iam_policy_document" "databricks_bucket_access" {
+  statement {
+    sid = "DatabricksControlPlaneAccess"
+    actions = [
+      "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:PutObjectAcl",
+      "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation",
+    ]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::414351767826:root"]
+    }
+    resources = [
+      data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn,
+      "${data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn}/*",
+    ]
+  }
+
+  statement {
+    sid = "DatabricksCrossAccountAccess"
+    actions = [
+      "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:PutObjectAcl",
+      "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation",
+      "s3:GetEncryptionConfiguration", "s3:GetLifecycleConfiguration",
+    ]
+    principals {
+      type        = "AWS"
+      identifiers = [data.terraform_remote_state.iam.outputs.databricks_cross_account_role_arn]
+    }
+    resources = [
+      data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn,
+      "${data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn}/*",
+    ]
+  }
+
+  statement {
+    sid = "DatabricksClusterAccess"
+    actions = [
+      "s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket",
+      "s3:GetBucketLocation", "s3:GetEncryptionConfiguration",
+    ]
+    principals {
+      type        = "AWS"
+      identifiers = [data.terraform_remote_state.iam.outputs.databricks_cluster_role_arn]
+    }
+    resources = [
+      data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn,
+      "${data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn}/*",
+    ]
+  }
+}
+
+resource "aws_s3_bucket_policy" "databricks_bucket_access" {
+  bucket = data.terraform_remote_state.peripherals.outputs.databricks_bucket_name
+  policy = data.aws_iam_policy_document.databricks_bucket_access.json
+}
+
 resource "databricks_mws_storage_configurations" "dm" {
   provider                   = databricks.accounts
   account_id                 = data.databricks_current_config.accounts.account_id
