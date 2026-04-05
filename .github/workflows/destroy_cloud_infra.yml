@@ -136,12 +136,41 @@ jobs:
   # - full_destroy=true: full teardown — all modules destroyed, S3 preserved.
   #   Use to test full destroy/redeploy cycle or before extended pauses.
 
+  hml-destroy-databricks-workspace:
+    name: HML — Destroy 05b_databricks_workspace
+    concurrency:
+      group: tf-hml-databricks-workspace
+      cancel-in-progress: false
+    needs: safety-check
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/05b_databricks_workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
+      - run: terraform init -input=false
+      - run: terraform destroy -auto-approve -input=false -no-color
+      - if: always()
+        run: echo "HML/05b_databricks_workspace destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
   hml-destroy-databricks:
     name: HML — Destroy 05_databricks
     concurrency:
       group: tf-hml-databricks
       cancel-in-progress: false
-    needs: safety-check
+    needs: [safety-check, hml-destroy-databricks-workspace]
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
     environment: hml
@@ -301,7 +330,7 @@ jobs:
 
   hml-summary:
     name: HML — Destroy summary
-    needs: [hml-destroy-databricks, hml-destroy-vpc]
+    needs: [hml-destroy-databricks-workspace, hml-destroy-databricks, hml-destroy-vpc]
     if: always() && github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
     steps:

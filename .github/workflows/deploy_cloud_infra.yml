@@ -742,3 +742,38 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
       - if: always()
         run: echo "HML/05_databricks applied — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  hml-deploy-databricks-workspace:
+    name: HML — Deploy Databricks Workspace
+    concurrency:
+      group: tf-hml-databricks-workspace
+      cancel-in-progress: false
+    needs: hml-deploy-databricks
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/05b_databricks_workspace
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - run: terraform validate
+      - name: Terraform Plan
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/DatabricksWorkspace
+      - name: Terraform Apply
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: terraform apply -input=false -auto-approve tfplan
+      - if: always()
+        run: echo "HML/05b_databricks_workspace applied — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY

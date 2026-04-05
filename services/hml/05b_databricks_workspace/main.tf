@@ -1,5 +1,8 @@
 ###############################################################################
-# hml/05_databricks/main.tf
+# hml/05b_databricks_workspace/main.tf
+# Workspace-level Databricks resources (catalog, external locations,
+# storage credential, instance profile, cluster).
+# Depends on hml/05_databricks state being applied first.
 ###############################################################################
 
 terraform {
@@ -18,7 +21,7 @@ terraform {
 
   backend "s3" {
     bucket         = "dm-chain-explorer-terraform-state"
-    key            = "hml/databricks/terraform.tfstate"
+    key            = "hml/databricks-workspace/terraform.tfstate"
     region         = "sa-east-1"
     dynamodb_table = "dm-chain-explorer-terraform-lock"
     encrypt        = true
@@ -33,24 +36,14 @@ provider "aws" {
   }
 }
 
+# Workspace-level auth: uses the bootstrap token generated in 05_databricks.
 provider "databricks" {
-  alias   = "accounts"
-  host    = "https://accounts.cloud.databricks.com"
-  profile = var.databricks_accounts_profile
+  alias = "workspace"
+  host  = data.terraform_remote_state.databricks_account.outputs.workspace_url
+  token = data.terraform_remote_state.databricks_account.outputs.token_value
 }
 
-data "databricks_current_config" "accounts" {
-  provider = databricks.accounts
-}
-
-data "terraform_remote_state" "vpc" {
-  backend = "s3"
-  config = {
-    bucket = "dm-chain-explorer-terraform-state"
-    key    = "hml/vpc/terraform.tfstate"
-    region = "sa-east-1"
-  }
-}
+# ── Remote states ──────────────────────────────────────────────────────────
 
 data "terraform_remote_state" "iam" {
   backend = "s3"
@@ -66,6 +59,15 @@ data "terraform_remote_state" "peripherals" {
   config = {
     bucket = "dm-chain-explorer-terraform-state"
     key    = "hml/peripherals/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
+data "terraform_remote_state" "databricks_account" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "hml/databricks/terraform.tfstate"
     region = "sa-east-1"
   }
 }
