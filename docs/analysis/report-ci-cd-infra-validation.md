@@ -2,7 +2,7 @@
 # Relatório de Validação CI/CD — Infra-Estrutura
 
 > **Data**: Abril 2026
-> **Status**: Fase 1 — Execução dos ciclos de validação
+> **Status**: Fase 4 DEV ✅ Fase 4 HML ✅ — Pendente: ciclo destroy/redeploy HML 05b + PRD Fases 2/3/4
 > **Objetivo**: Validar a resiliência do pipeline de CI/CD de infra-estrutura através de ciclos completos de destroy → deploy → destroy → deploy em todos os ambientes (DEV, HML, PRD).
 > 
 > **Snapshot Pré-flight (coletado antes do início dos testes)**:
@@ -306,16 +306,17 @@ Mesmo sequência da Fase 2 (PRD → DEV → HML).
 | Fase | Data | GitHub Run # | Ambiente | Status | Notas |
 |------|------|-------------|----------|--------|-------|
 | 0 | 2026-04-05 | — | — | ✅ Concluído | Gap 1/2/3 corrigidos, commit `967178a`; IS-04 já estava ok; IS-10/IS-12 workflows criados |
-| 1 | — | — | PRD | ⏸ Ignorado | PRD estava a 0 recursos no pré-flight — iniciar direto na Fase 2 |
-| 1 | — | — | HML | ⏸ Ignorado | HML estava a 0 recursos no pré-flight — iniciar direto na Fase 2 |
-| 1 | — | — | DEV | ⏳ Pendente | DEV com 35 recursos — precisa destroy antes da Fase 2 |
-| 2 | — | — | HML | ⏳ Pendente | Deploy do zero via `deploy_cloud_infra.yml` env=`hml` |
-| 2 | — | — | DEV | ⏳ Pendente | Após Phase 1 DEV concluída |
+| 1 | 2026-04-05 | — | PRD | ⏸ Ignorado | PRD estava a 0 recursos no pré-flight — iniciou direto na Fase 2 |
+| 1 | 2026-04-05 | — | HML | ⏸ Ignorado | HML estava a 0 recursos no pré-flight — iniciou direto na Fase 2 |
+| 1 | 2026-04-05 | ✅ (sessão anterior) | DEV | ✅ Concluído | Destroy DEV (35 recursos) via `destroy_cloud_infra.yml` env=`dev` |
+| 2 | 2026-04-05 | ✅ (sessão anterior) | HML | ✅ Concluído | Deploy do zero via `deploy_cloud_infra.yml` env=`hml` |
+| 2 | 2026-04-05 | ✅ (sessão anterior) | DEV | ✅ Concluído | Deploy do zero via `deploy_cloud_infra.yml` env=`dev` após Phase 1 |
 | 2 | — | — | PRD | ⏳ Pendente | Deploy do zero via `deploy_cloud_infra.yml` env=`prd` force_apply=`true` |
-| 3 | — | — | PRD | ⏳ Pendente | Re-destroy após Fase 2 |
-| 3 | — | — | DEV | ⏳ Pendente | Re-destroy após Fase 2 |
-| 3 | — | — | HML | ⏳ Pendente | Re-destroy após Fase 2 |
-| 4 | — | — | PRD | ⏳ Pendente | Deploy final após Fase 3 |
-| 4 | — | — | DEV | ⏳ Pendente | Deploy final após Fase 3 |
-| 4 | — | — | HML | ⏳ Pendente | Deploy final após Fase 3 |
+| 3 | 2026-04-05 | ✅ (sessão anterior) | HML | ✅ Concluído | Re-destroy HML (full_destroy=true) via `destroy_cloud_infra.yml` |
+| 3 | 2026-04-05 | ✅ (sessão anterior) | DEV | ✅ Concluído | Re-destroy DEV via `destroy_cloud_infra.yml` |
+| 3 | — | — | PRD | ⏳ Pendente | Re-destroy PRD após Fase 2 PRD |
+| 4 | 2026-04-06 | [24010929190](https://github.com/marcoaureliomenezes/dd_chain_explorer/actions/runs/24010929190) | DEV | ✅ Concluído | Deploy final DEV — todos os jobs `success` |
+| 4 | 2026-04-06 | [24012152033](https://github.com/marcoaureliomenezes/dd_chain_explorer/actions/runs/24012152033) | HML | ✅ Concluído | Deploy final HML — 05_databricks + 05b_databricks_workspace `success`; 8 iterações de fix (EC2 IAM, S3 bucket policy, self-assume trust, PassRole, catalog storage_root) |
+| 4 | — | — | PRD | ⏳ Pendente | Deploy final PRD após Fase 3 PRD |
+| 4b | ⏳ Em progresso | — | HML | ⏳ Pendente | Ciclo Phase 3 destroy → Phase 4 redeploy para validar `05b_databricks_workspace` no destroy path |
 | 5 | — | — | ALL | ⏳ Diferido | Nuclear option — executar em sessão separada |
