@@ -707,7 +707,6 @@ jobs:
       group: tf-hml-databricks
       cancel-in-progress: false
     needs: hml-deploy-iam
-    if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
     environment: hml
     defaults:
