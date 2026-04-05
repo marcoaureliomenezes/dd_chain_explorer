@@ -186,6 +186,32 @@ resource "aws_iam_role_policy" "databricks_s3" {
   })
 }
 
+resource "aws_iam_role_policy" "databricks_ec2_vpc_validation" {
+  count = var.create_databricks_roles ? 1 : 0
+  name  = "${var.name_prefix}-databricks-ec2-vpc-validation"
+  role  = aws_iam_role.databricks_cross_account[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "DatabricksVpcValidation"
+      Effect = "Allow"
+      Action = [
+        "ec2:DescribeAvailabilityZones",
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceStatus",
+        "ec2:DescribeInternetGateways",
+        "ec2:DescribeRouteTables",
+        "ec2:DescribeSecurityGroups",
+        "ec2:DescribeSubnets",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeVpcAttribute",
+        "ec2:DescribeVpcs",
+      ]
+      Resource = "*"
+    }]
+  })
+}
+
 # ── Databricks Cluster Role ───────────────────────────────────────────────────
 data "aws_iam_policy_document" "databricks_cluster_assume" {
   count = var.create_databricks_roles ? 1 : 0
