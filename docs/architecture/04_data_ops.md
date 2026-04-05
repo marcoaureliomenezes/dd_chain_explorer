@@ -42,8 +42,11 @@ flowchart TD
 | `make dabs_deploy_dev` | Deploy do bundle no Databricks Free Edition |
 | `make dabs_deploy_prod` | Deploy do bundle no Databricks PROD |
 | `make dabs_run_dev JOB=<nome>` | Executar um workflow em DEV |
-| `make dabs_status_dev` | Ver status dos recursos deployados |
-
+| `make dabs_status_dev` | Ver status dos recursos deployados || `make run_dev_pipelines` | Executa `dm-trigger-all-dlts` (ethereum → app\_logs) em DEV |
+| `make pause_dlt_pipelines` | Pausa o schedule de `dm-trigger-all-dlts` em DEV (antes de deploy HML) |
+| `make dabs_ddl_dev` | Setup DDL no DEV via SQL Warehouse (Free Edition — sem Spark cluster) |
+| `make dabs_ddl_dev DROP=1` | DROP CASCADE + recria todos os schemas/tabelas no DEV |
+| `make dabs_ddl_dev COMMENTS=1` | Aplica somente comentários em colunas no DEV |
 #### Docker Build/Push
 
 | Comando | Descrição |
@@ -234,6 +237,8 @@ Todos os workflows utilizam scripts shell modulares extraídos de inline para `s
 | `check_prd_version.sh` | Valida que a tag `v{VERSION}` não existe (PRD) |
 | `tf_plan.sh` | Executa `terraform plan` + injeta summary no job |
 | `databricks_account_import.sh` | Obtém OAuth token + import idempotente de recursos account-level |
+| `tf_state_lock_check.sh` | Verifica e remove locks distóicos no DynamoDB de TF state |
+| `wait_eni_release.sh` | Aguarda liberação de ENIs antes do destroy de VPC |
 | `hml_provision.sh` | Provisiona ambiente HML efêmero (VPC, Kinesis, SQS, etc.) |
 | `hml_teardown.sh` | Destrói ambiente HML |
 | `empty_s3_and_ecr.sh` | Esvazia buckets S3 + ECR repos antes de destroy PRD |
@@ -392,28 +397,44 @@ flowchart LR
 
 ```
 apps/dabs/
-├── databricks.yml             ← Config principal (targets dev/hml/prod, variáveis)
+├── databricks.yml             ← Config principal (targets dev/hml/prod, variáveis, artifacts)
 ├── resources/
 │   ├── dlt/
 │   │   ├── pipeline_ethereum.yml    ← Pipeline DLT principal (+ trigger cron 30min)
 │   │   └── pipeline_app_logs.yml    ← Pipeline DLT de logs (+ trigger cron 35min)
 │   └── workflows/
-│       ├── workflow_ddl_setup.yml
-│       ├── workflow_batch_contracts.yml  ← S3 batch/ → Bronze → Silver (unificado)
-│       ├── workflow_maintenance.yml      ← Schedule 12h (4h e 16h)
-│       └── workflow_dlt_full_refresh.yml ← Manual: full refresh ambos os pipelines
+│       ├── workflow_ddl_setup.yml              ← DDL unificado (spark_python_task setup_ddl.py)
+│       ├── workflow_batch_contracts.yml         ← S3 batch/ → Bronze → Silver (python_wheel_task)
+│       ├── workflow_maintenance.yml             ← Schedule 12h (4h e 16h)
+│       ├── workflow_dlt_full_refresh.yml        ← Manual: full refresh ambos os pipelines
+│       ├── workflow_trigger_dlt_all.yml         ← Schedule 1h DEV (UNPAUSED): ethereum → app_logs
+│       ├── workflow_trigger_dlt_ethereum.yml    ← CI trigger: dispara ethereum uma vez
+│       └── workflow_trigger_dlt_app_logs.yml    ← CI trigger: dispara app_logs uma vez
 └── src/
     ├── streaming/             ← Notebooks DLT (4_pipeline_ethereum, 5_pipeline_app_logs)
-    └── batch/                 ← Scripts batch (DDL, maintenance, batch_contracts)
+    ├── batch/                 ← Scripts batch (DDL, maintenance, batch_contracts)
+    │   ├── ddl/setup_ddl.py          ← DDL unificado (Spark + Warehouse dual-mode)
+    │   ├── maintenance/maintenance.py
+    │   └── periodic/4_export_gold_to_s3.py
+    ├── dd_chain_explorer/     ← Pacote Python (wheel) para tasks python_wheel_task
+    │   └── batch_contracts/   ← entry points: dd-s3-to-bronze, dd-bronze-to-silver
+    └── pyproject.toml         ← Definição do wheel dd_chain_explorer
 ```
+
+**Artifact Python Wheel**: O `databricks.yml` define um artifact `dd_chain_explorer` do tipo `whl` (path `./src`). O DABs faz o build e upload automático do wheel antes do deploy, permitindo usar `python_wheel_task` nos workflows.
+
+**Inclusão seletiva de workflows por target:**
+- **Top-level** (todos os targets): apenas `workflow_trigger_dlt_ethereum.yml` e `workflow_trigger_dlt_app_logs.yml`
+- **DEV**: adiciona `workflow_trigger_dlt_all.yml` (com schedule UNPAUSED a cada 1h)
+- **HML e PROD**: adiciona `resources/workflows/*.yml` (todos os workflows)
 
 ### 6.2 Targets
 
-| Target | Workspace | Catalog | DLT Mode |
-|--------|-----------|---------|----------|
-| `dev` | Databricks Free Edition | `dev` | `development=true`, serverless |
-| `hml` | Databricks Free Edition | `hml` | `development=false`, serverless |
-| `prod` | AWS Workspace | `dd_chain_explorer` | serverless, triggered por schedule |
+| Target | Workspace | Catalog | DLT Mode | Workflows Batch |
+|--------|-----------|---------|----------|-----------------|
+| `dev` | Databricks Free Edition | `dev` | `development=true`, serverless | Somente `dm-trigger-all-dlts` (1h) |
+| `hml` | Databricks Free Edition | `hml` | `development=false`, serverless | Todos (via `include: workflows/*.yml`) |
+| `prod` | AWS Workspace | `dd_chain_explorer` | serverless, triggered por schedule | Todos (via `include: workflows/*.yml`) |
 
 ---
 

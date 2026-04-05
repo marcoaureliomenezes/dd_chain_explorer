@@ -3,13 +3,14 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.backends.legacy:build"
 
 [project]
-name = "dd_chain_explorer"
+name = "dm_export_gold"
 version = "0.1.0"
 requires-python = ">=3.10"
+description = "Export Gold API key consumption views to S3"
 
 [project.scripts]
-dd-setup-ddl = "dd_chain_explorer.ddl.setup_ddl:main"
+dm-export-gold-export-gold = "dm_export_gold.export_gold:main"
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["dd_chain_explorer*"]
+include = ["dm_export_gold*"]

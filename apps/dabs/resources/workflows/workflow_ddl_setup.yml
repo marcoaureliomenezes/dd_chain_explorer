@@ -2,17 +2,22 @@ resources:
   jobs:
     workflow_ddl_setup:
       name: "dm-ddl-setup"
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies: []
       tasks:
         - task_key: setup_ddl
-          spark_python_task:
-            python_file: ../../src/batch/ddl/setup_ddl.py
+          environment_key: default
+          python_wheel_task:
+            package_name: dd_chain_explorer
+            entry_point: dd-setup-ddl
             parameters:
               - "--catalog"
               - ${var.catalog}
               - "--lakehouse-s3-bucket"
               - ${var.ingestion_s3_bucket}
-              - "--admin-group"
-              - "admins"
 
       tags:
         layer: ddl

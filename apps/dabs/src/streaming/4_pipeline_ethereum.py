@@ -390,7 +390,7 @@ def silver_blocks_withdrawals():
 # COMMAND ----------
 
 @dlt.table(
-    name="s_apps.popular_contracts_ranking",
+    name="g_apps.popular_contracts_ranking",
     comment="Gold MV: top 100 contratos mais populares por volume de transações",
     table_properties={
         "quality": "gold",
@@ -439,7 +439,7 @@ def gold_popular_contracts_ranking():
 # COMMAND ----------
 
 @dlt.table(
-    name="s_apps.peer_to_peer_txs",
+    name="g_apps.peer_to_peer_txs",
     comment="Gold MV: transferências ETH diretas entre endereços EOA (input vazio ou nulo)",
     table_properties={
         "quality": "gold",
@@ -484,7 +484,7 @@ def gold_peer_to_peer_txs():
 # COMMAND ----------
 
 @dlt.table(
-    name="s_apps.ethereum_gas_consume",
+    name="g_apps.ethereum_gas_consume",
     comment="Gold MV: consumo de gas por transação com classificação de tipo (peer_to_peer | contract_interaction | contract_deploy)",
     table_properties={
         "quality": "gold",
@@ -552,8 +552,8 @@ def gold_ethereum_gas_consume():
 # COMMAND ----------
 
 @dlt.table(
-    name="s_apps.transactions_lambda",
-    comment="Gold MV: visão Lambda unindo streaming (transactions_fast) e batch (popular_contracts_txs) com input decodificado",
+    name="g_apps.transactions_lambda",
+    comment="Gold MV: visão Lambda de transações de contratos populares com input decodificado",
     table_properties={
         "quality": "gold",
         "pipelines.autoOptimize.managed": "true",
@@ -561,18 +561,13 @@ def gold_ethereum_gas_consume():
 )
 def gold_transactions_lambda():
     """
-    Lambda view:
-    - streaming_layer: transactions_fast (real-time, com method/parms do decoder)
-    - batch_layer: popular_contracts_txs (histórico horário Etherscan, com input completo)
-
-    UNION ALL com deduplicação: se a mesma tx_hash existe em ambas, prioriza o batch
-    (pois input vindo do Etherscan é mais confiável/completo).
+    Transações dos contratos mais populares com input decodificado (streaming only).
+    Filtra transactions_ethereum pelos contratos em popular_contracts_ranking.
     """
-    # ── Streaming: transactions_ethereum filtrada apenas para contratos populares──
-    df_ranking = dlt.read("s_apps.popular_contracts_ranking").select("contract_address")
+    df_ranking = dlt.read("g_apps.popular_contracts_ranking").select("contract_address")
     df_stream = dlt.read("s_apps.transactions_ethereum")
 
-    df_stream_popular = (
+    return (
         df_stream
         .join(df_ranking, df_stream.to_address == df_ranking.contract_address, "inner")
         .select(
@@ -584,65 +579,12 @@ def gold_transactions_lambda():
             F.col("gas"),
             F.col("gas_price"),
             F.col("input"),
-            # Input decodificado (vem de transactions_ethereum via JOIN com topic 5)
             F.col("method"),
             F.col("parms"),
             F.col("decode_type"),
             F.col("input_etherscan"),
             F.col("tx_timestamp").alias("event_time"),
-            F.lit("streaming").alias("source_layer"),
         )
-    )
-
-    # ── Batch: popular_contracts_txs (já em Bronze) ──────────────────────────
-    df_batch = spark.table(f"{CATALOG}.b_ethereum.popular_contracts_txs")
-
-    df_batch_enriched = (
-        df_batch
-        .select(
-            F.col("tx_hash"),
-            F.col("block_number"),
-            F.col("from_address"),
-            F.col("contract_address"),
-            F.col("value"),
-            F.col("gas_used").alias("gas"),
-            F.lit(None).cast("long").alias("gas_price"),
-            F.col("input"),
-            F.lit(None).cast("string").alias("method"),
-            F.lit(None).cast("string").alias("parms"),
-            F.lit(None).cast("string").alias("decode_type"),
-            F.lit(None).cast("string").alias("input_etherscan"),
-            F.col("timestamp").alias("event_time"),
-            F.lit("batch").alias("source_layer"),
-        )
-    )
-
-    # ── UNION com deduplicação: prioridade por completude do decode_type ──────
-    # Ordem de prioridade (TODO-P05):
-    #   1. decode_type='full'       → método + parâmetros via ABI Etherscan (mais completo)
-    #   2. decode_type='full_4byte' → método + parâmetros via 4byte.directory
-    #   3. decode_type='partial'    → apenas nome do método decodificado
-    #   4. source_layer='batch'     → input raw completo do Etherscan (sem decode)
-    #   5. decode_type='unknown'    → apenas seletor 4-byte hex (menos informativo)
-    df_union = df_stream_popular.unionByName(df_batch_enriched)
-
-    return (
-        df_union
-        .withColumn(
-            "_rank",
-            F.row_number().over(
-                Window.partitionBy("tx_hash").orderBy(
-                    F.when(F.col("decode_type") == "full",       F.lit(1))
-                     .when(F.col("decode_type") == "full_4byte",  F.lit(2))
-                     .when(F.col("decode_type") == "partial",     F.lit(3))
-                     .when(F.col("source_layer") == "batch",      F.lit(4))
-                     .when(F.col("decode_type") == "unknown",     F.lit(5))
-                     .otherwise(F.lit(6))
-                )
-            )
-        )
-        .filter(F.col("_rank") == 1)
-        .drop("_rank")
     )
 
 

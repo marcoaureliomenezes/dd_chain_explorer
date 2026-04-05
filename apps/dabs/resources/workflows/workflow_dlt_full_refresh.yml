@@ -10,6 +10,11 @@ resources:
       # Em DEV (availableNow): reprocessa todos os arquivos S3 presentes no bucket.
       # Em PROD (continuous): para o pipeline, reinicia em full_refresh e reativa.
 
+      environments:
+        - environment_key: serverless
+          spec:
+            client: "1"
+
       tasks:
         - task_key: full_refresh_ethereum
           pipeline_task:
@@ -26,8 +31,10 @@ resources:
         - task_key: export_gold_to_s3
           depends_on:
             - task_key: full_refresh_app_logs
-          spark_python_task:
-            python_file: ../../src/batch/periodic/4_export_gold_to_s3.py
+          environment_key: serverless
+          python_wheel_task:
+            package_name: dm_export_gold
+            entry_point: dm-export-gold-export-gold
             parameters:
               - "--catalog"
               - ${var.catalog}

@@ -1,0 +1,88 @@
+resources:
+  jobs:
+    workflow_dm_delta_maintenance:
+      name: "dm-dm-delta-maintenance"
+      description: "Delta Lake maintenance: optimize, vacuum, and monitor all tables"
+      max_concurrent_runs: 1
+
+      
+      schedule:
+        quartz_cron_expression: "0 0 4,16 * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED
+      
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies: []
+
+      tasks:
+        - task_key: optimize_bronze
+          environment_key: default
+          python_wheel_task:
+            package_name: dm_delta_maintenance
+            entry_point: dm-delta-maintenance-optimize-bronze
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--storage-mode"
+              - "managed"
+
+        - task_key: optimize_silver
+          depends_on:
+            - task_key: optimize_bronze
+          environment_key: default
+          python_wheel_task:
+            package_name: dm_delta_maintenance
+            entry_point: dm_delta_maintenance-optimize-silver
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--storage-mode"
+              - "managed"
+
+        - task_key: optimize_gold
+          depends_on:
+            - task_key: optimize_silver
+          environment_key: default
+          python_wheel_task:
+            package_name: dm_delta_maintenance
+            entry_point: dm_delta_maintenance-optimize-gold
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--storage-mode"
+              - "managed"
+
+        - task_key: vacuum
+          depends_on:
+            - task_key: optimize_gold
+          environment_key: default
+          python_wheel_task:
+            package_name: dm_delta_maintenance
+            entry_point: dm_delta_maintenance-vacuum
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--storage-mode"
+              - "managed"
+
+        - task_key: monitor
+          depends_on:
+            - task_key: vacuum
+          environment_key: default
+          python_wheel_task:
+            package_name: dm_delta_maintenance
+            entry_point: dm_delta_maintenance-monitor
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--storage-mode"
+              - "managed"
+
+      tags:
+        project: dd-chain-explorer
+        layer: batch
+        component: dm_delta_maintenance

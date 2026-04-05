@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: dm_delta_maintenance
+Version: 0.1.0
+Summary: Delta Lake maintenance: optimize, vacuum, and monitor all tables
+Requires-Python: >=3.10

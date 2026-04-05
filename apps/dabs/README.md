@@ -18,7 +18,7 @@ apps/dabs/
       workflow_dlt_full_refresh.yml      # Full refresh manual dos 2 pipelines DLT + export Gold
       workflow_maintenance.yml           # OPTIMIZE + VACUUM (schedule 12h)
       workflow_batch_contracts.yml       # S3 batch/ → Bronze → Silver (contratos)
-      workflow_trigger_dlt_all.yml       # Disparo sequencial ethereum → app_logs (schedule 10 min)
+      workflow_trigger_dlt_all.yml       # Disparo sequencial ethereum → app_logs (schedule 1h — UNPAUSED em DEV)
       workflow_trigger_dlt_ethereum.yml  # CI trigger: dispara pipeline ethereum uma vez
       workflow_trigger_dlt_app_logs.yml  # CI trigger: dispara pipeline app_logs uma vez
     dashboards/               # 4 Lakeview dashboards
@@ -29,9 +29,12 @@ apps/dabs/
       4_pipeline_ethereum.py  # DLT streaming: S3 NDJSON → tabelas Ethereum
       5_pipeline_app_logs.py  # DLT streaming: CloudWatch Logs → tabelas de logs
     batch/
-      ddl/setup_ddl.py           # Criação consolidada de tabelas e views
+      ddl/setup_ddl.py           # DDL unificado (Spark + Warehouse dual-mode)
       maintenance/maintenance.py # OPTIMIZE, VACUUM, monitoramento (consolidado)
       periodic/4_export_gold_to_s3.py  # Exporta tabelas Gold para S3
+    dd_chain_explorer/         # Pacote Python (wheel) para python_wheel_task
+      batch_contracts/         # entry points: dd-s3-to-bronze, dd-bronze-to-silver
+    pyproject.toml             # Definição do wheel dd_chain_explorer
 ```
 
 ---
@@ -49,9 +52,15 @@ apps/dabs/
 ## Workflows
 
 ### `dm-ddl-setup`
-Cria todas as tabelas Bronze, Silver e views Gold no Unity Catalog. Deve ser executado uma vez antes do primeiro deploy dos pipelines DLT.
+Cria todos os schemas, tabelas Bronze, Silver e views Gold no Unity Catalog via um único script consolidado `setup_ddl.py`.
 
-**Tasks**: `create_bronze_tables` → `create_silver_apps_tables` + `create_silver_logs_table` → `create_gold_views` → `create_rls_policies`
+**Task**: `setup_ddl` — `spark_python_task` em `apps/dabs/src/batch/ddl/setup_ddl.py`
+
+**Modo dual de execução:**
+- **HML/PROD** (com cluster Spark): `spark.sql()`
+- **DEV (Free Edition)**: Databricks Statements REST API (sem Spark cluster) — use `make dabs_ddl_dev`
+
+**Tasks**: `setup_ddl` (task única substituindo os 5 notebooks anteriores)
 
 ---
 
@@ -75,7 +84,7 @@ Ingesta transações de contratos do S3 (`batch/` prefix) para Bronze e processa
 **Tasks**: `s3_to_bronze_contracts_txs` → `bronze_to_silver_contracts_txs`
 
 ### `dm-trigger-all-dlts`
-Dispara sequencialmente os pipelines `dm-ethereum` → `dm-app-logs` a cada 10 minutos. Em DEV o schedule é ativo (`UNPAUSED`); em HML e PROD é pausado (disparado via CI ou manualmente).
+Dispara sequencialmente os pipelines `dm-ethereum` → `dm-app-logs` a cada 1 hora. Em DEV o schedule é ativo (`UNPAUSED`); em HML e PROD é pausado (disparado via CI ou manualmente).
 
 ### `dm-trigger-dlt-ethereum`
 Workflow CI — dispara o pipeline `dm-ethereum` uma vez e aguarda conclusão (`full_refresh: false`). Sem schedule.
@@ -119,6 +128,17 @@ make dabs_deploy_dev_dashboards
 make dabs_run_dev JOB=dm-ddl-setup
 make dabs_run_dev JOB=dm-batch-contracts
 make dabs_run_dev JOB=dm-iceberg-maintenance
+
+# Executar pipelines DLT em sequência (ethereum → app_logs)
+make run_dev_pipelines
+
+# Setup DDL no DEV via SQL Warehouse (sem Spark cluster)
+make dabs_ddl_dev             # cria/atualiza schemas e tabelas
+make dabs_ddl_dev DROP=1      # DROP CASCADE + recria tudo
+make dabs_ddl_dev COMMENTS=1  # aplica somente comentários
+
+# Pausar schedule do dm-trigger-all-dlts antes de deploy HML
+make pause_dlt_pipelines
 
 # Ver status dos recursos
 make dabs_status_dev

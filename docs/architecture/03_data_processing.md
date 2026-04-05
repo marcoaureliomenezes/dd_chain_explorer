@@ -223,14 +223,22 @@ Definidos como Databricks Workflows via DABs (`apps/dabs/resources/workflows/`):
 
 ### 3.1 DDL Setup (`dm-ddl-setup`)
 
-Cria todas as tabelas e views no Unity Catalog. Executado uma vez na preparação do ambiente.
-Parâmetro `lakehouse_s3_bucket` é passado para que o script crie External Locations e tabelas com o bucket correto.
+Cria todos os schemas, tabelas e views no Unity Catalog via um único script consolidado `setup_ddl.py`.
+Executado uma vez na preparação do ambiente.
 
-```
-create_bronze_tables
-    ├── create_silver_apps_tables
-    └── create_silver_logs_table
-          └── create_gold_views
+**Task**: `setup_ddl` — `spark_python_task` executando `apps/dabs/src/batch/ddl/setup_ddl.py`
+
+**Modo de execução dual:**
+- **HML/PROD** (com cluster Spark): usa `spark.sql()` diretamente
+- **DEV (Free Edition)**: usa a Databricks Statements REST API via `--warehouse-id` (sem Spark cluster)
+
+**Flags principais**: `--catalog`, `--lakehouse-s3-bucket`, `--drop` (DROP CASCADE + recria), `--comments-only`, `--warehouse-id`
+
+Alternativa local (DEV Free Edition via Makefile):
+```bash
+make dabs_ddl_dev             # cria schemas + tabelas + comentários
+make dabs_ddl_dev DROP=1      # DROP CASCADE + recria tudo
+make dabs_ddl_dev COMMENTS=1  # aplica somente comentários
 ```
 
 ### 3.2 Batch Contratos (`dm-batch-contracts`)
@@ -240,6 +248,10 @@ Pipeline unificado: S3 `batch/` → Bronze → Silver para dados de transações
 ```
 s3_to_bronze_contracts_txs → bronze_to_silver_contracts_txs
 ```
+
+**Tasks**: ambas usam `python_wheel_task` com o pacote `dd_chain_explorer` (wheel gerado pelo DABs artifact):
+- `s3_to_bronze_contracts_txs`: entry point `dd-s3-to-bronze`
+- `bronze_to_silver_contracts_txs`: entry point `dd-bronze-to-silver`
 
 Substituiu os workflows individuais `dm-batch-s3-to-bronze` e `dm-batch-bronze-to-silver`.
 
@@ -283,9 +295,10 @@ Os schedules dos pipelines DLT são configurados diretamente nos arquivos YAML (
 
 ### 4.3 Workflows Agendados
 
-| Workflow | Schedule | Descrição |
-|----------|----------|----------|
-| `dm-iceberg-maintenance` | A cada 12h (4h e 16h) | OPTIMIZE + VACUUM nas tabelas Delta |
+| Workflow | Schedule | Ambientes | Descrição |
+|----------|----------|-----------|-----------|
+| `dm-iceberg-maintenance` | A cada 12h (4h e 16h) | HML, PROD | OPTIMIZE + VACUUM nas tabelas Delta |
+| `dm-trigger-all-dlts` | A cada 1h (`0 0 * * * ?`) | DEV (UNPAUSED) | Dispara sequencialmente `dm-ethereum` → `dm-app-logs` respeitando a quota de 1 pipeline ativo no workspace Free Edition |
 
 ### 4.4 Workflows Manuais
 
@@ -297,7 +310,7 @@ Os schedules dos pipelines DLT são configurados diretamente nos arquivos YAML (
 
 ### 4.5 Workflows CI (disparo único, sem schedule)
 
-Usados por CI/CD para acionar cada pipeline DLT individualmente e aguardar conclusão:
+Usados por CI/CD para acionar cada pipeline DLT individualmente e aguardar conclusão. Incluídos no bundle em todos os targets via `databricks.yml` top-level:
 
 | Workflow | Descrição |
 |----------|----------|
@@ -348,7 +361,7 @@ Os 6 schemas disponíveis são: `AVRO_SCHEMA_APP_LOGS`, `AVRO_SCHEMA_MINED_BLOCK
 | Aspecto | DEV | PROD |
 |---------|-----|------|
 | **Fonte Bronze** | S3 NDJSON via Auto Loader (`cloudFiles`) | S3 NDJSON via Auto Loader (Firehose) |
-| **DLT Mode** | Triggered (`availableNow`, acionar manualmente em DEV) | Triggered (schedule cron no pipeline, PAUSED até ativação) |
+| **DLT Mode** | Triggered, acionado a cada hora pelo workflow `dm-trigger-all-dlts` (UNPAUSED) | Triggered (schedule cron no pipeline, PAUSED até ativação) |
 | **Development Flag** | `true` (permite refresh rápido) | `false` |
 | **Workers** | 0 (single-node) | 1+ |
 | **Catalog** | `dev` | `dd_chain_explorer` |

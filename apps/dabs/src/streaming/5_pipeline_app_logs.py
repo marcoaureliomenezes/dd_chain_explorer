@@ -200,7 +200,7 @@ def bronze_app_logs_data():
 # COMMAND ----------
 
 @dlt.table(
-    name="logs_streaming",
+    name="s_logs.logs_streaming",
     comment="Silver: logs das aplicações de streaming on-chain",
     table_properties={
         "quality": "silver",
@@ -235,7 +235,7 @@ def silver_logs_streaming():
 # COMMAND ----------
 
 @dlt.table(
-    name="logs_batch",
+    name="s_logs.logs_batch",
     comment="Silver: logs das aplicações batch on-chain",
     table_properties={
         "quality": "silver",
@@ -294,8 +294,8 @@ def gold_etherscan_consumption():
     Janelas: 1h, 2h, 12h, 24h, 48h (relativas ao _ingested_at da mensagem).
     """
     df = (
-        dlt.read("logs_streaming")
-        .unionByName(dlt.read("logs_batch"))
+        dlt.read("s_logs.logs_streaming")
+        .unionByName(dlt.read("s_logs.logs_batch"))
         .filter(F.col("message").contains("etherscan;api_call;"))
         .withColumn(
             "api_key_name",
@@ -370,8 +370,8 @@ def gold_web3_keys_consumption():
     Uma linha por combinação api_key_name × vendor.
     """
     df = (
-        dlt.read("logs_streaming")
-        .unionByName(dlt.read("logs_batch"))
+        dlt.read("s_logs.logs_streaming")
+        .unionByName(dlt.read("s_logs.logs_batch"))
         .filter(F.col("message").contains("API_request;"))
         .withColumn(
             "api_key_name",
