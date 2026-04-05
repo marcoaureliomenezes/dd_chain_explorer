@@ -22,3 +22,9 @@ variable "workspace_admin_email" {
   type    = string
   default = "marcoaurelioreislima@gmail.com"
 }
+
+variable "assign_workspace_admin" {
+  description = "Set true to enable databricks_mws_permission_assignment for the workspace admin. Requires Identity Federation enabled on the workspace."
+  type        = bool
+  default     = false
+}

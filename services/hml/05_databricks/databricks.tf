@@ -145,14 +145,18 @@ resource "databricks_metastore_data_access" "default" {
   }
 }
 
+# Permission assignment requires Identity Federation to be enabled on the workspace.
+# For HML (ephemeral workspace), skip it — bootstrap token already provides admin access.
 data "databricks_user" "admin" {
+  count     = var.assign_workspace_admin ? 1 : 0
   provider  = databricks.accounts
   user_name = var.workspace_admin_email
 }
 
 resource "databricks_mws_permission_assignment" "admin" {
+  count        = var.assign_workspace_admin ? 1 : 0
   provider     = databricks.accounts
   workspace_id = databricks_mws_workspaces.dm.workspace_id
-  principal_id = data.databricks_user.admin.id
+  principal_id = data.databricks_user.admin[0].id
   permissions  = ["ADMIN"]
 }
