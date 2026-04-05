@@ -32,7 +32,7 @@ resource "databricks_catalog" "hml" {
   provider     = databricks.workspace
   name         = "hml"
   comment      = "HML Unity Catalog"
-  storage_root = "s3://${data.terraform_remote_state.peripherals.outputs.databricks_bucket_name}/unity-catalog/hml"
+  storage_root = "s3://${data.terraform_remote_state.peripherals.outputs.lakehouse_bucket_name}/unity-catalog/hml"
 }
 
 # Instance profile and cluster are only needed when create_cluster = true.
