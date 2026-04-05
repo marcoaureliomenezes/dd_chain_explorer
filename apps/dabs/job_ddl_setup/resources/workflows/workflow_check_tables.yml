@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    workflow_check_tables:
+      name: "dm-check-tables"
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - "${workspace.file_path}/src/dist/dd_chain_explorer-0.1.0-py3-none-any.whl"
+      tasks:
+        - task_key: check_tables
+          environment_key: default
+          python_wheel_task:
+            package_name: dd_chain_explorer
+            entry_point: dd-check-tables
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+
+      tags:
+        layer: validation
+        project: dd-chain-explorer

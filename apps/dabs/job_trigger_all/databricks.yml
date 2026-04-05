@@ -1,0 +1,41 @@
+bundle:
+  name: job-trigger-all
+
+include:
+  - resources/workflows/workflow_trigger_dlt_all.yml
+
+variables:
+  pipeline_ethereum_id:
+    description: "Pipeline ID of dlt-ethereum (from `databricks pipelines list`)"
+    default: ""
+  pipeline_app_logs_id:
+    description: "Pipeline ID of dlt-app-logs (from `databricks pipelines list`)"
+    default: ""
+
+targets:
+  dev:
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+    resources:
+      jobs:
+        dm-trigger-all-dlts:
+          schedule:
+            pause_status: UNPAUSED
+
+  hml:
+    presets:
+      name_prefix: "[hml] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ""
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"

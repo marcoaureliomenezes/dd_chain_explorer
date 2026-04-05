@@ -1,0 +1,33 @@
+bundle:
+  name: dashboard-gas-analytics
+
+include:
+  - resources/dashboards/dashboard_gas_analytics.yml
+
+variables:
+  warehouse_id:
+    description: "Databricks SQL warehouse ID"
+    default: ""
+
+targets:
+  dev:
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+
+  hml:
+    presets:
+      name_prefix: "[hml] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ""
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"

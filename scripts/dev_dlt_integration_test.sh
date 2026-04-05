@@ -83,8 +83,7 @@ if [ "$SKIP_DEPLOY" = "true" ]; then
 else
   log "──── Step 1: Deploying DABs to target '${TARGET}' ────"
   (
-    cd "$PROJECT_ROOT/apps/dabs"
-    databricks bundle deploy --target "$TARGET"
+    bash "$PROJECT_ROOT/apps/dabs/deploy_all.sh" "$TARGET"
   )
   ok "DABs deployed to ${TARGET}"
 fi
@@ -144,8 +143,14 @@ else
   log "  Using incremental workflow: ${WORKFLOW_NAME}"
 fi
 
-# Trigger via databricks bundle run
-RUN_OUTPUT=$(cd "$PROJECT_ROOT/apps/dabs" && \
+# Trigger via databricks bundle run (from the specific component that owns the workflow)
+if [ "$FULL_REFRESH" = "true" ]; then
+  BUNDLE_COMPONENT="$PROJECT_ROOT/apps/dabs/job_full_refresh"
+else
+  BUNDLE_COMPONENT="$PROJECT_ROOT/apps/dabs/job_trigger_all"
+fi
+
+RUN_OUTPUT=$(cd "$BUNDLE_COMPONENT" && \
   databricks bundle run --target "$TARGET" \
     "$([ "$FULL_REFRESH" = "true" ] && echo "workflow_dlt_full_refresh" || echo "workflow_trigger_dlt_all")" \
     --no-wait 2>&1) || fail "Failed to trigger workflow: ${RUN_OUTPUT}"

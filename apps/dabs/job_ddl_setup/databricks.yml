@@ -1,0 +1,51 @@
+bundle:
+  name: job-ddl-setup
+
+include:
+  - resources/workflows/workflow_ddl_setup.yml
+  - resources/workflows/workflow_check_tables.yml
+
+artifacts:
+  dd_chain_explorer:
+    type: whl
+    path: ./src
+
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: "dev"
+  ingestion_s3_bucket:
+    description: "S3 bucket for ingestion/exports"
+    default: "dm-chain-explorer-dev-ingestion"
+
+targets:
+  dev:
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+    variables:
+      catalog: "dev"
+      ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
+
+  hml:
+    presets:
+      name_prefix: "[hml] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+    variables:
+      catalog: "hml"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
+
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ""
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"
+    variables:
+      catalog: "dd_chain_explorer"
+      ingestion_s3_bucket: "dm-chain-explorer-lakehouse"

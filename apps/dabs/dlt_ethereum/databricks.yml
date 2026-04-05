@@ -1,0 +1,63 @@
+bundle:
+  name: dlt-ethereum
+
+include:
+  - resources/dlt/pipeline_ethereum.yml
+  - resources/workflows/workflow_trigger_ethereum.yml
+
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: "dev"
+  ingestion_s3_bucket:
+    description: "S3 bucket for ingestion"
+    default: "dm-chain-explorer-dev-ingestion"
+  dlt_development:
+    description: "DLT development mode"
+    default: true
+  dlt_continuous:
+    description: "DLT continuous mode"
+    default: false
+
+targets:
+  dev:
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+    variables:
+      catalog: "dev"
+      ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
+      dlt_development: true
+      dlt_continuous: false
+
+  hml:
+    presets:
+      name_prefix: "[hml] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+    variables:
+      catalog: "hml"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
+      dlt_development: false
+      dlt_continuous: false
+
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ""
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"
+    variables:
+      catalog: "dd_chain_explorer"
+      ingestion_s3_bucket: "dm-chain-explorer-lakehouse"
+      dlt_development: false
+      dlt_continuous: false
+    resources:
+      pipelines:
+        pipeline_ethereum:
+          schedule:
+            pause_status: UNPAUSED

@@ -1,8 +1,0 @@
-resources:
-  dashboards:
-    hot_contracts:
-      display_name: "Hot Contracts"
-      file_path: ./02_hot_contracts.lvdash.json
-      warehouse_id: ${var.warehouse_id}
-      embed_credentials: true
-      parent_path: /Shared/dd-chain-explorer/dashboards

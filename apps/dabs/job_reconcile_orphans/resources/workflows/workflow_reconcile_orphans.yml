@@ -1,0 +1,40 @@
+resources:
+  jobs:
+    workflow_reconcile_orphans:
+      name: "dm-reconcile-orphan-blocks"
+      description: >
+        Backfill de blocos canônicos ausentes da Bronze. Detecta orphans sem
+        contrapartida canônica em s_apps.canonical_blocks_index e recupera os
+        dados via JSON-RPC, escrevendo em eth_mined_blocks e eth_transactions.
+
+      max_concurrent_runs: 1
+
+      environments:
+        - environment_key: default
+          spec:
+            client: "1"
+            dependencies: []
+
+      tasks:
+        - task_key: reconcile_orphans
+          environment_key: default
+          notebook_task:
+            notebook_path: ${workspace.file_path}/src/batch/reconcile_orphan_blocks
+            source: WORKSPACE
+            base_parameters:
+              catalog: ${var.catalog}
+              ingestion_s3_bucket: ${var.ingestion_s3_bucket}
+              ethereum_rpc_url: ${var.ethereum_rpc_url}
+              max_blocks_per_run: ${var.max_blocks_per_run}
+
+      schedule:
+        # Executar diariamente às 03:00 para reconciliar gaps do dia anterior
+        # Alterar pause_status para UNPAUSED em prod após configurar ethereum_rpc_url
+        quartz_cron_expression: "0 0 3 * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED
+
+      tags:
+        project: dd-chain-explorer
+        layer: batch
+        component: reconcile_orphans
