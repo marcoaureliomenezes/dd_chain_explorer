@@ -114,6 +114,45 @@ class ContractTransactionsCrawler:
         )
         return (block_before["result"], block_after["result"])
 
+    @staticmethod
+    def _normalize_tx(raw: dict, contract_address: str) -> dict:
+        """
+        Normalize a raw Etherscan ``txlist`` record to snake_case schema.
+
+        Maps Etherscan camelCase field names to the schema expected by
+        ``b_ethereum.popular_contracts_txs`` (DDL in job_ddl_setup).
+
+        Fields included:
+          contract_address  — injected (not in Etherscan response)
+          tx_hash           — Etherscan: hash
+          block_number      — Etherscan: blockNumber (cast to int)
+          timestamp         — Etherscan: timeStamp (Unix epoch as int)
+          from_address      — Etherscan: from
+          to_address        — Etherscan: to
+          value             — Etherscan: value (Wei string, 256-bit precision)
+          gas_used          — Etherscan: gasUsed (int)
+          receipt_status    — Etherscan: txreceipt_status (int: 1=ok, 0=reverted)
+          is_error          — Etherscan: isError (int: 0=ok, 1=error)
+          method_id         — Etherscan: methodId (4-byte hex selector)
+          function_name     — Etherscan: functionName (human-readable, may be empty)
+          input             — Etherscan: input (full calldata hex)
+        """
+        return {
+            "contract_address": contract_address,
+            "tx_hash":          raw.get("hash", ""),
+            "block_number":     int(raw.get("blockNumber", 0)),
+            "timestamp":        int(raw.get("timeStamp", 0)),
+            "from_address":     raw.get("from", ""),
+            "to_address":       raw.get("to", ""),
+            "value":            raw.get("value", "0"),
+            "gas_used":         int(raw.get("gasUsed", 0)),
+            "receipt_status":   int(raw.get("txreceipt_status", 0) or 0),
+            "is_error":         int(raw.get("isError", 0) or 0),
+            "method_id":        raw.get("methodId", ""),
+            "function_name":    raw.get("functionName", ""),
+            "input":            raw.get("input", "0x"),
+        }
+
     def _get_transactions(self, contract_address):
         lower_limit, upper_limit = self.block_interval
         block_before, block_after = lower_limit, str(int(upper_limit) - 1)
@@ -133,7 +172,7 @@ class ContractTransactionsCrawler:
                 return
             data = result["result"]
             block_before = data[-1]["blockNumber"]
-            yield data
+            yield [self._normalize_tx(tx, contract_address) for tx in data]
 
     def _check_file_exists(self, key):
         try:
