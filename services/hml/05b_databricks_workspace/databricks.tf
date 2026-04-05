@@ -33,6 +33,8 @@ resource "databricks_catalog" "hml" {
   name         = "hml"
   comment      = "HML Unity Catalog"
   storage_root = "s3://${data.terraform_remote_state.peripherals.outputs.lakehouse_bucket_name}/unity-catalog/hml"
+
+  depends_on = [databricks_external_location.lakehouse]
 }
 
 # Instance profile and cluster are only needed when create_cluster = true.
