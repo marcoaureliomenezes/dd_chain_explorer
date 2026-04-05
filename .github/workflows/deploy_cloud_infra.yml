@@ -73,6 +73,9 @@ jobs:
 
   dev-deploy-peripherals:
     name: DEV — Deploy Peripherals AWS
+    concurrency:
+      group: tf-dev-peripherals
+      cancel-in-progress: false
     needs: dev-detect-changes
     if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
     runs-on: ubuntu-latest
@@ -111,6 +114,9 @@ jobs:
 
   dev-deploy-lambda:
     name: DEV — Deploy Lambda AWS
+    concurrency:
+      group: tf-dev-lambda
+      cancel-in-progress: false
     needs: [dev-detect-changes, dev-deploy-peripherals]
     if: |
       always() &&
@@ -176,6 +182,9 @@ jobs:
 
   prd-deploy-vpc:
     name: PRD — Deploy VPC AWS
+    concurrency:
+      group: tf-prd-vpc
+      cancel-in-progress: false
     needs: prd-check-version
     runs-on: ubuntu-latest
     environment: production
@@ -212,6 +221,9 @@ jobs:
 
   prd-deploy-peripherals:
     name: PRD — Deploy Peripherals AWS
+    concurrency:
+      group: tf-prd-peripherals
+      cancel-in-progress: false
     needs: prd-check-version
     runs-on: ubuntu-latest
     environment: production
@@ -250,8 +262,14 @@ jobs:
 
   prd-deploy-iam:
     name: PRD — Deploy IAM AWS
+    concurrency:
+      group: tf-prd-iam
+      cancel-in-progress: false
     needs: [prd-deploy-vpc, prd-deploy-peripherals]
-    if: always() && needs.prd-deploy-peripherals.result == 'success'
+    if: >-
+      always() &&
+      needs.prd-deploy-vpc.result == 'success' &&
+      needs.prd-deploy-peripherals.result == 'success'
     runs-on: ubuntu-latest
     environment: production
     defaults:
@@ -289,6 +307,9 @@ jobs:
 
   prd-deploy-databricks-account:
     name: PRD — Deploy Databricks Part 1 - Account
+    concurrency:
+      group: tf-prd-databricks-account
+      cancel-in-progress: false
     needs: prd-deploy-iam
     if: github.event.inputs.skip_databricks != 'true'
     runs-on: ubuntu-latest
@@ -362,6 +383,9 @@ jobs:
 
   prd-deploy-lambda:
     name: PRD — Deploy Lambda AWS
+    concurrency:
+      group: tf-prd-lambda
+      cancel-in-progress: false
     needs: prd-deploy-iam
     if: always() && needs.prd-deploy-iam.result == 'success'
     runs-on: ubuntu-latest
@@ -400,6 +424,9 @@ jobs:
 
   prd-deploy-ecs:
     name: PRD — Deploy ECS AWS
+    concurrency:
+      group: tf-prd-ecs
+      cancel-in-progress: false
     needs: prd-deploy-iam
     if: always() && needs.prd-deploy-iam.result == 'success'
     runs-on: ubuntu-latest
@@ -439,6 +466,9 @@ jobs:
 
   prd-deploy-databricks-workspace:
     name: PRD — Deploy Databricks Part 2 - Workspace
+    concurrency:
+      group: tf-prd-databricks-workspace
+      cancel-in-progress: false
     needs: prd-deploy-databricks-account
     if: github.event.inputs.skip_databricks != 'true'
     runs-on: ubuntu-latest
@@ -527,6 +557,9 @@ jobs:
 
   hml-deploy-vpc:
     name: HML — Deploy VPC
+    concurrency:
+      group: tf-hml-vpc
+      cancel-in-progress: false
     needs: branch-guard
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
@@ -560,6 +593,9 @@ jobs:
 
   hml-deploy-peripherals:
     name: HML — Deploy Peripherals
+    concurrency:
+      group: tf-hml-peripherals
+      cancel-in-progress: false
     needs: branch-guard
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
@@ -595,6 +631,9 @@ jobs:
 
   hml-deploy-iam:
     name: HML — Deploy IAM
+    concurrency:
+      group: tf-hml-iam
+      cancel-in-progress: false
     needs: [hml-deploy-vpc, hml-deploy-peripherals]
     runs-on: ubuntu-latest
     environment: hml
@@ -629,6 +668,9 @@ jobs:
 
   hml-deploy-ecs:
     name: HML — Deploy ECS + ECR
+    concurrency:
+      group: tf-hml-ecs
+      cancel-in-progress: false
     needs: hml-deploy-iam
     runs-on: ubuntu-latest
     environment: hml

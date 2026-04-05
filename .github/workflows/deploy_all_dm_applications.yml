@@ -155,9 +155,39 @@ jobs:
             gold_to_dynamodb.zip
           retention-days: 3
 
+  all-dabs-version-check:
+    name: DABs — Version check (dry run)
+    needs: [all-check-version]
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.check.outputs.has_changes }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fetch all tags
+        run: git fetch --tags --quiet
+      - name: Run version check
+        id: check
+        run: |
+          set +e
+          bash ${{ env.DABS_PATH }}/check_versions.sh
+          EXIT_CODE=$?
+          set -e
+          if [ $EXIT_CODE -eq 1 ]; then
+            echo "::error::One or more DABs components are missing a VERSION file."
+            exit 1
+          elif [ $EXIT_CODE -eq 2 ]; then
+            echo "has_changes=false" >> "${GITHUB_OUTPUT}"
+            echo "All DABs components are already deployed in PRD — skipping DABs jobs."
+          else
+            echo "has_changes=true" >> "${GITHUB_OUTPUT}"
+          fi
+
   all-dabs-validate:
     name: DABs — Validate bundle
-    needs: [all-check-version]
+    needs: [all-check-version, all-dabs-version-check]
+    if: needs.all-dabs-version-check.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -320,20 +350,17 @@ jobs:
           fi
 
   all-hml-dabs-deploy:
-    name: HML — Deploy DABs bundle
-    needs: all-hml-stream-launch
+    name: HML — Deploy DABs components
+    needs: [all-hml-stream-launch, all-dabs-version-check]
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ${{ env.DABS_PATH }}
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@v0.218.0
-      - name: Deploy bundle to HML
+      - name: Deploy all components to HML
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
-        run: databricks bundle deploy --target hml
+        run: bash ${{ env.DABS_PATH }}/deploy_all.sh hml
       - name: Verify HML deployment
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
@@ -768,13 +795,16 @@ jobs:
 
   all-prod-dabs-deploy:
     name: PRD — Deploy DABs bundle
-    needs: [all-check-version, all-prod-stream-deploy]
+    needs: [all-check-version, all-dabs-version-check, all-prod-stream-deploy]
+    if: needs.all-dabs-version-check.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: ${{ env.DABS_PATH }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -804,13 +834,16 @@ jobs:
           echo "::add-mask::$PROD_TOKEN"
           echo "prod_token=$PROD_TOKEN" >> $GITHUB_OUTPUT
       - uses: databricks/setup-cli@v0.218.0
-      - name: Deploy bundle to PROD
+      - name: Configure git for tagging
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch --tags --quiet
+      - name: Deploy all components to PROD
         env:
           DATABRICKS_HOST:  ${{ steps.prod-ws.outputs.prod_host }}
           DATABRICKS_TOKEN: ${{ steps.prod-token.outputs.prod_token }}
-        run: |
-          databricks bundle deploy --target prod \
-            --var prod_workspace_host=${{ steps.prod-ws.outputs.prod_host }}
+        run: bash ${{ env.DABS_PATH }}/deploy_all.sh prod --tag
       - name: Verify PROD deployment
         env:
           DATABRICKS_HOST:  ${{ steps.prod-ws.outputs.prod_host }}

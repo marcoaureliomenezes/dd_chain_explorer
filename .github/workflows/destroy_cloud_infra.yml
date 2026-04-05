@@ -47,6 +47,9 @@ jobs:
 
   dev-destroy-lambda:
     name: DEV — Destroy 02_lambda
+    concurrency:
+      group: tf-dev-lambda
+      cancel-in-progress: false
     needs: safety-check
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
@@ -74,6 +77,9 @@ jobs:
 
   dev-destroy-peripherals:
     name: DEV — Destroy 01_peripherals
+    concurrency:
+      group: tf-dev-peripherals
+      cancel-in-progress: false
     needs: dev-destroy-lambda
     if: always() && github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
@@ -126,6 +132,9 @@ jobs:
 
   hml-destroy-databricks:
     name: HML — Destroy 05_databricks
+    concurrency:
+      group: tf-hml-databricks
+      cancel-in-progress: false
     needs: safety-check
     runs-on: ubuntu-latest
     environment: hml
@@ -188,6 +197,9 @@ jobs:
 
   prd-destroy-lambda:
     name: PRD — Destroy 06_lambda
+    concurrency:
+      group: tf-prd-lambda
+      cancel-in-progress: false
     needs: prd-empty-s3-and-ecr
     runs-on: ubuntu-latest
     environment: production
@@ -214,6 +226,9 @@ jobs:
 
   prd-destroy-ecs:
     name: PRD — Destroy 07_ecs
+    concurrency:
+      group: tf-prd-ecs
+      cancel-in-progress: false
     needs: prd-empty-s3-and-ecr
     runs-on: ubuntu-latest
     environment: production
@@ -241,6 +256,9 @@ jobs:
 
   prd-destroy-databricks-workspace:
     name: PRD — Destroy 05b_databricks_workspace
+    concurrency:
+      group: tf-prd-databricks-workspace
+      cancel-in-progress: false
     needs: [prd-destroy-lambda, prd-destroy-ecs]
     runs-on: ubuntu-latest
     environment: production
@@ -306,6 +324,9 @@ jobs:
 
   prd-destroy-databricks-account:
     name: PRD — Destroy 05a_databricks_account
+    concurrency:
+      group: tf-prd-databricks-account
+      cancel-in-progress: false
     needs: prd-destroy-databricks-workspace
     runs-on: ubuntu-latest
     environment: production
@@ -345,6 +366,9 @@ jobs:
 
   prd-destroy-peripherals:
     name: PRD — Destroy 04_peripherals (S3 preserved)
+    concurrency:
+      group: tf-prd-peripherals
+      cancel-in-progress: false
     needs: [prd-destroy-lambda, prd-destroy-ecs, prd-destroy-databricks-account]
     runs-on: ubuntu-latest
     environment: production
@@ -378,6 +402,9 @@ jobs:
 
   prd-destroy-iam:
     name: PRD — Destroy 03_iam
+    concurrency:
+      group: tf-prd-iam
+      cancel-in-progress: false
     needs: prd-destroy-peripherals
     runs-on: ubuntu-latest
     environment: production
@@ -405,6 +432,9 @@ jobs:
 
   prd-destroy-vpc:
     name: PRD — Destroy 02_vpc
+    concurrency:
+      group: tf-prd-vpc
+      cancel-in-progress: false
     needs: prd-destroy-iam
     runs-on: ubuntu-latest
     environment: production

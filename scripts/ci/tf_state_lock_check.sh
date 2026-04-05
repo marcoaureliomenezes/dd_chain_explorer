@@ -45,7 +45,7 @@ REMOVED=0
 SKIPPED=0
 
 echo "$LOCKS" | python3 -c "
-import sys, json, datetime
+import sys, json, datetime, base64
 
 locks = json.load(sys.stdin)
 now_epoch = $NOW_EPOCH
@@ -62,7 +62,7 @@ for item in locks:
     path = info.get('Path', lock_id)
     operation = info.get('Operation', '?')
     who = info.get('Who', '?')
-
+    lock_uuid = info.get('ID', '')
     age_secs = None
     if created_str:
         try:
@@ -74,24 +74,42 @@ for item in locks:
     age_str = f'{age_secs//60}min' if age_secs is not None else 'unknown'
     stale = (age_secs is not None and age_secs > max_age_secs) or age_secs is None
 
-    print(f'LOCK|{lock_id}|{path}|{operation}|{who}|{age_str}|{\"STALE\" if stale else \"ACTIVE\"}')
-" | while IFS='|' read -r _ lock_id path operation who age_str staleness; do
+    info_b64 = base64.b64encode(info_raw.encode()).decode()
+    print(f'LOCK|{lock_id}|{path}|{operation}|{who}|{age_str}|{\"STALE\" if stale else \"ACTIVE\"}|{lock_uuid}|{info_b64}')
+" | while IFS='|' read -r _ lock_id path operation who age_str staleness lock_uuid info_b64; do
     echo "    Lock: ${path}"
     echo "          operation=${operation} | who=${who} | age=${age_str} | status=${staleness}"
 
     if [ "$staleness" = "STALE" ]; then
+      echo "          🔑 Lock UUID: ${lock_uuid:-unknown}"
+      echo "          ℹ️  Manual recovery: terraform -chdir=<module-dir> force-unlock -force '${lock_uuid}'"
       if $DRY_RUN; then
         echo "          [DRY-RUN] Would remove lock: LockID=${lock_id}"
         SKIPPED=$((SKIPPED + 1))
       else
-        echo "          ⚠️  Removing stale lock..."
-        aws dynamodb delete-item \
+        echo "          ⚠️  Removing stale lock (conditional delete — safe against active runs)..."
+        TMP_COND=$(mktemp)
+        INFO_B64="$info_b64" python3 -c "
+import json, base64, os
+info_val = base64.b64decode(os.environ['INFO_B64']).decode()
+print(json.dumps({':expected_info': {'S': info_val}}))
+" > "$TMP_COND"
+        if aws dynamodb delete-item \
           --table-name "$LOCK_TABLE" \
           --region "$AWS_REGION" \
-          --key "{\"LockID\": {\"S\": \"${lock_id}\"}}" 2>/dev/null \
-          && echo "          ✅ Lock removed." \
-          || echo "          ❌ Failed to remove lock (already gone?)."
-        REMOVED=$((REMOVED + 1))
+          --key "{\"LockID\": {\"S\": \"${lock_id}\"}}" \
+          --condition-expression "Info = :expected_info" \
+          --expression-attribute-values "file://${TMP_COND}" 2>/tmp/_tf_lock_err; then
+          echo "          ✅ Lock removed."
+          REMOVED=$((REMOVED + 1))
+        else
+          if grep -q "ConditionalCheckFailed" /tmp/_tf_lock_err 2>/dev/null; then
+            echo "          ⚠️  Lock was modified since scan — NOT removing (active run detected)."
+          else
+            echo "          ❌ Delete failed (already gone or permission error)."
+          fi
+        fi
+        rm -f "$TMP_COND" /tmp/_tf_lock_err
       fi
     else
       echo "          ✅ Lock is recent — NOT removing (possible active run)."
