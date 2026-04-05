@@ -15,6 +15,11 @@ on:
         description: 'Type DESTROY to confirm infrastructure destruction'
         required: true
         type: string
+      full_destroy:
+        description: 'HML only: destroy ALL modules (VPC, IAM, Peripherals, ECS, Databricks). Default false = Databricks-only (~$11/month idle preserved).'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -125,10 +130,11 @@ jobs:
   #  HML
   # ══════════════════════════════════════════════════════════════
 
-  # ── HML: Only Databricks is destroyed.
-  # VPC, IAM, Peripherals (Kinesis/SQS/Firehose/S3/DynamoDB/CloudWatch) and
-  # ECS cluster are PERMANENT resources — they are never destroyed here.
-  # This minimises HML idle cost (~$11/month) while allowing fast spin-up.
+  # ── HML destroy modes:
+  # - full_destroy=false (default): only Databricks is destroyed.
+  #   VPC, IAM, Peripherals and ECS are preserved (~$11/month idle).
+  # - full_destroy=true: full teardown — all modules destroyed, S3 preserved.
+  #   Use to test full destroy/redeploy cycle or before extended pauses.
 
   hml-destroy-databricks:
     name: HML — Destroy 05_databricks
@@ -136,6 +142,7 @@ jobs:
       group: tf-hml-databricks
       cancel-in-progress: false
     needs: safety-check
+    if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
     environment: hml
     defaults:
@@ -162,17 +169,153 @@ jobs:
       - if: always()
         run: echo "HML/05_databricks destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
 
+  # ── HML full destroy: ECS + Peripherals + IAM + VPC ───────────
+  # Only runs when full_destroy == 'true'
+
+  hml-destroy-ecs:
+    name: HML — Destroy 07_ecs (full-destroy only)
+    concurrency:
+      group: tf-hml-ecs
+      cancel-in-progress: false
+    needs: safety-check
+    if: github.event.inputs.environment == 'hml' && github.event.inputs.full_destroy == 'true'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/07_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
+      - run: terraform init -input=false
+      - run: terraform destroy -auto-approve -input=false -no-color
+      - if: always()
+        run: echo "HML/07_ecs destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  hml-destroy-peripherals:
+    name: HML — Destroy 04_peripherals (S3 preserved, full-destroy only)
+    concurrency:
+      group: tf-hml-peripherals
+      cancel-in-progress: false
+    needs: [hml-destroy-databricks, hml-destroy-ecs]
+    if: always() && github.event.inputs.environment == 'hml' && github.event.inputs.full_destroy == 'true'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
+      - run: terraform init -input=false
+      - name: Destroy HML peripherals (S3 buckets preserved)
+        run: |
+          terraform destroy -auto-approve -input=false -no-color \
+            -target=module.dynamodb \
+            -target=module.kinesis \
+            -target=module.sqs \
+            -target=module.cloudwatch_logs
+      - if: always()
+        run: echo "HML/04_peripherals destroyed (S3 preserved) - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  hml-destroy-iam:
+    name: HML — Destroy 03_iam (full-destroy only)
+    concurrency:
+      group: tf-hml-iam
+      cancel-in-progress: false
+    needs: hml-destroy-peripherals
+    if: always() && github.event.inputs.environment == 'hml' && github.event.inputs.full_destroy == 'true'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
+      - run: terraform init -input=false
+      - run: terraform destroy -auto-approve -input=false -no-color
+      - if: always()
+        run: echo "HML/03_iam destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
+  hml-destroy-vpc:
+    name: HML — Destroy 02_vpc (full-destroy only)
+    concurrency:
+      group: tf-hml-vpc
+      cancel-in-progress: false
+    needs: hml-destroy-iam
+    if: always() && github.event.inputs.environment == 'hml' && github.event.inputs.full_destroy == 'true'
+    runs-on: ubuntu-latest
+    environment: hml
+    defaults:
+      run:
+        working-directory: ${{ env.HML_ROOT }}/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Check and clear stale state locks
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_state_lock_check.sh"
+      - run: terraform init -input=false
+      - name: Wait for ECS ENIs to be released before VPC destroy
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/wait_eni_release.sh"
+        env:
+          VPC_NAME_TAG: dm-chain-explorer-hml
+          AWS_REGION: ${{ env.AWS_REGION }}
+      - run: terraform destroy -auto-approve -input=false -no-color
+      - if: always()
+        run: echo "HML/02_vpc destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+
   hml-summary:
     name: HML — Destroy summary
-    needs: hml-destroy-databricks
+    needs: [hml-destroy-databricks, hml-destroy-vpc]
     if: always() && github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
     steps:
       - run: |
-          echo "## HML Databricks Destroy Complete" >> $GITHUB_STEP_SUMMARY
-          echo "Destroyed: 05_databricks" >> $GITHUB_STEP_SUMMARY
-          echo "PRESERVED (permanent): 02_vpc, 03_iam, 04_peripherals (Kinesis/SQS/Firehose/S3/DynamoDB/CloudWatch), 07_ecs cluster" >> $GITHUB_STEP_SUMMARY
-          echo "Idle cost: ~\$11/month. Run deploy_all_dm_applications to reactivate." >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event.inputs.full_destroy }}" = "true" ]; then
+            echo "## HML Full Infrastructure Destroy Complete" >> $GITHUB_STEP_SUMMARY
+            echo "Destroyed: 05_databricks, 07_ecs, 04_peripherals (S3 preserved), 03_iam, 02_vpc" >> $GITHUB_STEP_SUMMARY
+            echo "Run Deploy Infra Cloud (hml) to redeploy from scratch." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "## HML Databricks Destroy Complete" >> $GITHUB_STEP_SUMMARY
+            echo "Destroyed: 05_databricks" >> $GITHUB_STEP_SUMMARY
+            echo "PRESERVED (permanent): 02_vpc, 03_iam, 04_peripherals (Kinesis/SQS/Firehose/S3/DynamoDB/CloudWatch), 07_ecs cluster" >> $GITHUB_STEP_SUMMARY
+            echo "Idle cost: ~\$11/month. Run deploy_all_dm_applications to reactivate." >> $GITHUB_STEP_SUMMARY
+          fi
 
   # ══════════════════════════════════════════════════════════════
   #  PRD — Step 1: Empty S3 + ECR (required before TF destroy)
