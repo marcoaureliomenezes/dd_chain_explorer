@@ -20,6 +20,7 @@ class DeltaMaintenance:
         ("s_apps", "blocks_withdrawals",        "block_number"),
         ("s_apps", "transactions_fast",         "block_number"),
         ("s_apps", "transactions_ethereum",     "block_number"),
+        ("s_apps", "canonical_blocks_index",    "block_number"),
         ("s_apps", "txs_inputs_decoded_fast",   "tx_hash"),
         ("s_logs", "logs_streaming",            "event_time"),
         ("s_logs", "logs_batch",                "event_time"),

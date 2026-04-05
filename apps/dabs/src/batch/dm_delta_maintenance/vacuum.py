@@ -27,24 +27,40 @@ class Vacuum:
     """Main logic for the vacuum task."""
 
     ALL_TABLES = [
-        "b_ethereum.b_blocks_data",
-        "b_ethereum.b_transactions_data",
-        "b_ethereum.b_transactions_decoded",
+        # Bronze
+        "b_ethereum.eth_mined_blocks",
+        "b_ethereum.eth_transactions",
+        "b_ethereum.eth_txs_input_decoded",
         "b_app_logs.b_app_logs_data",
-        "s_apps.blocks_fast",
-        "s_apps.blocks_withdrawals",
-        "s_apps.transactions_fast",
+        # Silver
+        "s_apps.eth_blocks",
+        "s_apps.eth_blocks_withdrawals",
+        "s_apps.eth_transactions_staging",
         "s_apps.transactions_ethereum",
+        "s_apps.eth_canonical_blocks_index",
         "s_apps.txs_inputs_decoded_fast",
         "s_logs.logs_streaming",
         "s_logs.logs_batch",
+        # Gold — g_apps
         "g_apps.popular_contracts_ranking",
         "g_apps.peer_to_peer_txs",
         "g_apps.ethereum_gas_consume",
         "g_apps.transactions_lambda",
+        "g_apps.gas_price_distribution_hourly",
+        "g_apps.p2p_transfer_metrics_hourly",
+        "g_apps.contract_method_activity",
+        "g_apps.contract_deploy_metrics_hourly",
+        "g_apps.contract_volume_ranking",
+        # Gold — g_network
+        "g_network.network_metrics_hourly",
+        "g_network.eth_burn_hourly",
+        "g_network.validator_activity",
+        "g_network.chain_health_metrics",
+        "g_network.withdrawal_metrics",
+        "g_network.block_production_health",
+        # Gold — g_api_keys
         "g_api_keys.etherscan_consumption",
         "g_api_keys.web3_keys_consumption",
-        "g_network.network_metrics_hourly",
     ]
 
     def __init__(

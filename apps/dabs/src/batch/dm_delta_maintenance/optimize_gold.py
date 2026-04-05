@@ -26,13 +26,26 @@ class Optimizegold:
     """Main logic for the optimize_gold task."""
 
     GOLD_TABLES = [
-        ("g_apps",      "popular_contracts_ranking", "tx_count"),
-        ("g_apps",      "peer_to_peer_txs",          "block_number"),
-        ("g_apps",      "ethereum_gas_consume",      "block_number"),
-        ("g_apps",      "transactions_lambda",       "block_number"),
-        ("g_api_keys",  "etherscan_consumption",     "api_key_name"),
-        ("g_api_keys",  "web3_keys_consumption",     "api_key_name"),
-        ("g_network",   "network_metrics_hourly",    "hour_bucket"),
+        # g_apps
+        ("g_apps",      "popular_contracts_ranking",      "tx_count"),
+        ("g_apps",      "peer_to_peer_txs",               "block_number"),
+        ("g_apps",      "ethereum_gas_consume",           "block_number"),
+        ("g_apps",      "transactions_lambda",            "block_number"),
+        ("g_apps",      "gas_price_distribution_hourly",  "hour_bucket"),
+        ("g_apps",      "p2p_transfer_metrics_hourly",    "hour_bucket"),
+        ("g_apps",      "contract_method_activity",       "hour_bucket"),
+        ("g_apps",      "contract_deploy_metrics_hourly", "hour_bucket"),
+        ("g_apps",      "contract_volume_ranking",        "call_count"),
+        # g_network
+        ("g_network",   "network_metrics_hourly",         "hour_bucket"),
+        ("g_network",   "eth_burn_hourly",                "hour_bucket"),
+        ("g_network",   "validator_activity",             "blocks_produced"),
+        ("g_network",   "chain_health_metrics",           "hour_bucket"),
+        ("g_network",   "withdrawal_metrics",             "hour_bucket"),
+        ("g_network",   "block_production_health",        "hour_bucket"),
+        # g_api_keys
+        ("g_api_keys",  "etherscan_consumption",          "api_key_name"),
+        ("g_api_keys",  "web3_keys_consumption",          "api_key_name"),
     ]
 
     def __init__(

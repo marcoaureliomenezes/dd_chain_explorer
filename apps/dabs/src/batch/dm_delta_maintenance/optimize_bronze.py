@@ -26,9 +26,9 @@ class Optimizebronze:
     """Main logic for the optimize_bronze task."""
 
     BRONZE_TABLES = [
-        ("b_ethereum", "b_blocks_data",          "number"),
-        ("b_ethereum", "b_transactions_data",    "blockNumber"),
-        ("b_ethereum", "b_transactions_decoded", "tx_hash"),
+        ("b_ethereum", "eth_mined_blocks",       "number"),
+        ("b_ethereum", "eth_transactions",       "blockNumber"),
+        ("b_ethereum", "eth_txs_input_decoded",  "tx_hash"),
         ("b_app_logs", "b_app_logs_data",        "logger"),
     ]
 
