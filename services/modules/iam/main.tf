@@ -192,23 +192,45 @@ resource "aws_iam_role_policy" "databricks_ec2_vpc_validation" {
   role  = aws_iam_role.databricks_cross_account[0].id
   policy = jsonencode({
     Version = "2012-10-17"
-    Statement = [{
-      Sid    = "DatabricksVpcValidation"
-      Effect = "Allow"
-      Action = [
-        "ec2:DescribeAvailabilityZones",
-        "ec2:DescribeInstances",
-        "ec2:DescribeInstanceStatus",
-        "ec2:DescribeInternetGateways",
-        "ec2:DescribeRouteTables",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeSubnets",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeVpcAttribute",
-        "ec2:DescribeVpcs",
-      ]
-      Resource = "*"
-    }]
+    Statement = [
+      {
+        # Read-only EC2 actions needed for VPC/network validation and workspace setup
+        Sid    = "DatabricksEC2Describe"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeIamInstanceProfileAssociations",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInternetGateways",
+          "ec2:DescribeNatGateways",
+          "ec2:DescribeNetworkAcls",
+          "ec2:DescribePrefixLists",
+          "ec2:DescribeReservedInstancesOfferings",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSpotInstanceRequests",
+          "ec2:DescribeSpotPriceHistory",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeVpcAttribute",
+          "ec2:DescribeVpcs",
+        ]
+        Resource = "*"
+      },
+      {
+        # Security group rules management needed for Databricks network setup
+        Sid    = "DatabricksSecurityGroupMgmt"
+        Effect = "Allow"
+        Action = [
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+        ]
+        Resource = "arn:aws:ec2:${var.region}:${var.account_id}:security-group/*"
+      },
+    ]
   })
 }
 
