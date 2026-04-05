@@ -25,13 +25,8 @@ resource "databricks_external_location" "raw" {
   comment         = "External location for HML raw ingestion data"
 }
 
-resource "databricks_external_location" "databricks" {
-  provider        = databricks.workspace
-  name            = "dm-databricks-location-hml"
-  url             = "s3://${data.terraform_remote_state.peripherals.outputs.databricks_bucket_name}"
-  credential_name = databricks_storage_credential.lakehouse.id
-  comment         = "External location for HML Databricks checkpoints, staging and Unity Catalog"
-}
+# NOTE: No external location for the databricks/workspace bucket — it overlaps
+# with the DBFS/workspace root. Catalog storage is managed via metastore data access.
 
 resource "databricks_catalog" "hml" {
   provider     = databricks.workspace
@@ -40,10 +35,9 @@ resource "databricks_catalog" "hml" {
   storage_root = "s3://${data.terraform_remote_state.peripherals.outputs.databricks_bucket_name}/unity-catalog/hml"
 }
 
-resource "databricks_instance_profile" "cluster" {
-  provider             = databricks.workspace
-  instance_profile_arn = data.terraform_remote_state.iam.outputs.databricks_cluster_instance_profile_arn
-}
+# Instance profile and cluster are only needed when create_cluster = true.
+# Registering the instance profile requires ec2:RunInstances on the cross-account role
+# which is very broad; skip for the ephemeral HML environment.
 
 data "databricks_spark_version" "latest_lts" {
   count             = var.create_cluster ? 1 : 0
@@ -67,7 +61,6 @@ resource "databricks_cluster" "dm" {
   autotermination_minutes = 30
 
   aws_attributes {
-    instance_profile_arn = databricks_instance_profile.cluster.id
     availability         = "SPOT_WITH_FALLBACK"
     zone_id              = "auto"
     ebs_volume_type      = "GENERAL_PURPOSE_SSD"
