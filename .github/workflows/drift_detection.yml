@@ -1,0 +1,272 @@
+name: Drift Detection
+
+# ── IS-12 — Weekly drift scan for persistent environments ────────
+# Runs `terraform plan` (no apply) on DEV and PRD modules every Monday.
+# Any pending change = drift detected → job fails with ::error:: annotation.
+#
+# Databricks modules (05a/05b) excluded — they need provider auth and
+# account import that can't be done safely in a scheduled context.
+#
+# Can also be triggered manually via workflow_dispatch for on-demand checks.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
+  workflow_dispatch: {}
+
+env:
+  AWS_REGION: sa-east-1
+  TF_VERSION: 1.7.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── DEV ──────────────────────────────────────────────────────────────────
+
+  drift-dev-peripherals:
+    name: Drift — DEV/Peripherals
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/dev/01_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Peripherals
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in DEV/Peripherals — unexpected pending changes found."
+          exit 1
+
+  drift-dev-lambda:
+    name: Drift — DEV/Lambda
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/dev/02_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Lambda
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in DEV/Lambda — unexpected pending changes found."
+          exit 1
+
+  # ── PRD ──────────────────────────────────────────────────────────────────
+
+  drift-prd-vpc:
+    name: Drift — PRD/VPC
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/VPC
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/VPC — unexpected pending changes found."
+          exit 1
+
+  drift-prd-iam:
+    name: Drift — PRD/IAM
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/IAM
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/IAM — unexpected pending changes found."
+          exit 1
+
+  drift-prd-peripherals:
+    name: Drift — PRD/Peripherals
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Peripherals
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/Peripherals — unexpected pending changes found."
+          exit 1
+
+  drift-prd-lambda:
+    name: Drift — PRD/Lambda
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/06_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Lambda
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/Lambda — unexpected pending changes found."
+          exit 1
+
+  drift-prd-ecs:
+    name: Drift — PRD/ECS
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/07_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/ECS
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/ECS — unexpected pending changes found."
+          exit 1
+
+  # ── Summary ──────────────────────────────────────────────────────────────
+
+  drift-summary:
+    name: Drift Summary
+    needs:
+      - drift-dev-peripherals
+      - drift-dev-lambda
+      - drift-prd-vpc
+      - drift-prd-iam
+      - drift-prd-peripherals
+      - drift-prd-lambda
+      - drift-prd-ecs
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report drift results
+        run: |
+          echo "## Drift Detection Results" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Module | Result |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DEV/Peripherals | ${{ needs.drift-dev-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| DEV/Lambda      | ${{ needs.drift-dev-lambda.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PRD/VPC         | ${{ needs.drift-prd-vpc.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PRD/IAM         | ${{ needs.drift-prd-iam.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PRD/Peripherals | ${{ needs.drift-prd-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PRD/Lambda      | ${{ needs.drift-prd-lambda.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| PRD/ECS         | ${{ needs.drift-prd-ecs.result }} |" >> "$GITHUB_STEP_SUMMARY"

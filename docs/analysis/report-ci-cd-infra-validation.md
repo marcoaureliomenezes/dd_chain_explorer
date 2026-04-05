@@ -1,8 +1,19 @@
+
 # Relatório de Validação CI/CD — Infra-Estrutura
 
 > **Data**: Abril 2026
-> **Status**: Fase 0 — Implementação de pré-requisitos
+> **Status**: Fase 1 — Execução dos ciclos de validação
 > **Objetivo**: Validar a resiliência do pipeline de CI/CD de infra-estrutura através de ciclos completos de destroy → deploy → destroy → deploy em todos os ambientes (DEV, HML, PRD).
+> 
+> **Snapshot Pré-flight (coletado antes do início dos testes)**:
+> - DEV: `01_peripherals` = 28 recursos, `02_lambda` = 7 recursos — **DEPLOYED** ✅
+> - HML: todos os 5 módulos = 0 recursos — **EMPTY** (já destruído)
+> - PRD: todos os 7 módulos = 0 recursos — **EMPTY** (já destruído)
+> - S3: `dm-chain-explorer-dev-ingestion` + `dm-chain-explorer-terraform-state` (apenas buckets DEV + bootstrap)
+> - DynamoDB: `dm-chain-explorer-dev` (DEV) + `dm-chain-explorer-terraform-lock` (bootstrap)
+> - Kinesis: `mainnet-transactions-data-dev` (DEV apenas)
+> - SQS: 4 filas DEV (`mainnet-block-txs-hash-id-dev`, `-dlq-dev`, `mainnet-mined-blocks-events-dev`, `-dlq-dev`)
+> - ECS: apenas `cluster-docker-on-prem` (local Docker Compose, não gerenciado pelo TF cloud)
 
 ---
 
@@ -129,13 +140,16 @@ Adicionado job `hml-deploy-databricks`:
 
 4. **`hml-summary`** atualizado para `needs: [hml-destroy-databricks, hml-destroy-vpc]` — funciona em ambos os modos (vpc é skipped quando `full_destroy=false`, o `if: always()` garante que summary sempre executa)
 
-### 3.3 — Fixes P0 já aplicados
+### 3.3 — Fixes já aplicados
 
 | Issue | Status |
 |-------|--------|
-| IS-02: `prevent_destroy=false` no tf_state | ✅ Corrigido (sessão anterior) |
+| IS-02: `prevent_destroy=false` no tf_state | ✅ Corrigido (sessão anterior, commit `9a8e69c`) |
 | IS-03: Sem concurrency groups | ✅ Presente nos workflows atuais |
+| IS-04: Versão TF/provider desatualizada em `01_tf_state/main.tf` | ✅ Corrigido (commit `9a8e69c`) |
 | IS-06: IAM dependency incorreta no PRD deploy | ✅ Corrigido |
+| IS-10: Sem workflow de plan especulativo em PRs | ✅ `plan_on_pr.yml` criado — cobre DEV, HML, PRD (exceto Databricks) |
+| IS-12: Sem drift detection agendado | ✅ `drift_detection.yml` criado — cron Mondays 06:00 UTC, DEV + PRD |
 
 ### 3.4 — Issues Diferidos
 
@@ -151,28 +165,34 @@ Adicionado job `hml-deploy-databricks`:
 **Workflow**: `destroy_cloud_infra.yml`
 **S3 preservado**: DEV (1), HML (3), PRD (3) + tf_state (1) = 8 buckets no total
 
-### 4.1 Pré-flight Snapshot
+### 4.1 Pré-flight Snapshot — Resultado Real
 
-Antes de qualquer destroy, registrar estado atual:
-```bash
-# Recurso count por módulo
-for MODULE in services/prd/02_vpc services/prd/04_peripherals services/prd/03_iam \
-              services/prd/05a_databricks_account services/prd/05b_databricks_workspace \
-              services/prd/06_lambda services/prd/07_ecs \
-              services/hml/02_vpc services/hml/03_iam services/hml/04_peripherals \
-              services/hml/05_databricks services/hml/07_ecs \
-              services/dev/01_peripherals services/dev/02_lambda; do
-  COUNT=$(terraform -chdir="$MODULE" state list 2>/dev/null | wc -l)
-  echo "$MODULE: $COUNT resources"
-done
+> Coletado antes do início dos testes. **PRD e HML já estavam a 0 recursos** — o Ciclo 1 (Phase 1) destes ambientes é desnecessário.
 
-# Buckets S3
-aws s3 ls | grep "dm-chain-explorer"
-```
+| Módulo | Recursos TF | Observação |
+|--------|------------|------------|
+| `dev/01_peripherals` | **28** | ✅ Deployed |
+| `dev/02_lambda` | **7** | ✅ Deployed |
+| `hml/02_vpc` | 0 | Já destruído — pular Phase 1 |
+| `hml/03_iam` | 0 | Já destruído — pular Phase 1 |
+| `hml/04_peripherals` | 0 | Já destruído — pular Phase 1 |
+| `hml/05_databricks` | 0 | Já destruído — pular Phase 1 |
+| `hml/07_ecs` | 0 | Já destruído — pular Phase 1 |
+| `prd/02_vpc` | 0 | Já destruído — pular Phase 1 |
+| `prd/03_iam` | 0 | Já destruído — pular Phase 1 |
+| `prd/04_peripherals` | 0 | Já destruído — pular Phase 1 |
+| `prd/05a_databricks_account` | 0 | Já destruído — pular Phase 1 |
+| `prd/05b_databricks_workspace` | 0 | Já destruído — pular Phase 1 |
+| `prd/06_lambda` | 0 | Já destruído — pular Phase 1 |
+| `prd/07_ecs` | 0 | Já destruído — pular Phase 1 |
 
-### 4.2 Sequência de Execução
+**Ajuste ao plano original**: HML e PRD iniciam directamente na Fase 2 (deploy do zero). DEV precisa da Fase 1 primeiro (destroy) para completar o ciclo completo.
 
-**Ordem recomendada**: PRD → DEV → HML (maior risco primeiro, enquanto tudo está saudável)
+### 4.2 Sequência de Execução (Ajustada)
+
+**Ordem ajustada**: DEV Phase 1 + HML/PRD Phase 2 em paralelo (HML/PRD já em zero)
+
+> **Nota**: A coluna `full_destroy` só se aplica ao HML.
 
 | Passo | Workflow | Inputs | Sequence Detail |
 |-------|----------|--------|-----------------|
@@ -285,17 +305,17 @@ Mesmo sequência da Fase 2 (PRD → DEV → HML).
 
 | Fase | Data | GitHub Run # | Ambiente | Status | Notas |
 |------|------|-------------|----------|--------|-------|
-| 0 | 2026-04-05 | — | — | 🟡 Em andamento | Gap 1/2/3 corrigidos nos workflows |
-| 1 | — | — | PRD | ⏳ Pendente | — |
-| 1 | — | — | DEV | ⏳ Pendente | — |
-| 1 | — | — | HML | ⏳ Pendente | — |
-| 2 | — | — | PRD | ⏳ Pendente | — |
-| 2 | — | — | DEV | ⏳ Pendente | — |
-| 2 | — | — | HML | ⏳ Pendente | — |
-| 3 | — | — | PRD | ⏳ Pendente | — |
-| 3 | — | — | DEV | ⏳ Pendente | — |
-| 3 | — | — | HML | ⏳ Pendente | — |
-| 4 | — | — | PRD | ⏳ Pendente | — |
-| 4 | — | — | DEV | ⏳ Pendente | — |
-| 4 | — | — | HML | ⏳ Pendente | — |
+| 0 | 2026-04-05 | — | — | ✅ Concluído | Gap 1/2/3 corrigidos, commit `967178a`; IS-04 já estava ok; IS-10/IS-12 workflows criados |
+| 1 | — | — | PRD | ⏸ Ignorado | PRD estava a 0 recursos no pré-flight — iniciar direto na Fase 2 |
+| 1 | — | — | HML | ⏸ Ignorado | HML estava a 0 recursos no pré-flight — iniciar direto na Fase 2 |
+| 1 | — | — | DEV | ⏳ Pendente | DEV com 35 recursos — precisa destroy antes da Fase 2 |
+| 2 | — | — | HML | ⏳ Pendente | Deploy do zero via `deploy_cloud_infra.yml` env=`hml` |
+| 2 | — | — | DEV | ⏳ Pendente | Após Phase 1 DEV concluída |
+| 2 | — | — | PRD | ⏳ Pendente | Deploy do zero via `deploy_cloud_infra.yml` env=`prd` force_apply=`true` |
+| 3 | — | — | PRD | ⏳ Pendente | Re-destroy após Fase 2 |
+| 3 | — | — | DEV | ⏳ Pendente | Re-destroy após Fase 2 |
+| 3 | — | — | HML | ⏳ Pendente | Re-destroy após Fase 2 |
+| 4 | — | — | PRD | ⏳ Pendente | Deploy final após Fase 3 |
+| 4 | — | — | DEV | ⏳ Pendente | Deploy final após Fase 3 |
+| 4 | — | — | HML | ⏳ Pendente | Deploy final após Fase 3 |
 | 5 | — | — | ALL | ⏳ Diferido | Nuclear option — executar em sessão separada |
