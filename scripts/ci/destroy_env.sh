@@ -177,9 +177,11 @@ destroy_prd() {
   fi
   cd "${REPO_ROOT}"
 
-  if [[ -n "$WORKSPACE_URL" ]]; then
-    export TF_VAR_workspace_host="${WORKSPACE_URL}"
+  if [[ -z "$WORKSPACE_URL" ]]; then
+    echo "::error::Cannot destroy PRD/05b_databricks_workspace: workspace URL could not be determined (TF output and API fallback both failed)"
+    exit 1
   fi
+  export TF_VAR_workspace_host="${WORKSPACE_URL}"
 
   destroy_module "${root}/05b_databricks_workspace" "PRD/DatabricksWorkspace"
 

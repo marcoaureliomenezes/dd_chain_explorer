@@ -173,12 +173,15 @@ resource "aws_iam_role_policy" "ecs_task" {
 # Databricks Cross-Account IAM Role
 # Allows Databricks to access S3 buckets (lakehouse + raw)
 # -----------------------------------------------------------------------
-data "aws_iam_policy_document" "databricks_cross_account_assume" {
+
+# Initial trust policy — Databricks account root only.
+# The self-assume statement is added AFTER role creation via null_resource below
+# to avoid AWS's "invalid principal" error on CreateRole (chicken-and-egg).
+data "aws_iam_policy_document" "databricks_cross_account_assume_initial" {
   statement {
     actions = ["sts:AssumeRole"]
     principals {
-      type = "AWS"
-      # Databricks AWS control-plane account
+      type        = "AWS"
       identifiers = ["arn:aws:iam::${var.databricks_account_id}:root"]
     }
     condition {
@@ -189,30 +192,102 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
   }
 }
 
+# Full trust policy (Databricks account + self-assume) — used post-creation only.
+# Self-assume is required by Databricks Unity Catalog storage credential validation.
+data "aws_iam_policy_document" "databricks_cross_account_assume" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${var.databricks_account_id}:root"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "sts:ExternalId"
+      values   = [var.databricks_account_uuid]
+    }
+  }
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cross-account-role"]
+    }
+  }
+}
+
 resource "aws_iam_role" "databricks_cross_account" {
   name               = "dm-chain-explorer-databricks-cross-account-role"
-  assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume.json
+  assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume_initial.json
   tags               = local.common_tags
 
-  # After creation, add self-assume to trust policy (Unity Catalog requirement).
-  # Cannot include in assume_role_policy directly — AWS rejects self-referencing
-  # principals on initial role creation (chicken-and-egg).
-  provisioner "local-exec" {
-    command = <<-EOT
-      echo "Waiting for IAM role propagation..."
-      for i in 1 2 3; do
-        sleep 15
-        aws iam update-assume-role-policy \
-          --role-name '${self.name}' \
-          --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"AWS":"arn:aws:iam::${var.databricks_account_id}:root"},"Action":"sts:AssumeRole","Condition":{"StringEquals":{"sts:ExternalId":"${var.databricks_account_uuid}"}}},{"Effect":"Allow","Principal":{"AWS":"${self.arn}"},"Action":"sts:AssumeRole"}]}' \
-          && break
-        echo "Attempt $i failed, retrying..."
-      done
-    EOT
+  lifecycle {
+    # Prevent Terraform from reverting the trust policy after null_resource updates it.
+    ignore_changes = [assume_role_policy]
+  }
+}
+
+# Updates the trust policy to add self-assume after the role exists.
+# AWS only validates principal ARNs on CreateRole; UpdateAssumeRolePolicy allows self-references.
+# AWS IAM in sa-east-1 takes several minutes to propagate a new role ARN as a valid principal.
+resource "null_resource" "databricks_cross_account_self_assume" {
+  depends_on = [aws_iam_role.databricks_cross_account]
+
+  triggers = {
+    role_arn    = aws_iam_role.databricks_cross_account.arn
+    policy_hash = sha256(data.aws_iam_policy_document.databricks_cross_account_assume.json)
   }
 
-  lifecycle {
-    ignore_changes = [assume_role_policy]
+  provisioner "local-exec" {
+    command     = <<-EOF
+      ROLE_NAME="dm-chain-explorer-databricks-cross-account-role"
+      ACCOUNT_ID="${data.aws_caller_identity.current.account_id}"
+      SELF_ARN="arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME"
+      POLICY_FILE=$(mktemp)
+      cat > "$POLICY_FILE" << 'POLICY_EOF'
+${data.aws_iam_policy_document.databricks_cross_account_assume.json}
+POLICY_EOF
+
+      # Idempotency: skip update only if BOTH the self-assume ARN and the correct
+      # ExternalId are already present (prevents stale ExternalId from blocking validation).
+      EXPECTED_EXT_ID="${var.databricks_account_uuid}"
+      EXISTING=$(aws iam get-role --role-name "$ROLE_NAME" \
+                   --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "{}")
+      EXISTING_EXT_ID=$(echo "$EXISTING" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for stmt in data.get('Statement', []):
+    cond = stmt.get('Condition', {}).get('StringEquals', {})
+    if 'sts:ExternalId' in cond:
+        print(cond['sts:ExternalId']); break
+" 2>/dev/null || true)
+      HAS_SELF=$(echo "$EXISTING" | grep -cF "$SELF_ARN" 2>/dev/null || echo "0")
+      if [[ "$HAS_SELF" -gt "0" && "$EXISTING_EXT_ID" == "$EXPECTED_EXT_ID" ]]; then
+        echo "Trust policy already has correct ExternalId ($EXISTING_EXT_ID) and self-assume — no update needed."
+        rm -f "$POLICY_FILE"
+        exit 0
+      fi
+      echo "Trust policy needs update: HAS_SELF=$HAS_SELF, EXISTING_EXT_ID=$EXISTING_EXT_ID, EXPECTED_EXT_ID=$EXPECTED_EXT_ID"
+
+      echo "Waiting 90s for IAM role ARN to propagate before adding self-assume trust policy ..."
+      sleep 90
+      for attempt in 1 2 3 4 5 6 7 8; do
+        echo "Attempt $attempt: updating trust policy for $ROLE_NAME ..."
+        if aws iam update-assume-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-document "file://$POLICY_FILE"; then
+          echo "Trust policy updated successfully on attempt $attempt."
+          rm -f "$POLICY_FILE"
+          exit 0
+        fi
+        echo "Failed (attempt $attempt). Retrying in 60s ..."
+        sleep 60
+      done
+      rm -f "$POLICY_FILE"
+      echo "ERROR: Failed to update trust policy after 8 attempts."
+      exit 1
+    EOF
+    interpreter = ["/bin/bash", "-c"]
   }
 }
 
