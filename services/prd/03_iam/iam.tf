@@ -211,13 +211,13 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cross-account-role"]
+      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cross-account-role-prd"]
     }
   }
 }
 
 resource "aws_iam_role" "databricks_cross_account" {
-  name               = "dm-chain-explorer-databricks-cross-account-role"
+  name               = "dm-chain-explorer-databricks-cross-account-role-prd"
   assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume_initial.json
   tags               = local.common_tags
 
@@ -240,7 +240,7 @@ resource "null_resource" "databricks_cross_account_self_assume" {
 
   provisioner "local-exec" {
     command     = <<-EOF
-      ROLE_NAME="dm-chain-explorer-databricks-cross-account-role"
+      ROLE_NAME="dm-chain-explorer-databricks-cross-account-role-prd"
       ACCOUNT_ID="${data.aws_caller_identity.current.account_id}"
       SELF_ARN="arn:aws:iam::$ACCOUNT_ID:role/$ROLE_NAME"
       POLICY_FILE=$(mktemp)
@@ -448,7 +448,7 @@ data "aws_iam_policy_document" "databricks_cross_account_ec2" {
   statement {
     sid       = "PassRoleForClusterProfile"
     actions   = ["iam:PassRole"]
-    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cluster-role"]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-chain-explorer-databricks-cluster-role-prd"]
   }
 }
 
@@ -473,7 +473,7 @@ data "aws_iam_policy_document" "databricks_cluster_assume" {
 }
 
 resource "aws_iam_role" "databricks_cluster" {
-  name               = "dm-chain-explorer-databricks-cluster-role"
+  name               = "dm-chain-explorer-databricks-cluster-role-prd"
   assume_role_policy = data.aws_iam_policy_document.databricks_cluster_assume.json
   tags               = local.common_tags
 }
@@ -535,7 +535,7 @@ resource "aws_iam_role_policy" "databricks_cluster" {
 }
 
 resource "aws_iam_instance_profile" "databricks_cluster" {
-  name = "dm-chain-explorer-databricks-cluster-profile"
+  name = "dm-chain-explorer-databricks-cluster-profile-prd"
   role = aws_iam_role.databricks_cluster.name
   tags = local.common_tags
 }

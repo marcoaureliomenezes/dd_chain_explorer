@@ -167,14 +167,14 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}-databricks-cross-account-role"]
+      identifiers = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}-databricks-cross-account-role-${var.environment}"]
     }
   }
 }
 
 resource "aws_iam_role" "databricks_cross_account" {
   count              = var.create_databricks_roles ? 1 : 0
-  name               = "${var.name_prefix}-databricks-cross-account-role"
+  name               = "${var.name_prefix}-databricks-cross-account-role-${var.environment}"
   assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume_initial[0].json
   tags               = var.common_tags
 
@@ -203,7 +203,7 @@ resource "null_resource" "databricks_cross_account_self_assume" {
     # sa-east-1. Wait 90s before first attempt, then retry every 60s up to 8 times.
     # First check if the trust policy already contains the self-assume (idempotency).
     command     = <<-EOF
-      ROLE_NAME="${var.name_prefix}-databricks-cross-account-role"
+      ROLE_NAME="${var.name_prefix}-databricks-cross-account-role-${var.environment}"
       SELF_ARN="arn:aws:iam::${var.account_id}:role/$ROLE_NAME"
       POLICY_FILE=$(mktemp)
       cat > "$POLICY_FILE" << 'POLICY_EOF'
@@ -354,7 +354,7 @@ data "aws_iam_policy_document" "databricks_cluster_assume" {
 
 resource "aws_iam_role" "databricks_cluster" {
   count              = var.create_databricks_roles ? 1 : 0
-  name               = "${var.name_prefix}-databricks-cluster-role"
+  name               = "${var.name_prefix}-databricks-cluster-role-${var.environment}"
   assume_role_policy = data.aws_iam_policy_document.databricks_cluster_assume[0].json
   tags               = var.common_tags
 }
@@ -398,7 +398,7 @@ resource "aws_iam_role_policy" "databricks_cluster" {
 
 resource "aws_iam_instance_profile" "databricks_cluster" {
   count = var.create_databricks_roles ? 1 : 0
-  name  = "${var.name_prefix}-databricks-cluster-profile"
+  name  = "${var.name_prefix}-databricks-cluster-profile-${var.environment}"
   role  = aws_iam_role.databricks_cluster[0].name
   tags  = var.common_tags
 }
