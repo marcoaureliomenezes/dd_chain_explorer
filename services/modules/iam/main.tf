@@ -210,14 +210,26 @@ resource "null_resource" "databricks_cross_account_self_assume" {
 ${data.aws_iam_policy_document.databricks_cross_account_assume[0].json}
 POLICY_EOF
 
-      # Idempotency: skip update if self-assume is already present
+      # Idempotency: skip update only if BOTH the self-assume ARN and the correct
+      # ExternalId are already present (prevents stale ExternalId from blocking validation).
+      EXPECTED_EXT_ID="${var.databricks_account_uuid}"
       EXISTING=$(aws iam get-role --role-name "$ROLE_NAME" \
                    --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "{}")
-      if echo "$EXISTING" | grep -qF "$SELF_ARN"; then
-        echo "Self-assume already in trust policy — no update needed."
+      EXISTING_EXT_ID=$(echo "$EXISTING" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for stmt in data.get('Statement', []):
+    cond = stmt.get('Condition', {}).get('StringEquals', {})
+    if 'sts:ExternalId' in cond:
+        print(cond['sts:ExternalId']); break
+" 2>/dev/null || true)
+      HAS_SELF=$(echo "$EXISTING" | grep -cF "$SELF_ARN" 2>/dev/null || echo "0")
+      if [[ "$HAS_SELF" -gt "0" && "$EXISTING_EXT_ID" == "$EXPECTED_EXT_ID" ]]; then
+        echo "Trust policy already has correct ExternalId ($EXISTING_EXT_ID) and self-assume — no update needed."
         rm -f "$POLICY_FILE"
         exit 0
       fi
+      echo "Trust policy needs update: HAS_SELF=$HAS_SELF, EXISTING_EXT_ID=$EXISTING_EXT_ID, EXPECTED_EXT_ID=$EXPECTED_EXT_ID"
 
       echo "Waiting 90s for IAM role ARN to propagate before adding self-assume trust policy ..."
       sleep 90
