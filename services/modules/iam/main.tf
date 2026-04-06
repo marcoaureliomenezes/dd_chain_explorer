@@ -198,11 +198,34 @@ resource "null_resource" "databricks_cross_account_self_assume" {
   }
 
   provisioner "local-exec" {
-    command = <<-EOF
-      aws iam update-assume-role-policy \
-        --role-name "${var.name_prefix}-databricks-cross-account-role" \
-        --policy-document '${data.aws_iam_policy_document.databricks_cross_account_assume[0].json}'
+    # AWS IAM is eventually consistent: the role ARN may not be visible as a valid
+    # principal immediately after CreateRole. Wait for propagation before retrying.
+    command     = <<-EOF
+      ROLE_NAME="${var.name_prefix}-databricks-cross-account-role"
+      POLICY_FILE=$(mktemp)
+      cat > "$POLICY_FILE" << 'POLICY_EOF'
+${data.aws_iam_policy_document.databricks_cross_account_assume[0].json}
+POLICY_EOF
+      echo "Waiting 15s for IAM role ARN to propagate before setting self-assume trust policy ..."
+      sleep 15
+      for attempt in 1 2 3 4 5; do
+        echo "Attempt $attempt: updating trust policy for $ROLE_NAME ..."
+        if aws iam update-assume-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-document "file://$POLICY_FILE"; then
+          echo "Trust policy updated successfully."
+          rm -f "$POLICY_FILE"
+          exit 0
+        fi
+        WAIT=$((attempt * 15))
+        echo "Failed (attempt $attempt). Retrying in $${WAIT}s ..."
+        sleep $WAIT
+      done
+      rm -f "$POLICY_FILE"
+      echo "ERROR: Failed to update trust policy after 5 attempts."
+      exit 1
     EOF
+    interpreter = ["/bin/bash", "-c"]
   }
 }
 
