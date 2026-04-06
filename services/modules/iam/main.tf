@@ -198,31 +198,43 @@ resource "null_resource" "databricks_cross_account_self_assume" {
   }
 
   provisioner "local-exec" {
-    # AWS IAM is eventually consistent: the role ARN may not be visible as a valid
-    # principal immediately after CreateRole. Wait for propagation before retrying.
+    # AWS IAM is eventually consistent: the self-referential role ARN is rejected as
+    # "Invalid principal" for several minutes after CreateRole in us-east-1 and
+    # sa-east-1. Wait 90s before first attempt, then retry every 60s up to 8 times.
+    # First check if the trust policy already contains the self-assume (idempotency).
     command     = <<-EOF
       ROLE_NAME="${var.name_prefix}-databricks-cross-account-role"
+      SELF_ARN="arn:aws:iam::${var.account_id}:role/$ROLE_NAME"
       POLICY_FILE=$(mktemp)
       cat > "$POLICY_FILE" << 'POLICY_EOF'
 ${data.aws_iam_policy_document.databricks_cross_account_assume[0].json}
 POLICY_EOF
-      echo "Waiting 15s for IAM role ARN to propagate before setting self-assume trust policy ..."
-      sleep 15
-      for attempt in 1 2 3 4 5; do
+
+      # Idempotency: skip update if self-assume is already present
+      EXISTING=$(aws iam get-role --role-name "$ROLE_NAME" \
+                   --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "{}")
+      if echo "$EXISTING" | grep -qF "$SELF_ARN"; then
+        echo "Self-assume already in trust policy — no update needed."
+        rm -f "$POLICY_FILE"
+        exit 0
+      fi
+
+      echo "Waiting 90s for IAM role ARN to propagate before adding self-assume trust policy ..."
+      sleep 90
+      for attempt in 1 2 3 4 5 6 7 8; do
         echo "Attempt $attempt: updating trust policy for $ROLE_NAME ..."
         if aws iam update-assume-role-policy \
             --role-name "$ROLE_NAME" \
             --policy-document "file://$POLICY_FILE"; then
-          echo "Trust policy updated successfully."
+          echo "Trust policy updated successfully on attempt $attempt."
           rm -f "$POLICY_FILE"
           exit 0
         fi
-        WAIT=$((attempt * 15))
-        echo "Failed (attempt $attempt). Retrying in $${WAIT}s ..."
-        sleep $WAIT
+        echo "Failed (attempt $attempt). Retrying in 60s ..."
+        sleep 60
       done
       rm -f "$POLICY_FILE"
-      echo "ERROR: Failed to update trust policy after 5 attempts."
+      echo "ERROR: Failed to update trust policy after 8 attempts."
       exit 1
     EOF
     interpreter = ["/bin/bash", "-c"]
