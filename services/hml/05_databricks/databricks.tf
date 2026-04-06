@@ -121,24 +121,26 @@ resource "databricks_mws_workspaces" "dm" {
   }
 }
 
-resource "databricks_metastore" "dm" {
-  provider      = databricks.accounts
-  name          = "dm-chain-explorer-metastore-hml"
-  region        = var.region
-  force_destroy = true
+# The shared metastore is owned by PRD (05a_databricks_account).
+# HML references it instead of creating its own — the account limit is 1 metastore per region.
+data "databricks_metastore" "dm" {
+  provider = databricks.accounts
+  name     = "dm-chain-explorer-metastore"
 }
 
 resource "databricks_metastore_assignment" "dm" {
   provider     = databricks.accounts
   workspace_id = databricks_mws_workspaces.dm.workspace_id
-  metastore_id = databricks_metastore.dm.id
+  metastore_id = data.databricks_metastore.dm.id
 }
 
-resource "databricks_metastore_data_access" "default" {
+# Non-default data access credential for HML cross-account role.
+# Allows HML external locations to use the HML IAM role (not PRD's default role).
+resource "databricks_metastore_data_access" "hml" {
   provider     = databricks.accounts
-  metastore_id = databricks_metastore.dm.id
+  metastore_id = data.databricks_metastore.dm.id
   name         = "dm-metastore-data-access-hml"
-  is_default   = true
+  is_default   = false
 
   aws_iam_role {
     role_arn = data.terraform_remote_state.iam.outputs.databricks_cross_account_role_arn
