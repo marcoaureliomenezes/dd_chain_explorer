@@ -126,7 +126,28 @@ resource "aws_iam_role_policy" "ecs_task" {
   })
 }
 
-# ── Databricks Cross-Account Role (PRD only) ──────────────────────────────────
+# ── Databricks Cross-Account Role ─────────────────────────────────────────────
+
+# Initial trust policy — Databricks account only.
+# The self-assume statement is added AFTER role creation via null_resource below
+# to avoid AWS's "invalid principal" error on CreateRole.
+data "aws_iam_policy_document" "databricks_cross_account_assume_initial" {
+  count = var.create_databricks_roles ? 1 : 0
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${var.databricks_account_id}:root"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "sts:ExternalId"
+      values   = [var.databricks_account_uuid]
+    }
+  }
+}
+
+# Full trust policy (Databricks account + self-assume) — used post-creation only.
 data "aws_iam_policy_document" "databricks_cross_account_assume" {
   count = var.create_databricks_roles ? 1 : 0
   statement {
@@ -154,8 +175,35 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
 resource "aws_iam_role" "databricks_cross_account" {
   count              = var.create_databricks_roles ? 1 : 0
   name               = "${var.name_prefix}-databricks-cross-account-role"
-  assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume[0].json
+  assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume_initial[0].json
   tags               = var.common_tags
+
+  lifecycle {
+    # Prevent Terraform from reverting the trust policy to the initial version
+    # after null_resource has updated it to include the self-assume statement.
+    ignore_changes = [assume_role_policy]
+  }
+}
+
+# Update trust policy to add self-assume after the role exists.
+# AWS only validates principal ARNs on CreateRole; UpdateAssumeRolePolicy allows self-references.
+resource "null_resource" "databricks_cross_account_self_assume" {
+  count = var.create_databricks_roles ? 1 : 0
+
+  depends_on = [aws_iam_role.databricks_cross_account]
+
+  triggers = {
+    role_arn    = aws_iam_role.databricks_cross_account[0].arn
+    policy_hash = sha256(data.aws_iam_policy_document.databricks_cross_account_assume[0].json)
+  }
+
+  provisioner "local-exec" {
+    command = <<-EOF
+      aws iam update-assume-role-policy \
+        --role-name "${var.name_prefix}-databricks-cross-account-role" \
+        --policy-document '${data.aws_iam_policy_document.databricks_cross_account_assume[0].json}'
+    EOF
+  }
 }
 
 resource "aws_iam_role_policy" "databricks_s3" {
