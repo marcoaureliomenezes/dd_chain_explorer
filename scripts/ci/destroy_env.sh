@@ -96,8 +96,10 @@ destroy_hml() {
   summary "| Status | Module | Result |"
   summary "|--------|--------|--------|"
 
-  # Always destroy Databricks workspace resources first (has catalog + external locations)
-  destroy_module "${root}/05b_databricks_workspace" "HML/DatabricksWorkspace"
+  # 05b uses workspace-level PAT token from TF remote state.
+  # Unset OAuth env vars to avoid "two auth methods" conflict with the token-based provider.
+  (unset DATABRICKS_ACCOUNT_ID DATABRICKS_CLIENT_ID DATABRICKS_CLIENT_SECRET; \
+    destroy_module "${root}/05b_databricks_workspace" "HML/DatabricksWorkspace")
 
   # Then account-level Databricks (workspace, metastore, credentials, networks)
   destroy_module "${root}/05_databricks"            "HML/Databricks"

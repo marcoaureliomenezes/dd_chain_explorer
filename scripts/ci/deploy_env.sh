@@ -102,7 +102,10 @@ deploy_hml() {
 
   if [[ "$SKIP_DATABRICKS" != "true" ]]; then
     deploy_module "${root}/05_databricks"     "HML/Databricks"
-    deploy_module "${root}/05b_databricks_workspace" "HML/DatabricksWorkspace"
+    # 05b uses workspace-level PAT token from TF remote state.
+    # Unset OAuth env vars to avoid "two auth methods" conflict with the token-based provider.
+    (unset DATABRICKS_ACCOUNT_ID DATABRICKS_CLIENT_ID DATABRICKS_CLIENT_SECRET; \
+      deploy_module "${root}/05b_databricks_workspace" "HML/DatabricksWorkspace")
   else
     summary "| ⏭️ | HML/Databricks | skipped (SKIP_DATABRICKS=true) |"
     summary "| ⏭️ | HML/DatabricksWorkspace | skipped |"
