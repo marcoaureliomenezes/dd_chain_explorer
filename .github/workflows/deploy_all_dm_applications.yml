@@ -232,6 +232,27 @@ jobs:
             init -input=false -reconfigure
           terraform -chdir="$GITHUB_WORKSPACE/services/hml/04_peripherals" \
             apply -input=false -auto-approve
+      - name: Ensure HML ECS cluster is ACTIVE
+        run: |
+          STATUS=$(aws ecs describe-clusters --clusters "${{ env.HML_ECS_CLUSTER }}" \
+            --query 'clusters[0].status' --output text 2>/dev/null || echo "MISSING")
+          echo "ECS cluster status: ${STATUS}"
+          if [[ "$STATUS" == "INACTIVE" ]]; then
+            echo "Cluster is INACTIVE — deleting and recreating..."
+            aws ecs delete-cluster --cluster "${{ env.HML_ECS_CLUSTER }}"
+            STATUS="MISSING"
+          fi
+          if [[ "$STATUS" == "MISSING" || "$STATUS" == "None" ]]; then
+            echo "Creating ECS cluster ${{ env.HML_ECS_CLUSTER }}..."
+            aws ecs create-cluster --cluster-name "${{ env.HML_ECS_CLUSTER }}" \
+              --capacity-providers FARGATE FARGATE_SPOT \
+              --default-capacity-provider-strategy \
+                capacityProvider=FARGATE,weight=1,base=1 \
+              --settings name=containerInsights,value=disabled
+            echo "ECS cluster created."
+          else
+            echo "ECS cluster is already ACTIVE."
+          fi
 
   all-hml-provision:
     name: HML — Provision ephemeral environment
