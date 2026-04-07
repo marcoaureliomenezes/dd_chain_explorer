@@ -191,7 +191,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ${{ env.DABS_PATH }}
+        working-directory: ${{ env.DABS_PATH }}/dlt_ethereum
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@v0.218.0
