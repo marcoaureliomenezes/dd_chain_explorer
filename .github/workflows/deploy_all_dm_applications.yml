@@ -206,7 +206,7 @@ jobs:
   # ══════════════════════════════════════════════════════════════════════════
 
   all-hml-infra-apply:
-    name: HML — Apply peripherals Terraform (idempotent, recreates Kinesis/SQS)
+    name: HML — Apply IAM + peripherals Terraform (idempotent)
     needs: [all-check-version]
     runs-on: ubuntu-latest
     steps:
@@ -220,6 +220,12 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
+      - name: Apply HML IAM roles (ECS task execution + task roles — idempotent)
+        run: |
+          terraform -chdir="$GITHUB_WORKSPACE/services/hml/03_iam" \
+            init -input=false -reconfigure
+          terraform -chdir="$GITHUB_WORKSPACE/services/hml/03_iam" \
+            apply -input=false -auto-approve
       - name: Apply HML peripherals (SQS + Kinesis + S3 + DynamoDB + CloudWatch)
         run: |
           terraform -chdir="$GITHUB_WORKSPACE/services/hml/04_peripherals" \
