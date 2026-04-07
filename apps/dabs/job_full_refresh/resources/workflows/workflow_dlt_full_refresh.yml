@@ -9,7 +9,7 @@ resources:
           spec:
             client: "2"
             dependencies:
-              - "${workspace.file_path}/../job_export_gold/src/batch/dm_export_gold/dist/dm_export_gold-0.1.0-py3-none-any.whl"
+              - "${workspace.file_path}/dm_export_gold-0.1.0-py3-none-any.whl"
 
       tasks:
         - task_key: full_refresh_ethereum

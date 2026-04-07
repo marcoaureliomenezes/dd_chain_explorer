@@ -7,7 +7,7 @@ include:
 artifacts:
   dm_export_gold:
     type: whl
-    path: ../job_export_gold/src/batch/dm_export_gold
+    path: ./src/batch/dm_export_gold
 
 variables:
   catalog:
