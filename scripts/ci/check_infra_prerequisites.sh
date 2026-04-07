@@ -48,12 +48,8 @@ case "${APP_TYPE}" in
   databricks-dabs)
     echo "==> Checking databricks-dabs PRD prerequisites..."
 
-    WS_URL=$(aws s3 cp "s3://${TF_STATE_BUCKET}/prd/databricks/terraform.tfstate" - 2>/dev/null \
+    WS_URL=$(aws s3 cp "s3://${TF_STATE_BUCKET}/prd/databricks-account/terraform.tfstate" - 2>/dev/null \
       | jq -r '.outputs.databricks_workspace_url.value // empty') || WS_URL=""
-    if [ -z "${WS_URL}" ]; then
-      WS_URL=$(aws s3 cp "s3://${TF_STATE_BUCKET}/prd/databricks-workspace/terraform.tfstate" - 2>/dev/null \
-        | jq -r '.outputs.databricks_workspace_url.value // empty') || WS_URL=""
-    fi
     if [ -z "${WS_URL}" ]; then
       WS_URL="${DATABRICKS_PROD_HOST:-}"
     fi

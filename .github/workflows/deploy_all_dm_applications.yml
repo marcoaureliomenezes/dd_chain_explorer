@@ -814,26 +814,37 @@ jobs:
         id: prod-ws
         working-directory: ${{ github.workspace }}
         run: |
-          PROD_HOST=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/05_databricks/terraform.tfstate - \
-            | jq -r '.outputs.databricks_workspace_url.value')
-          if [ -z "$PROD_HOST" ]; then
-            echo "::error::Could not read databricks_workspace_url from TF state. Ensure prd/05_databricks is deployed."
+          PROD_HOST=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/databricks-account/terraform.tfstate - 2>/dev/null \
+            | jq -r '.outputs.databricks_workspace_url.value // empty') || PROD_HOST=""
+          if [ -z "${PROD_HOST}" ]; then
+            PROD_HOST="${{ secrets.DATABRICKS_PROD_HOST }}"
+          fi
+          if [ -z "${PROD_HOST}" ]; then
+            echo "::error::Could not determine PROD Databricks workspace URL from TF state or DATABRICKS_PROD_HOST secret."
             exit 1
           fi
-          echo "prod_host=$PROD_HOST" >> $GITHUB_OUTPUT
-      - name: Read PROD Databricks token from Terraform state
-        id: prod-token
-        working-directory: ${{ github.workspace }}
-        run: |
-          PROD_TOKEN=$(aws s3 cp s3://${{ env.TF_STATE_BUCKET }}/prd/05_databricks/terraform.tfstate - \
-            | jq -r '.outputs.databricks_token.value')
-          if [ -z "$PROD_TOKEN" ]; then
-            echo "::error::Could not read databricks_token from TF state."
-            exit 1
-          fi
-          echo "::add-mask::$PROD_TOKEN"
-          echo "prod_token=$PROD_TOKEN" >> $GITHUB_OUTPUT
+          echo "prod_host=${PROD_HOST}" >> $GITHUB_OUTPUT
       - uses: databricks/setup-cli@v0.218.0
+      - name: Discover PRD SQL Warehouse ID
+        id: warehouse
+        env:
+          DATABRICKS_HOST:          ${{ steps.prod-ws.outputs.prod_host }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          WH_JSON=$(databricks warehouses list --output json 2>/dev/null) || WH_JSON="[]"
+          WH_ID=$(echo "$WH_JSON" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+wh = data if isinstance(data, list) else data.get('warehouses', [])
+print(wh[0]['id'] if wh else '')
+" 2>/dev/null) || WH_ID=""
+          if [ -z "$WH_ID" ]; then
+            echo "::warning::No SQL Warehouse found in PROD workspace. Dashboards, alerts and Genie will deploy without warehouse_id."
+          else
+            echo "Discovered PROD SQL Warehouse: ${WH_ID}"
+          fi
+          echo "warehouse_id=${WH_ID}" >> $GITHUB_OUTPUT
       - name: Configure git for tagging
         run: |
           git config user.name  "github-actions[bot]"
@@ -841,13 +852,16 @@ jobs:
           git fetch --tags --quiet
       - name: Deploy all components to PROD
         env:
-          DATABRICKS_HOST:  ${{ steps.prod-ws.outputs.prod_host }}
-          DATABRICKS_TOKEN: ${{ steps.prod-token.outputs.prod_token }}
+          DATABRICKS_HOST:          ${{ steps.prod-ws.outputs.prod_host }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          BUNDLE_VAR_WAREHOUSE_ID:  ${{ steps.warehouse.outputs.warehouse_id }}
         run: bash ${{ env.DABS_PATH }}/deploy_all.sh prod --tag
       - name: Verify PROD deployment
         env:
-          DATABRICKS_HOST:  ${{ steps.prod-ws.outputs.prod_host }}
-          DATABRICKS_TOKEN: ${{ steps.prod-token.outputs.prod_token }}
+          DATABRICKS_HOST:          ${{ steps.prod-ws.outputs.prod_host }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
           echo "==> PRD DABs bundle deployed. Listing pipelines:"
           databricks pipelines list 2>/dev/null || true
