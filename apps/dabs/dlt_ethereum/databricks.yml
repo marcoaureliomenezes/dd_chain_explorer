@@ -46,8 +46,6 @@ targets:
 
   prod:
     mode: production
-    run_as:
-      user_name: marcoaurelioreislima@gmail.com
     workspace:
       host: ""
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
