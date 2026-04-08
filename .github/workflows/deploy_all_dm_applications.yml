@@ -515,7 +515,7 @@ jobs:
           HML_ECS_CLUSTER:            ${{ env.HML_ECS_CLUSTER }}
           WAIT_PHASE1_SECS:           "360"  # SQS: 6 min — CW SQS metrics lag up to 5 min; fast-path SQS API also available
           WAIT_KINESIS_SECS:           "420"  # CW IncomingRecords lag ~5 min; 420s = lag + ECS startup buffer
-          WAIT_PHASE2_SECS:           "120"
+          WAIT_PHASE2_SECS:           "240"
           CLOUDWATCH_LOG_GROUP:       "/apps/dm-chain-explorer-hml"
         run: |
           set -o pipefail
