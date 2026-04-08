@@ -878,7 +878,7 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           BUNDLE_VAR_WAREHOUSE_ID:  ${{ steps.warehouse.outputs.warehouse_id }}
-        run: bash ${{ env.DABS_PATH }}/deploy_all.sh prod --tag
+        run: bash deploy_all.sh prod --tag
       - name: Verify PROD deployment
         env:
           DATABRICKS_HOST:          ${{ steps.prod-ws.outputs.prod_host }}
