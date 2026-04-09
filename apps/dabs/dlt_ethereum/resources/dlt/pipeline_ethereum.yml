@@ -21,7 +21,6 @@ resources:
         # S3 export path (para MVs que exportam dados para consumo externo)
         s3.export.path: "s3://${var.ingestion_s3_bucket}/exports/popular_contracts"
 
-      development: ${var.dlt_development}
       continuous: ${var.dlt_continuous}
       channel: CURRENT
 

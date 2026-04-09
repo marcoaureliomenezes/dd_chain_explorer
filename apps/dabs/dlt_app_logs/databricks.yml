@@ -31,6 +31,10 @@ targets:
       ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
       dlt_development: true
       dlt_continuous: false
+    resources:
+      pipelines:
+        pipeline_app_logs:
+          development: true
 
   hml:
     presets:
@@ -43,6 +47,10 @@ targets:
       ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
       dlt_development: false
       dlt_continuous: false
+    resources:
+      pipelines:
+        pipeline_app_logs:
+          development: false
 
   prod:
     mode: production

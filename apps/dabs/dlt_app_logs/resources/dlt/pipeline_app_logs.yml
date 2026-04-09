@@ -17,7 +17,6 @@ resources:
         # S3 bucket for ingestion (raw data, DLT external tables, checkpoints)
         ingestion.s3.bucket: ${var.ingestion_s3_bucket}
 
-      development: ${var.dlt_development}
       continuous: ${var.dlt_continuous}
       channel: CURRENT
 
