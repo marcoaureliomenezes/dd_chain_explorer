@@ -57,5 +57,6 @@ targets:
     resources:
       pipelines:
         pipeline_ethereum:
+          development: false
           schedule:
             pause_status: UNPAUSED

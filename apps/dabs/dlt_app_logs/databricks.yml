@@ -57,5 +57,6 @@ targets:
     resources:
       pipelines:
         pipeline_app_logs:
+          development: false
           schedule:
             pause_status: UNPAUSED
