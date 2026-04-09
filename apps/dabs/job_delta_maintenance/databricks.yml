@@ -41,4 +41,4 @@ targets:
       host: ""
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
-      catalog: "dd_chain_explorer"
+      catalog: "prd"
