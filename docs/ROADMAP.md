@@ -6,7 +6,9 @@ Este documento consolida as melhorias pendentes do projeto, organizadas por prio
 
 > Os itens concluídos foram removidos do roadmap. Consulte o histórico de commits para o registro completo de implementações.
 
-**TODOs em aberto: 11** (2 Arquitetura + 2 Captura + 1 Processamento + 4 DataOps + 2 Serving)
+**TODOs em aberto: 16** (2 Arquitetura + 3 Captura + 4 Processamento + 5 DataOps + 2 Serving)
+
+> ⚠️ **5 TODOs de Emergência (DL-01 a DL-05)** adicionados em 2026-04-12 — prioridade máxima.
 
 ---
 
@@ -66,6 +68,22 @@ master  (push direto proibido)
 
 ---
 
+## Fase EMERGÊNCIA — Qualidade do Data Lake (P0-CRIT)
+
+> **Identificado em:** 2026-04-12. Problema crítico de dados detectado: ~50% dos blocos na Silver classificados como `orphan`, comprometendo todas as Gold MVs.
+>
+> **Root Cause Principal:** `MinedBlocksWatcher` (Job 1) emitia apenas o bloco mais recente por ciclo de polling. Blocos intermediários eram permanentemente perdidos, quebrando a prova por parentesco do `eth_canonical_blocks_index`. Efeito em cascata: todos os Gold MVs filtram `tx_status = 'valid'`, resultando em métricas com ~50% dos dados reais.
+
+| Prioridade | TODO | Área | Descrição | Esforço |
+|------------|------|------|-----------|--------|
+| 🆘 P0-CRIT | TODO-DL-01 | Captura | **Fix Job 1 — emitir todos os blocos entre polls**: iteração `range(prev+1, actual+1)` buscando cada bloco intermediário via RPC antes de emitir o latest | Médio |
+| 🆘 P0-CRIT | TODO-DL-02 | Processamento | **Fix reconcile_orphans — nome de tabela errado**: `s_apps.canonical_blocks_index` → `s_apps.eth_canonical_blocks_index` em `reconcile_orphan_blocks.py` | Baixo |
+| 🆘 P0-CRIT | TODO-DL-03 | DataOps | **Unpause job_reconcile_orphans + aumentar limite**: `pause_status: UNPAUSED`, `max_blocks_per_run: 500` (era 50) | Baixo |
+| 🔴 P0 | TODO-DL-04 | Processamento | **Backfill em massa do Bronze**: após DL-01/02/03 ativos, executar reconciliação completa de todos os blocos sem entrada canônica (>8000 gaps) — redeploy do job + trigger manual sweep | Alto |
+| 🔴 P0 | TODO-DL-05 | Processamento | **Validar taxa de orphan pós-backfill**: confirmar `orphan_rate < 1%` no `eth_canonical_blocks_index`; disparar `full_refresh` no DLT para reprocessar Gold MVs com dados corretos | Médio |
+
+---
+
 ## Fase 0 — Blockers (P0)
 
 Itens que impedem a operação em produção. Devem ser resolvidos antes de qualquer outro trabalho.
@@ -115,14 +133,14 @@ Funcionalidades novas e expansão do escopo.
 
 ## Resumo por Área
 
-| Área | Total | Fase 0 | Fase 1 | Fase 2 | Fase 3 |
-|------|-------|--------|--------|--------|--------|
-| Arquitetura (A) | 2 | — | — | 2 | — |
-| Captura (C) | 2 | — | 1 | 1 | — |
-| Processamento (P) | 1 | 1 | — | — | — |
-| DataOps (O) | 4 | 1 | 3 | — | — |
-| Serving (S) | 2 | — | — | — | 2 |
-| **Total** | **11** | **2** | **4** | **3** | **2** |
+| Área | Total | Emerg. | Fase 0 | Fase 1 | Fase 2 | Fase 3 |
+|------|-------|--------|--------|--------|--------|--------|
+| Arquitetura (A) | 2 | — | — | — | 2 | — |
+| Captura (C) | 3 | 1 | — | 1 | 1 | — |
+| Processamento (P) | 4 | 3 | 1 | — | — | — |
+| DataOps (O) | 5 | 1 | 1 | 3 | — | — |
+| Serving (S) | 2 | — | — | — | — | 2 |
+| **Total** | **16** | **5** | **2** | **4** | **3** | **2** |
 
 ---
 
@@ -141,7 +159,12 @@ Funcionalidades novas e expansão do escopo.
 
 ```mermaid
 flowchart TD
-    P01["🔴 TODO-P01<br/>DLT S3 Auto Loader PROD"] --> O12["🔴 TODO-O12<br/>Validar PROD E2E"]
+    DL01["🆘 TODO-DL-01<br/>Fix Job 1: blocos perdidos"] --> DL04["🔴 TODO-DL-04<br/>Backfill Bronze em massa"]
+    DL02["🆘 TODO-DL-02<br/>Fix reconcile: tabela errada"] --> DL04
+    DL03["🆘 TODO-DL-03<br/>Unpause reconcile_orphans"] --> DL04
+    DL04 --> DL05["🔴 TODO-DL-05<br/>Validar orphan_rate < 1%"]
+    DL05 --> O12["🔴 TODO-O12<br/>Validar PROD E2E"]
+    P01["🔴 TODO-P01<br/>DLT S3 Auto Loader PROD"] --> O12
     O08["🟡 TODO-O08<br/>CloudWatch/Grafana"]
     C08["🟡 TODO-C08<br/>CloudWatch Metrics streaming"]
     A12["🟠 TODO-A12<br/>Fargate vs EC2"] -.-> O12

@@ -35,7 +35,16 @@ class MinedBlocksWatcher:
       if actual_block:
         actual_block_number = actual_block.get('number')
         if actual_block_number > prev_block_number:
-          yield actual_block
+          # Emit ALL blocks from prev+1 to actual_block_number (inclusive).
+          # When ≥2 blocks are mined between polls (common — avg blocktime 12s),
+          # fetch each missed block individually to prevent silent data loss.
+          for bn in range(prev_block_number + 1, actual_block_number):
+            missed_block = self.handler_web3.extract_block_data(bn)
+            if missed_block:
+              yield missed_block
+            else:
+              self.logger.warning(f"Block {bn} unavailable at fetch time; will be reconciled by job_reconcile_orphans")
+          yield actual_block  # already fetched — emit last
           prev_block_number = actual_block_number
       time.sleep(float(frequency))
       

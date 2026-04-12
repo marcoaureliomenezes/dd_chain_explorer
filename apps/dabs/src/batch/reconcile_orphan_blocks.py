@@ -71,17 +71,17 @@ MAX_BLOCKS_PER_RUN = int(spark.conf.get("reconcile.max_blocks_per_run", "50"))
 gaps_df = spark.sql(f"""
     WITH orphan_blocks AS (
         SELECT block_number, block_hash AS orphan_hash
-        FROM {CATALOG}.s_apps.canonical_blocks_index
+        FROM {CATALOG}.s_apps.eth_canonical_blocks_index
         WHERE chain_status = 'orphan'
     ),
     canonical_blocks AS (
         SELECT block_number
-        FROM {CATALOG}.s_apps.canonical_blocks_index
+        FROM {CATALOG}.s_apps.eth_canonical_blocks_index
         WHERE chain_status = 'canonical'
     ),
     max_confirmed AS (
         SELECT MAX(block_number) - 64 AS threshold
-        FROM {CATALOG}.s_apps.canonical_blocks_index
+        FROM {CATALOG}.s_apps.eth_canonical_blocks_index
     )
     SELECT
         o.block_number,

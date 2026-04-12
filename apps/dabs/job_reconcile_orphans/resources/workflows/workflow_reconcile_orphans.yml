@@ -32,7 +32,7 @@ resources:
         # Alterar pause_status para UNPAUSED em prod após configurar ethereum_rpc_url
         quartz_cron_expression: "0 0 3 * * ?"
         timezone_id: "America/Sao_Paulo"
-        pause_status: PAUSED
+        pause_status: UNPAUSED
 
       tags:
         project: dd-chain-explorer

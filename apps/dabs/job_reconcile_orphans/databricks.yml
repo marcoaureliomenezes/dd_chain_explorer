@@ -16,7 +16,7 @@ variables:
     default: ""
   max_blocks_per_run:
     description: "Max orphan blocks to reconcile per execution"
-    default: "50"
+    default: "500"
 
 targets:
   dev:
