@@ -1,0 +1,489 @@
+#!/usr/bin/env bash
+# =============================================================================
+# HML Integration Test — onchain-stream-txs (OPTIMIZED)
+#
+# Validates that all peripheral AWS services receive data after ECS containers
+# start. Phases run sequentially with fail-fast: any failure in a phase stops
+# execution immediately, avoiding wasted timeout burns on downstream phases.
+#
+# OPTIMIZATIONS:
+#   • Phase 2 (SQS): fast polling (5s intervals), ReceiveMessage validation, DLQ checks
+#   • Aggressive timeout after Phase 1: if logs pass but SQS slow, fail faster
+#   • Improved logging: retry counters, time estimates, DLQ diagnostics
+#
+# Phases:
+#   0 — ECS task health check (≥1 task RUNNING)
+#   1 — CloudWatch log events per ECS service (proves containers are logging)
+#   2 — SQS NumberOfMessagesSent > 0 + ReceiveMessage + DLQ check
+#   3 — Kinesis IncomingRecords > 0  (mainnet-transactions-data only)
+#   4 — DynamoDB items written
+#   5 — Firehose ACTIVE + Direct Put IncomingRecords > 0
+#   6 — S3 .gz files delivered by Firehose
+#
+# Usage (HML — default):
+#   bash scripts/hml_integration_test_optimized.sh
+#
+# Usage (DEV — for local validation):
+#   ENV=dev \
+#   S3_BUCKET=dm-chain-explorer-dev-ingestion \
+#   DYNAMODB_TABLE=dm-chain-explorer \
+#   bash scripts/hml_integration_test_optimized.sh
+#
+# All variables have sensible defaults for HML. Override as needed.
+# =============================================================================
+set -euo pipefail
+
+# ── Configuration ─────────────────────────────────────────────────────────────
+ENV="${ENV:-hml}"
+REGION="${REGION:-sa-east-1}"
+S3_BUCKET="${S3_BUCKET:-dm-chain-explorer-${ENV}-ingestion}"
+DYNAMODB_TABLE="${DYNAMODB_TABLE:-dm-chain-explorer-${ENV}}"
+
+KINESIS_STREAM_TRANSACTIONS="${KINESIS_STREAM_TRANSACTIONS:-mainnet-transactions-data-${ENV}}"
+
+FIREHOSE_STREAM_BLOCKS="${FIREHOSE_STREAM_BLOCKS:-firehose-mainnet-blocks-data-${ENV}}"
+FIREHOSE_STREAM_DECODED="${FIREHOSE_STREAM_DECODED:-firehose-mainnet-transactions-decoded-${ENV}}"
+
+SQS_QUEUE_MINED_BLOCKS="${SQS_QUEUE_MINED_BLOCKS:-mainnet-mined-blocks-events-${ENV}}"
+SQS_QUEUE_TXS_HASH_IDS="${SQS_QUEUE_TXS_HASH_IDS:-mainnet-block-txs-hash-id-${ENV}}"
+
+CLOUDWATCH_LOG_GROUP="${CLOUDWATCH_LOG_GROUP:-/apps/dm-chain-explorer-${ENV}}"
+# shellcheck disable=SC2089
+ECS_SERVICES="dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder"
+
+# Timeout (seconds) for each phase
+WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"        # Phase 1 — CW log events per service
+WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-120}"   # Phase 2 — SQS (optimized fast polling)
+WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-420}"  # Phase 3 — Kinesis (CW IncomingRecords lag ~5 min; 420s = lag + startup buffer)
+WAIT_DYNAMODB_SECS="${WAIT_DYNAMODB_SECS:-120}" # Phase 4 — DynamoDB
+WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-240}"   # Phases 5-6 — Firehose + S3
+
+# OPTIMIZATIONS: Faster polling intervals
+POLL_INTERVAL="${POLL_INTERVAL:-5}"           # 5s intervals (was 15s) for SQS/Kinesis/DynamoDB/S3
+LOG_POLL_INTERVAL="${LOG_POLL_INTERVAL:-10}"  # 10s intervals for CW log events
+SQS_RECEIVE_RETRY_LIMIT="${SQS_RECEIVE_RETRY_LIMIT:-3}"  # Try ReceiveMessage 3 times to prove consumability
+
+# ── Counters ──────────────────────────────────────────────────────────────────
+PASS=0
+FAIL=0
+SCRIPT_START=$(date +%s)
+
+# ── Utilities ─────────────────────────────────────────────────────────────────
+log()  { echo "[$(date -u '+%H:%M:%S')] $*"; }
+ok()   { log "✅ PASS — $*"; PASS=$((PASS + 1)); }
+fail() { log "❌ FAIL — $*"; FAIL=$((FAIL + 1)); }
+
+# fail_fast <phase_label> — exits immediately if any FAIL has been recorded
+fail_fast() {
+  if [ "$FAIL" -gt 0 ]; then
+    log ""
+    log "💥 $1: ${FAIL} check(s) failed — parando execução (fail-fast)"
+    exit 1
+  fi
+}
+
+# cw_sum <namespace> <metric> <dim_name> <dim_value> [window_secs=300]
+# Returns the SUM of a CloudWatch metric over the last <window_secs>.
+cw_sum() {
+  local ns="$1" metric="$2" dn="$3" dv="$4" win="${5:-300}"
+  local end; end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local start; start=$(date -u -d "-${win} seconds" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -v-${win}S +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
+  aws cloudwatch get-metric-statistics \
+    --region    "$REGION"  \
+    --namespace "$ns"      \
+    --metric-name "$metric" \
+    --dimensions "Name=${dn},Value=${dv}" \
+    --start-time "$start"  \
+    --end-time   "$end"    \
+    --period     "$win"    \
+    --statistics Sum       \
+    --query 'Datapoints[0].Sum' \
+    --output text 2>/dev/null || echo "None"
+}
+
+# cw_sum_since <namespace> <metric> <dim_name> <dim_value> <epoch_start>
+# Returns the SUM of a CloudWatch metric from a fixed epoch timestamp to now.
+# Used to prevent false-positives from carry-over data of previous CI runs.
+# NOTE: AWS requires --period to be a multiple of 60; we ceil-round to satisfy this.
+cw_sum_since() {
+  local ns="$1" metric="$2" dn="$3" dv="$4" epoch_start="$5"
+  local end; end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  local start; start=$(date -u -d "@${epoch_start}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+    || date -u -r "${epoch_start}" +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
+  local win_raw; win_raw=$(( $(date +%s) - epoch_start + 1 ))
+  local win; win=$(( ((win_raw + 59) / 60) * 60 ))  # ceil to nearest 60s (AWS API requirement)
+  aws cloudwatch get-metric-statistics \
+    --region    "$REGION"  \
+    --namespace "$ns"      \
+    --metric-name "$metric" \
+    --dimensions "Name=${dn},Value=${dv}" \
+    --start-time "$start"  \
+    --end-time   "$end"    \
+    --period     "$win"    \
+    --statistics Sum       \
+    --query 'Datapoints[0].Sum' \
+    --output text 2>/dev/null || echo "None"
+}
+
+# is_positive <value> — returns 0 if value is a number > 0
+is_positive() {
+  local v="$1"
+  [[ "$v" =~ ^[0-9]+(\.[0-9]+)?$ ]] && awk "BEGIN{exit !($v > 0)}"
+}
+
+# s3_new_gz_file <bucket> <prefix> <minutes_ago>
+# Returns the S3 key of the first .gz file newer than <minutes_ago> minutes.
+s3_new_gz_file() {
+  local bucket="$1" prefix="$2" minutes_ago="${3:-10}"
+  # NOTE: python3 -c is used (not heredoc) so sys.stdin can read from the pipe.
+  # aws s3 ls timestamps are in LOCAL timezone; datetime.now() matches that.
+  aws s3 ls "s3://${bucket}/${prefix}" --recursive 2>/dev/null \
+    | python3 -c "
+import sys, datetime
+cutoff = datetime.datetime.now() - datetime.timedelta(minutes=${minutes_ago})
+for line in sys.stdin:
+    parts = line.split()
+    if len(parts) >= 4 and parts[3].endswith('.gz'):
+        try:
+            ts = datetime.datetime.strptime(parts[0] + ' ' + parts[1], '%Y-%m-%d %H:%M:%S')
+            if ts >= cutoff:
+                print(parts[3])
+                sys.exit(0)
+        except Exception:
+            pass
+"
+}
+
+# sqs_dlq_check <queue_name>
+# Returns the DLQ name if one exists, empty otherwise.
+sqs_dlq_check() {
+  local queue_name="$1"
+  local dlq_name="${queue_name}-dlq"
+  aws sqs get-queue-url --queue-name "$dlq_name" --region "$REGION" \
+    --query 'QueueUrl' --output text 2>/dev/null || echo ""
+}
+
+# sqs_dlq_messages <dlq_url>
+# Returns the count of messages in the DLQ.
+sqs_dlq_messages() {
+  local dlq_url="$1"
+  aws sqs get-queue-attributes --queue-url "$dlq_url" \
+    --attribute-names ApproximateNumberOfMessages \
+    --region "$REGION" \
+    --query 'Attributes.ApproximateNumberOfMessages' --output text 2>/dev/null || echo "0"
+}
+
+# sqs_receive_message <queue_url>
+# Tries to receive a single message to prove the queue is consumable.
+# Returns 0 if message received, 1 otherwise.
+sqs_receive_message() {
+  local queue_url="$1"
+  local msg_count=$(aws sqs receive-message --queue-url "$queue_url" \
+    --max-number-of-messages 1 \
+    --region "$REGION" \
+    --query 'length(Messages)' --output text 2>/dev/null || echo "0")
+  [ "${msg_count:-0}" -ge 1 ]
+}
+
+# =============================================================================
+log "══════════════════════════════════════════════════════════════════════"
+log "  HML Integration Test (OPTIMIZED)   ENV=${ENV}   REGION=${REGION}"
+log "  S3_BUCKET=${S3_BUCKET}"
+log "  DYNAMODB_TABLE=${DYNAMODB_TABLE}"
+log "  CLOUDWATCH_LOG_GROUP=${CLOUDWATCH_LOG_GROUP}"
+log "  SQS_QUEUE_MINED_BLOCKS=${SQS_QUEUE_MINED_BLOCKS}"
+log "  SQS_QUEUE_TXS_HASH_IDS=${SQS_QUEUE_TXS_HASH_IDS}"
+log "══════════════════════════════════════════════════════════════════════"
+
+# =============================================================================
+# Phase 0 — ECS task health check
+# =============================================================================
+if [ -n "${HML_ECS_CLUSTER:-}" ]; then
+  log ""; log "──── Phase 0: ECS task health check ────"; log ""
+  RUNNING=$(aws ecs list-tasks --cluster "$HML_ECS_CLUSTER" --desired-status RUNNING \
+    --query 'length(taskArns)' --output text --region "$REGION" 2>/dev/null || echo "0")
+  if [ "${RUNNING:-0}" -ge 1 ]; then
+    ok "ECS cluster ${HML_ECS_CLUSTER} — ${RUNNING} task(s) RUNNING"
+  else
+    fail "ECS cluster ${HML_ECS_CLUSTER} — 0 tasks RUNNING (containers didn't start)"
+  fi
+fi
+fail_fast "Phase 0 — ECS task health check"
+
+# =============================================================================
+# Phase 1 — CloudWatch Logs per ECS service
+# Proves each container is running and emitting logs. Uses a 5-minute look-back
+# window so that containers started before this script still pass.
+# Log stream prefix convention: <service-name>/<container-name>/<task-id>
+# =============================================================================
+log ""; log "──── Phase 1: CloudWatch Logs per ECS service  (timeout=${WAIT_LOGS_SECS}s each) ────"; log ""
+LOOK_START_MS=$(( ($(date +%s) - 300) * 1000 ))
+# shellcheck disable=SC2090
+for SVC in $ECS_SERVICES; do
+  log "⏳ CW Logs ${SVC} — checking for log events in the last 5 min ..."
+  DEADLINE=$(( $(date +%s) + WAIT_LOGS_SECS ))
+  FOUND=false
+  RETRY_COUNT=0
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    EVENTS=$(aws logs filter-log-events \
+      --log-group-name        "$CLOUDWATCH_LOG_GROUP" \
+      --log-stream-name-prefix "${SVC}/" \
+      --start-time             "$LOOK_START_MS" \
+      --limit                  1 \
+      --query                  'length(events)' \
+      --output text --region   "$REGION" 2>/dev/null || echo "0")
+    if [ "${EVENTS:-0}" -ge 1 ] 2>/dev/null; then
+      ok "CW Logs ${SVC} — ${EVENTS} event(s) found (retry #${RETRY_COUNT})"
+      FOUND=true
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    log "   → retry #${RETRY_COUNT} — no log events yet, waiting ${LOG_POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+    sleep "$LOG_POLL_INTERVAL"
+  done
+  $FOUND || fail "CW Logs ${SVC} — no log events found after ${WAIT_LOGS_SECS}s (${RETRY_COUNT} retries)"
+done
+fail_fast "Phase 1 — ECS container logs"
+
+# =============================================================================
+# Phase 2 — SQS (OPTIMIZED)
+# Three-path check:
+#   Fast path 1: SQS API ApproximateNumberOfMessages + ApproximateNumberOfMessagesNotVisible
+#                (near-realtime — catches messages in queue or in-flight)
+#   Fast path 2: SQS ReceiveMessage — proves messages are consumable
+#   Slow path : CloudWatch NumberOfMessagesSent anchored to SCRIPT_START
+#              (may lag 5-15 min; fallback if fast paths fail)
+#   DLQ check : Verify DLQ is empty (no rejected messages)
+# =============================================================================
+log ""; log "──── Phase 2: SQS (OPTIMIZED fast polling)  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
+for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
+  log "⏳ SQS ${QUEUE} — polling queue attributes + ReceiveMessage validation + DLQ check ..."
+  DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
+  FOUND=false
+  RETRY_COUNT=0
+  SQS_URL=$(aws sqs get-queue-url --queue-name "$QUEUE" --region "$REGION" \
+    --query 'QueueUrl' --output text 2>/dev/null || echo "")
+
+  # Check for DLQ before starting polling
+  DLQ_URL=$(sqs_dlq_check "$QUEUE")
+  if [ -n "$DLQ_URL" ]; then
+    DLQ_MSGS=$(sqs_dlq_messages "$DLQ_URL")
+    if [ "${DLQ_MSGS:-0}" -gt 0 ]; then
+      fail "SQS ${QUEUE} — DLQ has ${DLQ_MSGS} rejected message(s) — check message format/schema"
+    fi
+  fi
+  fail_fast "Phase 2 — SQS DLQ"
+
+  VISIBLE="0"; INFLIGHT="0"; CW_VAL="None"
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    # Fast path 1: SQS API attributes (near-realtime, no CloudWatch lag)
+    if [ -n "$SQS_URL" ]; then
+      VISIBLE=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" \
+        --attribute-names ApproximateNumberOfMessages \
+        --region "$REGION" \
+        --query 'Attributes.ApproximateNumberOfMessages' --output text 2>/dev/null || echo "0")
+      INFLIGHT=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" \
+        --attribute-names ApproximateNumberOfMessagesNotVisible \
+        --region "$REGION" \
+        --query 'Attributes.ApproximateNumberOfMessagesNotVisible' --output text 2>/dev/null || echo "0")
+
+      TOTAL=$(( ${VISIBLE:-0} + ${INFLIGHT:-0} ))
+      if [ "$TOTAL" -gt 0 ] 2>/dev/null; then
+        # Fast path 2: ReceiveMessage validation — proves messages are consumable
+        RECEIVE_OK=false
+        for i in $(seq 1 "$SQS_RECEIVE_RETRY_LIMIT"); do
+          if sqs_receive_message "$SQS_URL"; then
+            RECEIVE_OK=true
+            break
+          fi
+        done
+
+        if [ "$RECEIVE_OK" = true ]; then
+          ok "SQS ${QUEUE} — active traffic (visible=${VISIBLE}, in-flight=${INFLIGHT}, retry #${RETRY_COUNT})"
+          FOUND=true
+          break
+        else
+          log "   → ReceiveMessage failed ${SQS_RECEIVE_RETRY_LIMIT}x — queue may be locked or messages malformed"
+        fi
+      fi
+    fi
+
+    # Slow path: CloudWatch metric (5-min granularity; used as reliable historical confirmation)
+    CW_VAL=$(cw_sum_since "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" "$SCRIPT_START")
+    if is_positive "$CW_VAL" 2>/dev/null; then
+      ok "SQS ${QUEUE} — NumberOfMessagesSent=$(printf '%.0f' "$CW_VAL") (retry #${RETRY_COUNT})"
+      FOUND=true
+      break
+    fi
+
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    log "   → retry #${RETRY_COUNT} — not yet (visible=${VISIBLE}, in-flight=${INFLIGHT}, cw=${CW_VAL}), waiting ${POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "SQS ${QUEUE} — no messages detected within ${WAIT_PHASE1_SECS}s (${RETRY_COUNT} retries)"
+done
+fail_fast "Phase 2 — SQS"
+
+# =============================================================================
+# Phase 3 — Kinesis
+# Only mainnet-transactions-data remains as a Kinesis stream.
+# mainnet-blocks-data and mainnet-transactions-decoded are now Firehose Direct Put
+# (checked in Phase 5 via IncomingRecords metric).
+# Uses SCRIPT_START as the lower bound to avoid false-positives from prior runs.
+# =============================================================================
+log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
+for STREAM in "$KINESIS_STREAM_TRANSACTIONS"; do
+  log "⏳ Kinesis ${STREAM} — polling CloudWatch IncomingRecords ..."
+  DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
+  FOUND=false
+  RETRY_COUNT=0
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    VAL=$(cw_sum_since "AWS/Kinesis" "IncomingRecords" "StreamName" "$STREAM" "$SCRIPT_START")
+    if is_positive "$VAL" 2>/dev/null; then
+      ok "Kinesis ${STREAM} — IncomingRecords=$(printf '%.0f' "$VAL") (retry #${RETRY_COUNT})"
+      FOUND=true
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    log "   → retry #${RETRY_COUNT} — not yet (value=${VAL}), waiting ${POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "Kinesis ${STREAM} — no IncomingRecords within ${WAIT_KINESIS_SECS}s (${RETRY_COUNT} retries)"
+done
+fail_fast "Phase 3 — Kinesis"
+
+# =============================================================================
+# Phase 4 — DynamoDB
+# =============================================================================
+log ""; log "──── Phase 4: DynamoDB  (timeout=${WAIT_DYNAMODB_SECS}s) ────"; log ""
+log "⏳ DynamoDB ${DYNAMODB_TABLE} — polling for items ..."
+DEADLINE=$(( $(date +%s) + WAIT_DYNAMODB_SECS ))
+FOUND=false
+RETRY_COUNT=0
+while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+  COUNT=$(aws dynamodb scan \
+    --region     "$REGION" \
+    --table-name "$DYNAMODB_TABLE" \
+    --select     COUNT \
+    --limit      1 \
+    --query      'Count' \
+    --output     text 2>/dev/null || echo "0")
+  if [ "${COUNT:-0}" -ge 1 ] 2>/dev/null; then
+    ok "DynamoDB ${DYNAMODB_TABLE} — scan returned Count=${COUNT} (retry #${RETRY_COUNT})"
+    FOUND=true
+    break
+  fi
+  RETRY_COUNT=$((RETRY_COUNT + 1))
+  REMAINING=$(( DEADLINE - $(date +%s) ))
+  log "   → retry #${RETRY_COUNT} — not yet (Count=${COUNT}), waiting ${POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+  sleep "$POLL_INTERVAL"
+done
+$FOUND || fail "DynamoDB ${DYNAMODB_TABLE} — no items within ${WAIT_DYNAMODB_SECS}s (${RETRY_COUNT} retries)"
+fail_fast "Phase 4 — DynamoDB"
+
+# =============================================================================
+# Phase 5 — Firehose status + Direct Put IncomingRecords
+# All 3 Firehose streams must be ACTIVE.
+# For Direct Put streams (blocks-data, transactions-decoded), also verify
+# IncomingRecords > 0 via CloudWatch to confirm apps are writing to them.
+# =============================================================================
+log ""; log "──── Phase 5: Firehose  (timeout=${WAIT_PHASE2_SECS}s) ────"; log ""
+for FH in \
+  "firehose-mainnet-blocks-data-${ENV}" \
+  "firehose-mainnet-transactions-data-${ENV}" \
+  "firehose-mainnet-transactions-decoded-${ENV}"
+do
+  log "⏳ Firehose ${FH} — waiting for ACTIVE status ..."
+  DEADLINE=$(( $(date +%s) + WAIT_PHASE2_SECS ))
+  FH_STATUS="NOT_FOUND"
+  FOUND=false
+  RETRY_COUNT=0
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    FH_STATUS=$(aws firehose describe-delivery-stream \
+      --region               "$REGION" \
+      --delivery-stream-name "$FH" \
+      --query  'DeliveryStreamDescription.DeliveryStreamStatus' \
+      --output text 2>/dev/null || echo "NOT_FOUND")
+    if [ "$FH_STATUS" = "ACTIVE" ]; then
+      ok "Firehose ${FH} — status=ACTIVE (retry #${RETRY_COUNT})"
+      FOUND=true
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    log "   → retry #${RETRY_COUNT} — status=${FH_STATUS}, waiting ${POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "Firehose ${FH} — status=${FH_STATUS} after ${WAIT_PHASE2_SECS}s (expected ACTIVE, ${RETRY_COUNT} retries)"
+done
+fail_fast "Phase 5 — Firehose ACTIVE"
+
+# Direct Put streams: verify IncomingRecords > 0 (apps are putting records)
+log ""; log "──── Phase 5b: Firehose Direct Put IncomingRecords  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
+for FH in "$FIREHOSE_STREAM_BLOCKS" "$FIREHOSE_STREAM_DECODED"; do
+  log "⏳ Firehose Direct Put ${FH} — polling CloudWatch IncomingRecords ..."
+  DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
+  FOUND=false
+  RETRY_COUNT=0
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    VAL=$(cw_sum_since "AWS/Firehose" "IncomingRecords" "DeliveryStreamName" "$FH" "$SCRIPT_START")
+    if is_positive "$VAL" 2>/dev/null; then
+      ok "Firehose Direct Put ${FH} — IncomingRecords=$(printf '%.0f' "$VAL") (retry #${RETRY_COUNT})"
+      FOUND=true
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    log "   → retry #${RETRY_COUNT} — not yet (value=${VAL}), waiting ${POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "Firehose Direct Put ${FH} — no IncomingRecords within ${WAIT_KINESIS_SECS}s (${RETRY_COUNT} retries)"
+done
+fail_fast "Phase 5b — Firehose Direct Put IncomingRecords"
+
+# =============================================================================
+# Phase 6 — S3 delivery
+# Firehose buffers data from Kinesis and flushes to S3 (buffer 60s / 1MB).
+# Expected: .gz files appear under s3://<bucket>/raw/<stream>/year=.../
+# =============================================================================
+log ""; log "──── Phase 6: S3 Firehose delivery  (timeout=${WAIT_PHASE2_SECS}s) ────"; log ""
+for STREAM_PREFIX in \
+  "raw/mainnet-blocks-data/" \
+  "raw/mainnet-transactions-data/" \
+  "raw/mainnet-transactions-decoded/"
+do
+  log "⏳ S3 s3://${S3_BUCKET}/${STREAM_PREFIX} — waiting for Firehose delivery ..."
+  DEADLINE=$(( $(date +%s) + WAIT_PHASE2_SECS ))
+  FOUND=false
+  RETRY_COUNT=0
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    NEW_FILE=$(s3_new_gz_file "$S3_BUCKET" "$STREAM_PREFIX" 10 || true)
+    if [ -n "$NEW_FILE" ]; then
+      ok "S3 ${STREAM_PREFIX} — file delivered: ${NEW_FILE} (retry #${RETRY_COUNT})"
+      FOUND=true
+      break
+    fi
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    REMAINING=$(( DEADLINE - $(date +%s) ))
+    log "   → retry #${RETRY_COUNT} — no new file yet, waiting ${POLL_INTERVAL}s (${REMAINING}s remaining) ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "S3 ${S3_BUCKET}/${STREAM_PREFIX} — no .gz file in last 10 min after ${WAIT_PHASE2_SECS}s (${RETRY_COUNT} retries)"
+done
+
+# =============================================================================
+# Summary
+# =============================================================================
+ELAPSED=$(( $(date +%s) - SCRIPT_START ))
+log ""
+log "══════════════════════════════════════════════════════════════════════"
+log "  Results: PASS=${PASS}  FAIL=${FAIL}  elapsed=${ELAPSED}s"
+log "══════════════════════════════════════════════════════════════════════"
+
+if [ "$FAIL" -gt 0 ]; then
+  exit 1
+fi

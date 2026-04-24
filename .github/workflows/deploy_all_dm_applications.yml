@@ -523,13 +523,13 @@ jobs:
           SQS_QUEUE_MINED_BLOCKS:     mainnet-mined-blocks-events-hml
           SQS_QUEUE_TXS_HASH_IDS:     mainnet-block-txs-hash-id-hml
           HML_ECS_CLUSTER:            ${{ env.HML_ECS_CLUSTER }}
-          WAIT_PHASE1_SECS:           "360"  # SQS: 6 min — CW SQS metrics lag up to 5 min; fast-path SQS API also available
-          WAIT_KINESIS_SECS:           "420"  # CW IncomingRecords lag ~5 min; 420s = lag + ECS startup buffer
-          WAIT_PHASE2_SECS:           "240"
+          WAIT_PHASE1_SECS:           "120"  # SQS: optimized fast polling (5s intervals) + ReceiveMessage validation + DLQ check
+          WAIT_KINESIS_SECS:           "120"  # Kinesis: optimized fast polling (was 420s for CW lag)
+          WAIT_PHASE2_SECS:           "120"  # Firehose + S3: optimized fast polling (was 240s)
           CLOUDWATCH_LOG_GROUP:       "/apps/dm-chain-explorer-hml"
         run: |
           set -o pipefail
-          if bash scripts/hml_integration_test.sh 2>&1 | tee /tmp/hml_stream_test.txt; then
+          if bash scripts/hml_integration_test_optimized.sh 2>&1 | tee /tmp/hml_stream_test.txt; then
             echo "test_passed=true" >> $GITHUB_OUTPUT
             echo "✅ HML streaming integration test PASSED" >> $GITHUB_STEP_SUMMARY
           else
