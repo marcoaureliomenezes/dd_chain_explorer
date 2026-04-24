@@ -34,6 +34,62 @@ resource "aws_s3_bucket_policy" "databricks_lakehouse_access" {
   })
 }
 
+data "aws_iam_policy_document" "databricks_bucket_access" {
+  statement {
+    sid = "DatabricksControlPlaneAccess"
+    actions = [
+      "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:PutObjectAcl",
+      "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation",
+    ]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::414351767826:root"]
+    }
+    resources = [
+      data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn,
+      "${data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn}/*",
+    ]
+  }
+
+  statement {
+    sid = "DatabricksCrossAccountAccess"
+    actions = [
+      "s3:GetObject", "s3:GetObjectVersion", "s3:PutObject", "s3:PutObjectAcl",
+      "s3:DeleteObject", "s3:ListBucket", "s3:GetBucketLocation",
+      "s3:GetEncryptionConfiguration", "s3:GetLifecycleConfiguration",
+    ]
+    principals {
+      type        = "AWS"
+      identifiers = [data.terraform_remote_state.iam.outputs.databricks_cross_account_role_arn]
+    }
+    resources = [
+      data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn,
+      "${data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn}/*",
+    ]
+  }
+
+  statement {
+    sid = "DatabricksClusterAccess"
+    actions = [
+      "s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket",
+      "s3:GetBucketLocation", "s3:GetEncryptionConfiguration",
+    ]
+    principals {
+      type        = "AWS"
+      identifiers = [data.terraform_remote_state.iam.outputs.databricks_cluster_role_arn]
+    }
+    resources = [
+      data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn,
+      "${data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn}/*",
+    ]
+  }
+}
+
+resource "aws_s3_bucket_policy" "databricks_bucket_access" {
+  bucket = data.terraform_remote_state.peripherals.outputs.databricks_bucket_name
+  policy = data.aws_iam_policy_document.databricks_bucket_access.json
+}
+
 resource "databricks_mws_storage_configurations" "dm" {
   provider                   = databricks.accounts
   account_id                 = data.databricks_current_config.accounts.account_id
@@ -65,134 +121,44 @@ resource "databricks_mws_workspaces" "dm" {
   }
 }
 
-resource "databricks_storage_credential" "lakehouse" {
-  provider = databricks.workspace
-  name     = "dm-lakehouse-credential-hml"
-
-  aws_iam_role {
-    role_arn = data.terraform_remote_state.iam.outputs.databricks_cross_account_role_arn
-  }
-
-  comment = "Storage credential for dd-chain-explorer HML lakehouse S3 bucket"
-}
-
-resource "databricks_external_location" "lakehouse" {
-  provider        = databricks.workspace
-  name            = "dm-lakehouse-location-hml"
-  url             = "s3://${data.terraform_remote_state.peripherals.outputs.lakehouse_bucket_name}"
-  credential_name = databricks_storage_credential.lakehouse.id
-  comment         = "External location for HML Iceberg tables (Bronze/Silver/Gold)"
-}
-
-resource "databricks_external_location" "raw" {
-  provider        = databricks.workspace
-  name            = "dm-raw-location-hml"
-  url             = "s3://${data.terraform_remote_state.peripherals.outputs.raw_bucket_name}"
-  credential_name = databricks_storage_credential.lakehouse.id
-  comment         = "External location for HML raw ingestion data"
-}
-
-resource "databricks_external_location" "databricks" {
-  provider        = databricks.workspace
-  name            = "dm-databricks-location-hml"
-  url             = "s3://${data.terraform_remote_state.peripherals.outputs.databricks_bucket_name}"
-  credential_name = databricks_storage_credential.lakehouse.id
-  comment         = "External location for HML Databricks checkpoints, staging and Unity Catalog"
-
-  depends_on = [databricks_metastore_assignment.dm]
-}
-
-resource "databricks_metastore" "dm" {
-  provider      = databricks.accounts
-  name          = "dm-chain-explorer-metastore-hml"
-  region        = var.region
-  force_destroy = true
+# The shared metastore is owned by PRD (05a_databricks_account).
+# HML references it instead of creating its own — the account limit is 1 metastore per region.
+data "databricks_metastore" "dm" {
+  provider = databricks.accounts
+  name     = "dm-chain-explorer-metastore"
 }
 
 resource "databricks_metastore_assignment" "dm" {
   provider     = databricks.accounts
   workspace_id = databricks_mws_workspaces.dm.workspace_id
-  metastore_id = databricks_metastore.dm.id
+  metastore_id = data.databricks_metastore.dm.id
 }
 
-resource "databricks_metastore_data_access" "default" {
+# Non-default data access credential for HML cross-account role.
+# Allows HML external locations to use the HML IAM role (not PRD's default role).
+resource "databricks_metastore_data_access" "hml" {
   provider     = databricks.accounts
-  metastore_id = databricks_metastore.dm.id
+  metastore_id = data.databricks_metastore.dm.id
   name         = "dm-metastore-data-access-hml"
-  is_default   = true
+  is_default   = false
 
   aws_iam_role {
     role_arn = data.terraform_remote_state.iam.outputs.databricks_cross_account_role_arn
   }
 }
 
-resource "databricks_catalog" "hml" {
-  provider     = databricks.workspace
-  name         = "hml"
-  comment      = "HML Unity Catalog"
-  storage_root = "s3://${data.terraform_remote_state.peripherals.outputs.databricks_bucket_name}/unity-catalog/hml"
-
-  depends_on = [databricks_metastore_assignment.dm]
-}
-
+# Permission assignment requires Identity Federation to be enabled on the workspace.
+# For HML (ephemeral workspace), skip it — bootstrap token already provides admin access.
 data "databricks_user" "admin" {
+  count     = var.assign_workspace_admin ? 1 : 0
   provider  = databricks.accounts
   user_name = var.workspace_admin_email
 }
 
 resource "databricks_mws_permission_assignment" "admin" {
+  count        = var.assign_workspace_admin ? 1 : 0
   provider     = databricks.accounts
   workspace_id = databricks_mws_workspaces.dm.workspace_id
-  principal_id = data.databricks_user.admin.id
+  principal_id = data.databricks_user.admin[0].id
   permissions  = ["ADMIN"]
-}
-
-resource "databricks_instance_profile" "cluster" {
-  provider             = databricks.workspace
-  instance_profile_arn = data.terraform_remote_state.iam.outputs.databricks_cluster_instance_profile_arn
-
-  depends_on = [databricks_metastore_assignment.dm]
-}
-
-data "databricks_spark_version" "latest_lts" {
-  provider          = databricks.workspace
-  long_term_support = true
-}
-
-data "databricks_node_type" "smallest" {
-  provider      = databricks.workspace
-  min_memory_gb = 4
-}
-
-resource "databricks_cluster" "dm" {
-  provider                = databricks.workspace
-  cluster_name            = "dm-chain-explorer-cluster-hml"
-  spark_version           = data.databricks_spark_version.latest_lts.id
-  node_type_id            = data.databricks_node_type.smallest.id
-  num_workers             = 1
-  autotermination_minutes = 30
-
-  aws_attributes {
-    instance_profile_arn = databricks_instance_profile.cluster.id
-    availability         = "SPOT_WITH_FALLBACK"
-    zone_id              = "auto"
-    ebs_volume_type      = "GENERAL_PURPOSE_SSD"
-    ebs_volume_count     = 1
-    ebs_volume_size      = 32
-    first_on_demand      = 1
-  }
-
-  spark_conf = {
-    "spark.databricks.delta.preview.enabled" = "true"
-  }
-
-  custom_tags = {
-    "owner"       = "marco-menezes"
-    "cost-center" = "dd-chain-explorer"
-    "environment" = var.environment
-    "project"     = "dd-chain-explorer"
-    "managed-by"  = "terraform"
-  }
-
-  depends_on = [databricks_metastore_assignment.dm]
 }

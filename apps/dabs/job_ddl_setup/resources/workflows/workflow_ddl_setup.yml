@@ -1,0 +1,25 @@
+resources:
+  jobs:
+    workflow_ddl_setup:
+      name: "dm-ddl-setup"
+      environments:
+        - environment_key: default
+          spec:
+            client: "2"
+            dependencies:
+              - "${workspace.file_path}/src/dist/dd_chain_explorer-0.1.0-py3-none-any.whl"
+      tasks:
+        - task_key: setup_ddl
+          environment_key: default
+          python_wheel_task:
+            package_name: dd_chain_explorer
+            entry_point: dd-setup-ddl
+            parameters:
+              - "--catalog"
+              - ${var.catalog}
+              - "--lakehouse-s3-bucket"
+              - ${var.ingestion_s3_bucket}
+
+      tags:
+        layer: ddl
+        project: dd-chain-explorer

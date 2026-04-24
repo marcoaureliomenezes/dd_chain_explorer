@@ -7,7 +7,7 @@ from typing import Dict, List, Any
 
 from dm_chain_utils.dm_web3_client import Web3Handler
 from dm_chain_utils.dm_sqs import SQSHandler
-from dm_chain_utils.dm_kinesis import KinesisHandler
+from dm_chain_utils.dm_firehose import FirehoseHandler
 from dm_chain_utils.dm_cloudwatch_logger import CloudWatchLoggingHandler
 
 
@@ -27,8 +27,8 @@ class BlockDataCrawler:
 
 
   def sink_config(self, sink_properties: Dict[str, Any]):
-    self.kinesis_handler: KinesisHandler = sink_properties['kinesis_handler']
-    self.kinesis_stream_blocks = sink_properties['kinesis_stream_blocks']
+    self.firehose_handler: FirehoseHandler = sink_properties['firehose_handler']
+    self.firehose_stream_blocks = sink_properties['firehose_stream_blocks']
     self.sqs_handler_sink: SQSHandler = sink_properties['sqs_handler_sink']
     self.sqs_queue_url_txs_hash_ids = sink_properties['sqs_queue_url_txs_hash_ids']
     self.txs_threshold = sink_properties['txs_threshold']
@@ -52,14 +52,13 @@ class BlockDataCrawler:
         continue
       cleaned_data = self.handler_web3.parse_block_data(block_data)
       key = str(cleaned_data['number'])
-      # Produce block data to Kinesis (→ Firehose → S3)
-      self.kinesis_handler.put_record(
-        self.kinesis_stream_blocks,
+      # Produce block data directly to Firehose (Direct Put → S3)
+      self.firehose_handler.put_record(
+        self.firehose_stream_blocks,
         data=json.dumps(cleaned_data, default=str),
-        partition_key=key,
       )
       self.batch_txs_hash_ids(txs_list=cleaned_data["transactions"])
-      self.logger.info(f"Ingestion;STREAM:{self.kinesis_stream_blocks};NUM_TXS:{len(cleaned_data['transactions'])};BLOCK:{key}")
+      self.logger.info(f"Ingestion;STREAM:{self.firehose_stream_blocks};NUM_TXS:{len(cleaned_data['transactions'])};BLOCK:{key}")
   
 
 if __name__ == '__main__':
@@ -70,7 +69,7 @@ if __name__ == '__main__':
   CLOUDWATCH_LOG_GROUP = os.getenv("CLOUDWATCH_LOG_GROUP")
   SQS_QUEUE_URL_MINED_BLOCKS = os.getenv("SQS_QUEUE_URL_MINED_BLOCKS")
   SQS_QUEUE_URL_TXS_HASH_IDS = os.getenv("SQS_QUEUE_URL_TXS_HASH_IDS")
-  KINESIS_STREAM_BLOCKS = os.getenv("KINESIS_STREAM_BLOCKS")
+  FIREHOSE_STREAM_BLOCKS = os.getenv("FIREHOSE_STREAM_BLOCKS")
   TXS_PER_BLOCK = int(os.getenv("TXS_PER_BLOCK", "0"))
 
   logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)s %(levelname)s %(message)s')
@@ -84,8 +83,8 @@ if __name__ == '__main__':
   logger.info("CloudWatch logging handler configured.")
 
   sqs_handler = SQSHandler(logger)
-  kinesis_handler = KinesisHandler(logger)
-  logger.info("SQS and Kinesis handlers configured.")
+  firehose_handler = FirehoseHandler(logger)
+  logger.info("SQS and Firehose handlers configured.")
 
   # Blockchain node connection via SSM
   handler_web3 = Web3Handler(logger, NETWORK).get_node_connection(SSM_SECRET_NAME, 'alchemy')
@@ -98,8 +97,8 @@ if __name__ == '__main__':
   }
 
   sink_properties = {
-    "kinesis_handler": kinesis_handler,
-    "kinesis_stream_blocks": KINESIS_STREAM_BLOCKS,
+    "firehose_handler": firehose_handler,
+    "firehose_stream_blocks": FIREHOSE_STREAM_BLOCKS,
     "sqs_handler_sink": sqs_handler,
     "sqs_queue_url_txs_hash_ids": SQS_QUEUE_URL_TXS_HASH_IDS,
     "txs_threshold": TXS_PER_BLOCK,

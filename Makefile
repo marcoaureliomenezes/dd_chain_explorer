@@ -3,6 +3,8 @@
 # Atalhos para operações de desenvolvimento e deploy.
 ################################################################################
 
+SHELL := /bin/bash
+
 ################################################################################
 # DEV: Aplicações Python de captura on-chain
 # Arquivo: services/dev/00_compose/app_services.yml
@@ -17,38 +19,283 @@ stop_dev_stream:
 watch_dev_stream:
 	watch docker compose -f services/dev/00_compose/app_services.yml ps
 
-# Deploy para DEV (Databricks Free Edition)
-dabs_deploy_dev:
-	cd apps/dabs && databricks bundle deploy --target dev
+################################################################################
+# DABs — Databricks Asset Bundles (bundles atômicos)
+#
+# Cada componente é um bundle independente em apps/dabs/<component>/
+#
+# Ordem de deploy:
+#   Phase 1: DLT pipelines    — dlt_ethereum, dlt_app_logs
+#   Phase 2: batch jobs       — job_ddl_setup, job_delta_maintenance,
+#                               job_export_gold, job_reconcile_orphans
+#   Phase 3: orchestration    — job_trigger_all, job_full_refresh
+#                               (requerem pipeline IDs resolvidos automaticamente)
+#   Phase 4: observability    — dashboards (4), alerts (2), genie (1)
+#                               (requerem warehouse_id resolvido automaticamente)
+#
+# Uso rápido (DEV):
+#   make dabs_validate_all          → valida todos os 16 bundles
+#   make dabs_deploy_all            → deploy completo phases 1-4
+#   make dabs_run_ddl_setup         → cria schemas/tabelas (serverless Spark)
+#   make dabs_run_dlt_ethereum      → executa pipeline Ethereum
+#   make dabs_run_dlt_app_logs      → executa pipeline App Logs
+#   make dabs_run_trigger_all       → pipeline sequencial (eth → app_logs)
+#   make dabs_check_tables          → verifica row counts Bronze/Silver/Gold
+#   make dabs_destroy_all           → destroy de todos os bundles DEV
+#   make dabs_drop_catalog          → DROP CASCADE schemas no catálogo DEV
+#
+# Para target != dev: make dabs_deploy_all DABS_TARGET=hml
+################################################################################
 
-# Deploy para PROD (normalmente feito via CI/CD)
-dabs_deploy_prod:
-	cd apps/dabs && databricks bundle deploy --target prod
+DABS_DIR    := apps/dabs
+DABS_TARGET ?= dev
+DEV_CATALOG ?= dev
+DEV_S3_BUCKET ?= dm-chain-explorer-dev-ingestion
 
-# Executar um workflow em DEV
-# Uso: make dabs_run_dev JOB=dm-ddl-setup
-# Jobs disponíveis: dm-ddl-setup, dm-batch-contracts, dm-iceberg-maintenance, dm-dlt-full-refresh
-dabs_run_dev:
-	cd apps/dabs && databricks bundle run --target dev $(JOB)
+# Descobre o ID do primeiro SQL Warehouse disponível (para dashboards/alerts/genie)
+_WAREHOUSE_ID = $(shell databricks warehouses list --output json 2>/dev/null \
+  | python3 -c "import sys,json; whs=json.load(sys.stdin).get('warehouses',[]); \
+    print(next((w['id'] for w in whs),''))" 2>/dev/null)
 
-# Ver status dos recursos deployados em DEV
-dabs_status_dev:
-	cd apps/dabs && databricks bundle summary --target dev
+# ---------- validate -------------------------------------------------------
 
-# Deploy apenas os dashboards em DEV (auto-descobre o warehouse_id via CLI)
-# Requer: databricks CLI autenticado + Python 3
-dabs_deploy_dev_dashboards:
-	$(eval WAREHOUSE_ID := $(shell cd apps/dabs && databricks warehouses list \
-	  --output json 2>/dev/null | python3 -c \
-	  "import sys, json; whs=json.load(sys.stdin).get('warehouses',[]); \
-	   print(next((w['id'] for w in whs), ''))" 2>/dev/null))
-	@if [ -z "$(WAREHOUSE_ID)" ]; then \
-	  echo "AVISO: Nenhum SQL Warehouse encontrado. Deployando sem warehouse_id..."; \
-	  cd apps/dabs && databricks bundle deploy --target dev; \
-	else \
-	  echo ">>> Usando warehouse_id=$(WAREHOUSE_ID)"; \
-	  cd apps/dabs && databricks bundle deploy --target dev --var warehouse_id=$(WAREHOUSE_ID); \
+# Valida todos os 16 bundles DABs (target dev)
+dabs_validate_all:
+	@echo ">>> Validando todos os bundles DABs (target dev)..."
+	@FAILED=""; \
+	for d in $(DABS_DIR)/*/; do \
+	  name=$$(basename "$$d"); \
+	  [[ "$$name" == _* ]] && continue; \
+	  [[ ! -f "$$d/databricks.yml" ]] && continue; \
+	  printf "  %-40s " "$$name"; \
+	  if (cd "$$d" && databricks bundle validate --target dev > /dev/null 2>&1); then \
+	    echo "OK"; \
+	  else \
+	    echo "FAIL"; FAILED="$$FAILED $$name"; \
+	  fi; \
+	done; \
+	if [ -n "$$FAILED" ]; then echo "FAILED:$$FAILED"; exit 1; fi
+	@echo ">>> Todos os bundles OK."
+
+# ---------- deploy: individual bundles -------------------------------------
+
+dabs_deploy_dlt_ethereum:
+	@echo ">>> Deploy dlt_ethereum (target=$(DABS_TARGET))..."
+	cd $(DABS_DIR)/dlt_ethereum && databricks bundle deploy --target $(DABS_TARGET)
+
+dabs_deploy_dlt_app_logs:
+	@echo ">>> Deploy dlt_app_logs (target=$(DABS_TARGET))..."
+	cd $(DABS_DIR)/dlt_app_logs && databricks bundle deploy --target $(DABS_TARGET)
+
+dabs_deploy_job_ddl_setup:
+	@echo ">>> Deploy job_ddl_setup (target=$(DABS_TARGET))..."
+	cd $(DABS_DIR)/job_ddl_setup && databricks bundle deploy --target $(DABS_TARGET)
+
+dabs_deploy_job_delta_maintenance:
+	@echo ">>> Deploy job_delta_maintenance (target=$(DABS_TARGET))..."
+	cd $(DABS_DIR)/job_delta_maintenance && databricks bundle deploy --target $(DABS_TARGET)
+
+dabs_deploy_job_export_gold:
+	@echo ">>> Deploy job_export_gold (target=$(DABS_TARGET))..."
+	cd $(DABS_DIR)/job_export_gold && databricks bundle deploy --target $(DABS_TARGET)
+
+dabs_deploy_job_reconcile_orphans:
+	@echo ">>> Deploy job_reconcile_orphans (target=$(DABS_TARGET))..."
+	cd $(DABS_DIR)/job_reconcile_orphans && databricks bundle deploy --target $(DABS_TARGET)
+
+# job_trigger_all e job_full_refresh requerem pipeline IDs resolvidos.
+# Os IDs são auto-descobertos via CLI e passados como --var no deploy.
+dabs_deploy_job_trigger_all:
+	@echo ">>> Resolvendo pipeline IDs para job_trigger_all..."
+	$(eval _ETH_ID  := $(shell databricks pipelines list-pipelines --output json 2>/dev/null \
+	  | python3 -c "import sys,json; ps=json.load(sys.stdin); \
+	    print(next((p['pipeline_id'] for p in ps if p.get('name','').startswith('[dev]') and 'dm-ethereum' in p.get('name','')),''  ))"))
+	$(eval _LOGS_ID := $(shell databricks pipelines list-pipelines --output json 2>/dev/null \
+	  | python3 -c "import sys,json; ps=json.load(sys.stdin); \
+	    print(next((p['pipeline_id'] for p in ps if p.get('name','').startswith('[dev]') and 'dm-app-logs' in p.get('name','')),''))" ))
+	@if [ -z "$(_ETH_ID)" ] || [ -z "$(_LOGS_ID)" ]; then \
+	  echo "ERRO: pipeline IDs não encontrados. Rode 'make dabs_deploy_phase1' primeiro."; exit 1; \
 	fi
+	@echo "  pipeline_ethereum_id=$(_ETH_ID)   pipeline_app_logs_id=$(_LOGS_ID)"
+	cd $(DABS_DIR)/job_trigger_all && databricks bundle deploy --target $(DABS_TARGET) \
+	  --var "pipeline_ethereum_id=$(_ETH_ID)" \
+	  --var "pipeline_app_logs_id=$(_LOGS_ID)"
+
+dabs_deploy_job_full_refresh:
+	@echo ">>> Resolvendo pipeline IDs para job_full_refresh..."
+	$(eval _ETH_ID  := $(shell databricks pipelines list-pipelines --output json 2>/dev/null \
+	  | python3 -c "import sys,json; ps=json.load(sys.stdin); \
+	    print(next((p['pipeline_id'] for p in ps if p.get('name','').startswith('[dev]') and 'dm-ethereum' in p.get('name','')),''  ))"))
+	$(eval _LOGS_ID := $(shell databricks pipelines list-pipelines --output json 2>/dev/null \
+	  | python3 -c "import sys,json; ps=json.load(sys.stdin); \
+	    print(next((p['pipeline_id'] for p in ps if p.get('name','').startswith('[dev]') and 'dm-app-logs' in p.get('name','')),''))" ))
+	@if [ -z "$(_ETH_ID)" ] || [ -z "$(_LOGS_ID)" ]; then \
+	  echo "ERRO: pipeline IDs não encontrados. Rode 'make dabs_deploy_phase1' primeiro."; exit 1; \
+	fi
+	@echo "  pipeline_ethereum_id=$(_ETH_ID)   pipeline_app_logs_id=$(_LOGS_ID)"
+	cd $(DABS_DIR)/job_full_refresh && databricks bundle deploy --target $(DABS_TARGET) \
+	  --var "pipeline_ethereum_id=$(_ETH_ID)" \
+	  --var "pipeline_app_logs_id=$(_LOGS_ID)"
+
+# Deploys todos os 4 dashboards com warehouse_id auto-descoberto
+dabs_deploy_dashboards:
+	@echo ">>> Deploy dashboards (target=$(DABS_TARGET))..."
+	$(eval _WH_ID := $(_WAREHOUSE_ID))
+	@for d in dashboard_network_overview dashboard_hot_contracts dashboard_gas_analytics dashboard_api_health; do \
+	  echo "  >>> $$d"; \
+	  if [ -n "$(_WH_ID)" ]; then \
+	    (cd $(DABS_DIR)/$$d && databricks bundle deploy --target $(DABS_TARGET) --var "warehouse_id=$(_WH_ID)"); \
+	  else \
+	    (cd $(DABS_DIR)/$$d && databricks bundle deploy --target $(DABS_TARGET)); \
+	  fi; \
+	done
+	@echo ">>> Dashboards deployados."
+
+# Deploys ambos os alerts com warehouse_id auto-descoberto
+dabs_deploy_alerts:
+	@echo ">>> Deploy alerts (target=$(DABS_TARGET))..."
+	$(eval _WH_ID := $(_WAREHOUSE_ID))
+	@for d in alert_api_keys alert_dynamodb_deadlock; do \
+	  echo "  >>> $$d"; \
+	  if [ -n "$(_WH_ID)" ]; then \
+	    (cd $(DABS_DIR)/$$d && databricks bundle deploy --target $(DABS_TARGET) --var "warehouse_id=$(_WH_ID)"); \
+	  else \
+	    (cd $(DABS_DIR)/$$d && databricks bundle deploy --target $(DABS_TARGET)); \
+	  fi; \
+	done
+	@echo ">>> Alerts deployados."
+
+# Deploys o Genie space com warehouse_id auto-descoberto
+dabs_deploy_genie:
+	@echo ">>> Deploy genie_ethereum (target=$(DABS_TARGET))..."
+	$(eval _WH_ID := $(_WAREHOUSE_ID))
+	@if [ -n "$(_WH_ID)" ]; then \
+	  cd $(DABS_DIR)/genie_ethereum && databricks bundle deploy --target $(DABS_TARGET) --var "warehouse_id=$(_WH_ID)"; \
+	else \
+	  cd $(DABS_DIR)/genie_ethereum && databricks bundle deploy --target $(DABS_TARGET); \
+	fi
+	@echo ">>> Genie deployado."
+
+# ---------- deploy: phases e all -------------------------------------------
+
+dabs_deploy_phase1: dabs_deploy_dlt_ethereum dabs_deploy_dlt_app_logs
+	@echo ">>> Phase 1 OK — DLT pipelines deployed."
+
+dabs_deploy_phase2: dabs_deploy_job_ddl_setup dabs_deploy_job_delta_maintenance dabs_deploy_job_export_gold dabs_deploy_job_reconcile_orphans
+	@echo ">>> Phase 2 OK — batch jobs deployed."
+
+dabs_deploy_phase3: dabs_deploy_job_trigger_all dabs_deploy_job_full_refresh
+	@echo ">>> Phase 3 OK — orchestration jobs deployed."
+
+dabs_deploy_phase4: dabs_deploy_dashboards dabs_deploy_alerts dabs_deploy_genie
+	@echo ">>> Phase 4 OK — observability deployed."
+
+# Deploy completo: Phases 1 → 2 → 3 (auto-resolve pipeline IDs) → 4
+dabs_deploy_all: dabs_deploy_phase1 dabs_deploy_phase2 dabs_deploy_phase3 dabs_deploy_phase4
+	@echo ""
+	@echo "=========================================="
+	@echo ">>> Deploy completo OK — 16 componentes."
+	@echo "=========================================="
+
+# ---------- run (todos via serverless Spark) --------------------------------
+
+# Cria schemas e tabelas no catálogo DEV via serverless Spark (job-ddl-setup)
+dabs_run_ddl_setup:
+	@echo ">>> Rodando DDL setup (serverless Spark)..."
+	cd $(DABS_DIR)/job_ddl_setup && databricks bundle run --target $(DABS_TARGET) workflow_ddl_setup
+	@echo ">>> DDL setup concluído."
+
+# DROP CASCADE + recria todos os schemas/tabelas (preserva dados S3 externos)
+# Uso: make dabs_drop_catalog
+dabs_drop_catalog:
+	@echo ">>> DROP CASCADE schemas no catálogo $(DEV_CATALOG) (serverless Spark)..."
+	@echo "    ATENÇÃO: dados S3 externos (raw) NÃO são apagados."
+	cd $(DABS_DIR)/job_ddl_setup && databricks bundle run --target $(DABS_TARGET) workflow_ddl_setup \
+	  --python-params="--catalog,$(DEV_CATALOG),--lakehouse-s3-bucket,$(DEV_S3_BUCKET),--drop"
+	@echo ">>> Drop concluído."
+
+# Executa o pipeline Ethereum via trigger job (serverless DLT)
+dabs_run_dlt_ethereum:
+	@echo ">>> Rodando pipeline Ethereum (DLT serverless)..."
+	cd $(DABS_DIR)/dlt_ethereum && databricks bundle run --target $(DABS_TARGET) workflow_trigger_ethereum
+	@echo ">>> Pipeline Ethereum concluído."
+
+# Executa o pipeline App Logs via trigger job (serverless DLT)
+dabs_run_dlt_app_logs:
+	@echo ">>> Rodando pipeline App Logs (DLT serverless)..."
+	cd $(DABS_DIR)/dlt_app_logs && databricks bundle run --target $(DABS_TARGET) workflow_trigger_app_logs
+	@echo ">>> Pipeline App Logs concluído."
+
+# Executa o job de delta maintenance (OPTIMIZE + VACUUM — serverless Spark)
+dabs_run_delta_maintenance:
+	@echo ">>> Rodando Delta Maintenance (serverless Spark)..."
+	cd $(DABS_DIR)/job_delta_maintenance && databricks bundle run --target $(DABS_TARGET) workflow_dm_delta_maintenance
+	@echo ">>> Delta Maintenance concluído."
+
+# Executa o job de export gold para S3 (serverless Spark)
+dabs_run_export_gold:
+	@echo ">>> Rodando Export Gold (serverless Spark)..."
+	cd $(DABS_DIR)/job_export_gold && databricks bundle run --target $(DABS_TARGET) workflow_dm_export_gold
+	@echo ">>> Export Gold concluído."
+
+# Executa dm-trigger-all-dlts: orchestra ethereum → app_logs sequencialmente
+dabs_run_trigger_all:
+	@echo ">>> Rodando Trigger All DLTs (sequential: ethereum → app_logs)..."
+	cd $(DABS_DIR)/job_trigger_all && databricks bundle run --target $(DABS_TARGET) dm-trigger-all-dlts
+	@echo ">>> Trigger All concluído."
+
+# Full refresh de ambos os pipelines + export gold (serverless)
+dabs_run_full_refresh:
+	@echo ">>> Rodando Full Refresh (serverless DLT + Spark)..."
+	cd $(DABS_DIR)/job_full_refresh && databricks bundle run --target $(DABS_TARGET) workflow_dlt_full_refresh
+	@echo ">>> Full Refresh concluído."
+
+# Reconcilia blocos orphan via notebook serverless.
+# Requer: ETHEREUM_RPC_URL=<url> (ex: make dabs_run_reconcile_orphans ETHEREUM_RPC_URL=https://...)
+dabs_run_reconcile_orphans:
+	@if [ -z "$(ETHEREUM_RPC_URL)" ]; then \
+	  echo "AVISO: ETHEREUM_RPC_URL não definido."; \
+	  echo "  Uso: make dabs_run_reconcile_orphans ETHEREUM_RPC_URL=https://..."; \
+	  exit 1; \
+	fi
+	@echo ">>> Rodando Reconcile Orphans (serverless Spark)..."
+	cd $(DABS_DIR)/job_reconcile_orphans && databricks bundle run --target $(DABS_TARGET) workflow_reconcile_orphans
+	@echo ">>> Reconcile Orphans concluído."
+
+# ---------- check tables (serverless Spark) --------------------------------
+
+# Verifica row counts de todas as tabelas Bronze/Silver/Gold via serverless Spark
+dabs_check_tables:
+	@echo ">>> Verificando row counts (catálogo $(DEV_CATALOG))..."
+	cd $(DABS_DIR)/job_ddl_setup && databricks bundle run --target $(DABS_TARGET) workflow_check_tables
+	@echo ">>> Check tables concluído."
+
+# ---------- status ----------------------------------------------------------
+
+# Mostra summary dos bundles principais deployados em DEV
+dabs_status:
+	@echo ">>> Status dos bundles principais..."
+	@for d in dlt_ethereum dlt_app_logs job_ddl_setup job_trigger_all; do \
+	  echo "=== $$d ==="; \
+	  (cd $(DABS_DIR)/$$d && databricks bundle summary --target dev 2>&1 | head -25) || true; \
+	  echo ""; \
+	done
+
+# ---------- destroy (ordem reversa de dependência) -------------------------
+
+# Destroy de todos os 16 bundles DEV em ordem reversa de dependência
+dabs_destroy_all:
+	@echo ">>> Destroy ALL DABs bundles (target=dev, ordem reversa)..."
+	@for d in genie_ethereum alert_dynamodb_deadlock alert_api_keys \
+	           dashboard_api_health dashboard_gas_analytics dashboard_hot_contracts dashboard_network_overview \
+	           job_full_refresh job_trigger_all \
+	           job_reconcile_orphans job_export_gold job_delta_maintenance job_ddl_setup \
+	           dlt_app_logs dlt_ethereum; do \
+	  echo "  >>> destroy $$d"; \
+	  (cd $(DABS_DIR)/$$d && databricks bundle destroy --target dev --auto-approve 2>&1) || true; \
+	done
+	@echo ">>> Destroy concluído."
+
 
 ################################################################################
 # Terraform — atalhos para módulos individuais

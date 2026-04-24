@@ -1,0 +1,56 @@
+bundle:
+  name: job-full-refresh
+
+include:
+  - resources/workflows/workflow_dlt_full_refresh.yml
+
+artifacts:
+  dm_export_gold:
+    type: whl
+    path: ./src/batch/dm_export_gold
+
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: "dev"
+  ingestion_s3_bucket:
+    description: "S3 bucket for ingestion/exports"
+    default: "dm-chain-explorer-dev-ingestion"
+  pipeline_ethereum_id:
+    description: "Pipeline ID of dlt-ethereum (from `databricks pipelines list`)"
+    default: ""
+  pipeline_app_logs_id:
+    description: "Pipeline ID of dlt-app-logs (from `databricks pipelines list`)"
+    default: ""
+
+targets:
+  dev:
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+    variables:
+      catalog: "dev"
+      ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
+
+  hml:
+    presets:
+      name_prefix: "[hml] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+    variables:
+      catalog: "hml"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
+
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ""
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"
+    variables:
+      catalog: "prd"
+      ingestion_s3_bucket: "dm-chain-explorer-lakehouse"

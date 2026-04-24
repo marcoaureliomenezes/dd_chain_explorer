@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Empties PRD S3 buckets (all object versions + delete markers) and ECR
-# repositories before Terraform destroy, which requires them to be empty.
+# Empties PRD ECR repositories before Terraform destroy.
+# S3 buckets are protected (prevent_destroy=true) and must NOT be emptied.
 #
 # Workflow-level env vars used directly (auto-available on runner):
 #   AWS_REGION — e.g. sa-east-1
@@ -8,17 +8,6 @@
 # Default GitHub Actions env vars used:
 #   GITHUB_WORKSPACE — path to the checked-out repository root
 set -euo pipefail
-
-# ── S3 buckets ────────────────────────────────────────────────────────────────
-echo "==> Emptying PRD S3 buckets..."
-chmod +x "${GITHUB_WORKSPACE}/scripts/empty_s3_bucket.sh"
-for BUCKET in dm-chain-explorer-raw-data dm-chain-explorer-lakehouse dm-chain-explorer-databricks; do
-  if aws s3api head-bucket --bucket "${BUCKET}" 2>/dev/null; then
-    bash "${GITHUB_WORKSPACE}/scripts/empty_s3_bucket.sh" "${BUCKET}" "${AWS_REGION}"
-  else
-    echo "Bucket ${BUCKET} does not exist — skipping."
-  fi
-done
 
 # ── ECR repositories ──────────────────────────────────────────────────────────
 echo "==> Emptying PRD ECR repositories..."
@@ -34,4 +23,4 @@ for REPO in onchain-stream-txs onchain-batch-txs; do
   fi
 done
 
-echo "==> S3 + ECR cleanup complete."
+echo "==> ECR cleanup complete. S3 buckets are protected and were NOT emptied."

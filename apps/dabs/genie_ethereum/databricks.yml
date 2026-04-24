@@ -1,0 +1,42 @@
+bundle:
+  name: genie-ethereum
+
+include:
+  - resources/genie/genie_ethereum.yml
+
+variables:
+  catalog:
+    description: "Unity Catalog name"
+    default: "dev"
+  warehouse_id:
+    description: "Databricks SQL warehouse ID"
+    default: ""
+
+targets:
+  dev:
+    presets:
+      name_prefix: "[dev] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+    variables:
+      catalog: "dev"
+
+  hml:
+    presets:
+      name_prefix: "[hml] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+    variables:
+      catalog: "hml"
+
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ""
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"
+    variables:
+      catalog: "prd"

@@ -51,7 +51,7 @@ make tf_destroy_dev_lambda  # terraform destroy em 02_lambda
 ### PROD
 
 Gerenciado por Terraform em `services/prd/06_lambda/`.  
-Deploy via CI/CD: `.github/workflows/deploy_dm_applications.yml` (app_type=lambda-functions).
+Deploy via CI/CD: `.github/workflows/deploy_all_dm_applications.yml` (Lambda functions).
 
 ```
 build-artifacts → lambda-hml-test → lambda-prod-deploy (terraform apply)

@@ -2,7 +2,9 @@
 # Tears down the ephemeral HML environment created by hml_provision.sh:
 #   - Stops and deregisters ECS tasks/task definitions
 #   - Deletes ECS cluster + security group
-#   - Deletes DynamoDB table, Kinesis streams, SQS queues, Firehose streams
+#
+# Persistent resources (Kinesis, SQS, Firehose, DynamoDB, CloudWatch, S3) are
+# managed by Terraform (services/hml/04_peripherals) and are NOT deleted here.
 #
 # Workflow-level env vars used directly (auto-available on runner):
 #   HML_ECS_CLUSTER — e.g. dm-hml-ecs
@@ -23,7 +25,7 @@ for TASK_ARN in $(echo "$TASKS" | jq -r '.[]'); do
     --reason "HML teardown" 2>/dev/null || true
 done
 
-# ── Deregister task definitions ───────────────────────────────────────────────
+# ── Deregister task definitions ────────────────────────────────────────────────
 echo "==> Deregistering HML task definitions..."
 for FAMILY in hml-dm-mined-blocks-watcher hml-dm-orphan-blocks-watcher \
               hml-dm-block-data-crawler hml-dm-mined-txs-crawler hml-dm-txs-input-decoder; do
@@ -35,40 +37,13 @@ for FAMILY in hml-dm-mined-blocks-watcher hml-dm-orphan-blocks-watcher \
   done
 done
 
-# ── Delete ECS cluster + security group ──────────────────────────────────────
-echo "==> Deleting HML ECS cluster..."
-aws ecs delete-cluster --cluster "${HML_ECS_CLUSTER}" 2>/dev/null || true
-
+# ── Delete security group ─────────────────────────────────────────────────────
+# ECS cluster is Terraform-managed (services/hml/07_ecs) — NOT deleted here.
+# Kinesis is destroyed by the Terraform targeted-destroy step in the workflow.
 if [ -n "${HML_SG_ID:-}" ]; then
   echo "==> Deleting HML security group ${HML_SG_ID} (waiting 20s for tasks to stop)..."
   sleep 20
   aws ec2 delete-security-group --group-id "${HML_SG_ID}" 2>/dev/null || true
 fi
-
-# ── Delete DynamoDB + Kinesis + SQS + Firehose ───────────────────────────────
-echo "==> Deleting HML DynamoDB table..."
-aws dynamodb delete-table --table-name "dm-chain-explorer-hml" \
-  --region "${REGION}" 2>/dev/null || true
-
-echo "==> Deleting HML Kinesis streams + Firehose delivery streams..."
-for STREAM in mainnet-blocks-data mainnet-transactions-data mainnet-transactions-decoded; do
-  aws kinesis delete-stream --stream-name "${STREAM}-hml" \
-    --enforce-consumer-deletion --region "${REGION}" 2>/dev/null || true
-  aws firehose delete-delivery-stream --delivery-stream-name "firehose-${STREAM}-hml" \
-    --region "${REGION}" 2>/dev/null || true
-done
-
-echo "==> Deleting HML SQS queues..."
-for Q in mainnet-mined-blocks-events-hml mainnet-block-txs-hash-id-hml \
-          mainnet-mined-blocks-events-dlq-hml mainnet-block-txs-hash-id-dlq-hml; do
-  URL=$(aws sqs get-queue-url --queue-name "$Q" --region "${REGION}" \
-    --query 'QueueUrl' --output text 2>/dev/null) || continue
-  [ -n "$URL" ] && aws sqs delete-queue --queue-url "$URL" --region "${REGION}" 2>/dev/null || true
-done
-
-echo "==> Deleting HML CloudWatch log group..."
-aws logs delete-log-group \
-  --log-group-name "/apps/dm-chain-explorer-hml" \
-  --region "${REGION}" 2>/dev/null || true
 
 echo "==> HML teardown complete."

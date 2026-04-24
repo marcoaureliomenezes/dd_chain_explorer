@@ -1,0 +1,8 @@
+resources:
+  dashboards:
+    network_overview:
+      display_name: "Network Overview"
+      file_path: ../../src/dashboards/01_network_overview.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: true
+      parent_path: /Shared/dd-chain-explorer/dashboards

@@ -1,0 +1,20 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "dm_delta_maintenance"
+version = "0.1.0"
+requires-python = ">=3.10"
+description = "Delta Lake maintenance: optimize, vacuum, and monitor all tables"
+
+[project.scripts]
+dm-delta-maintenance-optimize-bronze = "dm_delta_maintenance.optimize_bronze:main"
+
+dm_delta_maintenance-optimize-silver = "dm_delta_maintenance.optimize_silver:main"
+dm_delta_maintenance-optimize-gold = "dm_delta_maintenance.optimize_gold:main"
+dm_delta_maintenance-vacuum = "dm_delta_maintenance.vacuum:main"
+dm_delta_maintenance-monitor = "dm_delta_maintenance.monitor:main"
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dm_delta_maintenance*"]

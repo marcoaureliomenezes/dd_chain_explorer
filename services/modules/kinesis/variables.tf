@@ -84,3 +84,16 @@ variable "firehose_role_arn" {
   type        = string
   default     = ""
 }
+
+# ---------------------------------------------------------------------------
+# Firehose Direct Put Streams (app → Firehose → S3, no Kinesis stream)
+# ---------------------------------------------------------------------------
+
+variable "firehose_direct_put_streams" {
+  description = <<-EOT
+    Map of Firehose Direct Put delivery streams to create (app writes directly via PutRecord,
+    no Kinesis Data Stream involved). Key = logical name used for resource naming.
+  EOT
+  type        = map(object({}))
+  default     = {}
+}

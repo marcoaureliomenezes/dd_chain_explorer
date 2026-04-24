@@ -1,0 +1,359 @@
+name: Plan on PR
+
+# ── IS-10 — Speculative plan on every PR that touches services/ ──
+# Runs `terraform plan` (no apply) for each changed module.
+# Results are posted to the GitHub Step Summary visible on the PR.
+#
+# Coverage:
+#   DEV  — 01_peripherals, 02_lambda
+#   HML  — 02_vpc, 03_iam, 04_peripherals
+#   PRD  — 02_vpc, 03_iam, 04_peripherals, 06_lambda, 07_ecs
+#
+# Databricks modules (05a/05b) are excluded — they need provider
+# auth that cannot be safely materialised from a PR context.
+
+on:
+  pull_request:
+    branches: [develop]
+    paths:
+      - 'services/**'
+      - 'scripts/ci/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: plan-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: sa-east-1
+  TF_VERSION: 1.7.0
+
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── 1. Detect which modules changed in this PR ────────────────────────────
+  detect-changes:
+    name: Detect changed modules
+    runs-on: ubuntu-latest
+    outputs:
+      dev_peripherals: ${{ steps.detect.outputs.dev_peripherals }}
+      dev_lambda:      ${{ steps.detect.outputs.dev_lambda }}
+      hml_vpc:         ${{ steps.detect.outputs.hml_vpc }}
+      hml_iam:         ${{ steps.detect.outputs.hml_iam }}
+      hml_peripherals: ${{ steps.detect.outputs.hml_peripherals }}
+      prd_vpc:         ${{ steps.detect.outputs.prd_vpc }}
+      prd_iam:         ${{ steps.detect.outputs.prd_iam }}
+      prd_peripherals: ${{ steps.detect.outputs.prd_peripherals }}
+      prd_lambda:      ${{ steps.detect.outputs.prd_lambda }}
+      prd_ecs:         ${{ steps.detect.outputs.prd_ecs }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed modules
+        id: detect
+        run: |
+          DIFF=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null \
+              || git diff --name-only HEAD~1 HEAD)
+          echo "Changed files:"
+          echo "$DIFF"
+
+          set_out() {
+            local key="$1" path="$2"
+            if echo "$DIFF" | grep -qE "(^services/${path}/|^services/modules/)"; then
+              echo "${key}=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "${key}=false" >> "$GITHUB_OUTPUT"
+            fi
+          }
+
+          set_out dev_peripherals  dev/01_peripherals
+          set_out dev_lambda       dev/02_lambda
+          set_out hml_vpc          hml/02_vpc
+          set_out hml_iam          hml/03_iam
+          set_out hml_peripherals  hml/04_peripherals
+          set_out prd_vpc          prd/02_vpc
+          set_out prd_iam          prd/03_iam
+          set_out prd_peripherals  prd/04_peripherals
+          set_out prd_lambda       prd/06_lambda
+          set_out prd_ecs          prd/07_ecs
+
+  # ── DEV ──────────────────────────────────────────────────────────────────
+
+  plan-dev-peripherals:
+    name: Plan — DEV/Peripherals
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dev_peripherals == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/dev/01_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Peripherals
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-dev-lambda:
+    name: Plan — DEV/Lambda
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dev_lambda == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/dev/02_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Lambda
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  # ── HML ──────────────────────────────────────────────────────────────────
+
+  plan-hml-vpc:
+    name: Plan — HML/VPC
+    needs: detect-changes
+    if: needs.detect-changes.outputs.hml_vpc == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/hml/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/VPC
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-hml-iam:
+    name: Plan — HML/IAM
+    needs: detect-changes
+    if: needs.detect-changes.outputs.hml_iam == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/hml/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/IAM
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-hml-peripherals:
+    name: Plan — HML/Peripherals
+    needs: detect-changes
+    if: needs.detect-changes.outputs.hml_peripherals == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/hml/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/Peripherals
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  # ── PRD ──────────────────────────────────────────────────────────────────
+
+  plan-prd-vpc:
+    name: Plan — PRD/VPC
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_vpc == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/02_vpc
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/VPC
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-prd-iam:
+    name: Plan — PRD/IAM
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_iam == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/03_iam
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/IAM
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-prd-peripherals:
+    name: Plan — PRD/Peripherals
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_peripherals == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/04_peripherals
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Peripherals
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-prd-lambda:
+    name: Plan — PRD/Lambda
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_lambda == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/06_lambda
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Lambda
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-prd-ecs:
+    name: Plan — PRD/ECS
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_ecs == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/prd/07_ecs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/ECS
+          TAIL_LINES: "30"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"

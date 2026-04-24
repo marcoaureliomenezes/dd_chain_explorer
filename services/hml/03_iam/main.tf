@@ -10,6 +10,10 @@ terraform {
       source  = "hashicorp/aws"
       version = ">= 5.0"
     }
+    null = {
+      source  = "hashicorp/null"
+      version = ">= 3.0"
+    }
   }
 
   backend "s3" {
@@ -31,16 +35,13 @@ provider "aws" {
 
 data "aws_caller_identity" "current" {}
 
-data "terraform_remote_state" "peripherals" {
-  backend = "s3"
-  config = {
-    bucket = "dm-chain-explorer-terraform-state"
-    key    = "hml/peripherals/terraform.tfstate"
-    region = "sa-east-1"
-  }
-}
-
 locals {
+  # S3 bucket ARNs — hardcoded to avoid remote-state dependency during destroy
+  raw_bucket_arn        = "arn:aws:s3:::dm-chain-explorer-hml-raw"
+  lakehouse_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-hml-lakehouse"
+  databricks_bucket_arn = "arn:aws:s3:::dm-chain-explorer-hml-databricks"
+  dynamodb_table_arn    = "arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/dm-chain-explorer-hml"
+
   common_tags = {
     "owner"       = "marco-menezes"
     "managed-by"  = "terraform"
@@ -62,13 +63,13 @@ module "iam" {
   kinesis_stream_suffix = "hml"
   sqs_queue_suffix      = "hml"
   dynamodb_table_name   = var.dynamodb_table_name
-  raw_bucket_arn        = data.terraform_remote_state.peripherals.outputs.raw_bucket_arn
-  lakehouse_bucket_arn  = data.terraform_remote_state.peripherals.outputs.lakehouse_bucket_arn
+  raw_bucket_arn        = local.raw_bucket_arn
+  lakehouse_bucket_arn  = local.lakehouse_bucket_arn
 
-  create_databricks_roles = true
+  create_databricks_roles = var.databricks_account_id != "" ? true : false
   databricks_account_id   = var.databricks_account_id
   databricks_account_uuid = var.databricks_account_uuid
-  databricks_bucket_arn   = data.terraform_remote_state.peripherals.outputs.databricks_bucket_arn
+  databricks_bucket_arn   = local.databricks_bucket_arn
 }
 
 # Firehose role (HML-specific — não está no módulo iam genérico)
@@ -108,8 +109,8 @@ resource "aws_iam_role_policy" "firehose_s3" {
           "s3:ListBucket", "s3:ListBucketMultipartUploads", "s3:PutObject",
         ]
         Resource = [
-          data.terraform_remote_state.peripherals.outputs.raw_bucket_arn,
-          "${data.terraform_remote_state.peripherals.outputs.raw_bucket_arn}/*",
+          local.raw_bucket_arn,
+          "${local.raw_bucket_arn}/*",
         ]
       },
       {
@@ -120,6 +121,92 @@ resource "aws_iam_role_policy" "firehose_s3" {
           "kinesis:GetRecords", "kinesis:ListShards",
         ]
         Resource = ["arn:aws:kinesis:${var.region}:*:stream/*-hml"]
+      }
+    ]
+  })
+}
+
+# ── Lambda Roles (HML ephemeral tests) ───────────────────────────────────────
+
+resource "aws_iam_role" "contracts_ingestion_lambda" {
+  name = "dm-chain-explorer-hml-contracts-ingestion-lambda"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "contracts_ingestion_lambda" {
+  name = "dm-chain-explorer-hml-contracts-ingestion-policy"
+  role = aws_iam_role.contracts_ingestion_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:Query", "dynamodb:GetItem", "dynamodb:Scan"]
+        Resource = local.dynamodb_table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:PutObject", "s3:HeadObject"]
+        Resource = "${local.raw_bucket_arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParametersByPath", "ssm:GetParameter"]
+        Resource = [
+          "arn:aws:ssm:${var.region}:*:parameter/etherscan-api-keys/*",
+          "arn:aws:ssm:${var.region}:*:parameter/etherscan-api-keys",
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role" "gold_to_dynamodb_lambda" {
+  name = "dm-chain-explorer-hml-gold-to-dynamodb-lambda"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action    = "sts:AssumeRole"
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+    }]
+  })
+  tags = local.common_tags
+}
+
+resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
+  name = "dm-chain-explorer-hml-gold-to-dynamodb-policy"
+  role = aws_iam_role.gold_to_dynamodb_lambda.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["dynamodb:BatchWriteItem", "dynamodb:PutItem"]
+        Resource = local.dynamodb_table_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${local.databricks_bucket_arn}/exports/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "arn:aws:logs:*:*:*"
       }
     ]
   })

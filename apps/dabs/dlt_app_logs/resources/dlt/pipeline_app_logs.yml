@@ -1,0 +1,33 @@
+resources:
+  pipelines:
+    pipeline_app_logs:
+      name: "dm-app-logs"
+      description: "DLT pipeline para ingestão de logs de aplicações — Bronze + Silver + Gold."
+
+      catalog: ${var.catalog}
+      target: b_app_logs
+
+      libraries:
+        - notebook:
+            path: ../../src/streaming/app_logs_pipeline.py
+
+      serverless: true
+
+      configuration:
+        # S3 bucket for ingestion (raw data, DLT external tables, checkpoints)
+        ingestion.s3.bucket: ${var.ingestion_s3_bucket}
+
+      continuous: ${var.dlt_continuous}
+      channel: CURRENT
+
+      schedule:
+        # PROD: a cada 3 min, offset 2 min após ethereum, UNPAUSED (override em databricks.yml target prod)
+        # DEV/HML: PAUSED — acionar via dm-trigger-all-dlts ou make run_dev_pipelines
+        quartz_cron_expression: "0 2/3 * * * ?"
+        timezone_id: "America/Sao_Paulo"
+        pause_status: PAUSED
+
+      tags:
+        project: dd-chain-explorer
+        layer: streaming
+        component: app_logs

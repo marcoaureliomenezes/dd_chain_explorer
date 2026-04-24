@@ -32,6 +32,7 @@ from web3 import Web3
 
 from dm_chain_utils.dm_parameter_store import ParameterStoreClient
 from dm_chain_utils.dm_kinesis import KinesisHandler
+from dm_chain_utils.dm_firehose import FirehoseHandler
 from dm_chain_utils.dm_cloudwatch_logger import CloudWatchLoggingHandler
 
 from utils_decode.abi_cache import ABICache
@@ -129,9 +130,9 @@ class TransactionInputDecoder:
         return self
 
     def sink_config(self, sink_properties: Dict[str, Any]) -> "TransactionInputDecoder":
-        self._kinesis_handler_out: KinesisHandler = sink_properties["kinesis_handler"]
-        self._stream_out = sink_properties["stream_out"]
-        self.logger.info(f"Sink configured — Kinesis stream: {self._stream_out}")
+        self._firehose_handler: FirehoseHandler = sink_properties["firehose_handler"]
+        self._firehose_out = sink_properties["firehose_out"]
+        self.logger.info(f"Sink configured — Firehose stream: {self._firehose_out}")
         return self
 
     def run(self) -> None:
@@ -184,10 +185,9 @@ class TransactionInputDecoder:
                 continue
 
             try:
-                self._kinesis_handler_out.put_record(
-                    self._stream_out,
+                self._firehose_handler.put_record(
+                    self._firehose_out,
                     data=json.dumps(out_record, default=str),
-                    partition_key=tx["hash"],
                 )
                 decoded_count += 1
             except Exception as exc:
@@ -223,6 +223,7 @@ class TransactionInputDecoder:
             self._cnt_cache_hit += 1
             decoded = self._decode_with_abi(addr, abi, input_hex)
             if decoded:
+                decoded["decode_source"] = "abi_cache"
                 return decoded
 
         # ---- 2. Etherscan API (skip if negative-cached) ----
@@ -233,6 +234,7 @@ class TransactionInputDecoder:
                 self._cache.put(addr, abi)
                 decoded = self._decode_with_abi(addr, abi, input_hex)
                 if decoded:
+                    decoded["decode_source"] = "etherscan_api"
                     return decoded
             else:
                 # Mark as unverified → won't hit Etherscan again for 24 h
@@ -242,11 +244,13 @@ class TransactionInputDecoder:
         sig = self._etherscan.get_4byte_signature(selector)
         if sig:
             self.logger.debug(f"[decode] 4byte fallback for {addr}: {sig}")
-            return self._decode_with_sig(sig, input_hex)
+            decoded = self._decode_with_sig(sig, input_hex)
+            decoded["decode_source"] = "4byte_directory"
+            return decoded
 
         # ---- 4. Last resort: raw selector — unknown, will be dropped ----
         self.logger.debug(f"[decode] Unknown selector {selector} for {addr}")
-        return {"method": selector, "parms": {}, "decode_type": "unknown"}
+        return {"method": selector, "parms": {}, "decode_type": "unknown", "decode_source": "unknown"}
 
     @lru_cache(maxsize=4096)
     def _get_contract(self, address: str, abi_json: str):
@@ -325,14 +329,43 @@ class TransactionInputDecoder:
         Only ``tx_hash`` is kept from the source transaction — ``from``,
         ``block_number`` and ``input`` are already on the source topic and
         can be joined back using ``tx_hash``.
+
+        Field normalization (P03):
+          - ``method_id``        : 4-byte selector hex from input (e.g. ``0xa9059cbb``)
+          - ``decode_type``      : normalized to ``abi | 4byte | unknown``
+                                   (internal ``full/full_4byte`` → ``abi/4byte``)
+          - ``decode_source``    : ``abi_cache | etherscan_api | 4byte_directory | unknown``
+          - ``decode_confidence``: ``full`` (params decoded) | ``partial`` (method only) | ``none``
         """
         try:
+            input_hex = tx.get("input", "0x") or "0x"
+            if not input_hex.startswith("0x"):
+                input_hex = "0x" + input_hex
+            method_id = input_hex[:10] if len(input_hex) >= 10 else input_hex
+
+            raw_type = result["decode_type"]
+            if raw_type == "full":
+                decode_type = "abi"
+                decode_confidence = "full"
+            elif raw_type == "full_4byte":
+                decode_type = "4byte"
+                decode_confidence = "full"
+            elif raw_type == "partial":
+                decode_type = "4byte"
+                decode_confidence = "partial"
+            else:  # "unknown"
+                decode_type = "unknown"
+                decode_confidence = "none"
+
             return {
-                "tx_hash":          tx["hash"],
-                "contract_address": contract_address,
-                "method":           result["method"],
-                "parms":            json.dumps(result["parms"]),
-                "decode_type":      result["decode_type"],
+                "tx_hash":           tx["hash"],
+                "contract_address":  contract_address,
+                "method":            result["method"],
+                "parms":             json.dumps(result["parms"]),
+                "method_id":         method_id,
+                "decode_type":       decode_type,
+                "decode_source":     result.get("decode_source", "unknown"),
+                "decode_confidence": decode_confidence,
             }
         except Exception:
             return None
@@ -348,7 +381,7 @@ if __name__ == "__main__":
     NETWORK              = os.getenv("NETWORK", "mainnet")
     CLOUDWATCH_LOG_GROUP = os.getenv("CLOUDWATCH_LOG_GROUP")
     KINESIS_STREAM_TRANSACTIONS = os.getenv("KINESIS_STREAM_TRANSACTIONS")
-    KINESIS_STREAM_DECODED      = os.getenv("KINESIS_STREAM_DECODED")
+    FIREHOSE_STREAM_DECODED     = os.getenv("FIREHOSE_STREAM_DECODED")
     SSM_ETHERSCAN_PATH   = os.getenv("SSM_ETHERSCAN_PATH", "/etherscan-api-keys")
     UNVERIFIED_TTL       = int(os.getenv("UNVERIFIED_TTL", "86400"))  # 24 h
 
@@ -368,7 +401,8 @@ if __name__ == "__main__":
     logger.info("CloudWatch logging handler configured.")
 
     kinesis_handler = KinesisHandler(logger)
-    logger.info("Kinesis handler configured.")
+    firehose_handler = FirehoseHandler(logger)
+    logger.info("Kinesis (src) and Firehose (sink) handlers configured.")
 
     # ---- ABI cache (DynamoDB) ----
     abi_cache = ABICache(logger, unverified_ttl=UNVERIFIED_TTL)
@@ -403,8 +437,8 @@ if __name__ == "__main__":
         "stream_in": KINESIS_STREAM_TRANSACTIONS,
     }
     sink_properties = {
-        "kinesis_handler": kinesis_handler,
-        "stream_out": KINESIS_STREAM_DECODED,
+        "firehose_handler": firehose_handler,
+        "firehose_out": FIREHOSE_STREAM_DECODED,
     }
 
     _ = (

@@ -26,11 +26,17 @@
 # =============================================================================
 set -euo pipefail
 
-# ── Configuration ─────────────────────────────────────────────────────────────
+# ── Configuration ───────────────────────────────────────────────────────────────
 DATABRICKS_HOST="${DATABRICKS_HOST:?DATABRICKS_HOST is required}"
 DATABRICKS_TOKEN="${DATABRICKS_TOKEN:?DATABRICKS_TOKEN is required}"
 CATALOG="${CATALOG:-hml}"
 WAREHOUSE_ID="${WAREHOUSE_ID:?WAREHOUSE_ID is required}"
+
+# S3 bucket and DynamoDB table for Lambda chain validation (env-specific defaults)
+S3_BUCKET="${S3_BUCKET:-dm-chain-explorer-${CATALOG}-lakehouse}"
+DYNAMODB_TABLE="${DYNAMODB_TABLE:-dm-chain-explorer-${CATALOG}}"
+LAMBDA_FUNC="${LAMBDA_FUNC:-dd-chain-explorer-${CATALOG}-gold-to-dynamodb}"
+AWS_REGION="${AWS_REGION:-sa-east-1}"
 
 # Poll settings for SQL statement completion
 SQL_POLL_INTERVAL=5    # seconds between polls
@@ -187,6 +193,47 @@ log ""
 for MV in "${GOLD_MVS_SKIP[@]}"; do
   skip "${CATALOG}.${MV} — depends on batch popular_contracts_txs pipeline (not yet tested)"
 done
+
+# =============================================================================
+# Lambda → DynamoDB Chain Validation
+# =============================================================================
+log "──── Pipeline: Lambda → DynamoDB (gold_to_dynamodb) ────"
+log ""
+
+LAMBDA_STATE=$(aws lambda get-function --function-name "$LAMBDA_FUNC" \
+  --region "$AWS_REGION" \
+  --query 'Configuration.State' --output text 2>/dev/null || echo "NOT_FOUND")
+
+if [ "$LAMBDA_STATE" = "NOT_FOUND" ]; then
+  skip "Lambda ${LAMBDA_FUNC} not found in ${AWS_REGION} — deploy lambda module first"
+else
+  log "⏳ Checking DynamoDB CONSUMPTION items (Lambda S3-event chain) ..."
+  LAMBDA_WAIT=120
+  LAMBDA_DEADLINE=$(( $(date +%s) + LAMBDA_WAIT ))
+  DYNAMO_COUNT=0
+  while [ "$(date +%s)" -lt "$LAMBDA_DEADLINE" ]; do
+    DYNAMO_COUNT=$(aws dynamodb query \
+      --table-name "${DYNAMODB_TABLE}" \
+      --key-condition-expression "pk = :pk" \
+      --expression-attribute-values '{":pk":{"S":"CONSUMPTION"}}' \
+      --select COUNT \
+      --region "$AWS_REGION" \
+      --query 'Count' --output text 2>/dev/null || echo "0")
+    if [ "${DYNAMO_COUNT:-0}" -gt 0 ]; then
+      ok "Lambda chain: ${DYNAMO_COUNT} CONSUMPTION item(s) in DynamoDB '${DYNAMODB_TABLE}'"
+      break
+    fi
+    log "  → CONSUMPTION count=0, waiting 20s ..."
+    sleep 20
+  done
+  if [ "${DYNAMO_COUNT:-0}" -eq 0 ]; then
+    fail "Lambda chain: 0 CONSUMPTION items in DynamoDB '${DYNAMODB_TABLE}' after ${LAMBDA_WAIT}s"
+    log "   Check S3 exports: aws s3 ls s3://${S3_BUCKET}/exports/gold_api_keys/ --recursive"
+    log "   Check Lambda logs: aws logs tail /aws/lambda/${LAMBDA_FUNC} --since 10m"
+  fi
+fi
+
+log ""
 
 # =============================================================================
 # Summary

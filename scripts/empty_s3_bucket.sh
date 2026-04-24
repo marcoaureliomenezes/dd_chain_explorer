@@ -18,44 +18,31 @@ echo ">>> Emptying S3 bucket: s3://${BUCKET} (region: ${REGION})"
 echo "  [1/3] Removing all objects..."
 aws s3 rm "s3://${BUCKET}" --recursive --region "${REGION}" 2>/dev/null || true
 
-# ── 2. Delete all non-current versions (if versioning was ever enabled) ──────
-echo "  [2/3] Removing object versions..."
-while true; do
-  VERSIONS=$(aws s3api list-object-versions \
-    --bucket "${BUCKET}" \
-    --region "${REGION}" \
-    --query 'Versions[].{Key:Key,VersionId:VersionId}' \
-    --output json 2>/dev/null || echo "[]")
+# ── 2 + 3. Delete all versions and delete markers via boto3 ──────────────────
+# Using Python/boto3 instead of aws-cli shell one-liners to avoid:
+#   - "Argument list too long" when bucket has many versioned objects
+#   - MalformedXML edge-cases in aws-cli JSON→XML conversion
+echo "  [2/3] Removing object versions and delete markers (boto3)..."
+python3 - "${BUCKET}" "${REGION}" << 'PYEOF'
+import sys, boto3
 
-  if [ -z "${VERSIONS}" ] || [ "${VERSIONS}" = "[]" ] || [ "${VERSIONS}" = "null" ]; then
-    break
-  fi
+bucket, region = sys.argv[1], sys.argv[2]
+s3 = boto3.client("s3", region_name=region)
 
-  DELETE_PAYLOAD=$(echo "${VERSIONS}" | jq '{"Objects": ., "Quiet": true}')
-  aws s3api delete-objects \
-    --bucket "${BUCKET}" \
-    --delete "${DELETE_PAYLOAD}" \
-    --region "${REGION}" > /dev/null
-done
+deleted_total = 0
+while True:
+    resp = s3.list_object_versions(Bucket=bucket, MaxKeys=500)
+    to_delete = (
+        [{"Key": v["Key"], "VersionId": v["VersionId"]} for v in resp.get("Versions", [])]
+        + [{"Key": m["Key"], "VersionId": m["VersionId"]} for m in resp.get("DeleteMarkers", [])]
+    )
+    if not to_delete:
+        break
+    s3.delete_objects(Bucket=bucket, Delete={"Objects": to_delete, "Quiet": True})
+    deleted_total += len(to_delete)
+    print(f"  ... deleted {deleted_total} versions/markers so far")
 
-# ── 3. Delete all delete markers ─────────────────────────────────────────────
-echo "  [3/3] Removing delete markers..."
-while true; do
-  MARKERS=$(aws s3api list-object-versions \
-    --bucket "${BUCKET}" \
-    --region "${REGION}" \
-    --query 'DeleteMarkers[].{Key:Key,VersionId:VersionId}' \
-    --output json 2>/dev/null || echo "[]")
-
-  if [ -z "${MARKERS}" ] || [ "${MARKERS}" = "[]" ] || [ "${MARKERS}" = "null" ]; then
-    break
-  fi
-
-  DELETE_PAYLOAD=$(echo "${MARKERS}" | jq '{"Objects": ., "Quiet": true}')
-  aws s3api delete-objects \
-    --bucket "${BUCKET}" \
-    --delete "${DELETE_PAYLOAD}" \
-    --region "${REGION}" > /dev/null
-done
+print(f"  Done ({deleted_total} total versions/markers removed).")
+PYEOF
 
 echo ">>> Bucket s3://${BUCKET} is now empty."

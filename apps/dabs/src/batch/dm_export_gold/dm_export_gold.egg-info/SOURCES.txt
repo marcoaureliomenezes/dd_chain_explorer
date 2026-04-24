@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+setup.py
+dm_export_gold.egg-info/PKG-INFO
+dm_export_gold.egg-info/SOURCES.txt
+dm_export_gold.egg-info/dependency_links.txt
+dm_export_gold.egg-info/entry_points.txt
+dm_export_gold.egg-info/top_level.txt

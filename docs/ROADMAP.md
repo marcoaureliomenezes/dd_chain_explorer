@@ -6,7 +6,9 @@ Este documento consolida as melhorias pendentes do projeto, organizadas por prio
 
 > Os itens concluídos foram removidos do roadmap. Consulte o histórico de commits para o registro completo de implementações.
 
-**TODOs em aberto: 11** (2 Arquitetura + 2 Captura + 1 Processamento + 4 DataOps + 2 Serving)
+**TODOs em aberto: 16** (2 Arquitetura + 3 Captura + 4 Processamento + 5 DataOps + 2 Serving)
+
+> ⚠️ **5 TODOs de Emergência (DL-01 a DL-05)** adicionados em 2026-04-12 — prioridade máxima.
 
 ---
 
@@ -28,7 +30,7 @@ Este documento consolida as melhorias pendentes do projeto, organizadas por prio
 | Branch de integração | `develop` (padronizado) |
 | Deploy prod | Mesmo workflow, 2ª stage com **GitHub Environment `production`** (approval gate) |
 | Mensageria | Kinesis/SQS/CloudWatch/Firehose (MSK e Schema Registry eliminados) |
-| HML infra | **100% efêmero** — todos os recursos (Kinesis, SQS, CloudWatch, DynamoDB, ECS cluster, SG, S3, IAM) criados/destruídos dentro de `deploy_dm_applications.yml`. Sem infra persistente de HML. |
+| HML infra | Parcialmente gerenciada por Terraform em `services/hml/` (IAM, Firehose, periféricos, ECS). Recursos efêmeros criados/destruídos dentro de `deploy_all_dm_applications.yml`. |
 | HML Databricks | Databricks Free Edition (mesmo workspace do DEV), catálogo `hml` |
 
 ### Gitflow Revisado
@@ -48,7 +50,7 @@ master  (push direto proibido)
 | VAL-01 | `Deploy Streaming Apps` executado end-to-end: HML passa 10 min, prod atualizado, ECS estável | 🔲 |
 | VAL-02 | ~~`Deploy Batch Apps`~~ — **N/A**: batch apps substituídas por Lambda `contracts-ingestion` (EventBridge). Sem Docker. | ❌ N/A |
 | VAL-03 | `Deploy DABs` executado end-to-end (HML Free Edition + deploy prod Databricks) | 🔲 |
-| VAL-04 | `Deploy Lib Python` publicação PyPI validada | 🔲 |
+| VAL-04 | `Destroy ALL Cloud Infra` executado end-to-end: todos os recursos destruídos (PRD + HML + DEV) | 🔲 |
 | VAL-05 | `Deploy Cloud Infra` DEV e PRD validados end-to-end (plan + apply + destroy) | 🔲 |
 | VAL-06 | `make prod_standby` → custo ~$0/h; `make prod_resume` → ambiente funcional | 🔲 |
 
@@ -56,13 +58,29 @@ master  (push direto proibido)
 
 | Secret | Usado por | Status |
 |---|---|---|
-| `HML_VPC_ID` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `HML_SUBNET_ID` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `ECS_TASK_ROLE_ARN` | deploy_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
-| `DATABRICKS_HML_HOST` | deploy_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
-| `DATABRICKS_HML_TOKEN` | deploy_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
-| `HML_ETHERSCAN_SSM_PATH` | deploy_dm_applications (streaming, HML test) | Adicionado em `setup_github_secrets.sh` |
+| `HML_VPC_ID` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `HML_SUBNET_ID` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `ECS_TASK_EXECUTION_ROLE_ARN` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `ECS_TASK_ROLE_ARN` | deploy_all_dm_applications (streaming) | Adicionado em `setup_github_secrets.sh` |
+| `DATABRICKS_HML_HOST` | deploy_all_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
+| `DATABRICKS_HML_TOKEN` | deploy_all_dm_applications (dabs) | Adicionado em `setup_github_secrets.sh` |
+| `HML_ETHERSCAN_SSM_PATH` | deploy_all_dm_applications (streaming, HML test) | Adicionado em `setup_github_secrets.sh` |
+
+---
+
+## Fase EMERGÊNCIA — Qualidade do Data Lake (P0-CRIT)
+
+> **Identificado em:** 2026-04-12. Problema crítico de dados detectado: ~50% dos blocos na Silver classificados como `orphan`, comprometendo todas as Gold MVs.
+>
+> **Root Cause Principal:** `MinedBlocksWatcher` (Job 1) emitia apenas o bloco mais recente por ciclo de polling. Blocos intermediários eram permanentemente perdidos, quebrando a prova por parentesco do `eth_canonical_blocks_index`. Efeito em cascata: todos os Gold MVs filtram `tx_status = 'valid'`, resultando em métricas com ~50% dos dados reais.
+
+| Prioridade | TODO | Área | Descrição | Esforço |
+|------------|------|------|-----------|--------|
+| 🆘 P0-CRIT | TODO-DL-01 | Captura | **Fix Job 1 — emitir todos os blocos entre polls**: iteração `range(prev+1, actual+1)` buscando cada bloco intermediário via RPC antes de emitir o latest | Médio |
+| 🆘 P0-CRIT | TODO-DL-02 | Processamento | **Fix reconcile_orphans — nome de tabela errado**: `s_apps.canonical_blocks_index` → `s_apps.eth_canonical_blocks_index` em `reconcile_orphan_blocks.py` | Baixo |
+| 🆘 P0-CRIT | TODO-DL-03 | DataOps | **Unpause job_reconcile_orphans + aumentar limite**: `pause_status: UNPAUSED`, `max_blocks_per_run: 500` (era 50) | Baixo |
+| 🔴 P0 | TODO-DL-04 | Processamento | **Backfill em massa do Bronze**: após DL-01/02/03 ativos, executar reconciliação completa de todos os blocos sem entrada canônica (>8000 gaps) — redeploy do job + trigger manual sweep | Alto |
+| 🔴 P0 | TODO-DL-05 | Processamento | **Validar taxa de orphan pós-backfill**: confirmar `orphan_rate < 1%` no `eth_canonical_blocks_index`; disparar `full_refresh` no DLT para reprocessar Gold MVs com dados corretos | Médio |
 
 ---
 
@@ -86,7 +104,7 @@ Melhorias que aumentam a confiabilidade, visibilidade e paridade DEV/PROD.
 | 🟡 P1 | TODO-O08 | DataOps | CloudWatch Dashboards ou Grafana para ECS + Kinesis + DynamoDB | Alto |
 | 🟡 P1 | TODO-C08 | Captura | Métricas CloudWatch nos jobs de streaming (throughput, latência, erros) | Médio |
 | 🟡 P1 | TODO-O10 | DataOps | Notificações Slack/Teams para falhas CI/CD e alertas de infra | Médio |
-| 🟡 P1 | TODO-O13 | DataOps | Validar `deploy_dm_applications.yml` (app_type=lambda-functions) end-to-end: build, HML test, PRD deploy via Terraform | Médio |
+| 🟡 P1 | TODO-O13 | DataOps | Validar `deploy_all_dm_applications.yml` end-to-end: streaming + DABs + lambda em pipeline unificado |  Médio |
 
 ---
 
@@ -115,14 +133,14 @@ Funcionalidades novas e expansão do escopo.
 
 ## Resumo por Área
 
-| Área | Total | Fase 0 | Fase 1 | Fase 2 | Fase 3 |
-|------|-------|--------|--------|--------|--------|
-| Arquitetura (A) | 2 | — | — | 2 | — |
-| Captura (C) | 2 | — | 1 | 1 | — |
-| Processamento (P) | 1 | 1 | — | — | — |
-| DataOps (O) | 4 | 1 | 3 | — | — |
-| Serving (S) | 2 | — | — | — | 2 |
-| **Total** | **11** | **2** | **4** | **3** | **2** |
+| Área | Total | Emerg. | Fase 0 | Fase 1 | Fase 2 | Fase 3 |
+|------|-------|--------|--------|--------|--------|--------|
+| Arquitetura (A) | 2 | — | — | — | 2 | — |
+| Captura (C) | 3 | 1 | — | 1 | 1 | — |
+| Processamento (P) | 4 | 3 | 1 | — | — | — |
+| DataOps (O) | 5 | 1 | 1 | 3 | — | — |
+| Serving (S) | 2 | — | — | — | — | 2 |
+| **Total** | **16** | **5** | **2** | **4** | **3** | **2** |
 
 ---
 
@@ -141,7 +159,12 @@ Funcionalidades novas e expansão do escopo.
 
 ```mermaid
 flowchart TD
-    P01["🔴 TODO-P01<br/>DLT S3 Auto Loader PROD"] --> O12["🔴 TODO-O12<br/>Validar PROD E2E"]
+    DL01["🆘 TODO-DL-01<br/>Fix Job 1: blocos perdidos"] --> DL04["🔴 TODO-DL-04<br/>Backfill Bronze em massa"]
+    DL02["🆘 TODO-DL-02<br/>Fix reconcile: tabela errada"] --> DL04
+    DL03["🆘 TODO-DL-03<br/>Unpause reconcile_orphans"] --> DL04
+    DL04 --> DL05["🔴 TODO-DL-05<br/>Validar orphan_rate < 1%"]
+    DL05 --> O12["🔴 TODO-O12<br/>Validar PROD E2E"]
+    P01["🔴 TODO-P01<br/>DLT S3 Auto Loader PROD"] --> O12
     O08["🟡 TODO-O08<br/>CloudWatch/Grafana"]
     C08["🟡 TODO-C08<br/>CloudWatch Metrics streaming"]
     A12["🟠 TODO-A12<br/>Fargate vs EC2"] -.-> O12

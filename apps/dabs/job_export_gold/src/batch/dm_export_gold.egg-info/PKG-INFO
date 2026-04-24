@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: dm-export-gold
+Version: 0.1.0
+Summary: Export Gold API key consumption views to S3
+Requires-Python: >=3.10

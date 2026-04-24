@@ -106,6 +106,12 @@ resource "aws_iam_role_policy" "ecs_task" {
           "dynamodb:BatchGetItem", "dynamodb:Scan", "dynamodb:DescribeTable",
         ]
         Resource = "arn:aws:dynamodb:*:*:table/${var.dynamodb_table_name}"
+      },
+      {
+        Sid    = "FirehoseAccess"
+        Effect = "Allow"
+        Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+        Resource = "arn:aws:firehose:*:*:deliverystream/firehose-mainnet-*-${var.kinesis_stream_suffix}"
       }],
       var.raw_bucket_arn != "" ? [{
         Sid    = "S3Access"
@@ -120,7 +126,28 @@ resource "aws_iam_role_policy" "ecs_task" {
   })
 }
 
-# ── Databricks Cross-Account Role (PRD only) ──────────────────────────────────
+# ── Databricks Cross-Account Role ─────────────────────────────────────────────
+
+# Initial trust policy — Databricks account only.
+# The self-assume statement is added AFTER role creation via null_resource below
+# to avoid AWS's "invalid principal" error on CreateRole.
+data "aws_iam_policy_document" "databricks_cross_account_assume_initial" {
+  count = var.create_databricks_roles ? 1 : 0
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:aws:iam::${var.databricks_account_id}:root"]
+    }
+    condition {
+      test     = "StringEquals"
+      variable = "sts:ExternalId"
+      values   = [var.databricks_account_uuid]
+    }
+  }
+}
+
+# Full trust policy (Databricks account + self-assume) — used post-creation only.
 data "aws_iam_policy_document" "databricks_cross_account_assume" {
   count = var.create_databricks_roles ? 1 : 0
   statement {
@@ -135,25 +162,95 @@ data "aws_iam_policy_document" "databricks_cross_account_assume" {
       values   = [var.databricks_account_uuid]
     }
   }
+  # Self-assume required by Databricks Unity Catalog storage credential validation
   statement {
     actions = ["sts:AssumeRole"]
     principals {
       type        = "AWS"
-      identifiers = ["arn:aws:iam::${var.account_id}:root"]
-    }
-    condition {
-      test     = "ArnEquals"
-      variable = "aws:PrincipalArn"
-      values   = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}-databricks-cross-account-role"]
+      identifiers = ["arn:aws:iam::${var.account_id}:role/${var.name_prefix}-databricks-cross-account-role-${var.environment}"]
     }
   }
 }
 
 resource "aws_iam_role" "databricks_cross_account" {
   count              = var.create_databricks_roles ? 1 : 0
-  name               = "${var.name_prefix}-databricks-cross-account-role"
-  assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume[0].json
+  name               = "${var.name_prefix}-databricks-cross-account-role-${var.environment}"
+  assume_role_policy = data.aws_iam_policy_document.databricks_cross_account_assume_initial[0].json
   tags               = var.common_tags
+
+  lifecycle {
+    # Prevent Terraform from reverting the trust policy to the initial version
+    # after null_resource has updated it to include the self-assume statement.
+    ignore_changes = [assume_role_policy]
+  }
+}
+
+# Update trust policy to add self-assume after the role exists.
+# AWS only validates principal ARNs on CreateRole; UpdateAssumeRolePolicy allows self-references.
+resource "null_resource" "databricks_cross_account_self_assume" {
+  count = var.create_databricks_roles ? 1 : 0
+
+  depends_on = [aws_iam_role.databricks_cross_account]
+
+  triggers = {
+    role_arn    = aws_iam_role.databricks_cross_account[0].arn
+    policy_hash = sha256(data.aws_iam_policy_document.databricks_cross_account_assume[0].json)
+  }
+
+  provisioner "local-exec" {
+    # AWS IAM is eventually consistent: the self-referential role ARN is rejected as
+    # "Invalid principal" for several minutes after CreateRole in us-east-1 and
+    # sa-east-1. Wait 90s before first attempt, then retry every 60s up to 8 times.
+    # First check if the trust policy already contains the self-assume (idempotency).
+    command     = <<-EOF
+      ROLE_NAME="${var.name_prefix}-databricks-cross-account-role-${var.environment}"
+      SELF_ARN="arn:aws:iam::${var.account_id}:role/$ROLE_NAME"
+      POLICY_FILE=$(mktemp)
+      cat > "$POLICY_FILE" << 'POLICY_EOF'
+${data.aws_iam_policy_document.databricks_cross_account_assume[0].json}
+POLICY_EOF
+
+      # Idempotency: skip update only if BOTH the self-assume ARN and the correct
+      # ExternalId are already present (prevents stale ExternalId from blocking validation).
+      EXPECTED_EXT_ID="${var.databricks_account_uuid}"
+      EXISTING=$(aws iam get-role --role-name "$ROLE_NAME" \
+                   --query 'Role.AssumeRolePolicyDocument' --output json 2>/dev/null || echo "{}")
+      EXISTING_EXT_ID=$(echo "$EXISTING" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+for stmt in data.get('Statement', []):
+    cond = stmt.get('Condition', {}).get('StringEquals', {})
+    if 'sts:ExternalId' in cond:
+        print(cond['sts:ExternalId']); break
+" 2>/dev/null || true)
+      HAS_SELF=$(echo "$EXISTING" | grep -cF "$SELF_ARN" 2>/dev/null || echo "0")
+      if [[ "$HAS_SELF" -gt "0" && "$EXISTING_EXT_ID" == "$EXPECTED_EXT_ID" ]]; then
+        echo "Trust policy already has correct ExternalId ($EXISTING_EXT_ID) and self-assume — no update needed."
+        rm -f "$POLICY_FILE"
+        exit 0
+      fi
+      echo "Trust policy needs update: HAS_SELF=$HAS_SELF, EXISTING_EXT_ID=$EXISTING_EXT_ID, EXPECTED_EXT_ID=$EXPECTED_EXT_ID"
+
+      echo "Waiting 90s for IAM role ARN to propagate before adding self-assume trust policy ..."
+      sleep 90
+      for attempt in 1 2 3 4 5 6 7 8; do
+        echo "Attempt $attempt: updating trust policy for $ROLE_NAME ..."
+        if aws iam update-assume-role-policy \
+            --role-name "$ROLE_NAME" \
+            --policy-document "file://$POLICY_FILE"; then
+          echo "Trust policy updated successfully on attempt $attempt."
+          rm -f "$POLICY_FILE"
+          exit 0
+        fi
+        echo "Failed (attempt $attempt). Retrying in 60s ..."
+        sleep 60
+      done
+      rm -f "$POLICY_FILE"
+      echo "ERROR: Failed to update trust policy after 8 attempts."
+      exit 1
+    EOF
+    interpreter = ["/bin/bash", "-c"]
+  }
 }
 
 resource "aws_iam_role_policy" "databricks_s3" {
@@ -180,6 +277,69 @@ resource "aws_iam_role_policy" "databricks_s3" {
   })
 }
 
+resource "aws_iam_role_policy" "databricks_pass_cluster_role" {
+  count = var.create_databricks_roles ? 1 : 0
+  name  = "${var.name_prefix}-databricks-pass-cluster-role"
+  role  = aws_iam_role.databricks_cross_account[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid      = "PassClusterRole"
+      Effect   = "Allow"
+      Action   = "iam:PassRole"
+      Resource = aws_iam_role.databricks_cluster[0].arn
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "databricks_ec2_vpc_validation" {
+  count = var.create_databricks_roles ? 1 : 0
+  name  = "${var.name_prefix}-databricks-ec2-vpc-validation"
+  role  = aws_iam_role.databricks_cross_account[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Read-only EC2 actions needed for VPC/network validation and workspace setup
+        Sid    = "DatabricksEC2Describe"
+        Effect = "Allow"
+        Action = [
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeIamInstanceProfileAssociations",
+          "ec2:DescribeInstanceStatus",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInternetGateways",
+          "ec2:DescribeNatGateways",
+          "ec2:DescribeNetworkAcls",
+          "ec2:DescribePrefixLists",
+          "ec2:DescribeReservedInstancesOfferings",
+          "ec2:DescribeRouteTables",
+          "ec2:DescribeSecurityGroups",
+          "ec2:DescribeSpotInstanceRequests",
+          "ec2:DescribeSpotPriceHistory",
+          "ec2:DescribeSubnets",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeVpcAttribute",
+          "ec2:DescribeVpcs",
+        ]
+        Resource = "*"
+      },
+      {
+        # Security group rules management needed for Databricks network setup
+        Sid    = "DatabricksSecurityGroupMgmt"
+        Effect = "Allow"
+        Action = [
+          "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:AuthorizeSecurityGroupIngress",
+          "ec2:RevokeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress",
+        ]
+        Resource = "arn:aws:ec2:${var.region}:${var.account_id}:security-group/*"
+      },
+    ]
+  })
+}
+
 # ── Databricks Cluster Role ───────────────────────────────────────────────────
 data "aws_iam_policy_document" "databricks_cluster_assume" {
   count = var.create_databricks_roles ? 1 : 0
@@ -194,7 +354,7 @@ data "aws_iam_policy_document" "databricks_cluster_assume" {
 
 resource "aws_iam_role" "databricks_cluster" {
   count              = var.create_databricks_roles ? 1 : 0
-  name               = "${var.name_prefix}-databricks-cluster-role"
+  name               = "${var.name_prefix}-databricks-cluster-role-${var.environment}"
   assume_role_policy = data.aws_iam_policy_document.databricks_cluster_assume[0].json
   tags               = var.common_tags
 }
@@ -238,7 +398,7 @@ resource "aws_iam_role_policy" "databricks_cluster" {
 
 resource "aws_iam_instance_profile" "databricks_cluster" {
   count = var.create_databricks_roles ? 1 : 0
-  name  = "${var.name_prefix}-databricks-cluster-profile"
+  name  = "${var.name_prefix}-databricks-cluster-profile-${var.environment}"
   role  = aws_iam_role.databricks_cluster[0].name
   tags  = var.common_tags
 }

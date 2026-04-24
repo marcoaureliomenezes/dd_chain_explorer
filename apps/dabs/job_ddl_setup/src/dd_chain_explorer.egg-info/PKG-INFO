@@ -1,0 +1,5 @@
+Metadata-Version: 2.1
+Name: dd-chain-explorer
+Version: 0.1.0
+Summary: DDL setup and table verification for DD Chain Explorer Unity Catalog
+Requires-Python: >=3.10

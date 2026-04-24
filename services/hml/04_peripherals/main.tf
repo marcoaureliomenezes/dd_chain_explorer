@@ -1,8 +1,9 @@
 ###############################################################################
 # hml/04_peripherals/main.tf
 #
-# S3 buckets + DynamoDB + CloudWatch para HML.
-# Kinesis/SQS são efêmeros (criados/destruídos por CI/CD via hml-provision).
+# S3 buckets + DynamoDB + CloudWatch + Kinesis + SQS para HML.
+# Todos os recursos são persistentes e gerenciados pelo Terraform.
+# CI/CD cria apenas: ECS cluster + Security Group (efêmeros por run).
 ###############################################################################
 
 terraform {
@@ -143,4 +144,48 @@ module "cloudwatch_logs" {
   firehose_s3_prefix     = "raw/app_logs/"
   firehose_buffer_size_mb          = 1
   firehose_buffer_interval_seconds = 60
+}
+
+# ---------------------------------------------------------------------------
+# Kinesis Data Streams + Firehose → S3 Lakehouse
+# Buffer menor que PRD (1 MB / 60 s) para testes de integração mais rápidos
+# ---------------------------------------------------------------------------
+
+module "kinesis" {
+  source = "../../modules/kinesis"
+
+  environment = var.environment
+  region      = var.region
+  common_tags = local.common_tags
+
+  streams = {
+    "mainnet-transactions-data" = { stream_mode = "PROVISIONED", shard_count = 1, retention_period = 24, encryption_type = "NONE" }
+  }
+
+  firehose_enabled               = true
+  firehose_s3_bucket_arn         = module.s3_lakehouse.bucket_arn
+  firehose_s3_prefix             = "raw/"
+  firehose_buffer_size_mb        = 1
+  firehose_buffer_interval_seconds = 60
+
+  firehose_direct_put_streams = {
+    "mainnet-blocks-data"          = {}
+    "mainnet-transactions-decoded" = {}
+  }
+}
+
+# ---------------------------------------------------------------------------
+# SQS Queues + Dead Letter Queues
+# ---------------------------------------------------------------------------
+
+module "sqs" {
+  source = "../../modules/sqs"
+
+  environment = var.environment
+  common_tags = local.common_tags
+
+  queues = {
+    "mainnet-mined-blocks-events" = { visibility_timeout_seconds = 30, receive_wait_time_seconds = 20, dlq_enabled = true, dlq_max_receive_count = 3 }
+    "mainnet-block-txs-hash-id"   = { visibility_timeout_seconds = 60, receive_wait_time_seconds = 20, dlq_enabled = true, dlq_max_receive_count = 3 }
+  }
 }

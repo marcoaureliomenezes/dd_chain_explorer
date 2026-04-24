@@ -1,0 +1,136 @@
+bundle:
+  name: dd-chain-explorer
+
+include:
+  - resources/dlt/*.yml
+  - resources/workflows/workflow_trigger_dlt_ethereum.yml
+  - resources/workflows/workflow_trigger_dlt_app_logs.yml
+  - resources/workflows/workflow_trigger_dlt_all.yml
+  - resources/workflows/workflow_dlt_full_refresh.yml
+  - resources/workflows/workflow_ddl_setup.yml
+  - resources/workflows/workflow_dm_delta_maintenance.yml
+  - resources/workflows/workflow_dm_export_gold.yml
+  - resources/dashboards/*.yml
+  - resources/alerts/*.yml
+  - resources/genie/*.yml
+
+artifacts:
+  dd_chain_explorer:
+    type: whl
+    path: ./src
+
+  dm_delta_maintenance:
+    type: whl
+    path: ./src/batch/dm_delta_maintenance
+
+  dm_export_gold:
+    type: whl
+    path: ./src/batch/dm_export_gold
+
+variables:
+  dev_workspace_host:
+    description: "Databricks workspace URL for DEV (Free Edition)"
+    default: "https://dbc-409f1007-5779.cloud.databricks.com"
+
+  prod_workspace_host:
+    description: "Databricks workspace URL for PROD (AWS workspace)"
+    default: ""
+
+  catalog:
+    description: "Unity Catalog name"
+    default: "dd_chain_explorer"
+
+  ingestion_s3_bucket:
+    description: "S3 bucket for ingestion and exports (env-specific)"
+    default: "dm-chain-explorer-dev-ingestion"
+
+  dynamodb_table:
+    description: "DynamoDB single-table (PK/SK) for all application state"
+    default: "dm-chain-explorer"
+
+  dlt_num_workers:
+    description: "Number of DLT workers (0 = single-node for DEV)"
+    default: 1
+
+  dlt_development:
+    description: "DLT development mode flag (true for dev, false for prod)"
+    default: false
+
+  dlt_continuous:
+    description: "DLT continuous mode flag (true for prod, false for dev)"
+    default: false
+
+  warehouse_id:
+    description: "SQL Warehouse ID for Lakeview dashboards (run: databricks warehouses list --output json)"
+    default: ""
+
+targets:
+  # ----------------------------------------------------------------
+  # DEV: Databricks Free Edition
+  # Use `databricks bundle deploy --target dev` to deploy
+  # ----------------------------------------------------------------
+  dev:
+    presets:
+      name_prefix: "[dev dd_chain_explorer] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/dev"
+    variables:
+      catalog: "dev"
+      ingestion_s3_bucket: "dm-chain-explorer-dev-ingestion"
+      dynamodb_table: "dm-chain-explorer"
+      dlt_num_workers: 0
+      dlt_development: true
+      dlt_continuous: false
+      warehouse_id: "a2a66f2adb0faf18"
+    resources:
+      jobs:
+        dm-trigger-all-dlts:
+          schedule:
+            quartz_cron_expression: "0 0 * * * ?"
+            timezone_id: "America/Sao_Paulo"
+            pause_status: UNPAUSED
+
+  # ----------------------------------------------------------------
+  # HML: Databricks Free Edition (same workspace as DEV)
+  # Catalog: hml — deployed only via CI/CD (deploy_databricks.yml)
+  # ----------------------------------------------------------------
+  hml:
+    presets:
+      name_prefix: "[hml dd_chain_explorer] "
+    workspace:
+      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      root_path: "~/.bundle/${bundle.name}/hml"
+    variables:
+      catalog: "hml"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
+      dynamodb_table: "dm-chain-explorer-hml"
+      dlt_num_workers: 0
+      dlt_development: false
+      dlt_continuous: false
+
+  # ----------------------------------------------------------------
+  # PROD: Databricks on AWS (created via terraform/7_databricks)
+  # Deploy is triggered by CI/CD pipeline on merge to main
+  # ----------------------------------------------------------------
+  prod:
+    mode: production
+    run_as:
+      user_name: marcoaurelioreislima@gmail.com
+    workspace:
+      host: ${var.prod_workspace_host}   # passed via --var at deploy time (read from TF state prd/05_databricks)
+      root_path: "/Workspace/.bundle/${bundle.name}/prod"
+    variables:
+      catalog: "dd_chain_explorer"
+      ingestion_s3_bucket: "dm-chain-explorer-lakehouse"
+      dlt_num_workers: 1
+      dlt_development: false
+      dlt_continuous: false
+    resources:
+      pipelines:
+        pipeline_ethereum:
+          schedule:
+            pause_status: UNPAUSED
+        pipeline_app_logs:
+          schedule:
+            pause_status: UNPAUSED

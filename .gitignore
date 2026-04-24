@@ -2,6 +2,11 @@
 .idea
 .ipynb_checkpoints
 __pycache__
+
+# DABs Python wheel build artifacts
+apps/dabs/src/build/
+apps/dabs/src/dist/
+apps/dabs/src/*.egg-info/
 src/.infura_auth.txt
 .history
 **/*.pyc
@@ -70,3 +75,6 @@ dabs/.databricks/
 # Terraform plan files
 tfplan
 *.tfplan
+
+# Lake schemas workflow — estado local de idempotência (não versionar)
+docs/.lake-schemas-hash

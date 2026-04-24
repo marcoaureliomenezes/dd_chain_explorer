@@ -89,18 +89,9 @@ module "kinesis" {
   common_tags = local.common_tags
 
   streams = {
-    "mainnet-blocks-data" = {
-      stream_mode      = "ON_DEMAND"
-      retention_period = 24
-      encryption_type  = "NONE"
-    }
     "mainnet-transactions-data" = {
-      stream_mode      = "ON_DEMAND"
-      retention_period = 24
-      encryption_type  = "NONE"
-    }
-    "mainnet-transactions-decoded" = {
-      stream_mode      = "ON_DEMAND"
+      stream_mode      = "PROVISIONED"
+      shard_count      = 1
       retention_period = 24
       encryption_type  = "NONE"
     }
@@ -109,6 +100,11 @@ module "kinesis" {
   firehose_enabled       = true
   firehose_s3_bucket_arn = module.s3_lakehouse.bucket_arn
   firehose_s3_prefix     = "raw/"
+
+  firehose_direct_put_streams = {
+    "mainnet-blocks-data"          = {}
+    "mainnet-transactions-decoded" = {}
+  }
 }
 
 # ---------------------------------------------------------------------------

@@ -39,12 +39,6 @@ provider "databricks" {
   profile = var.databricks_accounts_profile
 }
 
-provider "databricks" {
-  alias = "workspace"
-  host  = databricks_mws_workspaces.dm.workspace_url
-  token = databricks_mws_workspaces.dm.token[0].token_value
-}
-
 data "databricks_current_config" "accounts" {
   provider = databricks.accounts
 }

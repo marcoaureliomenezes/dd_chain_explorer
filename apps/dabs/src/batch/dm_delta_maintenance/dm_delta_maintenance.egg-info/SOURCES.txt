@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+setup.py
+dm_delta_maintenance.egg-info/PKG-INFO
+dm_delta_maintenance.egg-info/SOURCES.txt
+dm_delta_maintenance.egg-info/dependency_links.txt
+dm_delta_maintenance.egg-info/entry_points.txt
+dm_delta_maintenance.egg-info/top_level.txt

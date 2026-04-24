@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - DEV (Cloud AWS)
+          - hml
           - prd
       force_apply:
         description: 'Force apply / skip version tag check (PRD only)'
@@ -16,7 +17,7 @@ on:
         default: false
         type: boolean
       skip_databricks:
-        description: 'Skip 05_databricks module (PRD only)'
+        description: 'Skip Databricks modules (PRD only)'
         required: false
         default: false
         type: boolean
@@ -32,7 +33,6 @@ permissions:
 env:
   AWS_REGION:      sa-east-1
   TF_VERSION:      1.7.0
-  PRD_ROOT:        services/prd
   DEV_PERIPHERALS: services/dev/01_peripherals
   DEV_LAMBDA:      services/dev/02_lambda
 
@@ -71,6 +71,9 @@ jobs:
 
   dev-deploy-peripherals:
     name: DEV — Deploy Peripherals AWS
+    concurrency:
+      group: tf-dev-peripherals
+      cancel-in-progress: false
     needs: dev-detect-changes
     if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
     runs-on: ubuntu-latest
@@ -109,6 +112,9 @@ jobs:
 
   dev-deploy-lambda:
     name: DEV — Deploy Lambda AWS
+    concurrency:
+      group: tf-dev-lambda
+      cancel-in-progress: false
     needs: [dev-detect-changes, dev-deploy-peripherals]
     if: |
       always() &&
@@ -170,16 +176,16 @@ jobs:
         env:
           FORCE_APPLY: ${{ github.event.inputs.force_apply }}
 
-  # ── PRD Layer 1: VPC + Peripherals (parallel) ─────────────────
+  # ── PRD — single deploy job ────────────────────────────────────
 
-  prd-deploy-vpc:
-    name: PRD — Deploy VPC AWS
+  prd-deploy:
+    name: PRD — Deploy all modules
+    concurrency:
+      group: tf-prd-deploy
+      cancel-in-progress: false
     needs: prd-check-version
     runs-on: ubuntu-latest
     environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/02_vpc
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -191,291 +197,17 @@ jobs:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+      - name: Deploy PRD
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/deploy_env.sh" prd
         env:
-          MODULE_NAME: PRD/VPC
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  prd-deploy-peripherals:
-    name: PRD — Deploy Peripherals AWS
-    needs: prd-check-version
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/04_peripherals
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Peripherals
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  # ── PRD Layer 2: IAM (depends on VPC + Peripherals) ────────────
-
-  prd-deploy-iam:
-    name: PRD — Deploy IAM AWS
-    needs: [prd-deploy-vpc, prd-deploy-peripherals]
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/03_iam
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/IAM
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  # ── PRD Layer 3: Databricks Account + Lambda + ECS (parallel) ──
-
-  prd-deploy-databricks-account:
-    name: PRD — Deploy Databricks Part 1 - Account
-    needs: prd-deploy-iam
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    environment: production
-    outputs:
-      workspace_url:   ${{ steps.ws_out.outputs.workspace_url }}
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Import existing Databricks account resources (idempotent)
-        env:
-          DATABRICKS_ACCOUNT_ID:       ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:        ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET:    ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/databricks_account_import.sh"
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Databricks Account
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      - name: Dump apply errors
-        if: failure()
-        run: |
-          echo "### Apply Error — PRD/Databricks Account" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -100 apply.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-      - name: Export workspace outputs
-        id: ws_out
-        run: |
-          WS_JSON=$(terraform output -json)
-          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value')
-          echo "workspace_url=$WS_URL"   >> $GITHUB_OUTPUT
-          echo "Workspace URL: $WS_URL"
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-
-  prd-deploy-lambda:
-    name: PRD — Deploy Lambda AWS
-    needs: prd-deploy-iam
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/06_lambda
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: mkdir -p .lambda_zip
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Lambda
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  prd-deploy-ecs:
-    name: PRD — Deploy ECS AWS
-    needs: prd-deploy-iam
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/07_ecs
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/ECS
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  # ── PRD Layer 4: Databricks Workspace (depends on Account) ─────
-
-  prd-deploy-databricks-workspace:
-    name: PRD — Deploy Databricks Part 2 - Workspace
-    needs: prd-deploy-databricks-account
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Databricks Workspace
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-          TF_VAR_create_cluster: ${{ github.event.inputs.fast_mode == 'true' && 'false' || 'true' }}
-          TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
+          DATABRICKS_ACCOUNT_ID:           ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:            ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET:        ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-          TF_VAR_create_cluster: ${{ github.event.inputs.fast_mode == 'true' && 'false' || 'true' }}
-          TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
+          SKIP_DATABRICKS:                 ${{ github.event.inputs.skip_databricks }}
+          FAST_MODE:                       ${{ github.event.inputs.fast_mode }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 
@@ -483,17 +215,8 @@ jobs:
     name: PRD — Create git tag
     needs:
       - prd-check-version
-      - prd-deploy-ecs
-      - prd-deploy-lambda
-      - prd-deploy-databricks-account
-      - prd-deploy-databricks-workspace
-    if: |
-      always() &&
-      needs.prd-check-version.result == 'success' &&
-      needs.prd-deploy-ecs.result == 'success' &&
-      needs.prd-deploy-lambda.result == 'success' &&
-      (needs.prd-deploy-databricks-account.result == 'success' || needs.prd-deploy-databricks-account.result == 'skipped') &&
-      (needs.prd-deploy-databricks-workspace.result == 'success' || needs.prd-deploy-databricks-workspace.result == 'skipped')
+      - prd-deploy
+    if: needs.prd-check-version.result == 'success' && needs.prd-deploy.result == 'success'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -515,3 +238,34 @@ jobs:
             git push origin "$TAG"
             echo "## Tag created: \`$TAG\` on master" >> $GITHUB_STEP_SUMMARY
           fi
+
+  # ══════════════════════════════════════════════════════════════
+  #  HML — single job (all modules sequentially via wrapper script)
+  # ══════════════════════════════════════════════════════════════
+
+  hml-deploy:
+    name: HML — Deploy all modules
+    concurrency:
+      group: tf-hml-deploy
+      cancel-in-progress: false
+    needs: branch-guard
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    environment: hml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region:            ${{ env.AWS_REGION }}
+      - name: Deploy HML
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/deploy_env.sh" hml
+        env:
+          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}

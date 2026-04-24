@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "dd_chain_explorer"
+version = "0.1.0"
+requires-python = ">=3.10"
+
+[project.scripts]
+dd-s3-to-bronze     = "dd_chain_explorer.batch_contracts.s3_to_bronze:main"
+dd-bronze-to-silver = "dd_chain_explorer.batch_contracts.bronze_to_silver:main"
+dd-setup-ddl        = "dd_chain_explorer.ddl.setup_ddl:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["dd_chain_explorer*"]

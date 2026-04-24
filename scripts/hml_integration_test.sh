@@ -10,9 +10,9 @@
 #   0 — ECS task health check (≥1 task RUNNING)
 #   1 — CloudWatch log events per ECS service (proves containers are logging)
 #   2 — SQS NumberOfMessagesSent > 0
-#   3 — Kinesis IncomingRecords > 0
+#   3 — Kinesis IncomingRecords > 0  (mainnet-transactions-data only)
 #   4 — DynamoDB items written
-#   5 — Firehose delivery streams ACTIVE
+#   5 — Firehose ACTIVE + Direct Put IncomingRecords > 0
 #   6 — S3 .gz files delivered by Firehose
 #
 # Usage (HML — default):
@@ -34,9 +34,10 @@ REGION="${REGION:-sa-east-1}"
 S3_BUCKET="${S3_BUCKET:-dm-chain-explorer-${ENV}-ingestion}"
 DYNAMODB_TABLE="${DYNAMODB_TABLE:-dm-chain-explorer-${ENV}}"
 
-KINESIS_STREAM_BLOCKS="${KINESIS_STREAM_BLOCKS:-mainnet-blocks-data-${ENV}}"
 KINESIS_STREAM_TRANSACTIONS="${KINESIS_STREAM_TRANSACTIONS:-mainnet-transactions-data-${ENV}}"
-KINESIS_STREAM_DECODED="${KINESIS_STREAM_DECODED:-mainnet-transactions-decoded-${ENV}}"
+
+FIREHOSE_STREAM_BLOCKS="${FIREHOSE_STREAM_BLOCKS:-firehose-mainnet-blocks-data-${ENV}}"
+FIREHOSE_STREAM_DECODED="${FIREHOSE_STREAM_DECODED:-firehose-mainnet-transactions-decoded-${ENV}}"
 
 SQS_QUEUE_MINED_BLOCKS="${SQS_QUEUE_MINED_BLOCKS:-mainnet-mined-blocks-events-${ENV}}"
 SQS_QUEUE_TXS_HASH_IDS="${SQS_QUEUE_TXS_HASH_IDS:-mainnet-block-txs-hash-id-${ENV}}"
@@ -48,7 +49,7 @@ ECS_SERVICES="dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-cra
 # Timeout (seconds) for each phase
 WAIT_LOGS_SECS="${WAIT_LOGS_SECS:-60}"        # Phase 1 — CW log events per service
 WAIT_PHASE1_SECS="${WAIT_PHASE1_SECS:-120}"   # Phase 2 — SQS (anchored to SCRIPT_START; CloudWatch may lag 1-2 min)
-WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-300}"  # Phase 3 — Kinesis (multi-hop chain + CW ingest delay)
+WAIT_KINESIS_SECS="${WAIT_KINESIS_SECS:-420}"  # Phase 3 — Kinesis (CW IncomingRecords lag ~5 min; 420s = lag + startup buffer)
 WAIT_DYNAMODB_SECS="${WAIT_DYNAMODB_SECS:-120}" # Phase 4 — DynamoDB
 WAIT_PHASE2_SECS="${WAIT_PHASE2_SECS:-120}"   # Phases 5-6 — Firehose + S3
 
@@ -97,12 +98,14 @@ cw_sum() {
 # cw_sum_since <namespace> <metric> <dim_name> <dim_value> <epoch_start>
 # Returns the SUM of a CloudWatch metric from a fixed epoch timestamp to now.
 # Used to prevent false-positives from carry-over data of previous CI runs.
+# NOTE: AWS requires --period to be a multiple of 60; we ceil-round to satisfy this.
 cw_sum_since() {
   local ns="$1" metric="$2" dn="$3" dv="$4" epoch_start="$5"
   local end; end=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   local start; start=$(date -u -d "@${epoch_start}" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
     || date -u -r "${epoch_start}" +%Y-%m-%dT%H:%M:%SZ)  # macOS fallback
-  local win; win=$(( $(date +%s) - epoch_start + 1 ))
+  local win_raw; win_raw=$(( $(date +%s) - epoch_start + 1 ))
+  local win; win=$(( ((win_raw + 59) / 60) * 60 ))  # ceil to nearest 60s (AWS API requirement)
   aws cloudwatch get-metric-statistics \
     --region    "$REGION"  \
     --namespace "$ns"      \
@@ -203,35 +206,60 @@ fail_fast "Phase 1 — ECS container logs"
 
 # =============================================================================
 # Phase 2 — SQS
-# Uses SCRIPT_START as the lower bound so that messages sent by a previous CI
-# run sharing the same queue names do not cause false-positives.
+# Two-path check to handle CloudWatch SQS metric lag (~5 min granularity):
+#   Fast path : SQS API ApproximateNumberOfMessages + ApproximateNumberOfMessagesNotVisible
+#               (near-realtime — catches messages in queue or in-flight)
+#   Slow path : CloudWatch NumberOfMessagesSent anchored to SCRIPT_START
+#               (may lag 5-15 min; WAIT_PHASE1_SECS should be ≥ 360 for this to work)
 # =============================================================================
 log ""; log "──── Phase 2: SQS  (timeout=${WAIT_PHASE1_SECS}s) ────"; log ""
 for QUEUE in "$SQS_QUEUE_MINED_BLOCKS" "$SQS_QUEUE_TXS_HASH_IDS"; do
-  log "⏳ SQS ${QUEUE} — polling CloudWatch NumberOfMessagesSent ..."
+  log "⏳ SQS ${QUEUE} — polling queue attributes + CloudWatch NumberOfMessagesSent ..."
   DEADLINE=$(( $(date +%s) + WAIT_PHASE1_SECS ))
   FOUND=false
+  SQS_URL=$(aws sqs get-queue-url --queue-name "$QUEUE" --region "$REGION" \
+    --query 'QueueUrl' --output text 2>/dev/null || echo "")
+  VISIBLE="0"; INFLIGHT="0"; CW_VAL="None"
   while [ "$(date +%s)" -lt "$DEADLINE" ]; do
-    VAL=$(cw_sum_since "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" "$SCRIPT_START")
-    if is_positive "$VAL" 2>/dev/null; then
-      ok "SQS ${QUEUE} — NumberOfMessagesSent=$(printf '%.0f' "$VAL")"
+    # Fast path: SQS API attributes (near-realtime, no CloudWatch lag)
+    if [ -n "$SQS_URL" ]; then
+      VISIBLE=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" \
+        --attribute-names ApproximateNumberOfMessages \
+        --region "$REGION" \
+        --query 'Attributes.ApproximateNumberOfMessages' --output text 2>/dev/null || echo "0")
+      INFLIGHT=$(aws sqs get-queue-attributes --queue-url "$SQS_URL" \
+        --attribute-names ApproximateNumberOfMessagesNotVisible \
+        --region "$REGION" \
+        --query 'Attributes.ApproximateNumberOfMessagesNotVisible' --output text 2>/dev/null || echo "0")
+      if [ "$(( ${VISIBLE:-0} + ${INFLIGHT:-0} ))" -gt 0 ] 2>/dev/null; then
+        ok "SQS ${QUEUE} — active traffic (visible=${VISIBLE}, in-flight=${INFLIGHT})"
+        FOUND=true
+        break
+      fi
+    fi
+    # Slow path: CloudWatch metric (5-min granularity; used as reliable historical confirmation)
+    CW_VAL=$(cw_sum_since "AWS/SQS" "NumberOfMessagesSent" "QueueName" "$QUEUE" "$SCRIPT_START")
+    if is_positive "$CW_VAL" 2>/dev/null; then
+      ok "SQS ${QUEUE} — NumberOfMessagesSent=$(printf '%.0f' "$CW_VAL")"
       FOUND=true
       break
     fi
-    log "   → not yet (value=${VAL}), retrying in ${POLL_INTERVAL}s ..."
+    log "   → not yet (visible=${VISIBLE}, in-flight=${INFLIGHT}, cw=${CW_VAL}), retrying in ${POLL_INTERVAL}s ..."
     sleep "$POLL_INTERVAL"
   done
-  $FOUND || fail "SQS ${QUEUE} — no messages sent within ${WAIT_PHASE1_SECS}s"
+  $FOUND || fail "SQS ${QUEUE} — no messages detected within ${WAIT_PHASE1_SECS}s"
 done
 fail_fast "Phase 2 — SQS"
 
 # =============================================================================
 # Phase 3 — Kinesis
-# Uses SCRIPT_START as the lower bound of the CW query window so that data from
-# previous CI runs sharing the same stream names do not cause false-positives.
+# Only mainnet-transactions-data remains as a Kinesis stream.
+# mainnet-blocks-data and mainnet-transactions-decoded are now Firehose Direct Put
+# (checked in Phase 5 via IncomingRecords metric).
+# Uses SCRIPT_START as the lower bound to avoid false-positives from prior runs.
 # =============================================================================
 log ""; log "──── Phase 3: Kinesis  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
-for STREAM in "$KINESIS_STREAM_BLOCKS" "$KINESIS_STREAM_TRANSACTIONS" "$KINESIS_STREAM_DECODED"; do
+for STREAM in "$KINESIS_STREAM_TRANSACTIONS"; do
   log "⏳ Kinesis ${STREAM} — polling CloudWatch IncomingRecords ..."
   DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
   FOUND=false
@@ -276,8 +304,10 @@ $FOUND || fail "DynamoDB ${DYNAMODB_TABLE} — no items within ${WAIT_DYNAMODB_S
 fail_fast "Phase 4 — DynamoDB"
 
 # =============================================================================
-# Phase 5 — Firehose status
-# Firehose streams must be ACTIVE before they can deliver data to S3.
+# Phase 5 — Firehose status + Direct Put IncomingRecords
+# All 3 Firehose streams must be ACTIVE.
+# For Direct Put streams (blocks-data, transactions-decoded), also verify
+# IncomingRecords > 0 via CloudWatch to confirm apps are writing to them.
 # =============================================================================
 log ""; log "──── Phase 5: Firehose  (timeout=${WAIT_PHASE2_SECS}s) ────"; log ""
 for FH in \
@@ -305,7 +335,27 @@ do
   done
   $FOUND || fail "Firehose ${FH} — status=${FH_STATUS} after ${WAIT_PHASE2_SECS}s (expected ACTIVE)"
 done
-fail_fast "Phase 5 — Firehose"
+fail_fast "Phase 5 — Firehose ACTIVE"
+
+# Direct Put streams: verify IncomingRecords > 0 (apps are putting records)
+log ""; log "──── Phase 5b: Firehose Direct Put IncomingRecords  (timeout=${WAIT_KINESIS_SECS}s) ────"; log ""
+for FH in "$FIREHOSE_STREAM_BLOCKS" "$FIREHOSE_STREAM_DECODED"; do
+  log "⏳ Firehose Direct Put ${FH} — polling CloudWatch IncomingRecords ..."
+  DEADLINE=$(( $(date +%s) + WAIT_KINESIS_SECS ))
+  FOUND=false
+  while [ "$(date +%s)" -lt "$DEADLINE" ]; do
+    VAL=$(cw_sum_since "AWS/Firehose" "IncomingRecords" "DeliveryStreamName" "$FH" "$SCRIPT_START")
+    if is_positive "$VAL" 2>/dev/null; then
+      ok "Firehose Direct Put ${FH} — IncomingRecords=$(printf '%.0f' "$VAL")"
+      FOUND=true
+      break
+    fi
+    log "   → not yet (value=${VAL}), retrying in ${POLL_INTERVAL}s ..."
+    sleep "$POLL_INTERVAL"
+  done
+  $FOUND || fail "Firehose Direct Put ${FH} — no IncomingRecords within ${WAIT_KINESIS_SECS}s"
+done
+fail_fast "Phase 5b — Firehose Direct Put IncomingRecords"
 
 # =============================================================================
 # Phase 6 — S3 delivery

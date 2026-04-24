@@ -1,0 +1,6 @@
+[console_scripts]
+dm-delta-maintenance-optimize-bronze = dm_delta_maintenance.optimize_bronze:main
+dm_delta_maintenance-monitor = dm_delta_maintenance.monitor:main
+dm_delta_maintenance-optimize-gold = dm_delta_maintenance.optimize_gold:main
+dm_delta_maintenance-optimize-silver = dm_delta_maintenance.optimize_silver:main
+dm_delta_maintenance-vacuum = dm_delta_maintenance.vacuum:main
