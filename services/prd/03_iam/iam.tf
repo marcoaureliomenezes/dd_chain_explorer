@@ -343,6 +343,11 @@ data "aws_iam_policy_document" "databricks_cross_account_ec2" {
       "ec2:TerminateInstances",
     ]
     resources = ["*"]
+    condition {
+      test     = "StringEquals"
+      variable = "aws:RequestedRegion"
+      values   = ["sa-east-1"]
+    }
   }
 
   statement {

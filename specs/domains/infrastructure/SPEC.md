@@ -83,34 +83,14 @@ State S3 remoto com DynamoDB lock. Persistente. Deploy apenas via CI/CD com appr
 
 ---
 
-## Recursos AWS (PRD)
+## Recursos AWS
 
-### Storage
-| Bucket | Propósito | Lifecycle |
-|--------|-----------|-----------|
-| `dm-chain-explorer-raw-data` | S3 Bronze NDJSON via Firehose | 30d → IA, 90d → Glacier |
-| `dm-chain-explorer-lakehouse` | Delta tables (Bronze/Silver/Gold) | 90d → IA |
-| `dm-chain-explorer-databricks` | Databricks internal (checkpoints, staging, Unity Catalog) | Checkpoints: 365d expiry |
+> Inventário completo de recursos (buckets, streams, filas, tabelas, funções, roles) em:
+> **`specs/memory/aws-resources.md`** — fonte única de verdade para todos os recursos AWS.
+> Exceções operacionais IaC-only em:
+> **`specs/domains/infrastructure/OPERATIONAL-EXCEPTIONS-IAC.md`**.
 
-### Streaming
-| Recurso | Configuração |
-|---------|-------------|
-| Kinesis `mainnet-transactions-data` | PROVISIONED, 1 shard, 24h retention |
-| Firehose Direct Put (3 streams) | blocks-data, transactions-decoded, app-logs → S3 horário |
-
-### Mensageria
-| Fila | Visib. Timeout | DLQ | Max Receive |
-|------|---------------|-----|-------------|
-| `mainnet-mined-blocks-events` | 30s | Sim | 3 |
-| `mainnet-block-txs-hash-id` | 60s | Sim | 3 |
-
-### Compute
-| Recurso | Detalhes |
-|---------|----------|
-| DynamoDB | Single-table `dm-chain-explorer`, PITR habilitado |
-| ECS Fargate | 5 task definitions (1+1+1+6+3 replicas), ECR `onchain-stream-txs` |
-| Lambda | `contracts_ingestion` (EventBridge hourly) + `gold_to_dynamodb` (S3 trigger) |
-| VPC | 10.0.0.0/16, 1 public + 2 private subnets, sa-east-1 |
+Esta spec define apenas os princípios e a ordem de deploy. Nunca duplique valores de recursos aqui.
 
 ---
 
@@ -132,7 +112,11 @@ Padrão: `dm-{env}-{tipo}` ou `dm-chain-explorer-{env}-{tipo}`. `env` = `dev` | 
 Módulos HML não devem ter recursos persistentes. Toda infraestrutura HML deve ser criável e destruível em um único CI run sem efeitos colaterais.
 
 **FR-INF-006 — Ordem de deploy PRD**
-A sequência de módulos em PRD deve ser respeitada rigorosamente. Scripts `deploy_env.sh` e o workflow `deploy_cloud_infra.yml` implementam essa ordem.
+A sequência de módulos em PRD deve ser respeitada rigorosamente. O workflow `deploy_cloud_infra.yml` implementa essa ordem.
+
+**FR-INF-007 — Proteção do backend de state**
+O bucket `dm-chain-explorer-terraform-state` deve manter `lifecycle.prevent_destroy = true` no módulo `services/prd/01_tf_state`.
+Exceções de teardown total devem ocorrer apenas por procedimento operacional explícito no workflow `destroy_all_cloud_infra.yml` (esvaziamento + deleção via AWS CLI), com confirmação manual.
 
 ---
 
@@ -142,3 +126,31 @@ A sequência de módulos em PRD deve ser respeitada rigorosamente. Scripts `depl
 - **NFR-INF-002:** S3 buckets: todos os 4 block-public settings = `true`, AES256, versioning.
 - **NFR-INF-003:** IAM: nunca `s3:*` ou `iam:*` — resources sempre scoped por ARN com sufixo de ambiente.
 - **NFR-INF-004:** PRD apply apenas via CI/CD com approval gate `production`.
+
+---
+
+## Regras Terraform (fonte única)
+
+- **Terraform é a única fonte de verdade** — nunca usar AWS Console/CLI para criar, modificar ou destruir recursos.
+- Todo recurso deve ter `common_tags`: `owner`, `managed-by`, `cost-center`, `environment`, `project`.
+- Naming convention: `dm-{env}-` ou `dm-dd-chain-explorer-{env}-`.
+- **Sensitive variables** em `*.tfvars` (gitignored). Commitar apenas `*.tfvars.example` com valores vazios.
+- **PRD apply apenas via CI/CD** com approval gate `production`.
+- Plan before apply — sempre. No CI/CD o plan é salvo e revisado antes do apply.
+
+### PRD Deploy Order (fonte única)
+
+```
+Phase 1 (parallel): 02_vpc + 04_peripherals
+    │
+    ▼
+Phase 2: 03_iam
+    │
+    ▼
+Phase 3 (parallel): 05a_databricks_account + 06_lambda + 07_ecs
+    │
+    ▼
+Phase 4: 05b_databricks_workspace
+```
+
+**Destroy order** (reverse): 05b → (05a + 06 + 07 parallel) → 04 → 03 → (02) → nunca destruir 01_tf_state.

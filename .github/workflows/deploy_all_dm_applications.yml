@@ -45,12 +45,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Enforce develop branch
-        run: |
-          if [ "${GITHUB_REF}" != "refs/heads/develop" ]; then
-            echo "::error::This workflow must be triggered from the 'develop' branch. Got: ${GITHUB_REF}"
-            exit 1
-          fi
-          echo "Branch check passed: ${GITHUB_REF}"
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
 
   # ══════════════════════════════════════════════════════════════════════════
   #  CHECK PHASE — parallel
@@ -68,17 +63,10 @@ jobs:
           fetch-depth: 0
       - name: Read and validate VERSION (all 3 tag suffixes)
         id: ver
-        run: |
-          VERSION=$(cat VERSION | tr -d '[:space:]')
-          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          for SUFFIX in "" "-dabs" "-lambda"; do
-            EXPECTED_TAG="v${VERSION}${SUFFIX}"
-            if git tag --list | grep -qx "${EXPECTED_TAG}"; then
-              echo "::error::${EXPECTED_TAG} is already tagged. Bump VERSION before deploying."
-              exit 1
-            fi
-            echo "Version ${EXPECTED_TAG} is new — OK."
-          done
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/check_all_app_versions.sh"
+        env:
+          VERSION_FILE: VERSION
+          SUFFIXES: " -dabs -lambda"
 
   all-check-infra:
     name: Check — PRD infra prerequisites (all apps)
@@ -688,44 +676,47 @@ jobs:
           docker push "$LAT_IMAGE"
           docker push "$VER_IMAGE"
       - name: Update ECS task definitions & force deploy
-        run: |
-          RELEASE_IMG="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}"
-          for SVC in dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder; do
-            TASK_DEF=$(aws ecs describe-task-definition --task-definition "$SVC" --query 'taskDefinition' --output json)
-            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
-              --arg img "$RELEASE_IMG" \
-              '.containerDefinitions[0].image = $img | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.placementConstraints,.compatibilities,.registeredAt,.registeredBy)')
-            NEW_TASK_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
-            aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "$SVC" \
-              --task-definition "$NEW_TASK_ARN" --force-new-deployment --query 'service.serviceName'
-          done
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/update_ecs_services_image.sh"
+        env:
+          RELEASE_IMG: ${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
       - name: Wait for ECS services to stabilize
-        run: |
-          aws ecs wait services-stable \
-            --cluster "${{ env.ECS_CLUSTER }}" \
-            --services dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder \
-            --region "${{ env.AWS_REGION }}"
-          echo "## PRD Streaming Deploy Complete" >> $GITHUB_STEP_SUMMARY
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/wait_ecs_services_stable.sh"
+        env:
+          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          SUMMARY_MESSAGE: "## PRD Streaming Deploy Complete"
 
   all-prod-dabs-deploy:
     name: PRD — Deploy DABs bundle
     needs: [all-check-version, all-prod-stream-deploy]
     runs-on: ubuntu-latest
+    environment: production
     defaults:
       run:
         working-directory: ${{ env.DABS_PATH }}
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@v0.218.0
+      - name: Validate Databricks PRD host/token pairing
+        env:
+          TARGET_ENV:            prd
+          DATABRICKS_HOST:       ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_TOKEN:      ${{ secrets.DATABRICKS_PROD_TOKEN }}
+          DATABRICKS_HML_HOST:   ${{ secrets.DATABRICKS_HML_HOST }}
+          DATABRICKS_PROD_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_HML_TOKEN:  ${{ secrets.DATABRICKS_HML_TOKEN }}
+          DATABRICKS_PROD_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/validate_env_secret_pair.sh"
       - name: Deploy bundle to PROD
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
         run: databricks bundle deploy --target prod
       - name: Verify PROD deployment
         env:
-          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
+          DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
         run: |
           echo "==> PRD DABs bundle deployed. Listing pipelines:"
           databricks pipelines list 2>/dev/null || true
