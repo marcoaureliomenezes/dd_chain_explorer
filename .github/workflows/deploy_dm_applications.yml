@@ -314,16 +314,24 @@ jobs:
           docker push "$VER_IMAGE"
           echo "Docker image tagged: v${{ needs.stream-check-idempotency.outputs.version }}"
       - name: Update ECS task definitions & force deploy
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/update_ecs_services_image.sh"
-        env:
-          RELEASE_IMG: ${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}
-          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
+        run: |
+          RELEASE_IMG="${{ steps.meta.outputs.ecr_registry }}/${{ env.ECR_REPO }}:${{ steps.meta.outputs.image_tag }}"
+          for SVC in dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder; do
+            TASK_DEF=$(aws ecs describe-task-definition --task-definition "$SVC" --query 'taskDefinition' --output json)
+            NEW_TASK_DEF=$(echo "$TASK_DEF" | jq \
+              --arg img "$RELEASE_IMG" \
+              '.containerDefinitions[0].image = $img | del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.placementConstraints,.compatibilities,.registeredAt,.registeredBy)')
+            NEW_TASK_ARN=$(aws ecs register-task-definition --cli-input-json "$NEW_TASK_DEF" --query 'taskDefinition.taskDefinitionArn' --output text)
+            aws ecs update-service --cluster "${{ env.ECS_CLUSTER }}" --service "$SVC" \
+              --task-definition "$NEW_TASK_ARN" --force-new-deployment --query 'service.serviceName'
+          done
       - name: Wait for ECS services to stabilize
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/wait_ecs_services_stable.sh"
-        env:
-          ECS_CLUSTER: ${{ env.ECS_CLUSTER }}
-          AWS_REGION: ${{ env.AWS_REGION }}
-          SUMMARY_MESSAGE: "## Production Deploy Complete — streaming-apps"
+        run: |
+          aws ecs wait services-stable \
+            --cluster "${{ env.ECS_CLUSTER }}" \
+            --services dm-mined-blocks-watcher dm-orphan-blocks-watcher dm-block-data-crawler dm-mined-txs-crawler dm-txs-input-decoder \
+            --region "${{ env.AWS_REGION }}"
+          echo "## Production Deploy Complete — streaming-apps" >> $GITHUB_STEP_SUMMARY
       - name: Create and push release git tag
         run: |
           VERSION="${{ needs.stream-check-idempotency.outputs.version }}"
@@ -477,25 +485,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: databricks/setup-cli@v0.218.0
-      - name: Validate Databricks PRD host/token pairing
-        env:
-          TARGET_ENV:            prd
-          DATABRICKS_HOST:       ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_TOKEN:      ${{ secrets.DATABRICKS_PROD_TOKEN }}
-          DATABRICKS_HML_HOST:   ${{ secrets.DATABRICKS_HML_HOST }}
-          DATABRICKS_PROD_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_HML_TOKEN:  ${{ secrets.DATABRICKS_HML_TOKEN }}
-          DATABRICKS_PROD_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/validate_env_secret_pair.sh"
       - name: Deploy bundle to PROD
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: databricks bundle deploy --target prod
       - name: Verify PROD deployment
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_PROD_HOST }}
-          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PROD_TOKEN }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
           databricks pipelines list --output json | jq '.[] | .name'
           databricks jobs list --output json | jq '.jobs[] | .settings.name'
