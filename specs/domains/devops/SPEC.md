@@ -11,7 +11,7 @@
 
 Toda a estratégia de CI/CD e gestão do ciclo de vida do código:
 - **7 workflows GitHub Actions** (`.github/workflows/`)
-- **16 scripts CI** (`scripts/ci/`)
+- **13 scripts CI** (`scripts/ci/`)
 - **GitFlow** e política de branches
 - **Versionamento** semântico via arquivo `VERSION`
 
@@ -37,12 +37,12 @@ master  ←── release/{scope}-v{VERSION}  (criado automaticamente pelo CI)
 | Workflow | Trigger | Propósito |
 |----------|---------|-----------|
 | `auto-bump-version.yml` | Push pós-merge em `develop` | Incrementa `VERSION`, cria commit |
-| `plan_on_pr.yml` | PR → `develop` | Terraform plan nos módulos alterados (sem apply) |
+| `deploy_dm_applications.yml` | `workflow_dispatch` | Deploy individual por tipo de aplicação (streaming, DABs ou Lambda) |
 | `deploy_cloud_infra.yml` | `workflow_dispatch` | Terraform apply: DEV, HML ou PRD |
 | `deploy_all_dm_applications.yml` | `workflow_dispatch` | Pipeline completo: streaming + DABs + Lambda |
-| `drift_detection.yml` | Schedule + manual | Terraform plan PRD; alerta em drift |
 | `destroy_cloud_infra.yml` | `workflow_dispatch` | Destroy seletivo por ambiente |
 | `destroy_all_cloud_infra.yml` | `workflow_dispatch` | Destroy total com gate "DESTROY" |
+| `lib_release.yml` | `workflow_dispatch` | Release da library `utils` com tag `v{VERSION}-lib` |
 
 ### Pipeline de Aplicações — Estágios Completos
 
@@ -80,11 +80,14 @@ CHECK
 | `hml_provision.sh` | Cria SG efêmero HML com tag `GITHUB_RUN_ID` |
 | `hml_teardown.sh` | Remove SG efêmero + ECS tasks HML |
 | `tf_plan.sh` | Wrapper Terraform plan com output formatado |
-| `tf_state_lock_check.sh` | Remove locks DynamoDB obsoletos |
-| `wait_eni_release.sh` | Aguarda ENIs liberados após scale-down de ECS |
-| `deploy_env.sh` | Orquestra deploy sequencial por ambiente (HML/PRD) |
 | `databricks_account_import.sh` | Import idempotente de recursos Databricks account-level |
 | `empty_s3_and_ecr.sh` | Esvazia S3 e ECR antes de destroy |
+| `check_app_version.sh` | Lê `VERSION` e valida inexistência de tag para o sufixo alvo |
+| `check_infra_prerequisites.sh` | Valida pré-requisitos de infra por tipo de app |
+| `validate_env_secret_pair.sh` | Valida pairing de host/token Databricks por ambiente (HML/PRD) |
+| `check_all_app_versions.sh` | Valida `VERSION` para tags `v{VERSION}`, `v{VERSION}-dabs`, `v{VERSION}-lambda` |
+| `update_ecs_services_image.sh` | Atualiza task definitions ECS com nova image e força rollout |
+| `wait_ecs_services_stable.sh` | Aguarda estabilização dos serviços ECS e publica resumo opcional |
 
 ---
 
@@ -123,7 +126,10 @@ Toda lógica de workflow com mais de 10 linhas de shell deve estar em `scripts/c
 Commits devem seguir: `<type>(<scope>): <summary>`. Tipos válidos: `feat`, `fix`, `chore`, `infra`, `ci`, `docs`, `refactor`. Scopes: `stream`, `batch`, `dlt`, `dabs`, `ecs`, `lambda`, `terraform`, `deps`.
 
 **FR-DO-007 — Drift detection**
-O workflow `drift_detection.yml` deve rodar em schedule e reportar qualquer drift Terraform PRD via GitHub Actions Summary.
+Drift de Terraform PRD deve ser detectado via execução de `terraform plan` no `deploy_cloud_infra.yml` antes de `apply`, com falha explícita em erro de plano e evidência no summary/log do job.
+
+**FR-DO-008 — Exceções operacionais IaC-only**
+Operações destrutivas via AWS CLI fora do state estrito só são permitidas nos workflows versionados de destroy, seguindo `specs/domains/infrastructure/OPERATIONAL-EXCEPTIONS-IAC.md`.
 
 ---
 
@@ -140,3 +146,5 @@ O workflow `drift_detection.yml` deve rodar em schedule e reportar qualquer drif
 - Deploy automático em PRD sem approval gate
 - Múltiplos ambientes PRD (multi-region)
 - Rollback automatizado em caso de falha PRD
+
+---
