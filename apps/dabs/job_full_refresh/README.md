@@ -91,4 +91,4 @@ This component depends on:
 
 ## References
 
-See `docs/03_data_processing.md` for pipeline reprocessing strategy.
+See `specs/domains/data-engineering/SPEC.md` for pipeline reprocessing strategy.

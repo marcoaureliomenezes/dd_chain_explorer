@@ -155,12 +155,10 @@ Single table `dm-chain-explorer` with `pk` (partition) + `sk` (sort). Entity pre
 
 ## Documentation Rules
 
-- Documentation in `docs/` is in **Brazilian Portuguese (pt-BR)**.
-- Diagrams use **Mermaid** (inline in Markdown — no external images).
+- `specs/` is the single source of truth for product, architecture and process decisions.
+- `docs/` remains intentionally minimal during transition and should only contain a bridge `README.md` pointing to `specs/`.
 - READMEs in `apps/` maintain their existing language.
-- Architecture docs files must contain a "Referências de Arquivos" section.
-- TODOs only in `docs/ROADMAP.md` — never in architecture docs `01–06`.
-- No new `.md` files outside the permitted list in `dd-04-docs.instructions.md`.
+- New detailed documentation should be derived from approved specs before being added.
 
 ---
 

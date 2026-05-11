@@ -75,4 +75,4 @@ Parameters passed to all tasks:
 
 ## References
 
-See `docs/03_data_processing.md` for data maintenance strategy.
+See `specs/domains/data-engineering/SPEC.md` for data maintenance strategy.

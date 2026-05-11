@@ -60,4 +60,4 @@ Parameters passed to the task:
 
 ## References
 
-See `docs/03_data_processing.md` for DDL schema definitions.
+See `specs/domains/data-engineering/SPEC.md` for DDL schema definitions.

@@ -81,4 +81,4 @@ When pipelines are re-deployed or recreated, pipeline IDs may change — update 
 
 ## References
 
-See `docs/03_data_processing.md` for pipeline orchestration strategy.
+See `specs/domains/data-engineering/SPEC.md` for pipeline orchestration strategy.

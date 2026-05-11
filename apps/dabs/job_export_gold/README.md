@@ -61,4 +61,4 @@ Parameters passed to the task:
 
 ## References
 
-See `docs/05_data_serving.md` for gold layer export specifications.
+See `specs/domains/data-analytics/SPEC.md` for gold layer export specifications.

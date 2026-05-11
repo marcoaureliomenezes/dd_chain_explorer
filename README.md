@@ -85,17 +85,14 @@ make prod_ecs_logs           # Ver logs ECS PRD em tempo real
 
 ## Documentação
 
-| Documento | Conteúdo |
-|-----------|----------|
-| [`docs/01_architecture.md`](docs/01_architecture.md) | Arquitetura geral, topologia de rede, segurança |
-| [`docs/02_data_capture.md`](docs/02_data_capture.md) | Jobs de streaming, Kinesis, Lambda, DynamoDB |
-| [`docs/03_data_processing.md`](docs/03_data_processing.md) | DLT pipelines, modelo Medallion, workflows Databricks |
-| [`docs/04_data_ops.md`](docs/04_data_ops.md) | CI/CD, Terraform, DABs, GitFlow, observabilidade |
-| [`docs/05_data_serving.md`](docs/05_data_serving.md) | Tabelas Gold, dashboards, APIs |
-| [`docs/06_integration_tests_specs.md`](docs/06_integration_tests_specs.md) | Especificações e regras dos testes de integração |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | TODOs, prioridades e dependências |
-| [`docs/report_finops.md`](docs/report_finops.md) | Inventário de recursos e custos AWS |
-| [`docs/report_security.md`](docs/report_security.md) | Relatório de auditoria de segurança |
+A fonte de verdade do projeto é `specs/`.
+
+- [`specs/SPEC.md`](specs/SPEC.md)
+- [`specs/memory/constitution.md`](specs/memory/constitution.md)
+- [`specs/memory/architecture.md`](specs/memory/architecture.md)
+- [`specs/memory/product.md`](specs/memory/product.md)
+- [`specs/memory/tech-stack.md`](specs/memory/tech-stack.md)
+- [`docs/README.md`](docs/README.md) (ponte mínima durante transição)
 
 **READMEs de componentes:**
 - [`apps/docker/README.md`](apps/docker/README.md) — Streaming apps (Kinesis architecture)
@@ -112,7 +109,7 @@ dd_chain_explorer/
 │   ├── dabs/          ← Databricks Asset Bundles (DLT pipelines + workflows)
 │   ├── docker/        ← Streaming app container (5 Python jobs)
 │   └── lambda/        ← AWS Lambda handlers (2 funções)
-├── docs/              ← Documentação técnica
+├── docs/              ← Ponte mínima (specs-first)
 ├── scripts/           ← Scripts operacionais permanentes
 │   ├── ci/            ← Scripts CI compartilhados (12 scripts)
 │   └── tmp/           ← Scripts de setup e utilitários pontuais
