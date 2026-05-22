@@ -59,7 +59,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `.gitignore`
   Done: `build/`, `*.egg-info/`, `dist/` in root `.gitignore`; `git status` shows no tracked build/ directories.
 
-- [-] T-R1-09 — **Delete deprecated monolith bundle and pre-split source tree** | Owner: software-engineer-python | Effort: S
+- [x] T-R1-09 — **Delete deprecated monolith bundle and pre-split source tree** | Owner: software-engineer-python | Effort: S
   Evidence: ISSUE-034, PATTERN-02, PATTERN-03, `apps/dabs/_MONOLITH_DEPRECATED.databricks.yml`
   Write-set: `apps/dabs/` (deletions only)
   Done: `apps/dabs/_MONOLITH_DEPRECATED.databricks.yml` absent; pre-split source tree confirmed unreferenced and removed.
