@@ -3,7 +3,14 @@
 .ipynb_checkpoints
 __pycache__
 
-# DABs Python wheel build artifacts
+# Python build artifacts (generic — covers all subdirectories)
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# DABs-specific legacy entries (superseded by generic rules above — kept for clarity)
 apps/dabs/src/build/
 apps/dabs/src/dist/
 apps/dabs/src/*.egg-info/

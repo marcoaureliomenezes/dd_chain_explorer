@@ -54,7 +54,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Write-set: .gitignore, apps/dabs/ -->
 
-- [-] T-R1-08 — **Add build artifacts to .gitignore and clean git index** | Owner: software-engineer-python | Effort: S
+- [x] T-R1-08 — **Add build artifacts to .gitignore and clean git index** | Owner: software-engineer-python | Effort: S
   Evidence: ISSUE-033, DE-Q-001, `apps/dabs/*/src/*/build/`
   Write-set: `.gitignore`
   Done: `build/`, `*.egg-info/`, `dist/` in root `.gitignore`; `git status` shows no tracked build/ directories.
