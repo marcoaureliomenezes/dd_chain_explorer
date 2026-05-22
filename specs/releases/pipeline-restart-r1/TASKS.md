@@ -94,7 +94,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/alert_dynamodb_deadlock/resources/alert_dynamodb_deadlock.yml`
   Done: Query uses `s_logs.logs_streaming`; alert deploys without error; manual trigger returns result (not table-not-found).
 
-- [-] T-R1-13 — **Embed warehouse_id in all 4 dashboard bundle targets** | Owner: data-analyst | Effort: S
+- [x] T-R1-13 — **Embed warehouse_id in all 4 dashboard bundle targets** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-004, DA-001, UC-03, `dashboard_*/databricks.yml:8`
   Write-set: `apps/dabs/dashboard_*/databricks.yml`
   Done: All 4 dashboard bundle YAMLs have non-empty `warehouse_id` per target; dashboards render in DEV.

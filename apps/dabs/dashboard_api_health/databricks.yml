@@ -7,7 +7,7 @@ include:
 variables:
   warehouse_id:
     description: "Databricks SQL warehouse ID"
-    default: ""
+    default: "a2a66f2adb0faf18"
 
 targets:
   dev:
