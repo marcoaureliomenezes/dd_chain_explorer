@@ -125,12 +125,12 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/dlt_ethereum/databricks.yml`
   Done: HML target `ingestion_s3_bucket` is `"dm-chain-explorer-hml-raw"`.
 
-- [-] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
+- [x] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-029, AWS-03, `peripherals.tf:50–51`
   Write-set: `services/prd/04_peripherals/peripherals.tf`
   Done: `folder_prefixes = ["bronze","silver","gold"]` removed; `.keep` objects deleted from S3 bucket.
 
-- [ ] T-R1-19 — **Promote from_address to expect_or_drop in DLT** | Owner: data-engineer | Effort: S
+- [-] T-R1-19 — **Promote from_address to expect_or_drop in DLT** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-030, DE-P-003, `ethereum_pipeline.py:208–209`
   Write-set: `apps/dabs/dlt_ethereum/src/*/ethereum_pipeline.py`
   Done: `from_address` DLT expectation is `expect_or_drop`; `to_address` remains `expect`.

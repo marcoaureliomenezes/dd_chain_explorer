@@ -46,8 +46,10 @@ module "s3_lakehouse" {
       ]
     }
   ]
-
-  folder_prefixes = ["bronze", "silver", "gold"]
+  # ISSUE-029 / AWS-03: folder_prefixes removed. Delta tables under Unity Catalog must NOT
+  # carry medallion-tier prefixes (bronze/silver/gold) in S3 paths — UC manages external
+  # locations independently. The .keep placeholder objects must be deleted from the bucket
+  # after terraform apply (see handoff sidecar for the aws s3 rm commands).
 }
 
 module "s3_databricks" {
@@ -140,14 +142,14 @@ module "sqs" {
 module "cloudwatch_logs" {
   source = "../../modules/cloudwatch_logs"
 
-  environment            = var.environment
-  region                 = var.region
-  common_tags            = local.common_tags
-  log_group_name         = "/apps/dm-chain-explorer"
-  retention_in_days      = 30
-  firehose_enabled       = true
-  firehose_s3_bucket_arn = module.s3_lakehouse.bucket_arn
-  firehose_s3_prefix     = "raw/app_logs/"
+  environment                      = var.environment
+  region                           = var.region
+  common_tags                      = local.common_tags
+  log_group_name                   = "/apps/dm-chain-explorer"
+  retention_in_days                = 30
+  firehose_enabled                 = true
+  firehose_s3_bucket_arn           = module.s3_lakehouse.bucket_arn
+  firehose_s3_prefix               = "raw/app_logs/"
   firehose_buffer_size_mb          = 5
   firehose_buffer_interval_seconds = 300
 }
