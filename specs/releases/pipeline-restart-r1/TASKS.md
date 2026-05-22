@@ -89,7 +89,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Depends on: T-R1-10 complete (S3 data confirmed in DEV) -->
 
-- [ ] T-R1-12 — **Fix DynamoDB deadlock alert table reference** | Owner: data-analyst | Effort: S
+- [-] T-R1-12 — **Fix DynamoDB deadlock alert table reference** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-002, DA-004, `alert_dynamodb_deadlock.yml:19`; LAKEHOUSE-02
   Write-set: `apps/dabs/alert_dynamodb_deadlock/resources/alert_dynamodb_deadlock.yml`
   Done: Query uses `s_logs.logs_streaming`; alert deploys without error; manual trigger returns result (not table-not-found).
