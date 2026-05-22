@@ -54,7 +54,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Write-set: .gitignore, apps/dabs/ -->
 
-- [ ] T-R1-08 — **Add build artifacts to .gitignore and clean git index** | Owner: software-engineer-python | Effort: S
+- [-] T-R1-08 — **Add build artifacts to .gitignore and clean git index** | Owner: software-engineer-python | Effort: S
   Evidence: ISSUE-033, DE-Q-001, `apps/dabs/*/src/*/build/`
   Write-set: `.gitignore`
   Done: `build/`, `*.egg-info/`, `dist/` in root `.gitignore`; `git status` shows no tracked build/ directories.
@@ -120,7 +120,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Independent — no dependency on C or D for code changes; validation requires C complete -->
 
-- [ ] T-R1-17 — **Fix HML ingestion bucket name in DLT bundle config** | Owner: data-engineer | Effort: S
+- [-] T-R1-17 — **Fix HML ingestion bucket name in DLT bundle config** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-014, DE-S-004, `dlt_ethereum/databricks.yml:46`
   Write-set: `apps/dabs/dlt_ethereum/databricks.yml`
   Done: HML target `ingestion_s3_bucket` is `"dm-chain-explorer-hml-raw"`.
