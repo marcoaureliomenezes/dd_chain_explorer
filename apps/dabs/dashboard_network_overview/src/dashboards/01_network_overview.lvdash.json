@@ -3,17 +3,17 @@
     {
       "name": "network_summary_24h",
       "displayName": "Resumo Rede — 24h",
-      "query": "SELECT\n  SUM(block_count)                             AS blocks_24h,\n  ROUND(AVG(avg_tx_per_block), 2)              AS avg_tx_per_block,\n  ROUND(AVG(avg_base_fee) / 1e9, 4)           AS avg_base_fee_gwei,\n  ROUND(AVG(avg_gas_used) / 1e6, 4)           AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 30 DAYS"
+      "query": "SELECT\n  SUM(block_count)                                    AS blocks_24h,\n  ROUND(AVG(avg_txs_per_block), 2)                    AS avg_tx_per_block,\n  ROUND(AVG(avg_gas_price_gwei), 4)                   AS avg_gas_price_gwei,\n  ROUND(AVG(avg_block_utilization_pct) * 100, 2)      AS avg_block_utilization_pct\nFROM dev.g_network.network_metrics_hourly\nWHERE hour_bucket >= current_timestamp() - INTERVAL 24 HOURS"
     },
     {
       "name": "hourly_trend",
       "displayName": "Tendência Horária — 7 dias",
-      "query": "SELECT\n  hour_bucket,\n  block_count,\n  ROUND(avg_tx_per_block, 2)     AS avg_tx_per_block,\n  ROUND(avg_base_fee / 1e9, 4)  AS avg_base_fee_gwei,\n  ROUND(avg_gas_used / 1e6, 4)  AS avg_gas_used_m\nFROM dev.gold.blocks_hourly_summary\nWHERE hour_bucket >= current_timestamp() - INTERVAL 90 DAYS\nORDER BY hour_bucket ASC"
+      "query": "SELECT\n  hour_bucket,\n  block_count,\n  ROUND(avg_txs_per_block, 2)          AS avg_tx_per_block,\n  ROUND(avg_gas_price_gwei, 4)         AS avg_gas_price_gwei,\n  ROUND(tps_avg, 4)                    AS tps_avg\nFROM dev.g_network.network_metrics_hourly\nWHERE hour_bucket >= current_timestamp() - INTERVAL 7 DAYS\nORDER BY hour_bucket ASC"
     },
     {
-      "name": "recent_blocks",
-      "displayName": "Últimos 100 Blocos",
-      "query": "SELECT\n  block_number,\n  miner,\n  gas_used,\n  gas_limit,\n  ROUND(base_fee_per_gas / 1e9, 4) AS base_fee_gwei,\n  transaction_count,\n  event_time\nFROM dev.gold.blocks_with_tx_count\nORDER BY block_number DESC\nLIMIT 100"
+      "name": "block_time_health",
+      "displayName": "Saúde dos Tempos de Bloco",
+      "query": "SELECT\n  ROUND(mean, 2)    AS mean_block_time_s,\n  ROUND(stddev, 2)  AS stddev_block_time_s,\n  ROUND(min, 2)     AS min_block_time_s,\n  ROUND(max, 2)     AS max_block_time_s,\n  gap_count\nFROM dev.g_network.block_production_health"
     }
   ],
   "pages": [
@@ -87,14 +87,14 @@
         },
         {
           "widget": {
-            "name": "counter_base_fee",
+            "name": "counter_gas_price",
             "queries": [
               {
                 "name": "main",
                 "query": {
                   "datasetName": "network_summary_24h",
                   "fields": [
-                    {"name": "avg_base_fee_gwei", "expression": "avg_base_fee_gwei"}
+                    {"name": "avg_gas_price_gwei", "expression": "avg_gas_price_gwei"}
                   ],
                   "disaggregated": false
                 }
@@ -105,13 +105,13 @@
               "widgetType": "counter",
               "encodings": {
                 "value": {
-                  "fieldName": "avg_base_fee_gwei",
-                  "displayName": "Avg Base Fee (Gwei)"
+                  "fieldName": "avg_gas_price_gwei",
+                  "displayName": "Avg Gas Price (Gwei)"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Avg Base Fee (Gwei)"
+                "title": "Avg Gas Price (Gwei)"
               }
             }
           },
@@ -203,7 +203,7 @@
         },
         {
           "widget": {
-            "name": "line_base_fee",
+            "name": "line_gas_price",
             "queries": [
               {
                 "name": "main",
@@ -211,7 +211,7 @@
                   "datasetName": "hourly_trend",
                   "fields": [
                     {"name": "hour_bucket", "expression": "hour_bucket"},
-                    {"name": "avg_base_fee_gwei", "expression": "avg_base_fee_gwei"}
+                    {"name": "avg_gas_price_gwei", "expression": "avg_gas_price_gwei"}
                   ],
                   "disaggregated": false
                 }
@@ -228,16 +228,16 @@
                 },
                 "y": [
                   {
-                    "fieldName": "avg_base_fee_gwei",
+                    "fieldName": "avg_gas_price_gwei",
                     "scale": {"type": "quantitative"},
-                    "displayName": "Base Fee (Gwei)"
+                    "displayName": "Avg Gas Price (Gwei)"
                   }
                 ]
               },
               "mark": {"type": "line"},
               "frame": {
                 "showTitle": true,
-                "title": "Avg Base Fee (Gwei)"
+                "title": "Avg Gas Price (Gwei)"
               }
             }
           },
@@ -245,20 +245,18 @@
         },
         {
           "widget": {
-            "name": "table_recent_blocks",
+            "name": "table_block_time_health",
             "queries": [
               {
                 "name": "main",
                 "query": {
-                  "datasetName": "recent_blocks",
+                  "datasetName": "block_time_health",
                   "fields": [
-                    {"name": "block_number",      "expression": "block_number"},
-                    {"name": "miner",             "expression": "miner"},
-                    {"name": "gas_used",          "expression": "gas_used"},
-                    {"name": "gas_limit",         "expression": "gas_limit"},
-                    {"name": "base_fee_gwei",     "expression": "base_fee_gwei"},
-                    {"name": "transaction_count", "expression": "transaction_count"},
-                    {"name": "event_time",        "expression": "event_time"}
+                    {"name": "mean_block_time_s",   "expression": "mean_block_time_s"},
+                    {"name": "stddev_block_time_s", "expression": "stddev_block_time_s"},
+                    {"name": "min_block_time_s",    "expression": "min_block_time_s"},
+                    {"name": "max_block_time_s",    "expression": "max_block_time_s"},
+                    {"name": "gap_count",           "expression": "gap_count"}
                   ],
                   "disaggregated": false
                 }
@@ -269,18 +267,16 @@
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {"fieldName": "block_number",      "displayName": "Bloco"},
-                  {"fieldName": "miner",             "displayName": "Miner"},
-                  {"fieldName": "gas_used",          "displayName": "Gas Usado"},
-                  {"fieldName": "gas_limit",         "displayName": "Gas Limit"},
-                  {"fieldName": "base_fee_gwei",     "displayName": "Base Fee (Gwei)"},
-                  {"fieldName": "transaction_count", "displayName": "Txs"},
-                  {"fieldName": "event_time",        "displayName": "Timestamp"}
+                  {"fieldName": "mean_block_time_s",   "displayName": "Tempo Médio (s)"},
+                  {"fieldName": "stddev_block_time_s", "displayName": "Desvio Padrão (s)"},
+                  {"fieldName": "min_block_time_s",    "displayName": "Mínimo (s)"},
+                  {"fieldName": "max_block_time_s",    "displayName": "Máximo (s)"},
+                  {"fieldName": "gap_count",           "displayName": "Gaps Detectados"}
                 ]
               },
               "frame": {
                 "showTitle": true,
-                "title": "Últimos 100 Blocos"
+                "title": "Saúde da Produção de Blocos — Distribuição de Tempo de Bloco"
               }
             }
           },

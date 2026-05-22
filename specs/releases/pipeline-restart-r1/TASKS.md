@@ -104,7 +104,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/genie_ethereum/genie_ethereum.yml`
   Done: All 7 FQNs in Genie YAML reference existing tables; at least 1 NL query returns results without table-not-found.
 
-- [-] T-R1-15 — **Fix network-overview dashboard: remove non-existent table references** | Owner: data-analyst | Effort: M
+- [x] T-R1-15 — **Fix network-overview dashboard: remove non-existent table references** | Owner: data-analyst | Effort: M
   Evidence: ISSUE-006, DA-002, `01_network_overview.lvdash.json:5,10`
   Write-set: `apps/dabs/dashboard_network_overview/resources/dashboards/01_network_overview.lvdash.json`
   Done: All dataset queries reference `g_network.network_metrics_hourly` or `g_network.block_production_health`; no `dev.gold.*` hardcoded references remain; dashboard renders.
