@@ -467,19 +467,38 @@ def silver_eth_blocks_withdrawals():
 # MAGIC
 # MAGIC Tabela batch (não-streaming) que classifica cada bloco da Silver `eth_blocks`
 # MAGIC usando a cadeia de `parent_hash` como prova forense de canonicidade:
-# MAGIC - **`canonical`** — `block_hash` é referenciado como `parent_hash` por algum bloco filho.
+# MAGIC - **`canonical`** — `block_hash` é referenciado como `parent_hash` por algum bloco filho
+# MAGIC   dentro da janela de análise, OU bloco está além da janela (presume-se canônico por ser antigo).
 # MAGIC - **`unconfirmed`** — bloco dentro da janela de finalização Casper FFG (últimos 64 blocos).
-# MAGIC - **`orphan`** — mesmo `block_number`, hash não referenciado por nenhum filho (fork perdedor).
+# MAGIC - **`orphan`** — dentro da janela de análise (últimos 1.000 blocos): hash não referenciado
+# MAGIC   por nenhum filho (fork perdedor).
+# MAGIC
+# MAGIC **ISSUE-003 / DE-P-001 — Bounded rolling window (1.000 blocos):**
+# MAGIC A implementação anterior realizava scan total da tabela em `parent_refs` e cross-join
+# MAGIC com todos os blocos, produzindo complexidade O(N²) e warnings de scan no DLT event log.
+# MAGIC A nova implementação restringe o trabalho aos 1.000 blocos mais recentes:
+# MAGIC - Blocos fora da janela são marcados como `canonical` sem verificação de parent_hash.
+# MAGIC   Trade-off aceito: orphans com > 1.000 blocos de idade são extremamente improváveis
+# MAGIC   (o maior reorg registrado na mainnet Ethereum foi de 7 blocos; 1.000 blocos ≈ 3,3 h
+# MAGIC   de buffer é mais do que suficiente).
+# MAGIC - O scan de `parent_refs` é restrito à mesma janela de 1.000 blocos, evitando o
+# MAGIC   full-table scan.
 # MAGIC
 # MAGIC Recomputado integralmente a cada update do pipeline (batch MV).
 
 # COMMAND ----------
 
+# Rolling window size for canonical block analysis (ISSUE-003 / DE-P-001).
+# 1,000 blocks ≈ 3.3 hours at 12 s/block. This comfortably exceeds the maximum observed
+# mainnet reorg depth (~7 blocks). Blocks older than this window are presumed canonical.
+_CANONICAL_WINDOW_BLOCKS = 1_000
+
 @dlt.table(
     name="s_apps.eth_canonical_blocks_index",
     comment=(
-        "Silver: índice de status de blocos derivado de parentHash. "
+        "Silver: índice de status de blocos derivado de parentHash — rolling window de 1.000 blocos. "
         "chain_status = 'canonical' | 'orphan' | 'unconfirmed' (últimos 64 blocos). "
+        "Blocos fora da janela de 1.000 são marcados 'canonical' por presunção de finalidade. "
         "Recomputado integralmente a cada execução do pipeline."
     ),
     table_properties={
@@ -489,29 +508,68 @@ def silver_eth_blocks_withdrawals():
 )
 def silver_eth_canonical_blocks_index():
     """
-    Bloco canônico = block_hash referenciado como parent_hash pelo bloco filho.
-    Janela de finalização Casper FFG: últimos 64 blocos marcados como 'unconfirmed'.
-    Usa spark.sql() com referência ao catálogo Unity Catalog para leitura batch completa.
+    Bounded rolling window canonical block classifier (ISSUE-003 / DE-P-001).
+
+    Algorithm:
+      1. Determine max_block from eth_blocks (single aggregate, no scan).
+      2. Compute window_floor = max_block - CANONICAL_WINDOW_BLOCKS.
+      3. Blocks with block_number <= window_floor: return as 'canonical' directly
+         (no parent_hash lookup required — older orphans are accepted risk, documented above).
+      4. For the rolling window [window_floor+1 .. max_block]:
+         a. Build parent_refs from that window only (O(window) not O(N)).
+         b. Classify each block as 'unconfirmed' (last 64), 'canonical', or 'orphan'.
+      5. UNION ALL both sets.
+
+    Output schema is unchanged: block_number, block_hash, chain_status.
+    All downstream Gold MVs that filter chain_status IN ('canonical','orphan') continue
+    to work correctly.
     """
     return spark.sql(f"""
-        WITH parent_refs AS (
-          SELECT DISTINCT parent_hash AS referenced_hash
+        WITH max_block AS (
+          SELECT MAX(block_number) AS max_num
           FROM {CATALOG}.s_apps.eth_blocks
         ),
-        max_block AS (
-          SELECT MAX(block_number) AS max_num FROM {CATALOG}.s_apps.eth_blocks
+        -- Blocks outside the rolling window: presumed canonical, no orphan detection needed.
+        -- Trade-off: orphans older than {_CANONICAL_WINDOW_BLOCKS} blocks are not detected.
+        -- This is an accepted risk — the largest observed mainnet reorg is ~7 blocks.
+        outside_window AS (
+          SELECT
+              bf.block_number,
+              bf.block_hash,
+              'canonical' AS chain_status
+          FROM {CATALOG}.s_apps.eth_blocks bf
+          CROSS JOIN max_block mb
+          WHERE bf.block_number <= (mb.max_num - {_CANONICAL_WINDOW_BLOCKS})
+        ),
+        -- Restrict orphan detection to the rolling window only (bounded scan).
+        window_blocks AS (
+          SELECT bf.block_number, bf.block_hash, bf.parent_hash
+          FROM {CATALOG}.s_apps.eth_blocks bf
+          CROSS JOIN max_block mb
+          WHERE bf.block_number > (mb.max_num - {_CANONICAL_WINDOW_BLOCKS})
+        ),
+        -- Build parent reference set from the window only — O(window) not O(N).
+        parent_refs AS (
+          SELECT DISTINCT parent_hash AS referenced_hash
+          FROM window_blocks
+        ),
+        -- Classify blocks inside the rolling window.
+        inside_window AS (
+          SELECT DISTINCT
+              wb.block_number,
+              wb.block_hash,
+              CASE
+                WHEN wb.block_number > (mb.max_num - 64) THEN 'unconfirmed'
+                WHEN pr.referenced_hash IS NOT NULL       THEN 'canonical'
+                ELSE                                           'orphan'
+              END AS chain_status
+          FROM window_blocks wb
+          CROSS JOIN max_block mb
+          LEFT JOIN parent_refs pr ON wb.block_hash = pr.referenced_hash
         )
-        SELECT DISTINCT
-            bf.block_number,
-            bf.block_hash,
-            CASE
-              WHEN bf.block_number > (mb.max_num - 64) THEN 'unconfirmed'
-              WHEN pr.referenced_hash IS NOT NULL       THEN 'canonical'
-              ELSE                                           'orphan'
-            END AS chain_status
-        FROM {CATALOG}.s_apps.eth_blocks bf
-        CROSS JOIN max_block mb
-        LEFT JOIN parent_refs pr ON bf.block_hash = pr.referenced_hash
+        SELECT block_number, block_hash, chain_status FROM outside_window
+        UNION ALL
+        SELECT block_number, block_hash, chain_status FROM inside_window
     """)
 
 
