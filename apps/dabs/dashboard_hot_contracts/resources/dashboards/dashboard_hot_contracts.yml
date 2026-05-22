@@ -4,5 +4,5 @@ resources:
       display_name: "Hot Contracts"
       file_path: ../../src/dashboards/02_hot_contracts.lvdash.json
       warehouse_id: ${var.warehouse_id}
-      embed_credentials: true
+      embed_credentials: false
       parent_path: /Shared/dd-chain-explorer/dashboards

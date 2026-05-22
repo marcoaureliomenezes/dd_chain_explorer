@@ -33,7 +33,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: Lambda logs policy uses `arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/${var.name_prefix}-*`.
 
-- [-] T-R1-05 — **Set embed_credentials: false in all 4 dashboard bundles** | Owner: devops-engineer | Effort: S
+- [x] T-R1-05 — **Set embed_credentials: false in all 4 dashboard bundles** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-020, `dashboard_*/resources/dashboards/*.yml:5`
   Write-set: `apps/dabs/dashboard_*/resources/dashboards/*.yml`
   Done: `embed_credentials: false` confirmed in all 4 dashboard resource YAMLs.
