@@ -130,12 +130,12 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `services/prd/04_peripherals/peripherals.tf`
   Done: `folder_prefixes = ["bronze","silver","gold"]` removed; `.keep` objects deleted from S3 bucket.
 
-- [-] T-R1-19 — **Promote from_address to expect_or_drop in DLT** | Owner: data-engineer | Effort: S
+- [x] T-R1-19 — **Promote from_address to expect_or_drop in DLT** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-030, DE-P-003, `ethereum_pipeline.py:208–209`
   Write-set: `apps/dabs/dlt_ethereum/src/*/ethereum_pipeline.py`
   Done: `from_address` DLT expectation is `expect_or_drop`; `to_address` remains `expect`.
 
-- [ ] T-R1-20 — **Refactor eth_canonical_blocks_index to bounded rolling window** | Owner: data-engineer | Effort: M
+- [-] T-R1-20 — **Refactor eth_canonical_blocks_index to bounded rolling window** | Owner: data-engineer | Effort: M
   Evidence: ISSUE-003, DE-P-001, `ethereum_pipeline.py:486–505`
   Write-set: `apps/dabs/dlt_ethereum/src/*/ethereum_pipeline.py`
   Done: `eth_canonical_blocks_index` uses rolling window of last 1,000 blocks; blocks outside window marked canonical; DLT run completes without O(N^2) scan warning; validated in DEV after T-R1-10 complete.

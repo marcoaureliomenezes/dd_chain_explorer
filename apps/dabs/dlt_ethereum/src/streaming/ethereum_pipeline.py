@@ -203,10 +203,16 @@ def silver_eth_blocks():
     },
     partition_cols=["dat_ref"],
 )
-@dlt.expect_or_drop("valid_hash",       "tx_hash IS NOT NULL")
-@dlt.expect_or_drop("valid_block",      "block_number IS NOT NULL")
-@dlt.expect("valid_from_address", "from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
-@dlt.expect("valid_to_address",   "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect_or_drop("valid_hash",         "tx_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_block",        "block_number IS NOT NULL")
+# ISSUE-030 / DE-P-003: from_address promoted from expect → expect_or_drop.
+# A transaction without a valid from_address is fundamentally malformed and must not
+# propagate into Silver/Gold layers where it would corrupt canonical-chain accounting.
+@dlt.expect_or_drop("valid_from_address", "from_address IS NOT NULL AND from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+# to_address intentionally remains expect (not expect_or_drop): NULL is valid for
+# contract-creation transactions (EIP-155). Dropping these rows would silently omit
+# all contract deploys from Silver, breaking g_apps.contract_deploy_metrics_hourly.
+@dlt.expect("valid_to_address",           "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_eth_transactions_staging():
     df = dlt.read_stream("eth_transactions")
     return df.select(
@@ -290,10 +296,14 @@ def silver_txs_inputs_decoded_fast():
     },
     partition_cols=["dat_ref"],
 )
-@dlt.expect_or_drop("valid_hash",       "tx_hash IS NOT NULL")
-@dlt.expect_or_drop("valid_block",      "block_number IS NOT NULL")
-@dlt.expect("valid_from_address", "from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
-@dlt.expect("valid_to_address",   "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect_or_drop("valid_hash",         "tx_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_block",        "block_number IS NOT NULL")
+# Consistent with eth_transactions_staging: from_address must be valid (expect_or_drop).
+# Records reaching this table already passed the staging filter, but the expectation
+# is preserved here for DLT lineage tracking and explicit documentation of the contract.
+@dlt.expect_or_drop("valid_from_address", "from_address IS NOT NULL AND from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+# to_address remains expect: NULL is valid for contract-creation transactions.
+@dlt.expect("valid_to_address",           "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_transactions_ethereum():
     # ── Stream: transações raw ───────────────────────────────────────────────
     # dlt.read_stream → Streaming Table (consume novos registros incrementalmente)
