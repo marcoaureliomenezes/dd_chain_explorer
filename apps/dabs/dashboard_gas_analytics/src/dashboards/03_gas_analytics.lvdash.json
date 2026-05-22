@@ -3,17 +3,17 @@
     {
       "name": "gas_by_type",
       "displayName": "Gas por Tipo de Transação",
-      "query": "SELECT\n  type_transaction,\n  COUNT(*)                                                AS tx_count,\n  ROUND(AVG(gas_pct_of_block), 4)                        AS avg_gas_pct,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)        AS avg_gas_price_gwei,\n  ROUND(AVG(CAST(gas_limit AS DOUBLE)), 0)              AS avg_gas_limit\nFROM dev.s_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY type_transaction\nORDER BY tx_count DESC"
+      "query": "SELECT\n  type_transaction,\n  COUNT(*)                                                AS tx_count,\n  ROUND(AVG(gas_pct_of_block), 4)                        AS avg_gas_pct,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)        AS avg_gas_price_gwei,\n  ROUND(AVG(CAST(gas_limit AS DOUBLE)), 0)              AS avg_gas_limit\nFROM dev.g_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY type_transaction\nORDER BY tx_count DESC"
     },
     {
       "name": "gas_hourly",
       "displayName": "Gas Price por Hora e Tipo",
-      "query": "SELECT\n  DATE_TRUNC('hour', tx_timestamp)                      AS hour_bucket,\n  type_transaction,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.s_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1 ASC, 2 ASC\nLIMIT 2000"
+      "query": "SELECT\n  DATE_TRUNC('hour', tx_timestamp)                      AS hour_bucket,\n  type_transaction,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.g_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1 ASC, 2 ASC\nLIMIT 2000"
     },
     {
       "name": "gas_price_daily",
-      "displayName": "Percentis de Gas Price por Dia",
-      "query": "SELECT\n  DATE_TRUNC('day', tx_timestamp)                                                         AS day_bucket,\n  ROUND(PERCENTILE_CONT(0.50) WITHIN GROUP (ORDER BY CAST(gas_price AS DOUBLE) / 1e9), 4) AS p50_gwei,\n  ROUND(PERCENTILE_CONT(0.75) WITHIN GROUP (ORDER BY CAST(gas_price AS DOUBLE) / 1e9), 4) AS p75_gwei,\n  ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY CAST(gas_price AS DOUBLE) / 1e9), 4) AS p95_gwei,\n  COUNT(*)                                                                                   AS tx_count\nFROM dev.s_apps.ethereum_gas_consume\nWHERE tx_timestamp IS NOT NULL\nGROUP BY 1\nORDER BY 1 ASC\nLIMIT 365"
+      "displayName": "Percentis de Gas Price por Hora",
+      "query": "SELECT\n  hour_bucket,\n  ROUND(gas_price_p50_gwei, 4) AS gas_price_p50_gwei,\n  ROUND(gas_price_p75_gwei, 4) AS gas_price_p75_gwei,\n  ROUND(gas_price_p95_gwei, 4) AS gas_price_p95_gwei,\n  tx_count\nFROM dev.g_apps.gas_price_distribution_hourly\nORDER BY hour_bucket ASC\nLIMIT 720"
     }
   ],
   "pages": [
@@ -194,10 +194,10 @@
                 "query": {
                   "datasetName": "gas_price_daily",
                   "fields": [
-                    {"name": "day_bucket", "expression": "day_bucket"},
-                    {"name": "p50_gwei",   "expression": "p50_gwei"},
-                    {"name": "p75_gwei",   "expression": "p75_gwei"},
-                    {"name": "p95_gwei",   "expression": "p95_gwei"}
+                    {"name": "hour_bucket",         "expression": "hour_bucket"},
+                    {"name": "gas_price_p50_gwei",  "expression": "gas_price_p50_gwei"},
+                    {"name": "gas_price_p75_gwei",  "expression": "gas_price_p75_gwei"},
+                    {"name": "gas_price_p95_gwei",  "expression": "gas_price_p95_gwei"}
                   ],
                   "disaggregated": false
                 }
@@ -208,23 +208,23 @@
               "widgetType": "xy",
               "encodings": {
                 "x": {
-                  "fieldName": "day_bucket",
+                  "fieldName": "hour_bucket",
                   "scale": {"type": "temporal"},
-                  "displayName": "Dia"
+                  "displayName": "Hora"
                 },
                 "y": [
                   {
-                    "fieldName": "p50_gwei",
+                    "fieldName": "gas_price_p50_gwei",
                     "scale": {"type": "quantitative"},
                     "displayName": "P50 (Gwei)"
                   },
                   {
-                    "fieldName": "p75_gwei",
+                    "fieldName": "gas_price_p75_gwei",
                     "scale": {"type": "quantitative"},
                     "displayName": "P75 (Gwei)"
                   },
                   {
-                    "fieldName": "p95_gwei",
+                    "fieldName": "gas_price_p95_gwei",
                     "scale": {"type": "quantitative"},
                     "displayName": "P95 (Gwei)"
                   }
@@ -233,7 +233,7 @@
               "mark": {"type": "line"},
               "frame": {
                 "showTitle": true,
-                "title": "Volatilidade de Gas Price — P50 / P75 / P95 por Dia (Gwei)"
+                "title": "Volatilidade de Gas Price — P50 / P75 / P95 por Hora (Gwei)"
               }
             }
           },
@@ -241,15 +241,15 @@
         },
         {
           "widget": {
-            "name": "bar_daily_tx_volume",
+            "name": "bar_hourly_tx_volume",
             "queries": [
               {
                 "name": "main",
                 "query": {
                   "datasetName": "gas_price_daily",
                   "fields": [
-                    {"name": "day_bucket", "expression": "day_bucket"},
-                    {"name": "tx_count",   "expression": "tx_count"}
+                    {"name": "hour_bucket", "expression": "hour_bucket"},
+                    {"name": "tx_count",    "expression": "tx_count"}
                   ],
                   "disaggregated": false
                 }
@@ -260,9 +260,9 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "day_bucket",
+                  "fieldName": "hour_bucket",
                   "scale": {"type": "temporal"},
-                  "displayName": "Dia"
+                  "displayName": "Hora"
                 },
                 "y": [
                   {
@@ -274,7 +274,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Volume Diário de Transações"
+                "title": "Volume Horário de Transações"
               }
             }
           },

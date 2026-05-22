@@ -3,17 +3,17 @@
     {
       "name": "contracts_counters",
       "displayName": "Contadores Contratos",
-      "query": "SELECT\n  COUNT(*)        AS contract_count,\n  SUM(tx_count)   AS total_tx_1h\nFROM dev.s_apps.popular_contracts_ranking"
+      "query": "SELECT\n  COUNT(*)        AS contract_count,\n  SUM(tx_count)   AS total_tx_1h\nFROM dev.g_apps.popular_contracts_ranking"
     },
     {
       "name": "contracts_ranking",
       "displayName": "Ranking — Top 20 Contratos",
-      "query": "SELECT\n  contract_address,\n  tx_count,\n  unique_senders,\n  first_seen,\n  last_seen,\n  computed_at\nFROM dev.s_apps.popular_contracts_ranking\nORDER BY tx_count DESC\nLIMIT 20"
+      "query": "SELECT\n  contract_address,\n  tx_count,\n  unique_senders,\n  first_seen,\n  last_seen,\n  computed_at\nFROM dev.g_apps.popular_contracts_ranking\nORDER BY tx_count DESC\nLIMIT 20"
     },
     {
       "name": "top10_bar",
       "displayName": "Top 10 para Gráfico",
-      "query": "SELECT\n  SUBSTR(contract_address, 1, 10) || '...' AS contract_short,\n  contract_address,\n  tx_count,\n  unique_senders\nFROM dev.s_apps.popular_contracts_ranking\nORDER BY tx_count DESC\nLIMIT 10"
+      "query": "SELECT\n  SUBSTR(contract_address, 1, 10) || '...' AS contract_short,\n  contract_address,\n  tx_count,\n  unique_senders\nFROM dev.g_apps.popular_contracts_ranking\nORDER BY tx_count DESC\nLIMIT 10"
     }
   ],
   "pages": [

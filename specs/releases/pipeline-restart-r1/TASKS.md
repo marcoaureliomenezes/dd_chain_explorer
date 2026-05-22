@@ -109,7 +109,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/dashboard_network_overview/resources/dashboards/01_network_overview.lvdash.json`
   Done: All dataset queries reference `g_network.network_metrics_hourly` or `g_network.block_production_health`; no `dev.gold.*` hardcoded references remain; dashboard renders.
 
-- [-] T-R1-16 — **Fix hot-contracts and gas-analytics dashboards to use Gold MVs** | Owner: data-analyst | Effort: S
+- [x] T-R1-16 — **Fix hot-contracts and gas-analytics dashboards to use Gold MVs** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-007, DA-003, `02_hot_contracts.lvdash.json`, `03_gas_analytics.lvdash.json`
   Write-set: `apps/dabs/dashboard_hot_contracts/resources/dashboards/02_hot_contracts.lvdash.json`, `apps/dabs/dashboard_gas_analytics/resources/dashboards/03_gas_analytics.lvdash.json`
   Done: Hot-contracts queries `g_apps.popular_contracts_ranking`; gas-analytics uses `g_apps.gas_price_distribution_hourly`; both dashboards render data.
