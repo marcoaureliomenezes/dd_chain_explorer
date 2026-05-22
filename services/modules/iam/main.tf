@@ -60,58 +60,57 @@ resource "aws_iam_role_policy" "ecs_task" {
           "kinesis:GetShardIterator", "kinesis:DescribeStream",
           "kinesis:DescribeStreamSummary", "kinesis:ListShards",
         ]
-        Resource = "arn:aws:kinesis:*:*:stream/mainnet-*-${var.kinesis_stream_suffix}"
-      },
-      {
-        Sid    = "SQSAccess"
-        Effect = "Allow"
-        Action = [
-          "sqs:SendMessage", "sqs:SendMessageBatch", "sqs:ReceiveMessage",
-          "sqs:DeleteMessage", "sqs:DeleteMessageBatch",
-          "sqs:GetQueueUrl", "sqs:GetQueueAttributes",
-        ]
-        Resource = "arn:aws:sqs:*:*:mainnet-*-${var.sqs_queue_suffix}"
-      },
-      {
-        Sid    = "CloudWatchLogs"
-        Effect = "Allow"
-        Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = [
-          "arn:aws:logs:${var.region}:${var.account_id}:log-group:/apps/${var.name_prefix}*",
-          "arn:aws:logs:${var.region}:${var.account_id}:log-group:/ecs/${var.name_prefix}*",
-        ]
-      },
-      {
-        Sid    = "SSMParameterStore"
-        Effect = "Allow"
-        Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-        Resource = [
-          "arn:aws:ssm:*:*:parameter/web3-api-keys/*",
-          "arn:aws:ssm:*:*:parameter/etherscan-api-keys",
-          "arn:aws:ssm:*:*:parameter/etherscan-api-keys/*",
-        ]
-      },
-      {
-        Sid    = "SecretsManagerAccess"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
-        Resource = "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}-*"
-      },
-      {
-        Sid    = "DynamoDBAccess"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
-          "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:BatchWriteItem",
-          "dynamodb:BatchGetItem", "dynamodb:Scan", "dynamodb:DescribeTable",
-        ]
-        Resource = "arn:aws:dynamodb:*:*:table/${var.dynamodb_table_name}"
-      },
-      {
-        Sid    = "FirehoseAccess"
-        Effect = "Allow"
-        Action = ["firehose:PutRecord", "firehose:PutRecordBatch"]
-        Resource = "arn:aws:firehose:*:*:deliverystream/firehose-mainnet-*-${var.kinesis_stream_suffix}"
+        Resource = "arn:aws:kinesis:${var.region}:${var.account_id}:stream/mainnet-*-${var.kinesis_stream_suffix}"
+        },
+        {
+          Sid    = "SQSAccess"
+          Effect = "Allow"
+          Action = [
+            "sqs:SendMessage", "sqs:SendMessageBatch", "sqs:ReceiveMessage",
+            "sqs:DeleteMessage", "sqs:DeleteMessageBatch",
+            "sqs:GetQueueUrl", "sqs:GetQueueAttributes",
+          ]
+          Resource = "arn:aws:sqs:${var.region}:${var.account_id}:mainnet-*-${var.sqs_queue_suffix}"
+        },
+        {
+          Sid    = "CloudWatchLogs"
+          Effect = "Allow"
+          Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
+          Resource = [
+            "arn:aws:logs:${var.region}:${var.account_id}:log-group:/apps/${var.name_prefix}*",
+            "arn:aws:logs:${var.region}:${var.account_id}:log-group:/ecs/${var.name_prefix}*",
+          ]
+        },
+        {
+          Sid    = "SSMParameterStore"
+          Effect = "Allow"
+          Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
+          Resource = [
+            "arn:aws:ssm:${var.region}:${var.account_id}:parameter/web3-api-keys/*",
+            "arn:aws:ssm:${var.region}:${var.account_id}:parameter/etherscan-api-keys",
+            "arn:aws:ssm:${var.region}:${var.account_id}:parameter/etherscan-api-keys/*",
+          ]
+        },
+        {
+          Sid      = "SecretsManagerAccess"
+          Effect   = "Allow"
+          Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+          Resource = "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}-*"
+        },
+        {
+          Sid    = "DynamoDBAccess"
+          Effect = "Allow"
+          Action = [
+            "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+            "dynamodb:DeleteItem",
+          ]
+          Resource = "arn:aws:dynamodb:${var.region}:${var.account_id}:table/${var.dynamodb_table_name}"
+        },
+        {
+          Sid      = "FirehoseAccess"
+          Effect   = "Allow"
+          Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
+          Resource = "arn:aws:firehose:${var.region}:${var.account_id}:deliverystream/firehose-mainnet-*-${var.kinesis_stream_suffix}"
       }],
       var.raw_bucket_arn != "" ? [{
         Sid    = "S3Access"
@@ -377,21 +376,11 @@ resource "aws_iam_role_policy" "databricks_cluster" {
         ]
       },
       {
-        Sid    = "SecretsManagerAccess"
-        Effect = "Allow"
-        Action = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
+        Sid      = "SecretsManagerAccess"
+        Effect   = "Allow"
+        Action   = ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"]
         Resource = "arn:aws:secretsmanager:${var.region}:${var.account_id}:secret:${var.name_prefix}-*"
       },
-      {
-        Sid    = "SSMAccess"
-        Effect = "Allow"
-        Action = ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"]
-        Resource = [
-          "arn:aws:ssm:${var.region}:${var.account_id}:parameter/etherscan-api-keys",
-          "arn:aws:ssm:${var.region}:${var.account_id}:parameter/etherscan-api-keys/*",
-          "arn:aws:ssm:${var.region}:${var.account_id}:parameter/web3-api-keys/*",
-        ]
-      }
     ]
   })
 }
@@ -438,7 +427,7 @@ resource "aws_iam_role_policy" "lambda" {
       {
         Effect   = "Allow"
         Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "arn:aws:logs:*:*:*"
+        Resource = "arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/${var.name_prefix}-*"
       }
     ]
   })

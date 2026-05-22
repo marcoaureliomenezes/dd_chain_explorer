@@ -13,22 +13,22 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Write-set: services/prd/03_iam/, apps/dabs/dashboard_*/resources/, apps/docker/, apps/lambda/ -->
 
-- [-] T-R1-01 — **Remove dynamodb:Scan from ECS task role** | Owner: devops-engineer | Effort: S
+- [x] T-R1-01 — **Remove dynamodb:Scan from ECS task role** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-008, `iam/main.tf:104–108`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: `dynamodb:Scan` absent; only GetItem/PutItem/DeleteItem/UpdateItem in DynamoDB policy block.
 
-- [-] T-R1-02 — **Replace IAM wildcard ARNs with explicit region+account** | Owner: devops-engineer | Effort: S
+- [x] T-R1-02 — **Replace IAM wildcard ARNs with explicit region+account** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-009, `iam/main.tf:62–92`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: No `*:*` in region or account field of any Kinesis, SQS, or SSM ARN.
 
-- [-] T-R1-03 — **Remove SSM Etherscan/Web3 access from Databricks cluster role** | Owner: devops-engineer | Effort: S
+- [x] T-R1-03 — **Remove SSM Etherscan/Web3 access from Databricks cluster role** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-010, `iam/main.tf:384–395`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: Databricks cluster IAM role has no SSM permissions for etherscan or web3 key paths.
 
-- [-] T-R1-04 — **Scope Lambda CloudWatch IAM ARN** | Owner: devops-engineer | Effort: S
+- [x] T-R1-04 — **Scope Lambda CloudWatch IAM ARN** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-023, `iam/main.tf:438–442`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: Lambda logs policy uses `arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/${var.name_prefix}-*`.
