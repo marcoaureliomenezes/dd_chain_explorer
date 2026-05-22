@@ -16,10 +16,10 @@ resources:
       warehouse_id: ${var.warehouse_id}
       query: >-
         SELECT COUNT(*) AS deadlock_events
-        FROM ${var.catalog}.s_logs.apps_logs_fast
+        FROM ${var.catalog}.s_logs.logs_streaming
         WHERE level = 'ERROR'
           AND message LIKE '%Todas as API keys rate-limited%'
-          AND from_unixtime(timestamp) >= CURRENT_TIMESTAMP - INTERVAL 5 MINUTES
+          AND timestamp >= CURRENT_TIMESTAMP - INTERVAL 5 MINUTES
 
   alerts:
     alert_api_keys_deadlock:
