@@ -18,23 +18,23 @@ resources:
       tables:
         - catalog_name: ${var.catalog}
           schema_name:  s_apps
-          table_name:   transactions_fast
-          description: "Transações Ethereum processadas em tempo real (streaming). Inclui hash, from/to, value, gas, decode_type e dat_ref."
+          table_name:   transactions_ethereum
+          description: "Transações Ethereum enriquecidas (streaming). Inclui hash, from/to, value, gas, método decodificado, metadados do bloco e event_date."
 
         - catalog_name: ${var.catalog}
           schema_name:  s_apps
-          table_name:   blocks_fast
-          description: "Blocos Ethereum minerados em tempo real. Inclui número, hash, miner, gas_used, base_fee e transaction_count."
+          table_name:   eth_blocks
+          description: "Blocos Ethereum minerados em tempo real. Inclui número, hash, miner, gas_used, gas_limit, base_fee_per_gas, timestamp e tx_count."
 
         - catalog_name: ${var.catalog}
-          schema_name:  s_apps
+          schema_name:  g_apps
           table_name:   popular_contracts_ranking
-          description: "Ranking de contratos mais populares por volume de transações na última hora."
+          description: "Ranking de contratos mais populares por volume de transações na última hora (Gold MV)."
 
         - catalog_name: ${var.catalog}
-          schema_name:  s_apps
+          schema_name:  g_apps
           table_name:   transactions_lambda
-          description: "Visão Lambda: une dados streaming (fast lane) e batch para visão completa das transações com input decodificado."
+          description: "Visão Lambda: une streaming e batch para visão completa das transações com input decodificado (Gold MV, dedup por tx_hash)."
 
         - catalog_name: ${var.catalog}
           schema_name:  g_network

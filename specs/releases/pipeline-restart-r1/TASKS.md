@@ -99,7 +99,7 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/dashboard_*/databricks.yml`
   Done: All 4 dashboard bundle YAMLs have non-empty `warehouse_id` per target; dashboards render in DEV.
 
-- [-] T-R1-14 — **Fix 4 wrong Genie table FQNs** | Owner: data-analyst | Effort: S
+- [x] T-R1-14 — **Fix 4 wrong Genie table FQNs** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-005, DA-005, LAKEHOUSE-03, `genie_ethereum.yml:19–37`
   Write-set: `apps/dabs/genie_ethereum/genie_ethereum.yml`
   Done: All 7 FQNs in Genie YAML reference existing tables; at least 1 NL query returns results without table-not-found.
