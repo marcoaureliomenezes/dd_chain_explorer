@@ -21,7 +21,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   AWS_REGION:              sa-east-1
@@ -66,7 +66,7 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           fetch-depth: 0
       - name: Read and validate VERSION (all 3 tag suffixes)
@@ -82,6 +82,22 @@ jobs:
             fi
             echo "Version ${EXPECTED_TAG} is new — OK."
           done
+      - name: Validate dm-chain-utils exact pin in all production artifacts
+        run: |
+          REQUIRED="dm-chain-utils==0.2.9"
+          FAILED=0
+          for req in \
+            apps/docker/onchain-stream-txs/requirements.txt \
+            apps/lambda/contracts_ingestion/requirements.txt \
+            apps/lambda/gold_to_dynamodb/requirements.txt; do
+            if grep -qF "${REQUIRED}" "${req}"; then
+              echo "OK: ${req} contains ${REQUIRED}"
+            else
+              echo "::error::${req} does not contain exact pin '${REQUIRED}' (SEC-ISSUE-021)"
+              FAILED=1
+            fi
+          done
+          [ "${FAILED}" -eq 0 ] || exit 1
 
   # ══════════════════════════════════════════════════════════════════════════
   #  BUILD PHASE — parallel
@@ -96,8 +112,8 @@ jobs:
       ecr_registry: ${{ steps.meta.outputs.ecr_registry }}
       image_tag:    ${{ steps.meta.outputs.image_tag }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -116,7 +132,7 @@ jobs:
           aws ecr get-login-password --region ${{ env.AWS_REGION }} \
             | docker login --username AWS --password-stdin "${{ steps.meta.outputs.ecr_registry }}"
       - name: Build and push RC image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25  # v5
         with:
           context: .
           file:    apps/docker/onchain-stream-txs/Dockerfile
@@ -128,8 +144,8 @@ jobs:
     needs: [all-check-version]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
         with:
           python-version: "3.12"
       - name: Run unit tests
@@ -146,7 +162,7 @@ jobs:
         run: |
           cd "${GITHUB_WORKSPACE}/${{ env.LAMBDA_DIR }}/contracts_ingestion" && zip -j "${GITHUB_WORKSPACE}/contracts_ingestion.zip" handler.py
           cd "${GITHUB_WORKSPACE}/${{ env.LAMBDA_DIR }}/gold_to_dynamodb"    && zip -j "${GITHUB_WORKSPACE}/gold_to_dynamodb.zip"    handler.py
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
         with:
           name: lambda-artifacts
           path: |
@@ -162,7 +178,7 @@ jobs:
     outputs:
       has_changes: ${{ steps.check.outputs.has_changes }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           fetch-depth: 0
       - name: Fetch all tags
@@ -193,8 +209,8 @@ jobs:
       run:
         working-directory: ${{ env.DABS_PATH }}/dlt_ethereum
     steps:
-      - uses: actions/checkout@v4
-      - uses: databricks/setup-cli@v0.218.0
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: databricks/setup-cli@04558ed2c87abffd698e48c9ea9963fb56dfb79c  # v0.218.0
       - name: Validate bundle (HML target)
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
@@ -210,12 +226,12 @@ jobs:
     needs: [all-check-version]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -263,8 +279,8 @@ jobs:
       sqs_url_mined_blocks: ${{ steps.provision.outputs.sqs_url_mined_blocks }}
       sqs_url_txs_hash_ids: ${{ steps.provision.outputs.sqs_url_txs_hash_ids }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -280,7 +296,7 @@ jobs:
     needs: [all-hml-provision, all-stream-build-rc]
     runs-on: ubuntu-latest
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -391,8 +407,8 @@ jobs:
     needs: [all-hml-stream-launch, all-dabs-version-check]
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: databricks/setup-cli@v0.218.0
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: databricks/setup-cli@04558ed2c87abffd698e48c9ea9963fb56dfb79c  # v0.218.0
       - name: Deploy all components to HML
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
@@ -423,13 +439,13 @@ jobs:
       func_gld:        ${{ steps.deploy-gld.outputs.func_name }}
       fixture_key:     ${{ steps.deploy-gld.outputs.fixture_key }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: lambda-artifacts
       - name: Read HML Terraform outputs
@@ -504,8 +520,8 @@ jobs:
     outputs:
       test_passed: ${{ steps.run-test.outputs.test_passed }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -550,8 +566,8 @@ jobs:
       run:
         working-directory: ${{ env.DABS_PATH }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -573,7 +589,7 @@ jobs:
             exit 1
           fi
           echo "✅ Raw data pre-condition satisfied: ${RAW_COUNT} file(s) in raw/" >> $GITHUB_STEP_SUMMARY
-      - uses: databricks/setup-cli@v0.218.0
+      - uses: databricks/setup-cli@04558ed2c87abffd698e48c9ea9963fb56dfb79c  # v0.218.0
       - name: Trigger all DLT pipelines — sequential (ethereum → app_logs)
         env:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
@@ -616,7 +632,7 @@ jobs:
     outputs:
       test_passed: ${{ steps.run-test.outputs.test_passed }}
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -681,8 +697,8 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -710,7 +726,7 @@ jobs:
             aws dynamodb delete-item --table-name "$TABLE" \
               --key '{"pk":{"S":"CONSUMPTION"},"sk":{"S":"hml-test#test-key-001"}}' 2>/dev/null || true
       - name: Setup Terraform for Kinesis destroy
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
@@ -739,8 +755,8 @@ jobs:
       needs.all-hml-test-lambda.result == 'success'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -780,8 +796,8 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -835,14 +851,17 @@ jobs:
     needs: [all-check-version, all-dabs-version-check, all-prod-stream-deploy]
     if: needs.all-dabs-version-check.outputs.has_changes == 'true'
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: ${{ env.DABS_PATH }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
           persist-credentials: true
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -861,7 +880,7 @@ jobs:
             exit 1
           fi
           echo "prod_host=${PROD_HOST}" >> $GITHUB_OUTPUT
-      - uses: databricks/setup-cli@v0.218.0
+      - uses: databricks/setup-cli@04558ed2c87abffd698e48c9ea9963fb56dfb79c  # v0.218.0
       - name: Discover PRD SQL Warehouse ID
         id: warehouse
         env:
@@ -905,17 +924,18 @@ jobs:
     name: PRD — Deploy Lambda (Terraform)
     needs: [all-check-version, all-lambda-build-artifacts, all-prod-dabs-deploy]
     runs-on: ubuntu-latest
+    environment: production
     steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
           aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region:            ${{ env.AWS_REGION }}
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: lambda-artifacts
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
       - name: Stage layer zip for Terraform
@@ -937,8 +957,11 @@ jobs:
     name: PRD — Create release git tags
     needs: [all-check-version, all-prod-lambda-deploy]
     runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - name: Create and push all 3 release tags
         run: |
           VERSION="${{ needs.all-check-version.outputs.version }}"

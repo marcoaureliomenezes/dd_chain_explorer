@@ -194,3 +194,23 @@ make prod_standby               # scale down ECS + pause Databricks
 make prod_resume                # scale up ECS + resume Databricks
 make prod_logs_ecs              # tail live ECS task logs
 ```
+
+---
+
+## Data Classification (LGPD — DE-SEC-004)
+
+**Approved:** pipeline-restart-r1 / ISSUE-022
+
+| Data type | Classification | LGPD basis | Notes |
+|---|---|---|---|
+| Ethereum wallet addresses | Pseudo-anonymous public data | Art. 7 VI (legitimate interest — public blockchain data) | Addresses are pseudonyms; no direct link to natural persons unless KYC-linked |
+| Transaction hashes, block numbers, timestamps | Non-PII technical data | Not personal data | Publicly verifiable on-chain |
+| Sample transaction data (onchain-stream-txs) | Non-PII | Not personal data | Smart-contract interactions with no identifying fields |
+| Application logs (ECS / Lambda) | Non-PII by default | Not personal data | Must not contain wallet keys or secrets |
+
+**Rules:**
+- No Unity Catalog column-level masking is required for current data assets.
+- If KYC-linked addresses are introduced in future releases, the classification of those address
+  columns must be upgraded to **Sensitive Personal Data (Art. 5 II)** and masking must be
+  applied before landing in Silver or Gold layers.
+- This classification is reviewed at every release that adds a new data source or entity type.

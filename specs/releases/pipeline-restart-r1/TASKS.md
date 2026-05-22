@@ -38,12 +38,12 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/dashboard_*/resources/dashboards/*.yml`
   Done: `embed_credentials: false` confirmed in all 4 dashboard resource YAMLs.
 
-- [-] T-R1-06 — **Pin dm-chain-utils==0.2.9 in all production artifacts** | Owner: devops-engineer | Effort: S
+- [x] T-R1-06 — **Pin dm-chain-utils==0.2.9 in all production artifacts** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-021, `constitution.md: dm-chain-utils >= 0.2.9`; SEC-02
   Write-set: `apps/docker/onchain-stream-txs/requirements.txt`, `apps/lambda/contracts_ingestion/requirements.txt`, `apps/lambda/gold_to_dynamodb/requirements.txt`
   Done: `==0.2.9` pinned in all 3 requirements.txt files; CI step validates exact version.
 
-- [-] T-R1-07 — **Document LGPD PII classification in constitution.md** | Owner: devops-engineer | Effort: S
+- [x] T-R1-07 — **Document LGPD PII classification in constitution.md** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-022, DE-SEC-004
   Write-set: `specs/memory/constitution.md`
   Done: "Data Classification" section added stating Ethereum addresses are pseudo-anonymous per LGPD Art. 7 VI.

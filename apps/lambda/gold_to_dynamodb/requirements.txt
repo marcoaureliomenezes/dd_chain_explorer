@@ -1,5 +1,4 @@
-# Lambda: contracts_ingestion
+# Lambda: gold_to_dynamodb
 # boto3 is provided natively by the Lambda runtime — do NOT include here.
 # dm-chain-utils is provided via Lambda Layer pinned to ==0.2.9.
 dm-chain-utils==0.2.9
-requests>=2.31,<3
