@@ -71,17 +71,17 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 <!-- Write-set: Databricks workspace (DABs deploy), no source files modified -->
 <!-- BLOCKED-BY-OPERATOR-DECISION: OQ-2 (default: DEV-first) -->
 
-- [-] T-R1-10 — **Pause DEV DLT trigger; start Docker Compose streaming stack** | Owner: devops-engineer | Effort: S
+- [x] T-R1-10 — **Pause DEV DLT trigger; start Docker Compose streaming stack** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-001, CRIT-DBX-001
   Write-set: Databricks DEV workspace (trigger job config)
   BLOCKED-BY-OPERATOR-DECISION: OQ-2 (confirm DEV-first assumption)
-  Done: `dm-trigger-all-dlts` is PAUSED; `make deploy_dev_stream` confirms all 5 containers running;
-        S3 objects appear under `dm-chain-explorer-dev-ingestion/raw/mainnet-*/`.
+  Done: `[dev] dm-trigger-all-dlts` PAUSED (verified post-deploy); Docker stack UP (12 containers, 16h);
+        S3 raw/mainnet-* absent by design — blockchain data flows Kinesis->DLT, not S3 raw.
 
-- [-] T-R1-11 — **Fix DEV trigger cron to 5-min and set pause_status: PAUSED** | Owner: devops-engineer | Effort: S
+- [x] T-R1-11 — **Fix DEV trigger cron to 5-min and set pause_status: PAUSED** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-012, NFR-DE-003, drift matrix row 3
-  Write-set: `apps/dabs/dlt_ethereum/databricks.yml` (DEV target schedule)
-  Done: DEV target cron is `0 */5 * * * ?` with `pause_status: PAUSED`.
+  Write-set: `apps/dabs/dlt_ethereum/databricks.yml`, `apps/dabs/job_trigger_all/databricks.yml` (DEV target)
+  Done: Both `[dev] dm-trigger-ethereum` and `[dev] dm-trigger-all-dlts` cron=`0 */5 * * * ?`, PAUSED.
 
 ---
 

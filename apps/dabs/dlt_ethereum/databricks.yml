@@ -35,6 +35,12 @@ targets:
       pipelines:
         pipeline_ethereum:
           development: true
+      jobs:
+        workflow_trigger_ethereum:
+          schedule:
+            quartz_cron_expression: "0 */5 * * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
 
   hml:
     presets:
