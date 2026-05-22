@@ -1,3 +1,0 @@
-[console_scripts]
-dd-check-tables = dd_chain_explorer.check.check_tables:main
-dd-setup-ddl = dd_chain_explorer.ddl.setup_ddl:main

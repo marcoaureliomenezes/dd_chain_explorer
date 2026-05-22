@@ -1,2 +1,0 @@
-[console_scripts]
-dm-export-gold-export-gold = dm_export_gold.export_gold:main

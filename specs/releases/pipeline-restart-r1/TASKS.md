@@ -120,12 +120,12 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Independent — no dependency on C or D for code changes; validation requires C complete -->
 
-- [-] T-R1-17 — **Fix HML ingestion bucket name in DLT bundle config** | Owner: data-engineer | Effort: S
+- [x] T-R1-17 — **Fix HML ingestion bucket name in DLT bundle config** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-014, DE-S-004, `dlt_ethereum/databricks.yml:46`
   Write-set: `apps/dabs/dlt_ethereum/databricks.yml`
   Done: HML target `ingestion_s3_bucket` is `"dm-chain-explorer-hml-raw"`.
 
-- [ ] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
+- [-] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-029, AWS-03, `peripherals.tf:50–51`
   Write-set: `services/prd/04_peripherals/peripherals.tf`
   Done: `folder_prefixes = ["bronze","silver","gold"]` removed; `.keep` objects deleted from S3 bucket.

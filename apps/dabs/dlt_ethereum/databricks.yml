@@ -44,7 +44,7 @@ targets:
       root_path: "~/.bundle/${bundle.name}/hml"
     variables:
       catalog: "hml"
-      ingestion_s3_bucket: "dm-chain-explorer-hml-lakehouse"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-raw"
       dlt_development: false
       dlt_continuous: false
     resources:
