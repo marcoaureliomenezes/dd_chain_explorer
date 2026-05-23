@@ -3,17 +3,17 @@
     {
       "name": "gas_by_type",
       "displayName": "Gas por Tipo de Transação",
-      "query": "SELECT\n  type_transaction,\n  COUNT(*)                                                AS tx_count,\n  ROUND(AVG(gas_pct_of_block), 4)                        AS avg_gas_pct,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)        AS avg_gas_price_gwei,\n  ROUND(AVG(CAST(gas_limit AS DOUBLE)), 0)              AS avg_gas_limit\nFROM dev.g_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY type_transaction\nORDER BY tx_count DESC"
+      "query": "SELECT\n  tx_type_semantic,\n  COUNT(*)                                                AS tx_count,\n  ROUND(AVG(gas_pct_of_block), 4)                        AS avg_gas_pct,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)        AS avg_gas_price_gwei,\n  ROUND(AVG(CAST(gas_limit AS DOUBLE)), 0)              AS avg_gas_limit\nFROM dev.g_apps.ethereum_gas_consume\nWHERE tx_type_semantic IS NOT NULL\nGROUP BY tx_type_semantic\nORDER BY tx_count DESC"
     },
     {
       "name": "gas_hourly",
-      "displayName": "Gas Price por Hora e Tipo",
-      "query": "SELECT\n  DATE_TRUNC('hour', tx_timestamp)                      AS hour_bucket,\n  type_transaction,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.g_apps.ethereum_gas_consume\nWHERE type_transaction IS NOT NULL\nGROUP BY 1, 2\nORDER BY 1 ASC, 2 ASC\nLIMIT 2000"
+      "displayName": "Gas Price por Bloco e Tipo",
+      "query": "SELECT\n  block_number,\n  tx_type_semantic,\n  ROUND(AVG(CAST(gas_price AS DOUBLE) / 1e9), 4)       AS avg_gas_price_gwei,\n  ROUND(AVG(gas_pct_of_block), 4)                       AS avg_gas_pct,\n  COUNT(*)                                               AS tx_count\nFROM dev.g_apps.ethereum_gas_consume\nWHERE tx_type_semantic IS NOT NULL\nGROUP BY block_number, tx_type_semantic\nORDER BY block_number DESC\nLIMIT 2000"
     },
     {
       "name": "gas_price_daily",
       "displayName": "Percentis de Gas Price por Hora",
-      "query": "SELECT\n  hour_bucket,\n  ROUND(gas_price_p50_gwei, 4) AS gas_price_p50_gwei,\n  ROUND(gas_price_p75_gwei, 4) AS gas_price_p75_gwei,\n  ROUND(gas_price_p95_gwei, 4) AS gas_price_p95_gwei,\n  tx_count\nFROM dev.g_apps.gas_price_distribution_hourly\nORDER BY hour_bucket ASC\nLIMIT 720"
+      "query": "SELECT\n  hour_bucket,\n  ROUND(AVG(gas_price_p50_gwei), 4) AS gas_price_p50_gwei,\n  ROUND(AVG(gas_price_p75_gwei), 4) AS gas_price_p75_gwei,\n  ROUND(AVG(gas_price_p95_gwei), 4) AS gas_price_p95_gwei,\n  SUM(tx_count)                    AS tx_count\nFROM dev.g_apps.gas_price_distribution_hourly\nGROUP BY hour_bucket\nORDER BY hour_bucket ASC\nLIMIT 720"
     }
   ],
   "pages": [
@@ -30,7 +30,7 @@
                 "query": {
                   "datasetName": "gas_by_type",
                   "fields": [
-                    {"name": "type_transaction", "expression": "type_transaction"},
+                    {"name": "tx_type_semantic", "expression": "tx_type_semantic"},
                     {"name": "tx_count",         "expression": "tx_count"}
                   ],
                   "disaggregated": false
@@ -46,7 +46,7 @@
                   "displayName": "Transações"
                 },
                 "color": {
-                  "fieldName": "type_transaction",
+                  "fieldName": "tx_type_semantic",
                   "displayName": "Tipo"
                 }
               },
@@ -67,7 +67,7 @@
                 "query": {
                   "datasetName": "gas_by_type",
                   "fields": [
-                    {"name": "type_transaction", "expression": "type_transaction"},
+                    {"name": "tx_type_semantic", "expression": "tx_type_semantic"},
                     {"name": "avg_gas_pct",      "expression": "avg_gas_pct"}
                   ],
                   "disaggregated": false
@@ -79,7 +79,7 @@
               "widgetType": "bar",
               "encodings": {
                 "x": {
-                  "fieldName": "type_transaction",
+                  "fieldName": "tx_type_semantic",
                   "scale": {"type": "ordinal"},
                   "displayName": "Tipo"
                 },
@@ -101,15 +101,15 @@
         },
         {
           "widget": {
-            "name": "line_gas_price_hourly",
+            "name": "line_gas_price_by_block",
             "queries": [
               {
                 "name": "main",
                 "query": {
                   "datasetName": "gas_hourly",
                   "fields": [
-                    {"name": "hour_bucket",        "expression": "hour_bucket"},
-                    {"name": "type_transaction",   "expression": "type_transaction"},
+                    {"name": "block_number",       "expression": "block_number"},
+                    {"name": "tx_type_semantic",   "expression": "tx_type_semantic"},
                     {"name": "avg_gas_price_gwei", "expression": "avg_gas_price_gwei"}
                   ],
                   "disaggregated": false
@@ -121,9 +121,9 @@
               "widgetType": "xy",
               "encodings": {
                 "x": {
-                  "fieldName": "hour_bucket",
-                  "scale": {"type": "temporal"},
-                  "displayName": "Hora"
+                  "fieldName": "block_number",
+                  "scale": {"type": "quantitative"},
+                  "displayName": "Bloco"
                 },
                 "y": [
                   {
@@ -133,14 +133,14 @@
                   }
                 ],
                 "color": {
-                  "fieldName": "type_transaction",
+                  "fieldName": "tx_type_semantic",
                   "displayName": "Tipo"
                 }
               },
               "mark": {"type": "line"},
               "frame": {
                 "showTitle": true,
-                "title": "Avg Gas Price (Gwei) por Hora — por Tipo de Transação"
+                "title": "Avg Gas Price (Gwei) por Bloco — por Tipo de Transação"
               }
             }
           },
@@ -155,7 +155,7 @@
                 "query": {
                   "datasetName": "gas_by_type",
                   "fields": [
-                    {"name": "type_transaction",   "expression": "type_transaction"},
+                    {"name": "tx_type_semantic",   "expression": "tx_type_semantic"},
                     {"name": "tx_count",           "expression": "tx_count"},
                     {"name": "avg_gas_pct",        "expression": "avg_gas_pct"},
                     {"name": "avg_gas_price_gwei", "expression": "avg_gas_price_gwei"},
@@ -170,7 +170,7 @@
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {"fieldName": "type_transaction",   "displayName": "Tipo"},
+                  {"fieldName": "tx_type_semantic",   "displayName": "Tipo"},
                   {"fieldName": "tx_count",           "displayName": "Total Txs"},
                   {"fieldName": "avg_gas_pct",        "displayName": "Avg Gas % Bloco"},
                   {"fieldName": "avg_gas_price_gwei", "displayName": "Avg Gas Price (Gwei)"},
