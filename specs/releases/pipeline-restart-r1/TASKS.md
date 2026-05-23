@@ -13,30 +13,26 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Write-set: services/prd/03_iam/, apps/dabs/dashboard_*/resources/, apps/docker/, apps/lambda/ -->
 
-- [-] T-R1-01 — **Remove dynamodb:Scan from ECS task role** | Owner: devops-engineer | Effort: S
-  Evidence: ISSUE-008, `iam/main.tf:104–108`
-  Write-set: `services/prd/03_iam/iam/main.tf`
-  Done: `dynamodb:Scan` absent; only GetItem/PutItem/DeleteItem/UpdateItem in DynamoDB policy block.
-  <!-- ROLLED BACK 2026-05-22: code committed (e8adcaf); `terraform apply` pending → IAM not in effect. -->
+- [x] T-R1-01 — **Remove dynamodb:Scan from ECS task role** | Owner: devops-engineer | Effort: S
+  Evidence: ISSUE-008, `services/prd/03_iam/iam.tf:149–163`
+  Write-set: `services/prd/03_iam/iam.tf`
+  Done (2026-05-23): `dynamodb:Scan`, `Query`, `BatchGetItem`, `BatchWriteItem`, `DescribeTable` removed from `dm-ecs-task-permissions` policy; only GetItem/PutItem/UpdateItem/DeleteItem remain. Verified via `aws iam get-role-policy`. IAM apply: 2 changed, 0 destroyed.
 
-- [-] T-R1-02 — **Replace IAM wildcard ARNs with explicit region+account** | Owner: devops-engineer | Effort: S
-  Evidence: ISSUE-009, `iam/main.tf:62–92`
-  Write-set: `services/prd/03_iam/iam/main.tf`
-  Done: No `*:*` in region or account field of any Kinesis, SQS, or SSM ARN.
-  <!-- ROLLED BACK 2026-05-22: code committed; `terraform apply` pending. -->
+- [x] T-R1-02 — **Replace IAM wildcard ARNs with explicit region+account** | Owner: devops-engineer | Effort: S
+  Evidence: ISSUE-009, `services/prd/03_iam/iam.tf`
+  Write-set: `services/prd/03_iam/iam.tf`
+  Done (2026-05-23): All `*:*` wildcards replaced with `${var.region}:${data.aws_caller_identity.current.account_id}` in Kinesis, SQS, SSM, DynamoDB, and Firehose ARNs.
 
-- [-] T-R1-03 — **Remove SSM Etherscan/Web3 access from Databricks cluster role** | Owner: devops-engineer | Effort: S
-  Evidence: ISSUE-010, `iam/main.tf:384–395`
-  Write-set: `services/prd/03_iam/iam/main.tf`
-  Done: Databricks cluster IAM role has no SSM permissions for etherscan or web3 key paths.
-  <!-- ROLLED BACK 2026-05-22: code committed; `terraform apply` pending. -->
+- [x] T-R1-03 — **Remove SSM Etherscan/Web3 access from Databricks cluster role** | Owner: devops-engineer | Effort: S
+  Evidence: ISSUE-010, `services/prd/03_iam/iam.tf`
+  Write-set: `services/prd/03_iam/iam.tf`
+  Done (2026-05-23): `SSMAccess` statement removed from `databricks_cluster_permissions` policy document. Databricks cluster role has no SSM permissions.
 
-- [-] T-R1-04 — **Scope Lambda CloudWatch IAM ARN** | Owner: devops-engineer | Effort: S
-  Evidence: ISSUE-023, `iam/main.tf:438–442`
-  Write-set: `services/prd/03_iam/iam/main.tf`
-  Done: Lambda logs policy uses `arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/${var.name_prefix}-*`.
-  <!-- ROLLED BACK 2026-05-22: code committed; `terraform apply` pending. -->
-  <!-- Note: T-R1-01..04 share write-set iam/main.tf; treated as a single deploy unit. -->
+- [x] T-R1-04 — **Scope Lambda CloudWatch IAM ARN** | Owner: devops-engineer | Effort: S
+  Evidence: ISSUE-023, `services/prd/06_lambda/lambda.tf:57`
+  Write-set: `services/prd/06_lambda/lambda.tf`, `services/prd/06_lambda/main.tf`
+  Done (2026-05-23): Lambda logs resource scoped to `arn:aws:logs:${var.aws_region}:${account_id}:log-group:/aws/lambda/${local.name_prefix}-*`; `data.aws_caller_identity` added to main.tf. Lambda apply: 12 added (fresh deployment).
+  <!-- Note: Fix applied to services/prd/03_iam/iam.tf (direct policy) + services/prd/06_lambda/lambda.tf; original commit e8adcaf targeted an unused module path. -->
 
 
 - [x] T-R1-05 — **Set embed_credentials: false in all 4 dashboard bundles** | Owner: devops-engineer | Effort: S
@@ -134,11 +130,10 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/dlt_ethereum/databricks.yml`
   Done: HML target `ingestion_s3_bucket` is `"dm-chain-explorer-hml-raw"`.
 
-- [-] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
-  Evidence: ISSUE-029, AWS-03, `peripherals.tf:50–51`
+- [x] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
+  Evidence: ISSUE-029, AWS-03, `services/prd/04_peripherals/peripherals.tf:49`
   Write-set: `services/prd/04_peripherals/peripherals.tf`
-  Done: `folder_prefixes = ["bronze","silver","gold"]` removed; `.keep` objects deleted from S3 bucket.
-  <!-- ROLLED BACK 2026-05-22: code committed (250c061); `terraform apply` pending; .keep objects still in S3. -->
+  Done (2026-05-23): `folder_prefixes = ["bronze","silver","gold"]` removed; only `["checkpoints","staging","unity-catalog"]` remain. PRD S3 bucket (`dm-chain-explorer-raw-data`) created fresh without medallion prefixes — no `.keep` objects were ever written. Peripherals apply: 40 added, 0 destroyed.
 
 
 - [x] T-R1-19 — **Promote from_address to expect_or_drop in DLT** | Owner: data-engineer | Effort: S

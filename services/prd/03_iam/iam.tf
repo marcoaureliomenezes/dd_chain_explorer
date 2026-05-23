@@ -64,7 +64,7 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "kinesis:DescribeStreamSummary",
       "kinesis:ListShards",
     ]
-    resources = ["arn:aws:kinesis:*:*:stream/mainnet-*-prd"]
+    resources = ["arn:aws:kinesis:${var.region}:${data.aws_caller_identity.current.account_id}:stream/mainnet-*-prd"]
   }
 
   # Firehose Direct Put: write blocks and decoded txs directly to delivery streams
@@ -74,7 +74,7 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "firehose:PutRecord",
       "firehose:PutRecordBatch",
     ]
-    resources = ["arn:aws:firehose:*:*:deliverystream/firehose-mainnet-*-prd"]
+    resources = ["arn:aws:firehose:${var.region}:${data.aws_caller_identity.current.account_id}:deliverystream/firehose-mainnet-*-prd"]
   }
 
   # SQS: send and receive messages between streaming jobs
@@ -89,7 +89,7 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "sqs:GetQueueUrl",
       "sqs:GetQueueAttributes",
     ]
-    resources = ["arn:aws:sqs:*:*:mainnet-*-prd"]
+    resources = ["arn:aws:sqs:${var.region}:${data.aws_caller_identity.current.account_id}:mainnet-*-prd"]
   }
 
   # S3: read/write to raw and lakehouse buckets
@@ -142,7 +142,10 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "ssm:GetParameters",
       "ssm:GetParametersByPath",
     ]
-    resources = ["arn:aws:ssm:*:*:parameter/web3-api-keys/*", "arn:aws:ssm:*:*:parameter/etherscan-api-keys/*"]
+    resources = [
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/web3-api-keys/*",
+      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/etherscan-api-keys/*",
+    ]
   }
 
   # DynamoDB: read/write to the single-table (dm-chain-explorer)
@@ -153,13 +156,8 @@ data "aws_iam_policy_document" "ecs_task_permissions" {
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
       "dynamodb:DeleteItem",
-      "dynamodb:Query",
-      "dynamodb:BatchWriteItem",
-      "dynamodb:BatchGetItem",
-      "dynamodb:Scan",
-      "dynamodb:DescribeTable",
     ]
-    resources = ["arn:aws:dynamodb:*:*:table/dm-chain-explorer"]
+    resources = ["arn:aws:dynamodb:${var.region}:${data.aws_caller_identity.current.account_id}:table/dm-chain-explorer"]
   }
 }
 
@@ -513,19 +511,6 @@ data "aws_iam_policy_document" "databricks_cluster_permissions" {
     resources = ["arn:aws:secretsmanager:${var.region}:${data.aws_caller_identity.current.account_id}:secret:dm-chain-explorer-*"]
   }
 
-  # SSM Parameter Store: read API keys
-  statement {
-    sid = "SSMAccess"
-    actions = [
-      "ssm:GetParameter",
-      "ssm:GetParameters",
-      "ssm:GetParametersByPath",
-    ]
-    resources = [
-      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/etherscan-api-keys/*",
-      "arn:aws:ssm:${var.region}:${data.aws_caller_identity.current.account_id}:parameter/web3-api-keys/*",
-    ]
-  }
 }
 
 resource "aws_iam_role_policy" "databricks_cluster" {

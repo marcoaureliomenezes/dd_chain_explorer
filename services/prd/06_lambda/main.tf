@@ -52,3 +52,5 @@ data "terraform_remote_state" "kinesis_sqs" {
     region = "sa-east-1"
   }
 }
+
+data "aws_caller_identity" "current" {}

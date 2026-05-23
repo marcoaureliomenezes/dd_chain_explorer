@@ -54,7 +54,7 @@ resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "arn:aws:logs:*:*:*"
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.name_prefix}-*"
       }
     ]
   })
