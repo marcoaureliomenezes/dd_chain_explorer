@@ -3,11 +3,11 @@
 # MAGIC # App Logs DLT Pipeline — Bronze + Silver + Gold
 # MAGIC
 # MAGIC Pipeline dedicado ao processamento dos logs das aplicações Python on-chain.
-# MAGIC Pós-migração Kafka → Kinesis/SQS/Firehose.
+# MAGIC Pós-migração captura → VPS/Fluent Bit.
 # MAGIC
 # MAGIC ## Bronze — `b_app_logs`
-# MAGIC Auto Loader (cloudFiles) lê NDJSON entregue pelo Firehose no S3:
-# MAGIC - `b_app_logs_data` ← Firehose `bronze/app_logs/`
+# MAGIC Auto Loader (cloudFiles) lê NDJSON entregue pelo Fluent Bit no S3:
+# MAGIC - `b_app_logs_data` ← Fluent Bit `raw/app_logs/`
 # MAGIC
 # MAGIC ## Silver — `s_logs`
 # MAGIC Lê da bronze via `dlt.read_stream()` (interno ao pipeline):
@@ -20,14 +20,8 @@
 
 # COMMAND ----------
 
-import gzip as gzip_lib
-import json as json_lib
-
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import (
-    ArrayType, LongType, StringType, StructField, StructType,
-)
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -50,110 +44,35 @@ BATCH_APP_NAMES = [
 # COMMAND ----------
 
 
-# ── CloudWatch Logs schema & UDF ──────────────────────────────────────────────
-
-_CW_EVENT_SCHEMA = ArrayType(StructType([
-    StructField("timestamp",     LongType(),   True),
-    StructField("message",       StringType(), True),
-    StructField("log_group",     StringType(), True),
-    StructField("log_stream",    StringType(), True),
-]))
-
-
-@F.udf(returnType=_CW_EVENT_SCHEMA)
-def _extract_cw_log_events(content):
-    """
-    Decompress double-gzipped CloudWatch Logs Firehose payload and
-    return individual log events.
-
-    File layout: outer gzip (Firehose) → inner gzip (CW Logs)
-    → concatenated JSON envelopes with logEvents arrays.
-    """
-    if content is None:
-        return []
-    try:
-        inner = gzip_lib.decompress(bytes(content))
-    except Exception:
-        return []
-    try:
-        text = gzip_lib.decompress(inner).decode("utf-8")
-    except Exception:
-        try:
-            text = inner.decode("utf-8")
-        except Exception:
-            return []
-
-    events = []
-    decoder = json_lib.JSONDecoder()
-    idx = 0
-    while idx < len(text):
-        while idx < len(text) and text[idx] in " \n\r\t":
-            idx += 1
-        if idx >= len(text):
-            break
-        try:
-            obj, end = decoder.raw_decode(text, idx)
-            idx = end
-            if obj.get("messageType") == "DATA_MESSAGE":
-                lg = obj.get("logGroup", "")
-                ls = obj.get("logStream", "")
-                for le in obj.get("logEvents", []):
-                    events.append({
-                        "timestamp":  le.get("timestamp"),
-                        "message":    le.get("message", ""),
-                        "log_group":  lg,
-                        "log_stream": ls,
-                    })
-        except Exception:
-            idx += 1
-    return events
-
-
 # ── Auto Loader Helper ─────────────────────────────────────────────────────────
 
-def _auto_loader_cwlogs(stream_name: str):
+def _auto_loader_fluentbit(stream_name: str):
     """
-    Auto Loader reader for CloudWatch Logs files delivered by Firehose.
+    Auto Loader reader for Fluent Bit NDJSON log files in S3.
 
-    Files are double-gzipped (Firehose GZIP + CW Logs inner gzip).
-    Uses binaryFile format + UDF to decompress and extract events,
-    then parses each log event message as JSON.
+    Each line is a JSON object emitted by the Python structured logger:
+    timestamp (epoch ms), logger, level, filename, function_name, message.
+
+    Constraint: Fluent Bit docker config MUST preserve the original JSON
+    fields (use passthrough/nest filter — no extra envelope wrapping).
     """
     path = f"{S3_RAW_BASE}/{stream_name}/"
-    raw = (
-        spark.readStream
-        .format("cloudFiles")
-        .option("cloudFiles.format", "binaryFile")
-        .option("cloudFiles.schemaLocation",
-                f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}")
-        .load(path)
+    schema = (
+        "timestamp LONG, "
+        "logger STRING, "
+        "level STRING, "
+        "filename STRING, "
+        "function_name STRING, "
+        "message STRING"
     )
     return (
-        raw
-        .withColumn("events", _extract_cw_log_events(F.col("content")))
-        .select(F.explode("events").alias("evt"))
-        .select(
-            F.col("evt.timestamp").alias("timestamp"),
-            F.col("evt.log_group").alias("log_group"),
-            F.col("evt.log_stream").alias("log_stream"),
-            F.col("evt.message").alias("raw_message"),
-        )
-        .withColumn("_parsed", F.from_json("raw_message", "timestamp LONG, logger STRING, level STRING, filename STRING, function_name STRING, message STRING"))
-        .select(
-            F.col("timestamp"),
-            # Fallback: strip proc-id suffix (e.g. "raw_txs_crawler-job-19dde43e" → "RAW_TXS_CRAWLER")
-            # so the Silver filter matches STREAMING_APP_NAMES regardless of log format (plain/JSON).
-            F.coalesce(
-                F.col("_parsed.logger"),
-                F.upper(F.regexp_replace(F.col("log_stream"), r"-job-[0-9a-f]+$", "")),
-            ).alias("logger"),
-            F.coalesce(F.col("_parsed.level"),   F.lit("INFO")).alias("level"),
-            F.col("_parsed.filename").alias("filename"),
-            F.col("_parsed.function_name").alias("function_name"),
-            F.coalesce(F.col("_parsed.message"), F.col("raw_message")).alias("message"),
-            F.col("log_group"),
-            F.col("log_stream"),
-        )
+        spark.readStream
+        .format("cloudFiles")
+        .option("cloudFiles.format", "json")
+        .option("cloudFiles.schemaLocation",
+                f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}_v2")
+        .schema(schema)
+        .load(path)
     )
 
 
@@ -165,15 +84,15 @@ def _auto_loader_cwlogs(stream_name: str):
 # MAGIC %md
 # MAGIC ## Bronze — `b_app_logs_data`
 # MAGIC
-# MAGIC Auto Loader lê NDJSON entregue pelo Firehose (CloudWatch Logs → S3).
-# MAGIC Cada registro JSON contém: `timestamp`, `logger`, `level`, `filename`,
+# MAGIC Auto Loader lê NDJSON entregue pelo Fluent Bit (VPS sidecar → S3).
+# MAGIC Cada linha JSON contém: `timestamp`, `logger`, `level`, `filename`,
 # MAGIC `function_name`, `message`.
 
 # COMMAND ----------
 
 @dlt.table(
     name="b_app_logs_data",
-    comment="Bronze: logs das aplicações on-chain via CloudWatch → Firehose → S3 (NDJSON)",
+    comment="Bronze: logs das aplicações on-chain via Fluent Bit → S3 (NDJSON)",
     table_properties={
         "quality": "bronze",
         "pipelines.autoOptimize.managed": "true",
@@ -181,7 +100,7 @@ def _auto_loader_cwlogs(stream_name: str):
 )
 def bronze_app_logs_data():
     return (
-        _auto_loader_cwlogs("app_logs")
+        _auto_loader_fluentbit("app_logs")
         .withColumn("_ingested_at", F.current_timestamp())
     )
 

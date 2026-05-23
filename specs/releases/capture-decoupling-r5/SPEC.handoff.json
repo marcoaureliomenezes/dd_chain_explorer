@@ -1,0 +1,135 @@
+{
+  "schema_version": "handoff-v1.1",
+  "agent": "product-engineer",
+  "context": "dd-chain-explorer",
+  "produced_at": "2026-05-23T20:00:00Z",
+  "release_id": "capture-decoupling-r5",
+  "scope": "SDD SPEC synthesis for capture-decoupling-r5: migrate DD Chain Explorer capture layer from AWS managed services to Hostinger VPS + Confluent Platform 7.6.x + Redis",
+  "artifact": {
+    "type": "spec",
+    "path": "repos/dd-chain-explorer/specs/releases/capture-decoupling-r5/SPEC.md",
+    "status": "Em revisão",
+    "content_hash": "sha256:pending-operator-verification"
+  },
+  "metrics": {
+    "reports_consumed": 13,
+    "adrs_authored": 9,
+    "success_criteria": 14,
+    "risks_documented": 9,
+    "scope_items": 8,
+    "contradictions_resolved": 4
+  },
+  "findings": [
+    {
+      "id": "F-001",
+      "severity": "CRITICAL",
+      "title": "3 S3 Sink Connectors required (not 2)",
+      "detail_md": "The data-architect v2 report specified only 2 Kafka Connect S3 Sink Connectors (blocks + decoded txs). The data-engineer v2 report confirmed that `b_ethereum.eth_transactions` Bronze table reads from `raw/mainnet-transactions-data/`, requiring a third connector. The SPEC mandates 3 connectors: `s3-sink-blocks`, `s3-sink-txs-data`, `s3-sink-txs-decoded`.",
+      "fix_recommendation": "Implement all 3 S3 Sink Connector configs in `infra/kafka-connect/connectors/`. The third connector reads topic `mainnet-transactions-data` with consumer group `connect-s3-sink-txs-data`."
+    },
+    {
+      "id": "F-002",
+      "severity": "CRITICAL",
+      "title": "dm-app-logs Bronze UDF incompatible with Fluent Bit NDJSON",
+      "detail_md": "The grill-me session (ADR-CAPTURE-005 original) concluded dm-app-logs was unchanged. The data-engineer v2 report (F-007) found that Bronze `b_app_logs_data` uses `cloudFiles.format=binaryFile` with a CloudWatch envelope UDF (`_extract_cw_log_events`) expecting double-gzip format. Fluent Bit writes plain NDJSON. After VPS cutover, `b_app_logs_data` will fail silently, breaking `g_api_keys.*` Gold MVs. The SPEC supersedes the grill-me conclusion: the fix is a hard dependency (Section 2.8, Section 7.2).",
+      "fix_recommendation": "In `dd-chain-explorer` DABs `dlt_app_logs`: remove `_extract_cw_log_events` UDF, switch to `cloudFiles.format=json`. Deploy to DEV before SC-09 gate. Validate Silver and Gold row counts."
+    },
+    {
+      "id": "F-003",
+      "severity": "CRITICAL",
+      "title": "S3 Sink Connector path config must use topics.dir=raw + TimeBasedPartitioner",
+      "detail_md": "Kafka Connect S3 Sink default path is `topics/<topic>/partition=P/`. Databricks Auto Loader expects `raw/<stream>/year=Y/month=M/day=D/hour=H/`. The data-engineer v2 report (F-001 CRITICAL) specifies mandatory connector config override. The devops-engineer v2 report's connector-init script incorrectly uses `AvroFormat` instead of `JsonFormat` — corrected in SPEC ADR-CAPTURE-008.",
+      "fix_recommendation": "All 3 connector JSON configs must include: `topics.dir=raw`, `partitioner.class=io.confluent.connect.storage.partitioner.TimeBasedPartitioner`, `path.format='year'=YYYY/'month'=MM/'day'=dd/'hour'=HH`, `timestamp.extractor=Record`, `format.class=io.confluent.connect.s3.format.json.JsonFormat`, `value.converter.schemas.enable=false`."
+    },
+    {
+      "id": "F-004",
+      "severity": "HIGH",
+      "title": "Schema Registry must be FULL compatibility (not BACKWARD)",
+      "detail_md": "Both data-architect v2 and software-architect v2 reports recommended BACKWARD compatibility. The data-engineer v2 report (F-003) identified that field removal under BACKWARD-only mode would silently drop all rows from DLT Silver `expect_or_drop` expectations. FULL compatibility (bidirectional) is required.",
+      "fix_recommendation": "Set `PUT /config {\"compatibility\": \"FULL\"}` on first Schema Registry deployment. Include as SC-14 validation gate."
+    },
+    {
+      "id": "F-005",
+      "severity": "HIGH",
+      "title": "TransactionDecoded.avsc must include block_timestamp field",
+      "detail_md": "The software-architect v2 report warned that `TransactionDecoded.avsc` must include `block_timestamp` for correct S3 hourly partitioning. This field is required for connector `timestamp.extractor=Record` and forward compatibility if `RecordField` extractor is used in future.",
+      "fix_recommendation": "Add `block_timestamp` as a required field in `TransactionDecoded.avsc` before any schema registration. Validated via schema inspection (SC-02) before first production deployment."
+    },
+    {
+      "id": "F-006",
+      "severity": "HIGH",
+      "title": "Control Center must be replaced with Kafka UI before PROD go-live",
+      "detail_md": "`cp-enterprise-control-center` has a 30-day trial license. It must not be used in long-term PROD. Kafka UI (Provectus, MIT, ~100 MB RAM) is the replacement. TASKS.md must include this as a mandatory item before PROD cutover.",
+      "fix_recommendation": "Swap `cp-enterprise-control-center` for `provectuslabs/kafka-ui:latest` in `docker-compose.yml` before PROD deployment. SC-13 is the validation gate."
+    },
+    {
+      "id": "F-007",
+      "severity": "HIGH",
+      "title": "CA private key must never reside on VPS",
+      "detail_md": "The security-reviewer v2 report (FINDING-IRA-01) and operator-confirmed ADR-CAPTURE-001 both state: the OpenSSL CA key (`ca.key`) must reside on the operator's machine only. The VPS holds only `vps.crt` + `vps.key`. Violation of this rule defeats the IAM Roles Anywhere short-lived credential model.",
+      "fix_recommendation": "Issue VPS certificate from operator machine. SCP only `vps.crt` and `vps.key` to `/etc/dd-chain-capture/`. Never SCP `ca.key`."
+    },
+    {
+      "id": "F-008",
+      "severity": "HIGH",
+      "title": "pipeline-restart-r1 is a hard blocker — must be ARCHIVED before implementation",
+      "detail_md": "`pipeline-restart-r1` is currently ACTIVE (phase: TASKS) in `specs/releases/ACTIVE.md`. `capture-decoupling-r5` cannot begin implementation until `pipeline-restart-r1` is fully closed (all tasks [x], CLOSURE.md written, archived). Overlapping write surfaces (ECS task definitions, capture layer) make concurrent implementation unsafe.",
+      "fix_recommendation": "Complete `pipeline-restart-r1` tasks, write CLOSURE.md, archive to `specs/_archive/releases/pipeline-restart-r1/`, update ACTIVE.md. Only then update ACTIVE.md to `release: capture-decoupling-r5 / phase: IMPLEMENTATION`."
+    },
+    {
+      "id": "F-009",
+      "severity": "MEDIUM",
+      "title": "Devops-engineer v2 connector-init uses AvroFormat — incorrect",
+      "detail_md": "The devops-engineer v2 report's `connector-init` shell script uses `\"format.class\": \"io.confluent.connect.s3.format.avro.AvroFormat\"`. This would produce Avro binary files in S3, breaking Databricks Auto Loader which expects NDJSON. The correct value is `io.confluent.connect.s3.format.json.JsonFormat`.",
+      "fix_recommendation": "Use `JsonFormat` in all 3 connector JSON configs. Do NOT use the devops-engineer v2 connector-init script verbatim — override format.class."
+    }
+  ],
+  "contradictions_resolved": [
+    {
+      "slug": "connector-count",
+      "v1_position": "2 connectors (data-architect v2)",
+      "resolution": "3 connectors required (data-engineer v2 F-001 + critical finding #1)",
+      "authority": "data-engineer v2 + operator critical findings"
+    },
+    {
+      "slug": "dm-app-logs-fix",
+      "v1_position": "dm-app-logs unchanged (grill-me ADR-CAPTURE-005)",
+      "resolution": "Bronze UDF fix required before cutover (data-engineer v2 F-007)",
+      "authority": "data-engineer v2 F-007 supersedes grill-me conclusion"
+    },
+    {
+      "slug": "schema-compatibility",
+      "v1_position": "BACKWARD (data-architect v2 + software-architect v2)",
+      "resolution": "FULL compatibility required (data-engineer v2 F-003 + critical finding #7)",
+      "authority": "data-engineer v2 F-003"
+    },
+    {
+      "slug": "connector-format",
+      "v1_position": "AvroFormat (devops-engineer v2 connector-init script)",
+      "resolution": "JsonFormat required to produce NDJSON for Auto Loader",
+      "authority": "data-engineer v2 F-001 + critical finding #3"
+    }
+  ],
+  "operator_decisions": [
+    {"id": "OD-01", "topic": "AWS credential model on VPS", "decision": "IAM Roles Anywhere with self-signed OpenSSL CA on operator machine"},
+    {"id": "OD-02", "topic": "Redis persistence", "decision": "Memory-only (save='', appendonly=no). No AOF. No volume."},
+    {"id": "OD-03", "topic": "API key election from VPS", "decision": "Round-robin + Redis SETNX. No DynamoDB access from VPS."},
+    {"id": "OD-04", "topic": "Container registry", "decision": "Amazon ECR, sa-east-1, same account. OIDC for CI."},
+    {"id": "OD-05", "topic": "dm-app-logs DLT", "decision": "Fix Bronze UDF (cloudFiles.format=json) before VPS cutover."},
+    {"id": "OD-06", "topic": "Kafka stack", "decision": "Confluent Platform 7.6.x, KRaft, single broker."},
+    {"id": "OD-07", "topic": "Avro compatibility", "decision": "FULL (bidirectional)."},
+    {"id": "OD-08", "topic": "S3 write strategy", "decision": "Kafka Connect S3 Sink (3 connectors). No boto3 direct write from jobs."},
+    {"id": "OD-09", "topic": "Control Center", "decision": "SSH tunnel only (no ports: mapping). Replace with Kafka UI (Provectus MIT) before PROD."},
+    {"id": "OD-10", "topic": "Kafka broker port exposure", "decision": "No ports: mapping for 9092. Internal Docker network only."},
+    {"id": "OD-11", "topic": "Docker credential injection", "decision": "env_file: /etc/dd-chain-capture/aws.env. Never in environment: or secrets: blocks."},
+    {"id": "OD-12", "topic": "aws_signing_helper location", "decision": "Bundled in Connect Docker image. Not bind-mounted."},
+    {"id": "OD-13", "topic": "CA key location", "decision": "Operator machine only. Never on VPS."},
+    {"id": "OD-14", "topic": "VPS specs", "decision": "Minimum 8 GB RAM / 4 vCPU / 60 GB SSD. Recommended 16 GB / 8 vCPU."},
+    {"id": "OD-15", "topic": "DynamoDB access from VPS", "decision": "None. IAM role excludes dynamodb:*."}
+  ],
+  "next_handoff": {
+    "agent": "human",
+    "phase": "SPEC review",
+    "input": "SPEC for capture-decoupling-r5 is Em revisão and ready for operator review and approval. Review SPEC.md for accuracy of all 9 sections, 9 ADRs, 14 success criteria, and 3 dependencies. When satisfied, update Status to 'Aprovado' to unblock PLAN authoring. Key items to validate: (1) 3-connector architecture is correct, (2) dm-app-logs fix is properly scoped as a dependency, (3) ADR-CAPTURE-001 IAM Roles Anywhere matches your CA setup plan, (4) VPS sizing aligns with your Hostinger plan."
+  }
+}

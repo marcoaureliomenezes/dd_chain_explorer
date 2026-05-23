@@ -21,19 +21,40 @@
             "name": "table_etherscan_keys",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "etherscan_health",
+                  "disaggregated": true,
                   "fields": [
-                    {"name": "api_key_name",       "expression": "api_key_name"},
-                    {"name": "calls_1h",           "expression": "calls_1h"},
-                    {"name": "calls_24h",          "expression": "calls_24h"},
-                    {"name": "calls_ok_total",     "expression": "calls_ok_total"},
-                    {"name": "calls_error_total",  "expression": "calls_error_total"},
-                    {"name": "error_rate_pct",     "expression": "error_rate_pct"},
-                    {"name": "last_call_at",       "expression": "last_call_at"}
-                  ],
-                  "disaggregated": false
+                    {
+                      "name": "api_key_name",
+                      "expression": "`api_key_name`"
+                    },
+                    {
+                      "name": "calls_1h",
+                      "expression": "`calls_1h`"
+                    },
+                    {
+                      "name": "calls_24h",
+                      "expression": "`calls_24h`"
+                    },
+                    {
+                      "name": "calls_ok_total",
+                      "expression": "`calls_ok_total`"
+                    },
+                    {
+                      "name": "calls_error_total",
+                      "expression": "`calls_error_total`"
+                    },
+                    {
+                      "name": "error_rate_pct",
+                      "expression": "`error_rate_pct`"
+                    },
+                    {
+                      "name": "last_call_at",
+                      "expression": "`last_call_at`"
+                    }
+                  ]
                 }
               }
             ],
@@ -42,13 +63,34 @@
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {"fieldName": "api_key_name",      "displayName": "API Key"},
-                  {"fieldName": "calls_1h",          "displayName": "Calls (1h)"},
-                  {"fieldName": "calls_24h",         "displayName": "Calls (24h)"},
-                  {"fieldName": "calls_ok_total",    "displayName": "OK Total"},
-                  {"fieldName": "calls_error_total", "displayName": "Erros Total"},
-                  {"fieldName": "error_rate_pct",    "displayName": "Taxa Erro (%)"},
-                  {"fieldName": "last_call_at",      "displayName": "Última Chamada"}
+                  {
+                    "fieldName": "api_key_name",
+                    "displayName": "API Key"
+                  },
+                  {
+                    "fieldName": "calls_1h",
+                    "displayName": "Calls (1h)"
+                  },
+                  {
+                    "fieldName": "calls_24h",
+                    "displayName": "Calls (24h)"
+                  },
+                  {
+                    "fieldName": "calls_ok_total",
+                    "displayName": "OK Total"
+                  },
+                  {
+                    "fieldName": "calls_error_total",
+                    "displayName": "Erros Total"
+                  },
+                  {
+                    "fieldName": "error_rate_pct",
+                    "displayName": "Taxa Erro (%)"
+                  },
+                  {
+                    "fieldName": "last_call_at",
+                    "displayName": "Última Chamada"
+                  }
                 ]
               },
               "frame": {
@@ -57,41 +99,51 @@
               }
             }
           },
-          "position": {"x": 0, "y": 0, "width": 6, "height": 6}
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 6
+          }
         },
         {
           "widget": {
             "name": "bar_etherscan_calls_24h",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "etherscan_health",
+                  "disaggregated": false,
                   "fields": [
-                    {"name": "api_key_name", "expression": "api_key_name"},
-                    {"name": "calls_24h",    "expression": "calls_24h"},
-                    {"name": "calls_1h",     "expression": "calls_1h"}
-                  ],
-                  "disaggregated": false
+                    {
+                      "name": "api_key_name",
+                      "expression": "`api_key_name`"
+                    },
+                    {
+                      "name": "sum(calls_24h)",
+                      "expression": "SUM(`calls_24h`)"
+                    }
+                  ]
                 }
               }
             ],
             "spec": {
-              "version": 2,
+              "version": 3,
               "widgetType": "bar",
               "encodings": {
                 "x": {
                   "fieldName": "api_key_name",
-                  "scale": {"type": "ordinal"},
-                  "displayName": "API Key"
-                },
-                "y": [
-                  {
-                    "fieldName": "calls_24h",
-                    "scale": {"type": "quantitative"},
-                    "displayName": "Chamadas (24h)"
+                  "scale": {
+                    "type": "categorical"
                   }
-                ]
+                },
+                "y": {
+                  "fieldName": "sum(calls_24h)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                }
               },
               "frame": {
                 "showTitle": true,
@@ -99,27 +151,56 @@
               }
             }
           },
-          "position": {"x": 0, "y": 6, "width": 6, "height": 6}
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 6,
+            "height": 6
+          }
         },
         {
           "widget": {
             "name": "table_web3_keys",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "web3_health",
+                  "disaggregated": true,
                   "fields": [
-                    {"name": "api_key_name",       "expression": "api_key_name"},
-                    {"name": "vendor",             "expression": "vendor"},
-                    {"name": "calls_1h",           "expression": "calls_1h"},
-                    {"name": "calls_24h",          "expression": "calls_24h"},
-                    {"name": "calls_ok_total",     "expression": "calls_ok_total"},
-                    {"name": "calls_error_total",  "expression": "calls_error_total"},
-                    {"name": "error_rate_pct",     "expression": "error_rate_pct"},
-                    {"name": "last_call_at",       "expression": "last_call_at"}
-                  ],
-                  "disaggregated": false
+                    {
+                      "name": "api_key_name",
+                      "expression": "`api_key_name`"
+                    },
+                    {
+                      "name": "vendor",
+                      "expression": "`vendor`"
+                    },
+                    {
+                      "name": "calls_1h",
+                      "expression": "`calls_1h`"
+                    },
+                    {
+                      "name": "calls_24h",
+                      "expression": "`calls_24h`"
+                    },
+                    {
+                      "name": "calls_ok_total",
+                      "expression": "`calls_ok_total`"
+                    },
+                    {
+                      "name": "calls_error_total",
+                      "expression": "`calls_error_total`"
+                    },
+                    {
+                      "name": "error_rate_pct",
+                      "expression": "`error_rate_pct`"
+                    },
+                    {
+                      "name": "last_call_at",
+                      "expression": "`last_call_at`"
+                    }
+                  ]
                 }
               }
             ],
@@ -128,14 +209,38 @@
               "widgetType": "table",
               "encodings": {
                 "columns": [
-                  {"fieldName": "api_key_name",      "displayName": "API Key"},
-                  {"fieldName": "vendor",            "displayName": "Vendor"},
-                  {"fieldName": "calls_1h",          "displayName": "Calls (1h)"},
-                  {"fieldName": "calls_24h",         "displayName": "Calls (24h)"},
-                  {"fieldName": "calls_ok_total",    "displayName": "OK Total"},
-                  {"fieldName": "calls_error_total", "displayName": "Erros Total"},
-                  {"fieldName": "error_rate_pct",    "displayName": "Taxa Erro (%)"},
-                  {"fieldName": "last_call_at",      "displayName": "Última Chamada"}
+                  {
+                    "fieldName": "api_key_name",
+                    "displayName": "API Key"
+                  },
+                  {
+                    "fieldName": "vendor",
+                    "displayName": "Vendor"
+                  },
+                  {
+                    "fieldName": "calls_1h",
+                    "displayName": "Calls (1h)"
+                  },
+                  {
+                    "fieldName": "calls_24h",
+                    "displayName": "Calls (24h)"
+                  },
+                  {
+                    "fieldName": "calls_ok_total",
+                    "displayName": "OK Total"
+                  },
+                  {
+                    "fieldName": "calls_error_total",
+                    "displayName": "Erros Total"
+                  },
+                  {
+                    "fieldName": "error_rate_pct",
+                    "displayName": "Taxa Erro (%)"
+                  },
+                  {
+                    "fieldName": "last_call_at",
+                    "displayName": "Última Chamada"
+                  }
                 ]
               },
               "frame": {
@@ -144,44 +249,60 @@
               }
             }
           },
-          "position": {"x": 0, "y": 12, "width": 6, "height": 6}
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 6,
+            "height": 6
+          }
         },
         {
           "widget": {
             "name": "bar_web3_calls_24h",
             "queries": [
               {
-                "name": "main",
+                "name": "main_query",
                 "query": {
                   "datasetName": "web3_health",
+                  "disaggregated": false,
                   "fields": [
-                    {"name": "api_key_name", "expression": "api_key_name"},
-                    {"name": "vendor",       "expression": "vendor"},
-                    {"name": "calls_24h",    "expression": "calls_24h"}
-                  ],
-                  "disaggregated": false
+                    {
+                      "name": "api_key_name",
+                      "expression": "`api_key_name`"
+                    },
+                    {
+                      "name": "sum(calls_24h)",
+                      "expression": "SUM(`calls_24h`)"
+                    },
+                    {
+                      "name": "vendor",
+                      "expression": "`vendor`"
+                    }
+                  ]
                 }
               }
             ],
             "spec": {
-              "version": 2,
+              "version": 3,
               "widgetType": "bar",
               "encodings": {
                 "x": {
                   "fieldName": "api_key_name",
-                  "scale": {"type": "ordinal"},
-                  "displayName": "API Key"
-                },
-                "y": [
-                  {
-                    "fieldName": "calls_24h",
-                    "scale": {"type": "quantitative"},
-                    "displayName": "Chamadas (24h)"
+                  "scale": {
+                    "type": "categorical"
                   }
-                ],
+                },
+                "y": {
+                  "fieldName": "sum(calls_24h)",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
                 "color": {
                   "fieldName": "vendor",
-                  "displayName": "Vendor"
+                  "scale": {
+                    "type": "categorical"
+                  }
                 }
               },
               "frame": {
@@ -190,7 +311,12 @@
               }
             }
           },
-          "position": {"x": 0, "y": 18, "width": 6, "height": 6}
+          "position": {
+            "x": 0,
+            "y": 18,
+            "width": 6,
+            "height": 6
+          }
         }
       ]
     }
