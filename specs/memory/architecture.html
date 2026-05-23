@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture — DD Chain Explorer</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a1a; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: .5rem; }
+    h2 { margin-top: 2rem; border-bottom: 1px solid #ccc; padding-bottom: .3rem; }
+    h3 { margin-top: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+    th { background: #f4f4f4; }
+    code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+    pre.mermaid { background: #f9f9f9; border: 1px solid #ddd; padding: 1rem; border-radius: 4px; overflow-x: auto; }
+    .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: .75rem 1rem; margin: 1rem 0; }
+    blockquote { border-left: 4px solid #ccc; margin: 0; padding: .5rem 1rem; color: #555; }
+  </style>
+</head>
+<body>
+
+<h1>Architecture — DD Chain Explorer</h1>
+<blockquote>
+  <p>System design reference. Source of truth for structural decisions.<br>
+  Current state: post pipeline-restart-r1 (validated 2026-05-23).</p>
+</blockquote>
+
+<section id="data-flow">
+<h2>End-to-End Data Flow</h2>
+
+<pre class="mermaid">
+flowchart TD
+  ETH["Ethereum Mainnet (RPC)"]
+
+  subgraph CAPTURE ["CAPTURE LAYER — Docker Compose (DEV) / ECS Fargate (PRD)"]
+    J1["Job 1: MinedBlocksWatcher\npoll eth_getBlock every 1s\n→ SQS mainnet-mined-blocks-events"]
+    J2["Job 2: OrphanBlocksWatcher\nconsume SQS, verify hashes\nDynamoDB BLOCK_CACHE (TTL 1h)"]
+    J3["Job 3: BlockDataCrawler\nconsume SQS, fetch 18+ fields\n→ Firehose mainnet-blocks-data\nfan-out tx hashes → SQS mainnet-block-txs-hash-id"]
+    J4["Job 4: MinedTxsCrawler ×6\nconsume SQS, fetch tx via Infura\nDynamoDB SEMAPHORE key rotation\n→ Kinesis mainnet-transactions-data"]
+    J5["Job 5: TxsInputDecoder ×3\nconsume Kinesis, decode calldata\nDynamoDB ABI/ABI_NEG cache\n→ Firehose mainnet-transactions-decoded"]
+  end
+
+  subgraph S3RAW ["S3 RAW LAYER — dm-chain-explorer-raw-data (PRD)"]
+    S3["raw/mainnet-blocks-data/\nraw/mainnet-transactions-data/\nraw/mainnet-transactions-decoded/\nraw/app_logs/\nraw/batch/ (Lambda)"]
+  end
+
+  subgraph DLT ["DATABRICKS DLT — MEDALLION ARCHITECTURE"]
+    TRIG["dm-trigger-all-dlts\ncron 0 */5 * * * ?\nStatus: PAUSED (DEV)"]
+    PIPE1["dm-ethereum\nBronze → Silver → Gold\n15 Gold MVs"]
+    PIPE2["dm-app-logs\nBronze → Silver → Gold\n2 Gold MVs"]
+  end
+
+  subgraph SERVING ["SERVING LAYER"]
+    DASH["4 Lakeview Dashboards (DEV: ACTIVE)\nNetwork Overview · Gas Analytics\nHot Contracts · API Health"]
+    GENIE["Genie AI/BI (1 space)"]
+    DYNAMO["DynamoDB CONSUMPTION\nvia gold_to_dynamodb Lambda"]
+    S3EXP["S3 Gold Exports\njob_export_gold"]
+  end
+
+  ETH --> J1
+  J1 --> J2
+  J2 --> J3
+  J3 --> J4
+  J4 --> J5
+  J3 -->|Firehose Direct Put| S3
+  J5 -->|Firehose Direct Put| S3
+  S3 -->|Auto Loader cloudFiles| TRIG
+  TRIG --> PIPE1
+  TRIG --> PIPE2
+  PIPE1 --> DASH
+  PIPE1 --> GENIE
+  PIPE1 --> DYNAMO
+  PIPE1 --> S3EXP
+  PIPE2 --> DASH
+</pre>
+
+</section>
+
+<section id="capture-layer">
+<h2>Capture Layer</h2>
+
+<p>Five Python jobs process the Ethereum event stream. In DEV they run as Docker Compose services; in PRD as ECS Fargate services.</p>
+
+<table>
+  <thead><tr><th>Job</th><th>Replicas (PRD)</th><th>Input</th><th>Output</th><th>State</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Job 1 — MinedBlocksWatcher</td><td>1</td>
+      <td>Ethereum RPC poll (1s)</td>
+      <td>SQS <code>mainnet-mined-blocks-events</code></td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>Job 2 — OrphanBlocksWatcher</td><td>1</td>
+      <td>SQS above</td>
+      <td>Same SQS (re-emit on reorg)</td>
+      <td>DynamoDB BLOCK_CACHE (TTL 1h)</td>
+    </tr>
+    <tr>
+      <td>Job 3 — BlockDataCrawler</td><td>1</td>
+      <td>SQS above</td>
+      <td>Firehose <code>mainnet-blocks-data</code>; SQS <code>mainnet-block-txs-hash-id</code></td>
+      <td>—</td>
+    </tr>
+    <tr>
+      <td>Job 4 — MinedTxsCrawler</td><td>6</td>
+      <td>SQS <code>mainnet-block-txs-hash-id</code></td>
+      <td>Kinesis <code>mainnet-transactions-data</code></td>
+      <td>DynamoDB SEMAPHORE (TTL 60s); 17 Infura API keys</td>
+    </tr>
+    <tr>
+      <td>Job 5 — TxsInputDecoder</td><td>3</td>
+      <td>Kinesis above</td>
+      <td>Firehose <code>mainnet-transactions-decoded</code></td>
+      <td>DynamoDB ABI / ABI_NEG caches</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>DEV status (post R1):</strong> Docker Compose stack UP with 12 containers running.
+  Firehose streams and S3 raw paths are present for PRD; in DEV the capture layer writes
+  to DEV-specific Kinesis/Firehose resources. The <code>[dev] dm-trigger-all-dlts</code>
+  DLT trigger is <strong>PAUSED</strong> by design — pipeline will be restarted once
+  PRD-bound data is available for end-to-end validation.
+</div>
+
+<h3>IAM Security (post R1)</h3>
+
+<p>The ECS task role (<code>dm-chain-explorer-ecs-task-role</code>) is scoped to exactly the operations required:</p>
+
+<table>
+  <thead><tr><th>Service</th><th>Allowed actions</th><th>ARN scope</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>DynamoDB</td>
+      <td><code>GetItem</code>, <code>PutItem</code>, <code>UpdateItem</code>, <code>DeleteItem</code></td>
+      <td>Explicit table ARN — no wildcard</td>
+    </tr>
+    <tr>
+      <td>SQS</td>
+      <td><code>SendMessage</code>, <code>ReceiveMessage</code>, <code>DeleteMessage</code>, <code>GetQueueAttributes</code></td>
+      <td><code>arn:aws:sqs:${region}:${account_id}:mainnet-*</code></td>
+    </tr>
+    <tr>
+      <td>Kinesis</td>
+      <td><code>PutRecord</code>, <code>PutRecords</code>, <code>GetRecords</code>, <code>GetShardIterator</code>, <code>DescribeStream</code>, <code>ListShards</code></td>
+      <td><code>arn:aws:kinesis:${region}:${account_id}:stream/mainnet-*</code></td>
+    </tr>
+    <tr>
+      <td>Firehose</td>
+      <td><code>PutRecord</code>, <code>PutRecordBatch</code></td>
+      <td><code>arn:aws:firehose:${region}:${account_id}:deliverystream/*</code></td>
+    </tr>
+    <tr>
+      <td>SSM</td>
+      <td><code>GetParameter</code>, <code>GetParameters</code></td>
+      <td><code>arn:aws:ssm:${region}:${account_id}:parameter/dm-chain-explorer/*</code></td>
+    </tr>
+    <tr>
+      <td>S3</td>
+      <td><code>GetObject</code>, <code>PutObject</code></td>
+      <td>Raw data bucket only</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>Removed in R1: <code>dynamodb:Scan</code>, <code>dynamodb:Query</code>, <code>dynamodb:BatchGetItem</code>, <code>dynamodb:BatchWriteItem</code>, <code>dynamodb:DescribeTable</code>. All wildcard <code>*:*</code> ARN patterns replaced with explicit <code>${region}:${account_id}</code> scoping. Databricks cluster role has no SSM access.</p>
+
+</section>
+
+<section id="medallion">
+<h2>Databricks DLT — Medallion Architecture</h2>
+
+<h3>Pipeline: dm-ethereum</h3>
+
+<table>
+  <thead><tr><th>Layer</th><th>Schema (DEV / PRD)</th><th>Tables</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Bronze</td>
+      <td><code>b_ethereum</code></td>
+      <td>eth_mined_blocks, eth_transactions, eth_txs_input_decoded, popular_contracts_txs</td>
+    </tr>
+    <tr>
+      <td>Silver</td>
+      <td><code>s_apps</code></td>
+      <td>eth_blocks, eth_blocks_withdrawals, eth_transactions_staging, txs_inputs_decoded_fast, transactions_ethereum, eth_canonical_blocks_index (MV — bounded 1,000-block window)</td>
+    </tr>
+    <tr>
+      <td>Gold</td>
+      <td><code>g_apps</code>, <code>g_network</code></td>
+      <td>15 materialized views</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>Pipeline: dm-app-logs</h3>
+
+<table>
+  <thead><tr><th>Layer</th><th>Schema</th><th>Tables</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Bronze</td>
+      <td><code>b_app_logs</code></td>
+      <td>b_app_logs_data</td>
+    </tr>
+    <tr>
+      <td>Silver</td>
+      <td><code>s_logs</code></td>
+      <td>logs_streaming, logs_batch</td>
+    </tr>
+    <tr>
+      <td>Gold</td>
+      <td><code>g_api_keys</code></td>
+      <td>etherscan_consumption, web3_keys_consumption</td>
+    </tr>
+  </tbody>
+</table>
+
+<h3>eth_canonical_blocks_index — Bounded Window (post R1)</h3>
+
+<p>The <code>eth_canonical_blocks_index</code> Silver MV was refactored from a full-table O(N²) self-join to a bounded rolling window. Key constant: <code>_CANONICAL_WINDOW_BLOCKS = 1_000</code>. Blocks outside the window are marked canonical by default; the four CTEs (<code>outside_window</code>, <code>window_blocks</code>, <code>parent_refs</code>, <code>inside_window</code>) perform the chain-following logic only within the window. Located at <code>ethereum_pipeline.py:491–573</code>.</p>
+
+<h3>Trigger (DEV)</h3>
+
+<p>Job <code>[dev] dm-trigger-all-dlts</code>: cron <code>0 */5 * * * ?</code> (every 5 minutes). Status: <strong>PAUSED</strong>. Will be unpaused when PRD-bound data flow is validated end-to-end.</p>
+
+</section>
+
+<section id="serving-layer">
+<h2>Serving Layer</h2>
+
+<h3>Lakeview Dashboards (4)</h3>
+
+<p>All four dashboards were repaired and deployed to DEV in R1. All use <code>warehouse_id: a2a66f2adb0faf18</code> (Serverless Starter Warehouse). All widgets upgraded to Databricks widget <code>version:3</code>.</p>
+
+<table>
+  <thead><tr><th>Dashboard</th><th>DEV ID</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>Network Overview</td><td><code>01f130f640de104ba0ffb93e4b0a32c8</code></td><td>ACTIVE</td></tr>
+    <tr><td>Gas Analytics</td><td><code>01f130f64d4d1d5ca50457cfafdc82ad</code></td><td>ACTIVE</td></tr>
+    <tr><td>Hot Contracts</td><td><code>01f130f6471412f29cb443ac92bcce76</code></td><td>ACTIVE</td></tr>
+    <tr><td>API Health</td><td><code>01f130f65385152280abbea7b5017f19</code></td><td>ACTIVE</td></tr>
+  </tbody>
+</table>
+
+<p><code>embed_credentials: false</code> is set in all four dashboard resource YAML files.</p>
+
+<h3>Genie AI/BI</h3>
+
+<p>One Genie space deployed to DEV. All 7 table FQNs corrected (stale <code>_fast</code> aliases removed; correct schemas: <code>s_apps.transactions_ethereum</code>, <code>s_apps.eth_blocks</code>, <code>g_apps.*</code>, <code>g_network.*</code>, <code>g_api_keys.*</code>). Note: <code>genie_spaces</code> is not a DABs terraform-managed resource in provider v1.88.0 — Genie space creation requires UI or future DABs support; FQN correctness is validated via direct SQL.</p>
+
+<h3>DynamoDB Export (Lambda)</h3>
+
+<p><code>dm-chain-explorer-gold_to_dynamodb</code> Lambda: triggered by S3 PutObject on <code>exports/</code> prefix; writes CONSUMPTION entities. Provisioned fresh in PRD (2026-05-23). CloudWatch log ARN scoped to <code>/aws/lambda/${name_prefix}-*</code>.</p>
+
+</section>
+
+<section id="environment-topology">
+<h2>Environment Topology</h2>
+
+<table>
+  <thead><tr><th>Aspect</th><th>DEV</th><th>HML</th><th>PRD</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Streaming apps</td>
+      <td>Docker Compose (local) — 12 containers, UP</td>
+      <td>ECS Fargate (ephemeral, per CI/CD deploy)</td>
+      <td>ECS Fargate (persistent)</td>
+    </tr>
+    <tr>
+      <td>Databricks</td>
+      <td>Free Edition (<code>dev</code> catalog)</td>
+      <td>Free Edition (<code>hml</code> catalog)</td>
+      <td>Databricks Workspace (<code>dd_chain_explorer</code> catalog)</td>
+    </tr>
+    <tr>
+      <td>S3</td>
+      <td><code>dm-chain-explorer-dev-ingestion</code></td>
+      <td><code>dm-chain-explorer-hml-raw</code> / <code>-hml-lakehouse</code></td>
+      <td><code>dm-chain-explorer-raw-data</code> + <code>dm-chain-explorer-lakehouse</code></td>
+    </tr>
+    <tr>
+      <td>DynamoDB</td>
+      <td><code>dm-chain-explorer-dev</code></td>
+      <td><code>dm-chain-explorer-hml</code></td>
+      <td><code>dm-chain-explorer</code></td>
+    </tr>
+    <tr>
+      <td>Auth (streaming)</td>
+      <td><code>~/.aws</code> profile</td>
+      <td>GitHub Secrets IAM user</td>
+      <td>ECS IAM task role (scoped — no Scan, no wildcards)</td>
+    </tr>
+    <tr>
+      <td>Auth (Databricks)</td>
+      <td>PAT (<code>[dev]</code> profile)</td>
+      <td>PAT (GitHub Secret)</td>
+      <td>OAuth M2M service principal</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="deploy-order">
+<h2>PRD Deploy Order (Terraform)</h2>
+
+<pre class="mermaid">
+flowchart TD
+  P1A["Phase 1a: 02_vpc"] & P1B["Phase 1b: 04_peripherals"] --> P2
+  P2["Phase 2: 03_iam"] --> P3A & P3B & P3C
+  P3A["Phase 3a: 05a_databricks_account"]
+  P3B["Phase 3b: 06_lambda"]
+  P3C["Phase 3c: 07_ecs"]
+  P3A & P3B & P3C --> P4["Phase 4: 05b_databricks_workspace"]
+</pre>
+
+<p>Destroy order (reverse): 05b → (05a + 06 + 07 parallel) → 04 → 03 → 02 → never destroy 01.</p>
+
+</section>
+
+<section id="adrs">
+<h2>Architectural Decisions</h2>
+
+<h3>ADR-001: Kinesis + Firehose, no Kafka / Schema Registry</h3>
+<p>Use Kinesis Data Streams + Firehose Direct Put as the event bus. JSON (NDJSON) natively with no Avro/Protobuf. Kafka MSK introduces significant operational overhead and cost for a single-pipeline platform.</p>
+
+<h3>ADR-002: Firehose Direct Put vs Kinesis Intermediary</h3>
+<p>Blocks data and decoded transactions use Firehose Direct Put. Only raw transactions flow through Kinesis Data Streams (required for the multi-replica Job 4 → Job 5 consumer pattern).</p>
+
+<h3>ADR-003: Single-Table DynamoDB Design</h3>
+<p>One DynamoDB table per environment (<code>dm-chain-explorer[-dev|-hml]</code>). All entity types (SEMAPHORE, COUNTER, BLOCK_CACHE, ABI, ABI_NEG, CONTRACT, CONSUMPTION) use PK+SK composite key with entity type as PK prefix.</p>
+
+<h3>ADR-004: DABs Component Atomicity</h3>
+<p>Each Databricks component (DLT pipeline, batch job, dashboard, alert, Genie) is an autonomous Databricks Asset Bundle with its own <code>databricks.yml</code> and 3-target config (dev/hml/prod). Enables independent deployment and lifecycle management.</p>
+
+<h3>ADR-005: Lambda Architecture for Transactions</h3>
+<p><code>transactions_lambda</code> Gold MV unions streaming transactions with batch contract transactions (from Lambda), deduplicating by <code>tx_hash</code> with priority by decode quality (full=1, full_4byte=2, partial=3, batch_sem_decode=4, unknown=5).</p>
+
+<h3>ADR-006: Distributed API Key Rotation via DynamoDB Semaphore</h3>
+<p>Job 4 (MinedTxsCrawler) runs as 6 parallel replicas coordinating Infura API key assignment via a DynamoDB semaphore (SEMAPHORE entity, TTL=60s). Supports 17 API keys at ~100 RPS/key each.</p>
+
+</section>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true });
+</script>
+</body>
+</html>

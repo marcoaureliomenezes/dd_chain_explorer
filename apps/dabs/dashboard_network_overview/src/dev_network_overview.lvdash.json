@@ -1,0 +1,512 @@
+{
+  "datasets": [
+    {
+      "displayName": "Resumo Rede — últimas 24h de dados",
+      "name": "network_summary_24h",
+      "queryLines": [
+        "SELECT\n",
+        "  SUM(block_count)                                    AS blocks_24h,\n",
+        "  ROUND(AVG(avg_txs_per_block), 2)                    AS avg_tx_per_block,\n",
+        "  ROUND(AVG(avg_gas_price_gwei), 4)                   AS avg_gas_price_gwei,\n",
+        "  ROUND(AVG(avg_block_utilization_pct) * 100, 2)      AS avg_block_utilization_pct\n",
+        "FROM (\n",
+        "  SELECT *\n",
+        "  FROM dev.g_network.network_metrics_hourly\n",
+        "  ORDER BY hour_bucket DESC\n",
+        "  LIMIT 24\n",
+        ") recent"
+      ]
+    },
+    {
+      "displayName": "Tendência Horária — últimos 7 dias de dados",
+      "name": "hourly_trend",
+      "queryLines": [
+        "SELECT\n",
+        "  hour_bucket,\n",
+        "  block_count,\n",
+        "  ROUND(avg_txs_per_block, 2)          AS avg_tx_per_block,\n",
+        "  ROUND(avg_gas_price_gwei, 4)         AS avg_gas_price_gwei,\n",
+        "  ROUND(tps_avg, 4)                    AS tps_avg\n",
+        "FROM (\n",
+        "  SELECT *\n",
+        "  FROM dev.g_network.network_metrics_hourly\n",
+        "  ORDER BY hour_bucket DESC\n",
+        "  LIMIT 168\n",
+        ") recent\n",
+        "ORDER BY hour_bucket ASC"
+      ]
+    },
+    {
+      "displayName": "Saúde da Produção de Blocos",
+      "name": "block_time_health",
+      "queryLines": [
+        "SELECT\n",
+        "  hour_bucket,\n",
+        "  block_count,\n",
+        "  missed_slots_estimated,\n",
+        "  ROUND(missed_slot_rate_pct, 2)   AS missed_slot_rate_pct,\n",
+        "  ROUND(avg_slot_gap_sec, 2)       AS avg_slot_gap_sec,\n",
+        "  max_slot_gap_sec,\n",
+        "  gap_events_count\n",
+        "FROM dev.g_network.block_production_health\n",
+        "ORDER BY hour_bucket DESC\n",
+        "LIMIT 168"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "displayName": "Network Overview",
+      "layout": [
+        {
+          "position": {
+            "height": 3,
+            "width": 2,
+            "x": 0,
+            "y": 0
+          },
+          "widget": {
+            "name": "counter_blocks_24h",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "network_summary_24h",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "blocks_24h",
+                      "name": "blocks_24h"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "value": {
+                  "displayName": "Blocos (24h)",
+                  "fieldName": "blocks_24h"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Blocos (24h)"
+              },
+              "version": 2,
+              "widgetType": "counter"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 3,
+            "width": 2,
+            "x": 2,
+            "y": 0
+          },
+          "widget": {
+            "name": "counter_avg_tx",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "network_summary_24h",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "avg_tx_per_block",
+                      "name": "avg_tx_per_block"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "value": {
+                  "displayName": "Avg Tx / Bloco",
+                  "fieldName": "avg_tx_per_block"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Tx / Bloco"
+              },
+              "version": 2,
+              "widgetType": "counter"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 3,
+            "width": 2,
+            "x": 4,
+            "y": 0
+          },
+          "widget": {
+            "name": "counter_gas_price",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "network_summary_24h",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "avg_gas_price_gwei",
+                      "name": "avg_gas_price_gwei"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "value": {
+                  "displayName": "Avg Gas Price (Gwei)",
+                  "fieldName": "avg_gas_price_gwei"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Gas Price (Gwei)"
+              },
+              "version": 2,
+              "widgetType": "counter"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 6,
+            "width": 6,
+            "x": 0,
+            "y": 3
+          },
+          "widget": {
+            "name": "line_blocks_per_hour",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "hourly_trend",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "hour_bucket",
+                      "name": "hour_bucket"
+                    },
+                    {
+                      "expression": "block_count",
+                      "name": "block_count"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "x": {
+                  "displayName": "Hora",
+                  "fieldName": "hour_bucket",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": [
+                  {
+                    "displayName": "Blocos",
+                    "fieldName": "block_count",
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Blocos por Hora (últimos 7 dias de dados)"
+              },
+              "mark": {
+                "type": "line"
+              },
+              "version": 2,
+              "widgetType": "xy"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 6,
+            "width": 3,
+            "x": 0,
+            "y": 9
+          },
+          "widget": {
+            "name": "line_avg_tx",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "hourly_trend",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "hour_bucket",
+                      "name": "hour_bucket"
+                    },
+                    {
+                      "expression": "avg_tx_per_block",
+                      "name": "avg_tx_per_block"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "x": {
+                  "displayName": "Hora",
+                  "fieldName": "hour_bucket",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": [
+                  {
+                    "displayName": "Avg Tx/Bloco",
+                    "fieldName": "avg_tx_per_block",
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Tx por Bloco"
+              },
+              "mark": {
+                "type": "line"
+              },
+              "version": 2,
+              "widgetType": "xy"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 6,
+            "width": 3,
+            "x": 3,
+            "y": 9
+          },
+          "widget": {
+            "name": "line_gas_price",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "hourly_trend",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "hour_bucket",
+                      "name": "hour_bucket"
+                    },
+                    {
+                      "expression": "avg_gas_price_gwei",
+                      "name": "avg_gas_price_gwei"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "x": {
+                  "displayName": "Hora",
+                  "fieldName": "hour_bucket",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": [
+                  {
+                    "displayName": "Avg Gas Price (Gwei)",
+                    "fieldName": "avg_gas_price_gwei",
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Avg Gas Price (Gwei)"
+              },
+              "mark": {
+                "type": "line"
+              },
+              "version": 2,
+              "widgetType": "xy"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 8,
+            "width": 6,
+            "x": 0,
+            "y": 15
+          },
+          "widget": {
+            "name": "table_block_time_health",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "block_time_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "hour_bucket",
+                      "name": "hour_bucket"
+                    },
+                    {
+                      "expression": "block_count",
+                      "name": "block_count"
+                    },
+                    {
+                      "expression": "missed_slots_estimated",
+                      "name": "missed_slots_estimated"
+                    },
+                    {
+                      "expression": "missed_slot_rate_pct",
+                      "name": "missed_slot_rate_pct"
+                    },
+                    {
+                      "expression": "avg_slot_gap_sec",
+                      "name": "avg_slot_gap_sec"
+                    },
+                    {
+                      "expression": "max_slot_gap_sec",
+                      "name": "max_slot_gap_sec"
+                    },
+                    {
+                      "expression": "gap_events_count",
+                      "name": "gap_events_count"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "columns": [
+                  {
+                    "displayName": "Hora",
+                    "fieldName": "hour_bucket"
+                  },
+                  {
+                    "displayName": "Blocos",
+                    "fieldName": "block_count"
+                  },
+                  {
+                    "displayName": "Slots Perdidos (est.)",
+                    "fieldName": "missed_slots_estimated"
+                  },
+                  {
+                    "displayName": "Taxa Perda (%)",
+                    "fieldName": "missed_slot_rate_pct"
+                  },
+                  {
+                    "displayName": "Gap Médio (s)",
+                    "fieldName": "avg_slot_gap_sec"
+                  },
+                  {
+                    "displayName": "Gap Máx (s)",
+                    "fieldName": "max_slot_gap_sec"
+                  },
+                  {
+                    "displayName": "Eventos de Gap",
+                    "fieldName": "gap_events_count"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Saúde da Produção de Blocos — Slots e Gaps por Hora"
+              },
+              "version": 2,
+              "widgetType": "table"
+            }
+          }
+        },
+        {
+          "position": {
+            "height": 6,
+            "width": 6,
+            "x": 0,
+            "y": 23
+          },
+          "widget": {
+            "name": "line_missed_slot_rate",
+            "queries": [
+              {
+                "name": "main",
+                "query": {
+                  "datasetName": "block_time_health",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "expression": "hour_bucket",
+                      "name": "hour_bucket"
+                    },
+                    {
+                      "expression": "missed_slot_rate_pct",
+                      "name": "missed_slot_rate_pct"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "encodings": {
+                "x": {
+                  "displayName": "Hora",
+                  "fieldName": "hour_bucket",
+                  "scale": {
+                    "type": "temporal"
+                  }
+                },
+                "y": [
+                  {
+                    "displayName": "Taxa Slots Perdidos (%)",
+                    "fieldName": "missed_slot_rate_pct",
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Taxa de Slots Perdidos por Hora (%)"
+              },
+              "mark": {
+                "type": "line"
+              },
+              "version": 2,
+              "widgetType": "xy"
+            }
+          }
+        }
+      ],
+      "name": "network_overview_page",
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ]
+}

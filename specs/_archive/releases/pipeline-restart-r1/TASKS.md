@@ -152,15 +152,15 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 ## CLOSURE Tasks (product-engineer — CLOSURE phase only)
 
-- [ ] T-R1-CL-01 — **Convert specs/memory/architecture.md to specs/memory/architecture.html**
+- [x] T-R1-CL-01 — **Convert specs/memory/architecture.md to specs/memory/architecture.html**
   Owner: product-engineer | Phase: CLOSURE only
   Done: `specs/memory/architecture.html` exists and reflects post-R1 operational architecture.
 
-- [ ] T-R1-CL-02 — **Convert specs/memory/aws-resources.md to specs/memory/aws-resources.html**
+- [x] T-R1-CL-02 — **Convert specs/memory/aws-resources.md to specs/memory/aws-resources.html**
   Owner: product-engineer | Phase: CLOSURE only
   Done: `specs/memory/aws-resources.html` exists and reflects post-R1 IAM fixes applied.
 
-- [ ] T-R1-CL-03 — **Convert specs/memory/data-catalog.md to specs/memory/data-catalog.html**
+- [x] T-R1-CL-03 — **Convert specs/memory/data-catalog.md to specs/memory/data-catalog.html**
   Owner: product-engineer | Phase: CLOSURE only
   Done: `specs/memory/data-catalog.html` exists with corrected Gold/Silver schema; stale FQNs removed.
 
