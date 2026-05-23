@@ -96,27 +96,27 @@ WP-1/WP-2/WP-3. WP-5 is strictly sequential after WP-3 and WP-4.
 <!-- Write-set: dd-chain-capture/apps/job1..job5/ -->
 <!-- Depends on: T-R5-WP1-02, T-R5-WP1-03, T-R5-WP1-04 (library), T-R5-WP2-02 (infra) -->
 
-- [ ] T-R5-WP3-01 — **Adapt Job 1: MinedBlocksWatcher → Kafka producer**
+- [-] T-R5-WP3-01 — **Adapt Job 1: MinedBlocksWatcher → Kafka producer**
   Owner: software-engineer-python
   Description: Replace `dm_kinesis.KinesisProducer` with `dm_kafka.KafkaProducer`. Job polls `eth_getBlock` and produces Avro `MinedBlockEvent` to `mainnet-mined-blocks-events` (4 partitions). Schema registration at startup via `dm_avro_schemas`. SSM key retrieval via `dm_parameter_store` (unchanged).
   Done: Job runs against DEV VPS; Kafka topic `mainnet-mined-blocks-events` receives messages; Schema Registry confirms `MinedBlockEvent` subject registered; no Kinesis imports in job1 entrypoint.
 
-- [ ] T-R5-WP3-02 — **Adapt Job 2: OrphanBlocksWatcher → Kafka consumer + Redis BLOCK_CACHE**
+- [-] T-R5-WP3-02 — **Adapt Job 2: OrphanBlocksWatcher → Kafka consumer + Redis BLOCK_CACHE**
   Owner: software-engineer-python
   Description: Replace SQS consumer + DynamoDB BLOCK_CACHE with Kafka consumer group `orphan-watcher-cg` from `mainnet-mined-blocks-events` + `dm_redis.RedisCache` BLOCK_CACHE (HASH, TTL=3600s). Reorg detection: on hash mismatch, re-produce event to `mainnet-mined-blocks-events`.
   Done: Job processes block events from Kafka; BLOCK_CACHE populated in Redis (`KEYS block_cache:*` shows entries); reorg re-production tested via injected duplicate event; no SQS/DynamoDB imports.
 
-- [ ] T-R5-WP3-03 — **Adapt Job 3: BlockDataCrawler → dual Kafka producers**
+- [-] T-R5-WP3-03 — **Adapt Job 3: BlockDataCrawler → dual Kafka producers**
   Owner: software-engineer-python
   Description: Replace Kinesis producer + `boto3.put_object` with Kafka consumer group `block-crawler-cg` from `mainnet-mined-blocks-events` + two KafkaProducers: `mainnet-blocks-data` (Avro `BlockData`, 4 partitions, consumed by S3 Sink Connector 1) and `mainnet-block-txs-hash-id` (Avro `BlockTxHashId`, 6 partitions). No direct S3 writes.
   Done: Both topics receive messages in DEV; S3 Sink Connector 1 shows `RUNNING` and S3 receives objects under `raw/mainnet-blocks-data/`; no boto3 S3 calls in job3 entrypoint.
 
-- [ ] T-R5-WP3-04 — **Adapt Job 4: MinedTxsCrawler → Kafka consumer + Redis SEMAPHORE**
+- [-] T-R5-WP3-04 — **Adapt Job 4: MinedTxsCrawler → Kafka consumer + Redis SEMAPHORE**
   Owner: software-engineer-python
   Description: Replace Kinesis producer + DynamoDB SEMAPHORE with Kafka consumer group `txs-crawler-cg` (6 replicas, 1 partition each) + `dm_redis.RedisCache` SETNX round-robin (`replica_id % len(api_keys)`) + `KafkaProducer` to `mainnet-transactions-data` (6 partitions, Avro `TransactionData`). Lua release script for semaphore.
   Done: 6 replicas running; `KEYS semaphore:*` shows ≤1 entry per API key at any time (SC-07); `mainnet-transactions-data` receives messages; no DynamoDB imports.
 
-- [ ] T-R5-WP3-05 — **Adapt Job 5: TxsInputDecoder → Kafka consumer + Redis ABI + Kafka producer**
+- [-] T-R5-WP3-05 — **Adapt Job 5: TxsInputDecoder → Kafka consumer + Redis ABI + Kafka producer**
   Owner: software-engineer-python
   Description: Replace Kinesis producer + DynamoDB ABI cache + `boto3.put_object` with Kafka consumer group `txs-decoder-cg` (3 replicas, 2 partitions each) + `dm_redis.RedisCache` ABI/ABI_NEG + `KafkaProducer` to `mainnet-transactions-decoded` (6 partitions, Avro `TransactionDecoded`). `TransactionDecoded` must include `block_timestamp` field.
   Done: 3 replicas running; ABI cache warm in Redis after ~30 min; `mainnet-transactions-decoded` receives messages; S3 Sink Connector 3 delivers to `raw/mainnet-transactions-decoded/`; no boto3 S3 calls; `block_timestamp` present in produced messages.
