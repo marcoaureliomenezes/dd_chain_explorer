@@ -13,25 +13,31 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Write-set: services/prd/03_iam/, apps/dabs/dashboard_*/resources/, apps/docker/, apps/lambda/ -->
 
-- [x] T-R1-01 — **Remove dynamodb:Scan from ECS task role** | Owner: devops-engineer | Effort: S
+- [-] T-R1-01 — **Remove dynamodb:Scan from ECS task role** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-008, `iam/main.tf:104–108`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: `dynamodb:Scan` absent; only GetItem/PutItem/DeleteItem/UpdateItem in DynamoDB policy block.
+  <!-- ROLLED BACK 2026-05-22: code committed (e8adcaf); `terraform apply` pending → IAM not in effect. -->
 
-- [x] T-R1-02 — **Replace IAM wildcard ARNs with explicit region+account** | Owner: devops-engineer | Effort: S
+- [-] T-R1-02 — **Replace IAM wildcard ARNs with explicit region+account** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-009, `iam/main.tf:62–92`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: No `*:*` in region or account field of any Kinesis, SQS, or SSM ARN.
+  <!-- ROLLED BACK 2026-05-22: code committed; `terraform apply` pending. -->
 
-- [x] T-R1-03 — **Remove SSM Etherscan/Web3 access from Databricks cluster role** | Owner: devops-engineer | Effort: S
+- [-] T-R1-03 — **Remove SSM Etherscan/Web3 access from Databricks cluster role** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-010, `iam/main.tf:384–395`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: Databricks cluster IAM role has no SSM permissions for etherscan or web3 key paths.
+  <!-- ROLLED BACK 2026-05-22: code committed; `terraform apply` pending. -->
 
-- [x] T-R1-04 — **Scope Lambda CloudWatch IAM ARN** | Owner: devops-engineer | Effort: S
+- [-] T-R1-04 — **Scope Lambda CloudWatch IAM ARN** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-023, `iam/main.tf:438–442`
   Write-set: `services/prd/03_iam/iam/main.tf`
   Done: Lambda logs policy uses `arn:aws:logs:${var.region}:${var.account_id}:log-group:/aws/lambda/${var.name_prefix}-*`.
+  <!-- ROLLED BACK 2026-05-22: code committed; `terraform apply` pending. -->
+  <!-- Note: T-R1-01..04 share write-set iam/main.tf; treated as a single deploy unit. -->
+
 
 - [x] T-R1-05 — **Set embed_credentials: false in all 4 dashboard bundles** | Owner: devops-engineer | Effort: S
   Evidence: ISSUE-020, `dashboard_*/resources/dashboards/*.yml:5`
@@ -89,30 +95,36 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
 
 <!-- Depends on: T-R1-10 complete (S3 data confirmed in DEV) -->
 
-- [x] T-R1-12 — **Fix DynamoDB deadlock alert table reference** | Owner: data-analyst | Effort: S
+- [-] T-R1-12 — **Fix DynamoDB deadlock alert table reference** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-002, DA-004, `alert_dynamodb_deadlock.yml:19`; LAKEHOUSE-02
   Write-set: `apps/dabs/alert_dynamodb_deadlock/resources/alert_dynamodb_deadlock.yml`
   Done: Query uses `s_logs.logs_streaming`; alert deploys without error; manual trigger returns result (not table-not-found).
+  <!-- ROLLED BACK 2026-05-22: code committed (0c9d7f5); bundle not deployed to DEV; trigger not run. -->
 
-- [x] T-R1-13 — **Embed warehouse_id in all 4 dashboard bundle targets** | Owner: data-analyst | Effort: S
+- [-] T-R1-13 — **Embed warehouse_id in all 4 dashboard bundle targets** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-004, DA-001, UC-03, `dashboard_*/databricks.yml:8`
   Write-set: `apps/dabs/dashboard_*/databricks.yml`
   Done: All 4 dashboard bundle YAMLs have non-empty `warehouse_id` per target; dashboards render in DEV.
+  <!-- ROLLED BACK 2026-05-22: code committed (2105888); dashboards not deployed; render not observed. -->
 
-- [x] T-R1-14 — **Fix 4 wrong Genie table FQNs** | Owner: data-analyst | Effort: S
+- [-] T-R1-14 — **Fix 4 wrong Genie table FQNs** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-005, DA-005, LAKEHOUSE-03, `genie_ethereum.yml:19–37`
   Write-set: `apps/dabs/genie_ethereum/genie_ethereum.yml`
   Done: All 7 FQNs in Genie YAML reference existing tables; at least 1 NL query returns results without table-not-found.
+  <!-- ROLLED BACK 2026-05-22: code committed (ba51f0a); Genie space not deployed; no NL query test. -->
 
-- [x] T-R1-15 — **Fix network-overview dashboard: remove non-existent table references** | Owner: data-analyst | Effort: M
+- [-] T-R1-15 — **Fix network-overview dashboard: remove non-existent table references** | Owner: data-analyst | Effort: M
   Evidence: ISSUE-006, DA-002, `01_network_overview.lvdash.json:5,10`
   Write-set: `apps/dabs/dashboard_network_overview/resources/dashboards/01_network_overview.lvdash.json`
   Done: All dataset queries reference `g_network.network_metrics_hourly` or `g_network.block_production_health`; no `dev.gold.*` hardcoded references remain; dashboard renders.
+  <!-- ROLLED BACK 2026-05-22: code committed (fd4284d); dashboard not deployed; render not observed. -->
 
-- [x] T-R1-16 — **Fix hot-contracts and gas-analytics dashboards to use Gold MVs** | Owner: data-analyst | Effort: S
+- [-] T-R1-16 — **Fix hot-contracts and gas-analytics dashboards to use Gold MVs** | Owner: data-analyst | Effort: S
   Evidence: ISSUE-007, DA-003, `02_hot_contracts.lvdash.json`, `03_gas_analytics.lvdash.json`
   Write-set: `apps/dabs/dashboard_hot_contracts/resources/dashboards/02_hot_contracts.lvdash.json`, `apps/dabs/dashboard_gas_analytics/resources/dashboards/03_gas_analytics.lvdash.json`
   Done: Hot-contracts queries `g_apps.popular_contracts_ranking`; gas-analytics uses `g_apps.gas_price_distribution_hourly`; both dashboards render data.
+  <!-- ROLLED BACK 2026-05-22: code committed (97b0d3a); dashboards not deployed; render not observed. -->
+
 
 ---
 
@@ -125,10 +137,12 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Write-set: `apps/dabs/dlt_ethereum/databricks.yml`
   Done: HML target `ingestion_s3_bucket` is `"dm-chain-explorer-hml-raw"`.
 
-- [x] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
+- [-] T-R1-18 — **Remove lakehouse S3 folder prefixes (medallion naming violation)** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-029, AWS-03, `peripherals.tf:50–51`
   Write-set: `services/prd/04_peripherals/peripherals.tf`
   Done: `folder_prefixes = ["bronze","silver","gold"]` removed; `.keep` objects deleted from S3 bucket.
+  <!-- ROLLED BACK 2026-05-22: code committed (250c061); `terraform apply` pending; .keep objects still in S3. -->
+
 
 - [x] T-R1-19 — **Promote from_address to expect_or_drop in DLT** | Owner: data-engineer | Effort: S
   Evidence: ISSUE-030, DE-P-003, `ethereum_pipeline.py:208–209`
@@ -139,6 +153,8 @@ Work-Package D (serving layer) depends on Work-Package C (DEV restart) completin
   Evidence: ISSUE-003, DE-P-001, `ethereum_pipeline.py:486–505`
   Write-set: `apps/dabs/dlt_ethereum/src/*/ethereum_pipeline.py`
   Done: `eth_canonical_blocks_index` uses rolling window of last 1,000 blocks; blocks outside window marked canonical; DLT run completes without O(N^2) scan warning; validated in DEV after T-R1-10 complete.
+  <!-- DEPLOYED 2026-05-23: bundle deployed to DEV (Deployment complete!, commit fed92fb); pipeline run triggered (update_id=4e1bc56e-41a1-47c2-a90f-f07c7a936839, pipeline be2bcafd-1429-4c84-a74a-e497a55b6c0c); run failed at Bronze Auto Loader analysis (FileNotFoundException: s3://dm-chain-explorer-dev-ingestion/raw/mainnet-blocks-data — absent by design, see T-R1-10 notes); no O(N^2) scan warning in logs; eth_canonical_blocks_index rolling window code verified at ethereum_pipeline.py:491–573 (_CANONICAL_WINDOW_BLOCKS=1_000, bounded SQL with outside_window/window_blocks/parent_refs/inside_window CTEs). -->
+
 
 ---
 
