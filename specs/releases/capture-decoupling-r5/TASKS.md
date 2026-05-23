@@ -32,27 +32,27 @@ WP-1/WP-2/WP-3. WP-5 is strictly sequential after WP-3 and WP-4.
 <!-- Write-set: new repo dd-chain-capture — no overlap with dd-chain-explorer -->
 <!-- Parallel with WP-2. No dependency on WP-2. -->
 
-- [-] T-R5-WP1-01 — **Scaffold dd-chain-capture repository**
+- [x] T-R5-WP1-01 — **Scaffold dd-chain-capture repository**
   Owner: software-engineer-python
   Description: Create GitHub repository `dd-chain-capture` with canonical directory structure (`schemas/`, `lib/dm_capture_utils/`, `apps/job1..job5/`, `infra/aws/`, `infra/kafka-connect/connectors/`, `infra/kafka-connect/scripts/`, `docker-compose.yml`, `.github/workflows/`). Add `.gitignore` (venv, `*.env`, `__pycache__`, `.egg-info`). Add `pyproject.toml` for `dm_capture_utils` package. Create ECR Terraform resources (`dd-chain-capture-stream`, `dd-chain-capture-connect`) in `infra/aws/iam-capture-user.tf`.
   Done: Repository exists on GitHub; `git clone` succeeds; ECR Terraform resources plan without error; CI workflow stub present.
 
-- [-] T-R5-WP1-02 — **Author `dm_kafka.py` and `dm_avro_schemas.py`**
+- [x] T-R5-WP1-02 — **Author `dm_kafka.py` and `dm_avro_schemas.py`**
   Owner: software-engineer-python
   Description: Implement `KafkaProducer` and `KafkaConsumer` wrappers with Avro serialization via `confluent-kafka-python` + Schema Registry. Implement `dm_avro_schemas.py`: loads `.avsc` files from `schemas/`, registers all subjects at startup via Schema Registry REST API (`PUT /config` for FULL compatibility, `POST /subjects/{subject}/versions`), raises on registration failure.
   Done: Producer and consumer can serialize/deserialize a `MinedBlockEvent` round-trip against a live Schema Registry; compatibility set to FULL on startup; unit test passes.
 
-- [-] T-R5-WP1-03 — **Author `dm_redis.py` and `api_keys_manager.py`**
+- [x] T-R5-WP1-03 — **Author `dm_redis.py` and `api_keys_manager.py`**
   Owner: software-engineer-python
   Description: Implement `RedisCache` class with: BLOCK_CACHE (`HSET`/`HGET`, TTL=3600s), SEMAPHORE (`SET NX EX 60` acquire + Lua release script comparing stored value to caller's `process_id`), ABI (`HSET`/`HGET`, no TTL — LRU eviction), ABI_NEG (`SET`, TTL=86400s). Implement `api_keys_manager.py`: round-robin election (`replica_id % len(api_keys)`) + Redis SETNX lock per key; no DynamoDB access.
   Done: SEMAPHORE acquire/release unit tests pass (including Lua race condition: second acquire returns nil); round-robin assigns distinct keys to 6 replicas; ABI_NEG TTL verified via Redis TTL command.
 
-- [-] T-R5-WP1-04 — **Write all 5 Avro schema files**
+- [x] T-R5-WP1-04 — **Write all 5 Avro schema files**
   Owner: software-engineer-python
   Description: Author `MinedBlockEvent.avsc`, `BlockTxHashId.avsc`, `TransactionData.avsc`, `BlockData.avsc`, `TransactionDecoded.avsc` under `schemas/`. Constraints: namespace `com.ddchain.capture.<entity>`; all Ethereum numeric fields as `string`; nullable fields as `["null", "string"]` with `"default": null`; `TransactionDecoded.avsc` MUST include `block_timestamp` field; all post-v1 fields require defaults (FULL compatibility).
   Done: All 5 schemas parse without error (`fastavro.parse_schema`); `TransactionDecoded` has `block_timestamp`; Schema Registry accepts all subjects under FULL compatibility mode.
 
-- [-] T-R5-WP1-05 — **Unit test suite for `dm_capture_utils`**
+- [x] T-R5-WP1-05 — **Unit test suite for `dm_capture_utils`**
   Owner: software-engineer-python
   Description: pytest suite covering: Avro round-trip (serialize/deserialize each schema), Redis SEMAPHORE Lua script (acquire, release, expiry, concurrent acquire), round-robin API key election (6 replicas, 5 keys — verifies no overlap within a TTL window), schema registration mock (Schema Registry client mocked). CI must pass `pytest lib/dm_capture_utils/tests/ -v` exit 0.
   Done: All test cases green; coverage ≥ 80% on `dm_capture_utils` modules; `ci.yml` pytest step passes.
