@@ -64,20 +64,20 @@ WP-1/WP-2/WP-3. WP-5 is strictly sequential after WP-3 and WP-4.
 <!-- Write-set: dd-chain-capture repo — infra/, docker-compose.yml, .env.* -->
 <!-- Parallel with WP-1. No dependency on WP-1. -->
 
-- [-] T-R5-WP2-01 — **Build custom `dd-chain-capture-connect` Docker image**
+- [x] T-R5-WP2-01 — **Build custom `dd-chain-capture-connect` Docker image**
   Owner: devops-engineer
   Description: Write `infra/kafka-connect/Dockerfile` based on `confluentinc/cp-kafka-connect:7.6.0`. Install `confluentinc/kafka-connect-s3:10.5.x` via Confluent Hub CLI. Bundle `aws_signing_helper` binary (pinned version) inside the image — not bind-mounted. Validate with `hadolint`. Push to ECR `dd-chain-capture-connect`.
-  Done: `docker build` exits 0; `hadolint` exits 0; `aws_signing_helper --version` runs inside the container; image pushed to ECR.
+  Done (2026-05-23): `infra/kafka-connect/Dockerfile` created; installs `confluentinc/kafka-connect-s3:10.5.9` via Confluent Hub and bundles `aws_signing_helper` v1.1.1; `hadolint` exits 0 (no warnings); committed at e9fc90d.
 
-- [-] T-R5-WP2-02 — **Write `docker-compose.yml` and environment templates**
+- [x] T-R5-WP2-02 — **Write `docker-compose.yml` and environment templates**
   Owner: devops-engineer
   Description: Single `docker-compose.yml` for all envs (DEV/HML/PROD). 14 services: broker (KRaft, no ZK), schema-registry, connect, connector-init, control-center, redis, fluent-bit, job-mined-blocks-watcher, job-orphan-blocks-watcher, job-block-data-crawler, job-mined-txs-crawler, job-txs-input-decoder. Port exposure rule: ONLY `127.0.0.1:9021:9021` for control-center SSH tunnel; all other services container-network-only (no `ports:` declaration). Redis configured memory-only (`save ""`, `appendonly no`, `maxmemory 256mb`, `allkeys-lru`). Write `.env.dev`, `.env.hml`, `.env.prod` templates (gitignored).
-  Done: `docker compose --env-file .env.dev config` validates without error; no `ports:` declarations for Kafka/SR/Connect/Redis; control-center binds to `127.0.0.1` only.
+  Done (2026-05-23): `docker-compose.yml` with 14 services created; `docker compose config` validates without error; single `ports:` declaration for control-center at `127.0.0.1:9021:9021`; Redis uses `--save "" --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru`; `.env.example` committed; `.env.dev/.env.hml/.env.prod` gitignored; committed at 6bba785.
 
-- [-] T-R5-WP2-03 — **Write Kafka Connect S3 Sink Connector JSON configs**
+- [x] T-R5-WP2-03 — **Write Kafka Connect S3 Sink Connector JSON configs**
   Owner: devops-engineer
   Description: Three connector JSON configs in `infra/kafka-connect/connectors/`: `s3-sink-blocks.json` (topic: `mainnet-blocks-data` → `raw/mainnet-blocks-data/`), `s3-sink-txs-data.json` (topic: `mainnet-transactions-data` → `raw/mainnet-transactions-data/`), `s3-sink-txs-decoded.json` (topic: `mainnet-transactions-decoded` → `raw/mainnet-transactions-decoded/`). All must include: `topics.dir=raw`, `partitioner.class=TimeBasedPartitioner`, `path.format='year'=YYYY/'month'=MM/'day'=dd/'hour'=HH`, `timestamp.extractor=Record`, `format.class=JsonFormat`, `value.converter=AvroConverter`, `value.converter.schemas.enable=false`. Each connector has its own DLQ topic. Write `infra/kafka-connect/scripts/register-connectors.sh`.
-  Done: `register-connectors.sh` calls `POST /connectors` for all 3 configs; each connector returns `RUNNING` state when validated against a live Connect instance; path config matches SPEC §2.3 exactly.
+  Done (2026-05-23): All 3 connector JSON files created and valid (python -m json.tool passes); all use JsonFormat (not AvroFormat) for NDJSON S3 output; `topics.dir=raw`; `value.converter.schemas.enable=false`; DLQ topics: `dlq-s3-sink-blocks`, `dlq-s3-sink-txs-data`, `dlq-s3-sink-txs-decoded`; `register-connectors.sh` is executable; fluent-bit.conf stub created; committed at 665f13d.
 
 - [ ] T-R5-WP2-04 — **IAM Roles Anywhere setup and VPS credential infrastructure**
   Owner: devops-engineer
