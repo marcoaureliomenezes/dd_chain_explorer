@@ -160,10 +160,11 @@ WP-1/WP-2/WP-3. WP-5 is strictly sequential after WP-3 and WP-4.
   Description: Trigger `dlt_ethereum` DEV pipeline with VPS as data source. Verify: `dev.b_ethereum.eth_mined_blocks` row count increases; `eth_transactions` and `eth_txs_input_decoded` Bronze tables gain rows; Silver `valid_block_number` expectation passes (0 rows dropped). Validate Fluent Bit → `b_app_logs_data` NDJSON after WP-0.2 is deployed (SC-09).
   Done: SC-04, SC-05, SC-08, SC-09 all pass; pipeline run ID recorded as evidence.
 
-- [-] T-R5-WP5-03 — **Replace Control Center with Kafka UI (Provectus) before PROD**
+- [x] T-R5-WP5-03 — **Replace Control Center with Kafka UI (Provectus) before PROD**
   Owner: devops-engineer
   Description: Remove `confluentinc/cp-enterprise-control-center:7.6.0` from `docker-compose.yml`. Add `provectuslabs/kafka-ui:latest` service (MIT license, ~100 MB RAM). Kafka UI must display topic list, consumer group lag, and connector status. Access via SSH tunnel (same pattern as Control Center). Update `.env.*` templates accordingly.
   Done: SC-13 passes; `cp-enterprise-control-center` image absent from running stack; Kafka UI accessible via SSH tunnel and shows all 5 topics + 3 connectors.
+  Done (2026-05-23): docker-compose.yml: cp-enterprise-control-center removed; provectuslabs/kafka-ui:latest added on 127.0.0.1:8080:8080 with broker/schema-registry/connect cluster config; SSH tunnel pattern unchanged (port now 8080).
 
 - [ ] T-R5-WP5-04 — **ECS decommission and PROD cutover**
   Owner: devops-engineer
