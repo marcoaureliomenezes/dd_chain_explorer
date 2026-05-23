@@ -84,7 +84,7 @@ WP-1/WP-2/WP-3. WP-5 is strictly sequential after WP-3 and WP-4.
   Description: Document and execute IAM Roles Anywhere setup: (1) generate OpenSSL CA on operator machine (`ca.key` + `ca.crt` — CA key NEVER leaves operator machine), (2) issue VPS cert (`vps.crt` + `vps.key`), (3) Terraform: AWS Trust Anchor + IAM role with minimum policy (SSM `ssm:GetParametersByPath`, S3 `s3:PutObject`/`AbortMultipartUpload`/`ListMultipartUploadParts` on `raw/*`, ECR pull on both repos), (4) VPS: create `/etc/dd-chain-capture/` (`chmod 700`), install `aws_signing_helper`, configure cron (every 50 min: refresh creds → `aws.env` `chmod 600` → `docker compose restart connect`). Write `infra/aws/iam-roles-anywhere-runbook.md`.
   Done: `aws_signing_helper credential-process` exits 0 on VPS; `/etc/dd-chain-capture/aws.env` written with valid STS creds; `terraform plan` for IAM shows minimum policy only; `ca.key` confirmed absent from VPS filesystem.
 
-- [ ] T-R5-WP2-05 — **Fluent Bit configuration for Docker log collection → S3**
+- [-] T-R5-WP2-05 — **Fluent Bit configuration for Docker log collection → S3**
   Owner: devops-engineer
   Description: Configure `fluent-bit` service in `docker-compose.yml` to collect stdout/stderr from all capture job containers via Docker log driver. S3 output plugin delivers NDJSON to `s3://dm-chain-explorer-raw-data/raw/app_logs/year=YYYY/month=MM/day=DD/hour=HH/`. IAM credentials sourced from `/etc/dd-chain-capture/aws.env`. Partition format must match Hive convention (`year=/month=/day=/hour=`).
   Done: S3 object at `raw/app_logs/year=.../` contains parseable JSON lines (SC-08); partition path matches `year=YYYY/month=MM/day=DD/hour=HH/` convention.
@@ -128,17 +128,17 @@ WP-1/WP-2/WP-3. WP-5 is strictly sequential after WP-3 and WP-4.
 <!-- Write-set: dd-chain-capture/.github/workflows/, infra/vps-setup-runbook.md -->
 <!-- Authoring parallel with WP-1/WP-2/WP-3; deployment gates require WP-3 complete -->
 
-- [ ] T-R5-WP4-01 — **GitHub Actions `ci.yml` (lint + test + Dockerfile lint)**
+- [-] T-R5-WP4-01 — **GitHub Actions `ci.yml` (lint + test + Dockerfile lint)**
   Owner: devops-engineer
   Description: Workflow triggers on PR to main. Steps: (1) ruff lint `lib/` + `apps/`; (2) pytest `lib/dm_capture_utils/tests/` with coverage; (3) hadolint `infra/kafka-connect/Dockerfile`. No AWS credentials in CI. Exit non-zero on any failure.
   Done: CI passes on a clean PR; ruff, pytest, hadolint all exit 0; workflow file uses no static AWS keys.
 
-- [ ] T-R5-WP4-02 — **GitHub Actions `deploy.yml` (OIDC → ECR push → SSH deploy)**
+- [-] T-R5-WP4-02 — **GitHub Actions `deploy.yml` (OIDC → ECR push → SSH deploy)**
   Owner: devops-engineer
   Description: Workflow triggers on merge to main. Steps: (1) OIDC auth for ECR push; (2) build + tag `dd-chain-capture-stream` image (`sha-<commit>`); (3) build + tag `dd-chain-capture-connect` image; (4) push both to ECR; (5) SSH deploy to HML VPS (automatic); (6) SSH deploy to PROD VPS (manual approval gate). Deploy command: `docker compose --env-file .env.{env} up -d --scale job-mined-txs-crawler=6 --scale job-txs-input-decoder=3 --no-build`.
   Done: Successful deployment to HML via `deploy.yml` on merge; PROD job requires manual approval; no static AWS keys in workflow; OIDC role has ECR push only (no S3/SSM).
 
-- [ ] T-R5-WP4-03 — **VPS setup runbook and Hostinger firewall rules**
+- [-] T-R5-WP4-03 — **VPS setup runbook and Hostinger firewall rules**
   Owner: devops-engineer
   Description: Execute and document VPS one-time setup in `infra/vps-setup-runbook.md`: Docker Engine install, create `deploy` service user, clone repo to `/opt/dd-chain-capture`, Hostinger firewall rules (deny all inbound except SSH port 22 — confirm ports 9092/8081/8083/6379/9021 unreachable from external IP).
   Done: VPS passes port-scan check (9092/8081/8083/6379/9021 closed externally); SSH access works as `deploy` user; `/opt/dd-chain-capture` exists and is writable by `deploy`.
