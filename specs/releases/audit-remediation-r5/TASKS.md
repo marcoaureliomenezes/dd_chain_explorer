@@ -96,7 +96,7 @@ Independent of WS-A, WS-B, WS-D. May start immediately.
 Fixes: DRIFT-05 (three stale CLOSURE.md templates)
 Operator mandate: forensic verification — evidence-based verdicts, no fabrication.
 
-- [-] T-R5-C1 — **Forensic closure: cost-and-availability-r2** | Owner: product-engineer | Priority: HIGH
+- [x] T-R5-C1 — **Forensic closure: cost-and-availability-r2** | Owner: product-engineer | Priority: HIGH
   Write-set: `specs/releases/cost-and-availability-r2/CLOSURE.md`
              (optional: `git mv` to `specs/_archive/releases/cost-and-availability-r2` if ABANDONED)
   Precondition: None.
@@ -114,7 +114,7 @@ Operator mandate: forensic verification — evidence-based verdicts, no fabricat
     Note: Do NOT fabricate SHAs. "No commit evidence found" is a valid and honest finding.
   Parallelism: safe to run concurrently with T-R5-A1, T-R5-B1.
 
-- [-] T-R5-C2 — **Forensic closure: data-quality-r3** | Owner: product-engineer | Priority: HIGH
+- [x] T-R5-C2 — **Forensic closure: data-quality-r3** | Owner: product-engineer | Priority: HIGH
   Write-set: `specs/releases/data-quality-r3/CLOSURE.md`
              (optional: `git mv` to `specs/_archive/releases/data-quality-r3` if ABANDONED)
   Precondition: None (may run in parallel with T-R5-C1).
@@ -127,7 +127,7 @@ Operator mandate: forensic verification — evidence-based verdicts, no fabricat
     (c) Release verdict documented; CLOSURE.md status `Aprovado`.
   Parallelism: safe to run concurrently with T-R5-C1.
 
-- [-] T-R5-C3 — **Forensic closure: analytics-enrichment-r4** | Owner: product-engineer | Priority: HIGH
+- [x] T-R5-C3 — **Forensic closure: analytics-enrichment-r4** | Owner: product-engineer | Priority: HIGH
   Write-set: `specs/releases/analytics-enrichment-r4/CLOSURE.md`
              (optional: `git mv` to `specs/_archive/releases/analytics-enrichment-r4` if ABANDONED)
   Precondition: None (may run in parallel with T-R5-C1, T-R5-C2).
@@ -151,7 +151,7 @@ T-R5-D1 must complete before T-R5-D2. Both must complete before WS-E.
 
 Fixes: BP-01 (logger wiring), DRIFT-01 (streaming job zero tests)
 
-- [ ] T-R5-D1 — **Fix module-global LOGGER references in all 5 streaming job classes** | Owner: software-engineer | Priority: HIGH
+- [-] T-R5-D1 — **Fix module-global LOGGER references in all 5 streaming job classes** | Owner: software-engineer | Priority: HIGH
   Write-set: `apps/docker/onchain-stream-txs/src/1_mined_blocks_watcher.py`,
              `apps/docker/onchain-stream-txs/src/2_orphan_blocks_watcher.py`,
              `apps/docker/onchain-stream-txs/src/3_block_data_crawler.py`,
