@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Load job module
@@ -152,7 +151,7 @@ class TestRun:
         sqs.send_message.assert_called_once()
         # Must delete the processed message
         sqs.delete_message.assert_called_once_with(
-            "https://sqs.test/mined", f"receipt-500"
+            "https://sqs.test/mined", "receipt-500"
         )
 
     def test_run_safe_block_logs_at_interval(self):

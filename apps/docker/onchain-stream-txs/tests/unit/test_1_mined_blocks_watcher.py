@@ -9,12 +9,9 @@ Covers:
 """
 import importlib.util
 import logging
-import sys
-import types
 from pathlib import Path
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Load the job module by file path (filename starts with a digit).
@@ -190,7 +187,6 @@ class TestRun:
         logger = _make_logger()
         watcher = MinedBlocksWatcher(logger)
 
-        web3 = MagicMock()
         sqs = MagicMock()
         block = _make_block(100)
 

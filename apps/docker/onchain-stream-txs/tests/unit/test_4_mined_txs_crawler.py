@@ -12,9 +12,8 @@ import importlib.util
 import logging
 import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Load job module
@@ -137,7 +136,6 @@ class TestFetchTxWithRotation:
         proc = _make_processor(web3=web3, api_keys_manager=api_mgr)
 
         # Patch HTTPError in the job module's namespace
-        from requests import HTTPError as RealHTTPError
         with patch.dict(_mod.__dict__, {"HTTPError": type(http_error_429)}):
             # Since we patched HTTPError type to match the exception, rotation will trigger
             # Actually: the code catches `HTTPError` — let's use a simpler mock

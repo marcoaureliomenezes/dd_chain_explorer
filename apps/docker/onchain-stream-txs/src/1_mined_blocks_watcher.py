@@ -4,7 +4,7 @@ import os
 import time
 
 from logging import Logger
-from typing import Dict, Generator, Callable, Any
+from typing import Dict, Generator, Any
 
 from dm_chain_utils.dm_web3_client import Web3Handler
 from dm_chain_utils.dm_sqs import SQSHandler
