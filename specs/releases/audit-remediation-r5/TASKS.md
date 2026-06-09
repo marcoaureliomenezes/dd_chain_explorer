@@ -21,7 +21,7 @@ Parallelizable with WS-B and WS-C.
 Fixes: DRIFT-06, DRIFT-07, DRIFT-08 (bugs/), DRIFT-09 (catalog.json)
 Doctor warnings cleared: TREE-5, TREE-5M, CAT-1
 
-- [-] T-R5-A1 — **Scaffold specs/AGENTS.md and specs/memory/AGENTS.md** | Owner: ai-engineer | Priority: HIGH
+- [x] T-R5-A1 — **Scaffold specs/AGENTS.md and specs/memory/AGENTS.md** | Owner: ai-engineer | Priority: HIGH
   Write-set: `specs/AGENTS.md`, `specs/memory/AGENTS.md`
   Precondition: None.
   Done criterion:
