@@ -52,7 +52,7 @@ Parallelizable with WS-A and WS-C.
 
 Fixes: DRIFT-02 (.dadaia/ in repo), DRIFT-03 (specs_bkp/), DRIFT-04 (Kafka dead code)
 
-- [-] T-R5-B1 — **Remove .dadaia/ from repo working tree** | Owner: software-engineer | Priority: HIGH
+- [x] T-R5-B1 — **Remove .dadaia/ from repo working tree** | Owner: software-engineer | Priority: HIGH
   Write-set: `repos/dd-chain-explorer/.gitignore`, git index (git rm tracked files)
   Precondition: Operator confirmed migration applied and backup not needed (done in dispatch).
   Done criterion:
@@ -64,7 +64,7 @@ Fixes: DRIFT-02 (.dadaia/ in repo), DRIFT-03 (specs_bkp/), DRIFT-04 (Kafka dead 
     (d) `.dadaia/` entry added to `repos/dd-chain-explorer/.gitignore`.
   Parallelism: safe to run concurrently with T-R5-A1, T-R5-A2, T-R5-C1.
 
-- [-] T-R5-B2 — **Delete specs_bkp/ and add to .gitignore** | Owner: software-engineer | Priority: MEDIUM
+- [x] T-R5-B2 — **Delete specs_bkp/ and add to .gitignore** | Owner: software-engineer | Priority: MEDIUM
   Write-set: `repos/dd-chain-explorer/.gitignore`; filesystem delete of `specs_bkp/`
   Precondition: T-R5-B1 commit may be in same commit or separate; operator already confirmed.
   Done criterion:
@@ -72,7 +72,7 @@ Fixes: DRIFT-02 (.dadaia/ in repo), DRIFT-03 (specs_bkp/), DRIFT-04 (Kafka dead 
     (b) `specs_bkp/` entry present in `repos/dd-chain-explorer/.gitignore`.
   Parallelism: safe to combine into same commit as T-R5-B1.
 
-- [-] T-R5-B3 — **Delete Kafka/Avro dead code artifacts** | Owner: software-engineer | Priority: LOW
+- [x] T-R5-B3 — **Delete Kafka/Avro dead code artifacts** | Owner: software-engineer | Priority: LOW
   Write-set: `apps/docker/onchain-stream-txs/src/configs/` (delete 3 files),
              `apps/docker/onchain-stream-txs/src/schemas/` (delete 7 files)
   Precondition: Confirm no importer:
@@ -191,7 +191,7 @@ Gates on T-R5-D1 + T-R5-D2 both complete.
 
 Covers: operator-mandated security pass over streaming/production code
 
-- [ ] T-R5-E1 — **Security and best-practices review of 5 streaming job files** | Owner: security-reviewer | Priority: HIGH
+- [x] T-R5-E1 — **Security and best-practices review of 5 streaming job files** | Owner: security-reviewer | Priority: HIGH
   Write-set: None (read-only audit; findings in handoff JSON / report).
   Precondition: T-R5-D1 and T-R5-D2 both `[x]` DONE.
   Done criterion:
@@ -205,6 +205,25 @@ Covers: operator-mandated security pass over streaming/production code
     (b) A handoff JSON report emitted under `.dadaia/handoff/dd-chain-explorer/`.
     (c) No CRITICAL or HIGH unresolved findings. MEDIUM findings documented with recommended fix.
   Parallelism: sequential after T-R5-D1 + T-R5-D2. Does not block WS-F.
+
+- [x] T-R5-D3 — **Remediate the 3 MEDIUM security findings from T-R5-E1** | Owner: software-engineer | Priority: HIGH
+  Write-set: `apps/docker/onchain-stream-txs/src/1_mined_blocks_watcher.py`,
+             `apps/docker/onchain-stream-txs/src/2_orphan_blocks_watcher.py`,
+             `apps/docker/onchain-stream-txs/src/utils_decode/etherscan_multi.py`,
+             `apps/docker/onchain-stream-txs/src/5_txs_input_decoder.py`,
+             `apps/docker/onchain-stream-txs/tests/unit/` (new tests)
+  Precondition: T-R5-E1 `[x]` (findings documented).
+  Done criterion:
+    (a) F-01 (CWE-532): `print()` calls removed/replaced with `self.logger` in jobs 1 & 2.
+    (b) F-02 (CWE-918, SSRF): `etherscan_multi.py` validates `NETWORK` against an explicit
+        allowlist before building the URL; silent fallback removed.
+    (c) F-03 (CWE-755): broad `except` in `5_txs_input_decoder.py` (`_decode_with_abi`,
+        `_build_record`) now logs the exception before returning None.
+    (d) `pytest apps/docker/onchain-stream-txs/tests/unit/ -p no:cacheprovider` green
+        (71 passed; +15 over the 56 from T-R5-D2).
+    (e) LOW/INFO findings F-04..F-09 deferred to backlog (out of scope).
+  Status: DONE — commit `251dfeb`. F-04..F-09 to be logged as backlog by project-manager.
+  Parallelism: sequential after T-R5-E1.
 
 ---
 
