@@ -168,7 +168,7 @@ Fixes: BP-01 (logger wiring), DRIFT-01 (streaming job zero tests)
     (e) Instantiating each job class without calling `main()` does not raise `NameError`.
   Parallelism: may start concurrently with WS-A, WS-B, WS-C. T-R5-D2 depends on this task.
 
-- [ ] T-R5-D2 — **Define and implement unit tests for the 5 streaming job classes** | Owner: qa-engineer (plan) + software-engineer (impl) | Priority: HIGH
+- [-] T-R5-D2 — **Define and implement unit tests for the 5 streaming job classes** | Owner: qa-engineer (plan) + software-engineer (impl) | Priority: HIGH
   Write-set: `apps/docker/onchain-stream-txs/tests/unit/` (create directory + test files)
   Precondition: T-R5-D1 complete (logger fix landed; classes instantiable without NameError).
   Done criterion:
