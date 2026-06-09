@@ -151,7 +151,7 @@ T-R5-D1 must complete before T-R5-D2. Both must complete before WS-E.
 
 Fixes: BP-01 (logger wiring), DRIFT-01 (streaming job zero tests)
 
-- [-] T-R5-D1 — **Fix module-global LOGGER references in all 5 streaming job classes** | Owner: software-engineer | Priority: HIGH
+- [x] T-R5-D1 — **Fix module-global LOGGER references in all 5 streaming job classes** | Owner: software-engineer | Priority: HIGH
   Write-set: `apps/docker/onchain-stream-txs/src/1_mined_blocks_watcher.py`,
              `apps/docker/onchain-stream-txs/src/2_orphan_blocks_watcher.py`,
              `apps/docker/onchain-stream-txs/src/3_block_data_crawler.py`,

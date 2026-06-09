@@ -57,7 +57,7 @@ class MinedBlocksWatcher:
 
       value = {"block_timestamp": block_timestamp, "block_number": block_number, "block_hash": block_hash}
       self.sqs_handler.send_message(self.sqs_queue_url, json.dumps(value))
-      LOGGER.info(f"Block Mined;{value}")
+      self.logger.info(f"Block Mined;{value}")
       print(f"Block Mined;{value}")
   
 
