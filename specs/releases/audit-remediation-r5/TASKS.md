@@ -34,7 +34,7 @@ Doctor warnings cleared: TREE-5, TREE-5M, CAT-1
     (d) `dadaia specs doctor` no longer reports TREE-5 or TREE-5M.
   Parallelism: safe to run concurrently with T-R5-B1, T-R5-C1.
 
-- [ ] T-R5-A2 — **Generate specs/memory/product/catalog.json** | Owner: ai-engineer | Priority: HIGH
+- [-] T-R5-A2 — **Generate specs/memory/product/catalog.json** | Owner: ai-engineer | Priority: HIGH
   Write-set: `specs/memory/product/catalog.json`
   Precondition: 5 feature atom `.md` files already present in `specs/memory/product/`.
   Done criterion:
