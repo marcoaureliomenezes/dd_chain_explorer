@@ -1,3 +1,21 @@
+---
+slug: tech-stack
+title: Tech Stack
+category: core
+tldr: Canonical technology inventory for DD Chain Explorer — Python 3.12, ECS Fargate, Kinesis/Firehose/SQS, DynamoDB, S3, Databricks DLT, Terraform.
+summary: Full technology stack reference including application layer (Python, Docker), shared library dm-chain-utils, AWS infrastructure (ECS, Kinesis, Firehose, SQS, DynamoDB, S3, Lambda), Databricks (DBR 15.x, DLT, Auto Loader, Lakeview), IaC (Terraform >= 1.5), CI/CD (GitHub Actions), and external APIs.
+tags:
+  - tech-stack
+  - python
+  - aws
+  - databricks
+  - terraform
+agent_tier: self-pull
+token_estimate: 1200
+last_updated: "2026-06-08"
+release_origin: memory-compliance-migration
+---
+
 # Tech Stack — DD Chain Explorer
 
 > Canonical technology inventory. All AI agents must verify version compatibility against this file before generating code.

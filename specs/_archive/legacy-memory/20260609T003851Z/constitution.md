@@ -1,3 +1,18 @@
+---
+slug: constitution
+title: Project Constitution
+category: core
+tldr: ARCHIVED — canonical constitution is at specs/constitution.md. This file is a non-canonical legacy atom pending git rm.
+summary: Legacy file — content migrated to specs/constitution.md. Pending removal via git rm to resolve SPEC-DOC-002L.
+tags:
+  - constitution
+  - legacy
+agent_tier: self-pull
+token_estimate: 0
+last_updated: "2026-06-08"
+release_origin: memory-compliance-migration
+---
+
 # Project Constitution — DD Chain Explorer
 
 > These are the **immutable laws** of dd_chain_explorer. They apply to every change, forever.

@@ -1,3 +1,18 @@
+---
+slug: product
+title: Product Overview
+category: core
+tldr: ARCHIVED — product memory migrated to memory/product/ folder catalog. This file is a non-canonical legacy atom pending git rm.
+summary: Legacy file — content migrated to memory/product/index.md, memory/product/capture-layer.md, memory/product/medallion-pipelines.md, memory/product/serving-layer.md. Pending removal via git rm to resolve SPEC-DOC-002L.
+tags:
+  - product
+  - legacy
+agent_tier: self-pull
+token_estimate: 0
+last_updated: "2026-06-08"
+release_origin: memory-compliance-migration
+---
+
 # Product: DD Chain Explorer
 
 ## What It Is
