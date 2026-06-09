@@ -85,3 +85,9 @@ tfplan
 
 # Lake schemas workflow — estado local de idempotência (não versionar)
 docs/.lake-schemas-hash
+
+# dadaia-workspace runtime state — must never be inside a repo (workspace-root only)
+.dadaia/
+
+# specs_bkp/ — operator-approved transient backup from specs upgrade; delete after migration
+specs_bkp/

@@ -1,0 +1,110 @@
+{
+  "generated_at": "2026-06-09T02:02:49Z",
+  "context": "dd-chain-explorer",
+  "features": [
+    {
+      "rank": 1,
+      "slug": "aws-resources",
+      "title": "AWS Resources",
+      "category": "product",
+      "tldr": "AWS resource inventory (S3, Kinesis, Firehose, SQS, DynamoDB, Lambda, ECS/ECR, CloudWatch, IAM) for DD Chain Explorer across DEV/HML/PRD.",
+      "summary": "Documents every named AWS resource used by DD Chain Explorer — account 016098071081, region sa-east-1 — including S3 path conventions, Kinesis/Firehose stream topology, SQS queue parameters, DynamoDB single-table schema, Lambda function configuration, ECS/ECR resources, CloudWatch log groups, IAM roles, and Terraform state paths. State reflects post pipeline-restart-r1 (validated 2026-05-23).",
+      "path": "specs/memory/product/aws-resources.md",
+      "tags": [
+        "aws",
+        "infrastructure",
+        "s3",
+        "kinesis",
+        "firehose",
+        "sqs",
+        "dynamodb",
+        "lambda",
+        "ecs",
+        "iam",
+        "terraform"
+      ],
+      "token_estimate": 1200,
+      "agent_tier": "self-pull",
+      "depends_on": []
+    },
+    {
+      "rank": 2,
+      "slug": "capture-layer",
+      "title": "Capture Layer",
+      "category": "product",
+      "tldr": "Five ECS Fargate jobs continuously ingesting Ethereum blocks, transactions, and decoded calldata to S3 via Kinesis/Firehose/SQS.",
+      "summary": "The streaming capture layer consists of 5 Docker/ECS jobs forming a processing DAG. Job 1 polls Ethereum RPC for new blocks, Job 2 detects chain reorgs, Job 3 fetches full block data, Job 4 (6 replicas) fetches transaction details via API key rotation, and Job 5 (3 replicas) decodes contract calldata. Output is delivered to S3 via Kinesis and Firehose.",
+      "path": "specs/memory/product/capture-layer.md",
+      "tags": [
+        "capture",
+        "ecs",
+        "streaming",
+        "ethereum",
+        "kinesis"
+      ],
+      "token_estimate": 800,
+      "agent_tier": "self-pull",
+      "depends_on": []
+    },
+    {
+      "rank": 3,
+      "slug": "data-catalog",
+      "title": "Data Catalog",
+      "category": "product",
+      "tldr": "Databricks Unity Catalog inventory — 30 tables/MVs across 7 schemas (bronze/silver/gold) for DD Chain Explorer, validated post pipeline-restart-r1.",
+      "summary": "Canonical catalog of every Databricks table and materialized view in DD Chain Explorer. Documents 4 bronze streaming tables, 8 silver tables/MVs, 17 gold MVs, and 1 alert across 7 schemas. Includes schema descriptions, source lineage, column notes, and a key-relationship flowchart. State validated 2026-05-23 (post pipeline-restart-r1 corrections).",
+      "path": "specs/memory/product/data-catalog.md",
+      "tags": [
+        "databricks",
+        "data-catalog",
+        "bronze",
+        "silver",
+        "gold",
+        "dlt",
+        "unity-catalog"
+      ],
+      "token_estimate": 1400,
+      "agent_tier": "self-pull",
+      "depends_on": []
+    },
+    {
+      "rank": 4,
+      "slug": "medallion-pipelines",
+      "title": "Medallion Pipelines",
+      "category": "product",
+      "tldr": "Two Databricks DLT pipelines (dm-ethereum, dm-app-logs) implementing bronze/silver/gold medallion architecture over S3 raw data — 30 total tables/MVs.",
+      "summary": "Two Delta Live Tables pipelines process raw S3 NDJSON data through three layers. dm-ethereum handles Ethereum blockchain data (4 bronze, 6 silver, 15 gold). dm-app-logs handles CloudWatch application logs (1 bronze, 2 silver, 2 gold). Both use Auto Loader for incremental S3 ingestion and are triggered every 5 minutes by dm-trigger-all-dlts.",
+      "path": "specs/memory/product/medallion-pipelines.md",
+      "tags": [
+        "databricks",
+        "dlt",
+        "medallion",
+        "bronze",
+        "silver",
+        "gold"
+      ],
+      "token_estimate": 900,
+      "agent_tier": "self-pull",
+      "depends_on": []
+    },
+    {
+      "rank": 5,
+      "slug": "serving-layer",
+      "title": "Serving Layer",
+      "category": "product",
+      "tldr": "Four Lakeview dashboards, one Genie AI/BI space, DynamoDB export Lambda, and S3 gold exports serving analytics over Ethereum blockchain data.",
+      "summary": "The serving layer exposes Gold-layer Databricks tables to users via 4 Lakeview dashboards (Network Overview, Gas Analytics, Hot Contracts, API Health), 1 Genie AI/BI natural language space, a DynamoDB CONSUMPTION export Lambda triggered by S3 PutObject, and S3 gold exports for external consumers.",
+      "path": "specs/memory/product/serving-layer.md",
+      "tags": [
+        "serving",
+        "dashboards",
+        "genie",
+        "lambda",
+        "analytics"
+      ],
+      "token_estimate": 600,
+      "agent_tier": "self-pull",
+      "depends_on": []
+    }
+  ]
+}
