@@ -59,7 +59,7 @@ class OrphanBlocksProcessor:
       safe_block_number, safe_block_hash = safe_block_data["number"], safe_block_data["hash"]
       is_orphan = self.recognize_orphaned_blocks(safe_block_number, safe_block_hash)
       if is_orphan:
-        print(f"Orphan block {safe_block_number} detected")
+        self.logger.warning(f"Orphan block {safe_block_number} detected")
         block_timestamp = safe_block_data['timestamp']
         block_number = safe_block_data['number']
         block_hash = safe_block_data['hash']

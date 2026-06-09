@@ -47,10 +47,16 @@ class MultiKeyEtherscanClient:
         if not api_keys:
             raise ValueError("At least one Etherscan API key is required.")
 
+        if network not in _ETHERSCAN_NETWORKS:
+            raise ValueError(
+                f"Invalid Etherscan network '{network}'. "
+                f"Allowed values: {sorted(_ETHERSCAN_NETWORKS.keys())}"
+            )
+
         self.logger    = logger
         self._api_keys = list(api_keys)
         self._index    = 0
-        host = _ETHERSCAN_NETWORKS.get(network, "api.etherscan.io")
+        host = _ETHERSCAN_NETWORKS[network]
         self._base_url = f"https://{host}/api"
 
         # Map api_key_value → api_key_name (parameter store name) for structured logging

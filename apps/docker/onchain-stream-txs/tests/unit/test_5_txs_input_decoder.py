@@ -312,3 +312,38 @@ class TestRun:
         cache.stats.return_value = {"cached_abis": 0, "unverified_addresses": 0}
         decoder = _make_decoder(abi_cache=cache, kinesis=kinesis)
         decoder.run()
+
+
+class TestF03ExceptionLogging:
+    """F-03 (CWE-755): broad except blocks must log before returning None."""
+
+    def test_build_record_logs_warning_on_exception(self):
+        """_build_record must log a warning via self.logger when it raises internally."""
+        logger = _make_logger()
+        decoder = TransactionInputDecoder(logger, MagicMock(), MagicMock())
+
+        # Pass a result dict missing the required 'decode_type' key to trigger KeyError
+        bad_result = {}  # missing 'decode_type' → KeyError inside _build_record
+        tx = _make_tx()
+
+        with patch.object(logger, "warning") as mock_warn:
+            rec = decoder._build_record(tx, "0xcontract", bad_result)
+
+        assert rec is None
+        mock_warn.assert_called_once()
+        assert "build_record" in mock_warn.call_args[0][0]
+
+    def test_decode_with_abi_logs_warning_on_exception(self):
+        """_decode_with_abi must log a warning via self.logger when ABI decode fails."""
+        logger = _make_logger()
+        decoder = TransactionInputDecoder(logger, MagicMock(), MagicMock())
+
+        # Pass an invalid ABI and input to trigger an exception in decode_function_input.
+        # _get_contract is lru_cache'd and uses web3 mock; we make it raise.
+        with patch.object(decoder, "_get_contract", side_effect=Exception("abi decode error")):
+            with patch.object(logger, "warning") as mock_warn:
+                result = decoder._decode_with_abi("0xcontract", [{"name": "transfer"}], "0xa9059cbb00")
+
+        assert result is None
+        mock_warn.assert_called_once()
+        assert "ABI decode failed" in mock_warn.call_args[0][0]

@@ -279,7 +279,7 @@ class TransactionInputDecoder:
                 "decode_type": "full",
             }
         except Exception as exc:
-            self.logger.debug(f"[decode] ABI decode failed for {address}: {exc}")
+            self.logger.warning(f"[decode] ABI decode failed for {address}: {exc}")
             return None
 
     def _decode_with_sig(self, sig: str, input_hex: str) -> dict:
@@ -317,8 +317,8 @@ class TransactionInputDecoder:
     # Record builder
     # ------------------------------------------------------------------
 
-    @staticmethod
     def _build_record(
+        self,
         tx: dict,
         contract_address: str,
         result: dict,
@@ -367,7 +367,8 @@ class TransactionInputDecoder:
                 "decode_source":     result.get("decode_source", "unknown"),
                 "decode_confidence": decode_confidence,
             }
-        except Exception:
+        except Exception as exc:
+            self.logger.warning(f"[build_record] Failed to build output record for tx {tx.get('hash')}: {exc}")
             return None
 
 

@@ -224,3 +224,19 @@ class TestRun:
             })
             # Must not raise NameError
             watcher.run(frequency=0)
+
+    def test_run_does_not_call_print(self):
+        """F-01 (CWE-532): run() must not call print(); structured logging only."""
+        logger = _make_logger()
+        watcher = MinedBlocksWatcher(logger)
+        sqs = MagicMock()
+        block = _make_block(99)
+
+        with patch.object(watcher, "extract_stream", return_value=iter([block])):
+            watcher.sink_config({
+                "sqs_handler": sqs,
+                "sqs_queue_url": "https://sqs.test/queue",
+            })
+            with patch("builtins.print") as mock_print:
+                watcher.run(frequency=0)
+            mock_print.assert_not_called()

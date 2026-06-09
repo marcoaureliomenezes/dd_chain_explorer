@@ -194,3 +194,37 @@ class TestRun:
         sqs.consume_queue.return_value = iter([])  # no messages → exits immediately
         proc = _make_processor(sqs=sqs)
         proc.run()  # must not raise
+
+    def test_orphan_detected_uses_logger_not_print(self):
+        """F-01 (CWE-532): orphan detection must use self.logger.warning, not print()."""
+        sqs = MagicMock()
+        block_cache = MagicMock()
+        web3 = MagicMock()
+
+        msg = self._sqs_msg(block_number=200, block_hash="0xOLD")
+        sqs.consume_queue.return_value = iter([msg])
+
+        safe_block = {"number": 197, "hash": "0xNEW", "timestamp": 1700001234}
+        web3.extract_block_data.return_value = MagicMock()
+        web3.parse_block_data.return_value = safe_block
+
+        # Hash mismatch → orphan
+        block_cache.get_item.return_value = {"block_hash": "0xOLD_CACHED"}
+
+        logger = _make_logger()
+        proc = OrphanBlocksProcessor(logger)
+        proc.src_config({
+            "handler_web3": web3,
+            "num_confirmations": 3,
+            "sqs_handler": sqs,
+            "sqs_queue_url": "https://sqs.test/mined",
+        })
+        proc.sink_config({"block_cache": block_cache})
+
+        with patch("builtins.print") as mock_print:
+            with patch.object(logger, "warning") as mock_warn:
+                proc.run()
+
+        mock_print.assert_not_called()
+        mock_warn.assert_called_once()
+        assert "Orphan block" in mock_warn.call_args[0][0]
