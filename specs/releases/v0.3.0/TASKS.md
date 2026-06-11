@@ -3,7 +3,8 @@
 **Status:** Aprovado
 **Release:** v0.3.0
 **Phase:** TASKS
-**Branch:** feature/specs-first-docs-cleanup
+**Branch:** feature/v0.3.0
+**Operator waiver (2026-06-11):** plugin-scope waived for v0.3.0 — devops-engineer plugin is a stub and `dadaia plugin install` does not exist (workspace bug on file); software-engineer implements the devops-owned tasks under this approved SPEC. Revisit when the plugin system ships.
 
 Macro-order: WS-A → WS-B1 → WS-B2/B3 → sanitization. Sanitization (T-R6-S*) may run in
 parallel with everything — disjoint write sets (`specs/**` only). T-R6-B3 is
