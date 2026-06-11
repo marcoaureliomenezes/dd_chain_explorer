@@ -80,7 +80,7 @@ software-engineer scope.
   before any AWS step runs.
   Parallelism: Wave 2, parallel-safe (disjoint files vs A2).
 
-- [-] T-R6-A5 — **Error-masking purge (CI-H8, CI-M1, CI-M2)** | Owner: devops-engineer | Priority: HIGH
+- [x] T-R6-A5 — **Error-masking purge (CI-H8, CI-M1, CI-M2)** | Owner: devops-engineer | Priority: HIGH
   Write-set: `.github/workflows/deploy_all_dm_applications.yml`, `.github/workflows/deploy_cloud_infra.yml`, `scripts/ci/tf_plan.sh`
   Acceptance:
     (a) `deploy_all_dm_applications.yml:949-954`: plan exit not masked by `tee`

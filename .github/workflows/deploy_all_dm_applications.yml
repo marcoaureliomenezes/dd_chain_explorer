@@ -391,11 +391,14 @@ jobs:
             echo "::group::ECS Task Diagnostics"
             echo "Only ${RUNNING}/5 ECS tasks reached RUNNING state after 5 minutes"
             echo "Fetching stopped task details..."
+            # best-effort diagnostics gathering inside an already-failing branch (we
+            # exit 1 below regardless); masking here only protects the diagnostic dump,
+            # not a pass/fail decision.
             STOPPED_ARNS=$(aws ecs list-tasks --cluster "$CLUSTER" --desired-status STOPPED \
-              --query 'taskArns[*]' --output text 2>/dev/null || true)
+              --query 'taskArns[*]' --output text 2>/dev/null || true)  # diagnostic dump only — exit 1 follows regardless
             if [ -n "$STOPPED_ARNS" ]; then
               aws ecs describe-tasks --cluster "$CLUSTER" --tasks $STOPPED_ARNS \
-                --query 'tasks[*].[taskArn,lastStatus,stoppedReason]' --output table 2>/dev/null || true
+                --query 'tasks[*].[taskArn,lastStatus,stoppedReason]' --output table 2>/dev/null || true  # diagnostic dump only
             fi
             echo "::endgroup::"
             echo "::error::Only ${RUNNING}/5 ECS tasks reached RUNNING state after 5 minutes. Check diagnostics above."
@@ -419,10 +422,13 @@ jobs:
           DATABRICKS_HOST:  ${{ secrets.DATABRICKS_HML_HOST }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_HML_TOKEN }}
         run: |
+          # informational post-deploy listing only — the deploy itself already
+          # succeeded in the previous step (deploy_all.sh fails loudly on error); a
+          # listing hiccup must not fail an already-good deploy.
           echo "==> HML DABs bundle deployed. Listing pipelines:"
-          databricks pipelines list 2>/dev/null || true
+          databricks pipelines list 2>/dev/null || true  # informational display, not an assertion
           echo "==> Listing jobs:"
-          databricks jobs list 2>/dev/null || true
+          databricks jobs list 2>/dev/null || true  # informational display, not an assertion
           echo "## HML DABs Deploy Complete" >> $GITHUB_STEP_SUMMARY
 
   all-hml-lambda-deploy:
@@ -641,12 +647,22 @@ jobs:
         id: invoke-ci
         run: |
           FUNC_NAME="${{ needs.all-hml-lambda-deploy.outputs.func_ci }}"
+          # CI-M1 — capture invoke metadata + exit code; `set +e`/`INVOKE_RC` keep the
+          # FunctionError payload available for the explicit assertion below WITHOUT
+          # the old `|| true` swallow that would have let a transport/permission
+          # failure (empty FunctionError) pass silently. A failed invoke now fails loudly.
+          set +e
           INVOKE_META=$(aws lambda invoke --function-name "$FUNC_NAME" \
             --payload '{"dry_run": true}' \
             --cli-binary-format raw-in-base64-out \
-            /tmp/ci-response.json 2>&1) || true
+            /tmp/ci-response.json 2>&1)
+          INVOKE_RC=$?
+          set -e
           FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty' 2>/dev/null || echo "")
-          cat /tmp/ci-response.json 2>/dev/null || true
+          cat /tmp/ci-response.json 2>/dev/null || true  # idempotent diagnostic dump — response file may be absent on transport failure
+          if [ "$INVOKE_RC" -ne 0 ] && [ -z "$FUNC_ERROR" ]; then
+            echo "::error::contracts_ingestion invoke failed (rc=$INVOKE_RC): $INVOKE_META"; exit 1
+          fi
           if [ -n "$FUNC_ERROR" ]; then echo "::error::contracts_ingestion FunctionError: $FUNC_ERROR"; exit 1; fi
           ETH_KEYS=$(cat /tmp/ci-response.json 2>/dev/null \
             | python3 -c "import sys,json; d=json.load(sys.stdin); body=d.get('body',{}); body=json.loads(body) if isinstance(body,str) else body; print(d.get('etherscan_keys', body.get('etherscan_keys',0) if isinstance(body,dict) else 0))" \
@@ -663,11 +679,18 @@ jobs:
           FIXTURE_KEY="${{ needs.all-hml-lambda-deploy.outputs.fixture_key }}"
           PAYLOAD=$(jq -n --arg bucket "$BUCKET" --arg key "$FIXTURE_KEY" \
             '{Records:[{s3:{bucket:{name:$bucket},object:{key:$key}}}]}')
+          # CI-M1 — same loud-failure pattern as the contracts_ingestion invoke above.
+          set +e
           INVOKE_META=$(aws lambda invoke --function-name "$FUNC_NAME" \
             --payload "$PAYLOAD" \
             --cli-binary-format raw-in-base64-out \
-            /tmp/gld-response.json 2>&1) || true
+            /tmp/gld-response.json 2>&1)
+          INVOKE_RC=$?
+          set -e
           FUNC_ERROR=$(echo "$INVOKE_META" | jq -r '.FunctionError // empty' 2>/dev/null || echo "")
+          if [ "$INVOKE_RC" -ne 0 ] && [ -z "$FUNC_ERROR" ]; then
+            echo "::error::gold_to_dynamodb invoke failed (rc=$INVOKE_RC): $INVOKE_META"; exit 1
+          fi
           if [ -n "$FUNC_ERROR" ]; then echo "::error::gold_to_dynamodb FunctionError: $FUNC_ERROR"; exit 1; fi
           RECORDS=$(cat /tmp/gld-response.json 2>/dev/null | jq -r '.records_processed // 0' 2>/dev/null || echo "0")
           if [ "${RECORDS:-0}" -lt 1 ] 2>/dev/null; then
@@ -713,18 +736,22 @@ jobs:
           TABLE="${{ needs.all-hml-lambda-deploy.outputs.dynamodb_table }}"
           BUCKET="${{ needs.all-hml-lambda-deploy.outputs.lakehouse_bucket }}"
           FIXTURE_KEY="${{ needs.all-hml-lambda-deploy.outputs.fixture_key }}"
-          aws lambda delete-function --function-name "hml-contracts-ingestion-${RUN_ID}" 2>/dev/null || true
-          aws lambda delete-function --function-name "hml-gold-to-dynamodb-${RUN_ID}"   2>/dev/null || true
+          # Genuine idempotent teardown of ephemeral per-run resources — each may
+          # legitimately not exist (already cleaned, or deploy aborted before creation).
+          # Masking is correct here: teardown must not fail the run just because a
+          # resource is already gone.
+          aws lambda delete-function --function-name "hml-contracts-ingestion-${RUN_ID}" 2>/dev/null || true  # idempotent teardown
+          aws lambda delete-function --function-name "hml-gold-to-dynamodb-${RUN_ID}"   2>/dev/null || true  # idempotent teardown
           LAYER_NAME="hml-dm-chain-utils-${RUN_ID}"
           VERSIONS=$(aws lambda list-layer-versions --layer-name "$LAYER_NAME" --query 'LayerVersions[].Version' --output json 2>/dev/null || echo '[]')
           for V in $(echo "$VERSIONS" | jq -r '.[]'); do
-            aws lambda delete-layer-version --layer-name "$LAYER_NAME" --version-number "$V" 2>/dev/null || true
+            aws lambda delete-layer-version --layer-name "$LAYER_NAME" --version-number "$V" 2>/dev/null || true  # idempotent teardown
           done
           [ -n "$BUCKET" ] && [ -n "$FIXTURE_KEY" ] && \
-            aws s3 rm "s3://${BUCKET}/${FIXTURE_KEY}" 2>/dev/null || true
+            aws s3 rm "s3://${BUCKET}/${FIXTURE_KEY}" 2>/dev/null || true  # idempotent teardown
           [ -n "$TABLE" ] && \
             aws dynamodb delete-item --table-name "$TABLE" \
-              --key '{"pk":{"S":"CONSUMPTION"},"sk":{"S":"hml-test#test-key-001"}}' 2>/dev/null || true
+              --key '{"pk":{"S":"CONSUMPTION"},"sk":{"S":"hml-test#test-key-001"}}' 2>/dev/null || true  # idempotent teardown
       - name: Setup Terraform for Kinesis destroy
         uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
@@ -914,10 +941,12 @@ jobs:
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
         run: |
+          # informational post-deploy listing only — the deploy itself already
+          # succeeded in the previous step (deploy_all.sh fails loudly on error).
           echo "==> PRD DABs bundle deployed. Listing pipelines:"
-          databricks pipelines list 2>/dev/null || true
+          databricks pipelines list 2>/dev/null || true  # informational display, not an assertion
           echo "==> Listing jobs:"
-          databricks jobs list 2>/dev/null || true
+          databricks jobs list 2>/dev/null || true  # informational display, not an assertion
           echo "## PRD DABs Deploy Complete" >> $GITHUB_STEP_SUMMARY
 
   all-prod-lambda-deploy:
@@ -938,20 +967,56 @@ jobs:
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false  # CI-H8 — preserve real terraform exit codes (parity with every other job)
       - name: Stage layer zip for Terraform
         run: |
           mkdir -p ${{ env.PRD_TF_LAMBDA }}/.lambda_zip
           cp dm_chain_utils_layer.zip ${{ env.PRD_TF_LAMBDA }}/.lambda_zip/
-      - name: Terraform init & apply
+      - name: Terraform init & plan
+        id: plan
         working-directory: ${{ env.PRD_TF_LAMBDA }}
         env:
           TF_VAR_project_version: ${{ needs.all-check-version.outputs.version }}
         run: |
+          # CI-H8 — no `tee` pipe (which would mask terraform's exit via pipefail-less
+          # pipeline); redirect plan output to a file and capture the real exit code with
+          # -detailed-exitcode (0=no changes, 1=error, 2=changes). A failing plan now
+          # fails the step instead of proceeding blindly to apply.
           terraform init -input=false
-          terraform plan -no-color -input=false -out=tfplan 2>&1 | tee plan.txt
-          echo "### Lambda Terraform Plan" >> $GITHUB_STEP_SUMMARY
-          echo '```hcl' >> $GITHUB_STEP_SUMMARY; tail -20 plan.txt >> $GITHUB_STEP_SUMMARY; echo '```' >> $GITHUB_STEP_SUMMARY
-          terraform apply -input=false -auto-approve tfplan
+          set +e
+          terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+          PLAN_EXIT=$?
+          set -e
+          {
+            echo "### Lambda Terraform Plan"
+            echo '```hcl'
+            # CI-M2 — surface the resource-change footer explicitly, not via tail alone.
+            grep -E '^(Plan:|No changes|Apply complete|Error:)' plan.txt || true  # summary-only: no match is fine, full plan uploaded as artifact
+            echo '... (tail) ...'
+            tail -20 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PLAN_EXIT" -eq 1 ]; then
+            echo "::error::Lambda terraform plan failed"
+            tail -80 plan.txt
+            exit 1
+          fi
+          if [ "$PLAN_EXIT" -eq 2 ]; then
+            echo "plan_has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "plan_has_changes=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Upload full plan (CI-M2 — no tail-only truncation)
+        if: always()
+        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
+        with:
+          name: prd-lambda-plan
+          path: ${{ env.PRD_TF_LAMBDA }}/plan.txt
+          if-no-files-found: ignore
+      - name: Terraform apply (gated on plan changes — CI-H8)
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        working-directory: ${{ env.PRD_TF_LAMBDA }}
+        run: terraform apply -input=false -auto-approve tfplan
 
   all-prod-tag:
     name: PRD — Create release git tags

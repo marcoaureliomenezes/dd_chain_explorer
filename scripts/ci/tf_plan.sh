@@ -43,8 +43,15 @@ terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 
 PLAN_EXIT=$?
 set -e
 
-# Always inject summary so it appears even if the plan errored
+# Always inject summary so it appears even if the plan errored.
+# CI-M2 — do NOT rely on `tail -N` alone: a long post-footer warning block or a
+# many-resource plan pushes the critical "Plan: X to add, Y to change, Z to destroy"
+# line out of the tail window. Surface the resource-change footer explicitly with a
+# grep, then show the tail as supplementary context. The full plan.txt is uploaded
+# as a build artifact by the calling workflow so reviewers never see a truncated plan.
 echo "### Plan ${MODULE_NAME}" >> "${GITHUB_STEP_SUMMARY}"
+PLAN_SUMMARY_LINE="$(grep -E '^(Plan:|No changes|Apply complete)' plan.txt | tail -1 || true)"  # summary-only: empty is handled by the default-value fallback below
+echo "**${PLAN_SUMMARY_LINE:-(no resource-change summary line found — see full plan artifact)}**" >> "${GITHUB_STEP_SUMMARY}"
 echo '```hcl' >> "${GITHUB_STEP_SUMMARY}"
 tail -"${TAIL_LINES}" plan.txt >> "${GITHUB_STEP_SUMMARY}"
 echo '```' >> "${GITHUB_STEP_SUMMARY}"
@@ -55,7 +62,7 @@ if [ "${PLAN_EXIT}" -eq 1 ]; then
   rm -f "${PLAN_SIGNAL_FILE}"
   echo "::error::Terraform plan failed"
   echo "--- terraform plan output (tail) ---"
-  tail -80 plan.txt || true
+  tail -80 plan.txt || true  # best-effort diagnostic echo on an already-failing plan (we exit 1 below)
   echo "--- end terraform plan output ---"
   exit 1
 fi

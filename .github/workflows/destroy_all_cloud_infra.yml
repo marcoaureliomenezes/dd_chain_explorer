@@ -119,13 +119,13 @@ jobs:
         run: |
           BUCKET=$(terraform output -raw bucket_name 2>/dev/null || echo "dm-chain-explorer-dev-ingestion")
           echo "==> Emptying: $BUCKET"
-          bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "$AWS_REGION" || true
+          bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "$AWS_REGION" || true  # idempotent teardown — bucket may already be empty/gone
           echo "==> Removing S3 resources from TF state (prevent_destroy workaround)..."
           terraform state list 2>/dev/null | grep "aws_s3_bucket" | while IFS= read -r r; do
-            terraform state rm "$r" || true
+            terraform state rm "$r" || true  # idempotent teardown — resource may already be absent from state
           done
           echo "==> Deleting S3 bucket via AWS CLI..."
-          aws s3api delete-bucket --bucket "$BUCKET" --region "$AWS_REGION" 2>/dev/null || true
+          aws s3api delete-bucket --bucket "$BUCKET" --region "$AWS_REGION" 2>/dev/null || true  # idempotent teardown — bucket may already be deleted
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
         run: echo "DEV/01_peripherals — status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
@@ -215,15 +215,15 @@ jobs:
           DBS=$(terraform output -raw databricks_bucket_name 2>/dev/null || echo "dm-chain-explorer-hml-databricks")
           echo "==> Emptying HML S3 buckets..."
           for BUCKET in "$RAW" "$LKH" "$DBS"; do
-            bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "$AWS_REGION" || true
+            bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "$AWS_REGION" || true  # idempotent teardown — bucket may already be empty/gone  # idempotent teardown — bucket may already be empty/gone
           done
           echo "==> Removing S3 resources from TF state (prevent_destroy workaround)..."
           terraform state list 2>/dev/null | grep "aws_s3_bucket" | while IFS= read -r r; do
-            terraform state rm "$r" || true
+            terraform state rm "$r" || true  # idempotent teardown — resource may already be absent from state
           done
           echo "==> Deleting HML S3 buckets via AWS CLI..."
           for BUCKET in "$RAW" "$LKH" "$DBS"; do
-            aws s3api delete-bucket --bucket "$BUCKET" --region "$AWS_REGION" 2>/dev/null || true
+            aws s3api delete-bucket --bucket "$BUCKET" --region "$AWS_REGION" 2>/dev/null || true  # idempotent teardown — bucket may already be deleted  # idempotent teardown — bucket may already be deleted
           done
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -276,16 +276,19 @@ jobs:
           aws-region:            ${{ env.AWS_REGION }}
       - name: Delete ephemeral HML security groups (not in TF state)
         run: |
+          # idempotent teardown of ephemeral SGs not tracked in TF state — the VPC may
+          # already be gone (lookup yields nothing → loop is empty) and a given SG may
+          # already be deleted; none of these is a failure condition for a nuclear destroy.
           HML_VPC_ID=$(aws ec2 describe-vpcs \
             --filters "Name=tag:project,Values=dd-chain-explorer" "Name=tag:environment,Values=hml" \
-            --query "Vpcs[0].VpcId" --output text 2>/dev/null) || true
+            --query "Vpcs[0].VpcId" --output text 2>/dev/null) || true  # idempotent teardown — VPC may already be gone
           if [ -n "$HML_VPC_ID" ] && [ "$HML_VPC_ID" != "None" ]; then
             SG_IDS=$(aws ec2 describe-security-groups \
               --filters "Name=vpc-id,Values=${HML_VPC_ID}" "Name=group-name,Values=dm-hml-sg-*" \
-              --query "SecurityGroups[].GroupId" --output text 2>/dev/null) || true
+              --query "SecurityGroups[].GroupId" --output text 2>/dev/null) || true  # idempotent teardown — no SGs is fine
             for SG_ID in $SG_IDS; do
               echo "Deleting ephemeral SG: $SG_ID"
-              aws ec2 delete-security-group --group-id "$SG_ID" 2>/dev/null || true
+              aws ec2 delete-security-group --group-id "$SG_ID" 2>/dev/null || true  # idempotent teardown — SG may already be deleted
             done
           fi
       - run: terraform init -input=false
@@ -395,7 +398,7 @@ jobs:
         run: |
           terraform init -input=false
           WS_HOST=$(terraform output -raw -no-color databricks_workspace_url 2>/dev/null | \
-            sed 's/\x1B\[[0-9;]*[mK]//g' | tr -d '\n' || true)
+            sed 's/\x1B\[[0-9;]*[mK]//g' | tr -d '\n' || true)  # best-effort lookup — step is continue-on-error; empty host is handled downstream
           echo "host=${WS_HOST}" >> $GITHUB_OUTPUT
         env:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
@@ -473,15 +476,15 @@ jobs:
           DBS=$(terraform output -raw databricks_bucket_name 2>/dev/null || echo "dm-chain-explorer-databricks")
           echo "==> Emptying PRD S3 buckets..."
           for BUCKET in "$RAW" "$LKH" "$DBS"; do
-            bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "$AWS_REGION" || true
+            bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "$AWS_REGION" || true  # idempotent teardown — bucket may already be empty/gone  # idempotent teardown — bucket may already be empty/gone
           done
           echo "==> Removing S3 resources from TF state (prevent_destroy workaround)..."
           terraform state list 2>/dev/null | grep "aws_s3_bucket" | while IFS= read -r r; do
-            terraform state rm "$r" || true
+            terraform state rm "$r" || true  # idempotent teardown — resource may already be absent from state
           done
           echo "==> Deleting PRD S3 buckets via AWS CLI..."
           for BUCKET in "$RAW" "$LKH" "$DBS"; do
-            aws s3api delete-bucket --bucket "$BUCKET" --region "$AWS_REGION" 2>/dev/null || true
+            aws s3api delete-bucket --bucket "$BUCKET" --region "$AWS_REGION" 2>/dev/null || true  # idempotent teardown — bucket may already be deleted  # idempotent teardown — bucket may already be deleted
           done
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -563,7 +566,7 @@ jobs:
       - name: Empty TF state S3 bucket
         run: |
           bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" \
-            "dm-chain-explorer-terraform-state" "$AWS_REGION" || true
+            "dm-chain-explorer-terraform-state" "$AWS_REGION" || true  # idempotent teardown — state bucket may already be empty/gone
       - name: Delete TF state S3 bucket
         run: |
           aws s3api delete-bucket \
