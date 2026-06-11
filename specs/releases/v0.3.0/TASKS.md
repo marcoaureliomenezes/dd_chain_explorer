@@ -108,7 +108,7 @@ software-engineer scope.
   runs `fmt -check -recursive` + `terraform validate` as a fail-fast gate.
   Parallelism: Wave 2, parallel-safe.
 
-- [-] T-R6-A8 — **Change-detection correctness (CI-H3, CI-M3)** | Owner: devops-engineer | Priority: HIGH
+- [x] T-R6-A8 — **Change-detection correctness (CI-H3, CI-M3)** | Owner: devops-engineer | Priority: HIGH
   Write-set: `scripts/ci/detect_changes.sh`, `.github/workflows/plan_on_pr.yml`
   Acceptance:
     (a) Static stack→module map: a module edit triggers plans only for stacks consuming

@@ -95,30 +95,30 @@ jobs:
       - name: Detect changed modules
         id: detect
         run: |
-          DIFF=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD" 2>/dev/null \
-              || git diff --name-only HEAD~1 HEAD)
+          set -euo pipefail
+          # Fail-loud diff base (CI-H3, T-R6-A8(b)): the PR base ref must be
+          # fetchable and share a merge-base with HEAD — no silent HEAD~1 fallback.
+          BASE="origin/${{ github.base_ref }}"
+          if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
+            echo "::error::detect-changes: base ref '$BASE' not available — checkout needs fetch-depth: 0." >&2
+            exit 1
+          fi
+          if ! MERGE_BASE="$(git merge-base "$BASE" HEAD 2>/dev/null)"; then
+            echo "::error::detect-changes: no merge-base between '$BASE' and HEAD (shallow clone / unrelated history). Refusing to degrade to 'git diff HEAD~1'." >&2
+            exit 1
+          fi
+          DIFF="$(git diff --name-only "${MERGE_BASE}...HEAD")"
           echo "Changed files:"
           echo "$DIFF"
 
-          set_out() {
-            local key="$1" path="$2"
-            if echo "$DIFF" | grep -qE "(^services/${path}/|^services/modules/)"; then
-              echo "${key}=true" >> "$GITHUB_OUTPUT"
-            else
-              echo "${key}=false" >> "$GITHUB_OUTPUT"
-            fi
-          }
-
-          set_out dev_peripherals  dev/01_peripherals
-          set_out dev_lambda       dev/02_lambda
-          set_out hml_vpc          hml/02_vpc
-          set_out hml_iam          hml/03_iam
-          set_out hml_peripherals  hml/04_peripherals
-          set_out prd_vpc          prd/02_vpc
-          set_out prd_iam          prd/03_iam
-          set_out prd_peripherals  prd/04_peripherals
-          set_out prd_lambda       prd/06_lambda
-          set_out prd_ecs          prd/07_ecs
+          # Single-source stack/module resolution (F-ARCH-4): stack→module edges
+          # live in scripts/ci/stack_map.json; a module edit triggers ONLY the
+          # consuming stacks (blanket ^services/modules/ clause removed, CI-H3).
+          # Emit keys without the _changed suffix to match this job's outputs.
+          for env in dev hml prd; do
+            CHANGED_FILES="$DIFF" python3 "$GITHUB_WORKSPACE/scripts/ci/changed_stacks.py" "$env" --emit-github \
+              | sed 's/_changed=/=/'
+          done >> "$GITHUB_OUTPUT"
 
   # ── DEV ──────────────────────────────────────────────────────────────────
 
