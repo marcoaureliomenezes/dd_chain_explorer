@@ -73,7 +73,7 @@ software-engineer scope.
   `hml`; evidence captured in the task's handoff. `dev` stays ungated.
   Parallelism: any time; required before rc ship.
 
-- [ ] T-R6-A4 — **Concurrency groups on destroy-all + auto-bump + drift (CI-C3, CI-M9)** | Owner: devops-engineer | Priority: CRITICAL
+- [-] T-R6-A4 — **Concurrency groups on destroy-all + auto-bump + drift (CI-C3, CI-M9)** | Owner: devops-engineer | Priority: CRITICAL
   Write-set: `.github/workflows/destroy_all_cloud_infra.yml`, `.github/workflows/auto-bump-version.yml`, `.github/workflows/drift_detection.yml`
   Acceptance: each file has a workflow-level `concurrency:` group with
   `cancel-in-progress: false`; destroy-all's `confirm` input check verified to block
