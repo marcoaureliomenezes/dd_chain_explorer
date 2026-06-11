@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-06-09T02:02:49Z",
+  "generated_at": "2026-06-11T00:00:00Z",
   "context": "dd-chain-explorer",
   "features": [
     {
@@ -23,7 +23,7 @@
         "iam",
         "terraform"
       ],
-      "token_estimate": 1200,
+      "token_estimate": 1860,
       "agent_tier": "self-pull",
       "depends_on": []
     },
@@ -42,7 +42,7 @@
         "ethereum",
         "kinesis"
       ],
-      "token_estimate": 800,
+      "token_estimate": 740,
       "agent_tier": "self-pull",
       "depends_on": []
     },
@@ -63,7 +63,7 @@
         "dlt",
         "unity-catalog"
       ],
-      "token_estimate": 1400,
+      "token_estimate": 1830,
       "agent_tier": "self-pull",
       "depends_on": []
     },
@@ -83,7 +83,7 @@
         "silver",
         "gold"
       ],
-      "token_estimate": 900,
+      "token_estimate": 580,
       "agent_tier": "self-pull",
       "depends_on": []
     },
@@ -102,8 +102,27 @@
         "lambda",
         "analytics"
       ],
-      "token_estimate": 600,
+      "token_estimate": 435,
       "agent_tier": "self-pull",
+      "depends_on": []
+    },
+    {
+      "rank": 6,
+      "slug": "cicd-pipeline",
+      "title": "CI/CD Pipeline",
+      "category": "ops",
+      "tldr": "GitHub Actions control plane — 7 workflows, informed environment gate with saved-plan apply, OIDC role-assumption, scripts/ci toolbox, single-source stack map.",
+      "summary": "Describes the CI/CD control plane after the v0.3.0 gate redesign — the 7 GitHub Actions workflows, the dependency-chain-aware informed environment gate (pre-gate plan artifacts, saved-plan apply, fail-closed re-plan divergence), the 4-role OIDC trust matrix, and the scripts/ci helper toolbox driven by stack_map.json.",
+      "path": "product/cicd-pipeline.md",
+      "tags": [
+        "cicd",
+        "github-actions",
+        "terraform",
+        "oidc",
+        "deploy-gate"
+      ],
+      "token_estimate": 700,
+      "agent_tier": "on-demand",
       "depends_on": []
     }
   ]

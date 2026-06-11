@@ -82,6 +82,11 @@ software-engineer scope.
   Acceptance: `gh api repos/:owner/:repo/environments` shows required_reviewers on
   `hml`; evidence captured in the task's handoff. `dev` stays ungated.
   Parallelism: any time; required before rc ship.
+  **DEFERRED-TO-OPERATOR (2026-06-11, v0.3.0 CLOSURE):** operator decision "ship now,
+  defer operator-pending work to next release". Marker left `[ ]` by deferral authority
+  recorded in CLOSURE.md §Deferred (OP-R6-3); tracked in
+  `specs/backlog/v0.3.0-operator-cutover-and-next.md`. Exact command:
+  `gh api -X PUT repos/:owner/:repo/environments/hml -f "reviewers[][type]=User" -F "reviewers[][id]=42839553"`.
 
 - [x] T-R6-A4 — **Concurrency groups on destroy-all + auto-bump + drift (CI-C3, CI-M9)** | Owner: devops-engineer | Priority: CRITICAL
   Write-set: `.github/workflows/destroy_all_cloud_infra.yml`, `.github/workflows/auto-bump-version.yml`, `.github/workflows/drift_detection.yml`
@@ -165,6 +170,11 @@ software-engineer scope.
     (d) `terraform validate` + plan reviewed for the touched stack; first apply rides
         the existing static-key deploy path (bootstrap, ADR-R6-6).
   Parallelism: Wave 1–2, parallel with WS-A (disjoint files). Blocks T-R6-B3.
+  **DEFERRED-TO-OPERATOR (2026-06-11, v0.3.0 CLOSURE):** terraform code for the 4 OIDC
+  roles is complete and validated; the **apply** of `services/prd/03_iam` requires the
+  operator-created OIDC provider (OP-R6-2) first. Marker left `[-]` by deferral
+  authority recorded in CLOSURE.md §Deferred; live apply + evidence tracked in
+  `specs/backlog/v0.3.0-operator-cutover-and-next.md`.
 
 - [-] T-R6-B3 — **Workflows: static keys → OIDC role-assumption** | Owner: devops-engineer | Priority: HIGH
   Write-set: all 7 files under `.github/workflows/`
@@ -207,6 +217,10 @@ software-engineer scope.
   `AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}` set to the applied role ARNs. OP-R6-4
   (static-key secret deletion) stays blocked on (f). Operator deletes the GitHub
   secrets — never this agent.
+  **DEFERRED-TO-OPERATOR (2026-06-11, v0.3.0 CLOSURE):** code-complete per the status
+  note above; live evidence (e)/(f) is operator-era (OP-R6-2 → B2 apply → role vars →
+  runs). Marker left `[-]` by deferral authority recorded in CLOSURE.md §Deferred;
+  verification tasks tracked in `specs/backlog/v0.3.0-operator-cutover-and-next.md`.
 
 ## Sanitization (parallel-safe — `specs/**` only)
 
@@ -237,13 +251,13 @@ software-engineer scope.
   cleared; non-canonical `Implementado` token no longer under live `releases/`.
   Parallelism: any time.
 
-- [ ] T-R6-S5 — **T-R5-F2: token_estimate frontmatter fixes** | Owner: product-engineer | Priority: LOW | Phase: CLOSURE (memory-write window)
+- [x] T-R6-S5 — **T-R5-F2: token_estimate frontmatter fixes** | Owner: product-engineer | Priority: LOW | Phase: CLOSURE (memory-write window)
   Write-set: `specs/memory/architecture.md`, `specs/memory/product/{aws-resources,capture-layer,data-catalog,medallion-pipelines,serving-layer}.md` (frontmatter only)
   Acceptance: token_estimate within ±10% of computed; doctor LINT-1 token drift cleared;
   regenerate `catalog.json` if estimates change.
   Parallelism: CLOSURE phase only (gate).
 
-- [ ] T-R6-S6 — **T-R5-F3: heading-allowlist evaluation + drift-10 closure** | Owner: product-engineer + ai-engineer | Priority: LOW | Phase: CLOSURE for any heading rewrites
+- [x] T-R6-S6 — **T-R5-F3: heading-allowlist evaluation + drift-10 closure** | Owner: product-engineer + ai-engineer | Priority: LOW | Phase: CLOSURE for any heading rewrites
   Write-set: investigation; conditional `specs/memory/*` heading edits (CLOSURE window);
   upstream bug in `repos/dadaia-workspace/specs/bugs/` if allowlist gap (ADDITIVE, any time)
   Acceptance: each non-standard heading either rewritten or justified + upstream bug

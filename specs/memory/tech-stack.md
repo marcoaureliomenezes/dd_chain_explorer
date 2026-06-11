@@ -3,7 +3,7 @@ slug: tech-stack
 title: Tech Stack
 category: core
 tldr: Canonical technology inventory for DD Chain Explorer — Python 3.12, ECS Fargate, Kinesis/Firehose/SQS, DynamoDB, S3, Databricks DLT, Terraform.
-summary: Full technology stack reference including application layer (Python, Docker), shared library dm-chain-utils, AWS infrastructure (ECS, Kinesis, Firehose, SQS, DynamoDB, S3, Lambda), Databricks (DBR 15.x, DLT, Auto Loader, Lakeview), IaC (Terraform >= 1.5), CI/CD (GitHub Actions), and external APIs.
+summary: Full technology stack reference including application layer (Python, Docker), shared library dm-chain-utils, AWS infrastructure (ECS, Kinesis, Firehose, SQS, DynamoDB, S3, Lambda), Databricks (DBR 15.x, DLT, Auto Loader, Lakeview), IaC (Terraform >= 1.5), CI/CD (GitHub Actions with OIDC role-assumption, actionlint + fmt/validate gates, single-source stack map), and external APIs.
 tags:
   - tech-stack
   - python
@@ -11,9 +11,9 @@ tags:
   - databricks
   - terraform
 agent_tier: self-pull
-token_estimate: 1200
-last_updated: "2026-06-08"
-release_origin: memory-compliance-migration
+token_estimate: 1910
+last_updated: "2026-06-11"
+release_origin: v0.3.0
 ---
 
 # Tech Stack — DD Chain Explorer
@@ -165,10 +165,33 @@ All resources prefixed `dm-{env}-` or `dm-dd-chain-explorer-{env}-`.
 |-----------|-----------|
 | Platform | GitHub Actions |
 | Workflows | 7 (deploy apps, deploy infra, destroy infra, destroy all, auto-bump, drift detection, plan on PR) |
-| CI scripts | 16 Bash scripts in `scripts/ci/` |
+| CI scripts | 18 Bash scripts + `changed_stacks.py` + `stack_map.json` in `scripts/ci/` |
 | Integration tests | 4 Bash scripts in `scripts/` |
 | Terraform in CI | `terraform_wrapper: false` to preserve exit codes |
 | Docker base image | `python:3.12-slim` |
+| AWS auth in CI | GitHub OIDC `role-to-assume` via `vars.AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}` + `permissions: id-token: write`; no static AWS keys in any workflow |
+| Workflow lint gate | `actionlint` must exit 0 on every workflow |
+| Terraform hygiene gate | `terraform fmt -check -recursive` + `terraform validate` fail-fast in `plan_on_pr.yml` |
+| Job hygiene | `timeout-minutes` on every job; `concurrency:` groups (`cancel-in-progress: false`) on destroy-all, auto-bump, drift detection |
+
+### OIDC role model (4 IAM roles, account-level `services/prd/03_iam`)
+
+| Role | Trust (`sub` condition) | Used by |
+|------|------------------------|---------|
+| dev deploy | `environment:dev` | dev infra deploy/destroy jobs |
+| hml deploy | `environment:hml` + `environment:hml-apps` | hml infra jobs + the 9 mutating dm-applications jobs (`hml-apps` is reviewer-less by design) |
+| prd deploy | `environment:production` (the GitHub env's real name — not `prd`) | production deploy/destroy jobs |
+| read-only plan | `pull_request` + default-branch ref claim | `plan_on_pr.yml`, `drift_detection.yml`, `all-check-infra` — plan/read only, no mutating actions |
+
+Trust policies reference the account GitHub OIDC identity provider (created by the
+operator, outside Terraform) via data source/ARN.
+
+### Single-source stack map convention
+
+`scripts/ci/stack_map.json` is the only place stack names, stack→module mappings,
+upstream dependency declarations, and `bootstrap_plannable` flags live. Both
+`plan_on_pr.yml` change detection and the deploy gate consume it; no workflow YAML or
+shell helper hardcodes a stack list.
 
 ---
 

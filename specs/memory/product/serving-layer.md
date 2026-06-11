@@ -11,9 +11,9 @@ tags:
   - lambda
   - analytics
 agent_tier: self-pull
-token_estimate: 600
-last_updated: "2026-06-08"
-release_origin: memory-compliance-migration
+token_estimate: 435
+last_updated: "2026-06-11"
+release_origin: v0.3.0
 ---
 
 ## Propósito

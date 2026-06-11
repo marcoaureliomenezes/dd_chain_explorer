@@ -11,9 +11,9 @@ tags:
   - ethereum
   - kinesis
 agent_tier: self-pull
-token_estimate: 800
+token_estimate: 740
 last_updated: "2026-06-11"
-release_origin: memory-compliance-migration
+release_origin: v0.3.0
 ---
 
 ## Propósito
@@ -28,6 +28,10 @@ Each job class logs exclusively through an injected `self.logger` set in `__init
 (module-level logging is confined to the `__main__` entry-point block), and all 5 classes
 are covered by 71 unit tests under `apps/docker/onchain-stream-txs/tests/unit/`
 (constructor/logger injection, mocked happy path, and error paths per job).
+
+Job 4 never logs raw API key material: every log statement references a key only through
+the non-reversible identifier `_key_ref()` (`sha256(key)[:8]`, `4_mined_txs_crawler.py`),
+and a unit test asserts no raw key value appears in captured log output (CWE-532 posture).
 
 ## Fluxo de uso
 
