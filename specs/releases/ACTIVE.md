@@ -1,2 +1,2 @@
-release: audit-remediation-r5
-phase: IMPLEMENTATION
+release: v0.3.0
+phase: DEFINITION

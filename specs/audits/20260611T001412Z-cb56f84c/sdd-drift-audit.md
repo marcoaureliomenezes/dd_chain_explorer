@@ -169,8 +169,8 @@ No stale or contradictory backlog entries found.
 | Source | Type |
 |---|---|
 | `dadaia specs doctor` run (2026-06-11, `DADAIA_CONTEXT=dd-chain-explorer`) | tool output — 8 ERR / 18 WARN |
-| `specs/audits/20260611T001412Z/security-review.md` | security-reviewer evidence report (pre-existing in this audit dir) — 0 CRIT / 2 HIGH / 5 MED / 5 LOW / 3 INFO |
-| `specs/audits/20260611T001412Z/cicd-terraform-review.md` | code-reviewer evidence report (pre-existing) — 3 CRIT / 8 HIGH / 11 MED / 7 LOW, REQUEST_CHANGES |
+| `specs/audits/20260611T001412Z-cb56f84c/security-review.md` | security-reviewer evidence report (pre-existing in this audit dir) — 0 CRIT / 2 HIGH / 5 MED / 5 LOW / 3 INFO |
+| `specs/audits/20260611T001412Z-cb56f84c/cicd-terraform-review.md` | code-reviewer evidence report (pre-existing) — 3 CRIT / 8 HIGH / 11 MED / 7 LOW, REQUEST_CHANGES |
 | `specs/audits/20260609T013037Z/audit.md` | prior project-auditor baseline (6.2/10) |
 | Direct file:line verification | this audit — all citations inline above |
 | `repos/dadaia-workspace/specs/` tree listing | canonical-pattern comparator for §specs/domains |

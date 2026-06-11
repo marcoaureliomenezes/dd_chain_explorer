@@ -3,7 +3,7 @@
 > **Status:** CANDIDATE — NOT picked into any release.
 > **Owner:** project-manager (sole backlog curator).
 > **Created:** 2026-06-11
-> **Source:** consolidated 4-agent audit `specs/audits/20260611T001412Z/`
+> **Source:** consolidated 4-agent audit `specs/audits/20260611T001412Z-cb56f84c/`
 > (architecture-review, security-review, cicd-terraform-review, sdd-drift-audit).
 > Totals: **5 CRITICAL / 17 HIGH / 28 MEDIUM / 20 LOW**, SDD scorecard 5.8/10,
 > doctor [fail] 8 ERROR / 18 WARN.
