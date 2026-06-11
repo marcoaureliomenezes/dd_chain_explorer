@@ -12,7 +12,7 @@ tags:
   - kinesis
 agent_tier: self-pull
 token_estimate: 800
-last_updated: "2026-06-08"
+last_updated: "2026-06-11"
 release_origin: memory-compliance-migration
 ---
 
@@ -23,6 +23,11 @@ The capture layer continuously ingests raw Ethereum mainnet data and delivers it
 The layer handles three types of Ethereum data: block headers (Job 3 via Firehose Direct Put), raw transactions (Job 4 via Kinesis), and decoded transaction calldata (Job 5 via Firehose Direct Put). A distributed DynamoDB semaphore coordinates API key rotation across 6 parallel transaction-fetching replicas.
 
 The ABI decoding pipeline (Job 5) uses a 4-stage fallback: DynamoDB ABI cache → Etherscan API → 4byte.directory → raw selector. This maximizes decode coverage while minimizing external API calls.
+
+Each job class logs exclusively through an injected `self.logger` set in `__init__`
+(module-level logging is confined to the `__main__` entry-point block), and all 5 classes
+are covered by 71 unit tests under `apps/docker/onchain-stream-txs/tests/unit/`
+(constructor/logger injection, mocked happy path, and error paths per job).
 
 ## Fluxo de uso
 
