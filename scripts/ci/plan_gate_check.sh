@@ -44,7 +44,7 @@ plan_counts() {
   fi
   # Last matching footer wins (terraform prints it once near the end).
   local line
-  line="$(grep -E '^Plan: [0-9]+ to add, [0-9]+ to change, [0-9]+ to destroy\.' "$plan_file" | tail -1 || true)"
+  line="$(grep -E '^Plan: [0-9]+ to add, [0-9]+ to change, [0-9]+ to destroy\.' "$plan_file" | tail -1 || true)"  # no footer => "No changes." plan, handled as 0 0 0 below
   if [[ -z "$line" ]]; then
     # "No changes." plans, or apply-time plans with nothing pending.
     echo "0 0 0"
@@ -161,7 +161,7 @@ cmd_plan_diff() {
     echo "--- re-plan addresses ---"
     echo "${replan_addrs}"
     echo "--- address diff (approved vs re-plan) ---"
-    diff <(echo "${approved_addrs}") <(echo "${replan_addrs}") || true
+    diff <(echo "${approved_addrs}") <(echo "${replan_addrs}") || true  # diff exit 1 (differences found) is the expected case here — diagnostic output only
   } >&2
   exit 3
 }

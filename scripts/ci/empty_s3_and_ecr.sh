@@ -16,7 +16,7 @@ for REPO in onchain-stream-txs onchain-batch-txs; do
     --query 'imageIds[*]' --output json 2>/dev/null) || IMAGES="[]"
   if [ "${IMAGES}" != "[]" ] && [ -n "${IMAGES}" ]; then
     aws ecr batch-delete-image --repository-name "${REPO}" \
-      --image-ids "${IMAGES}" --region "${AWS_REGION}" 2>/dev/null || true
+      --image-ids "${IMAGES}" --region "${AWS_REGION}" 2>/dev/null || true  # idempotent teardown — images may already be deleted
     echo "ECR ${REPO} emptied."
   else
     echo "ECR ${REPO} is empty or does not exist — skipping."

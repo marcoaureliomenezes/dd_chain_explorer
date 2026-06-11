@@ -50,8 +50,15 @@ destroy_module() {
 
   cd "${module_dir}"
 
-  # State lock check (best-effort)
-  bash "${REPO_ROOT}/scripts/ci/tf_state_lock_check.sh" || true
+  # State lock check — fail loud on a real lock (parity with deploy_env.sh, F-QA-A1-4).
+  # A held lock must NOT be swallowed: destroying over another writer's lock races it and
+  # can corrupt remote state. tf_state_lock_check.sh already only removes STALE locks and
+  # is a no-op when none exist, so failing here means a genuine active lock.
+  if ! bash "${REPO_ROOT}/scripts/ci/tf_state_lock_check.sh"; then
+    summary "| ❌ | ${module_name} | state lock check failed |"
+    echo "::error::State lock check failed for ${module_name}"
+    exit 1
+  fi
 
   terraform init -input=false
 
@@ -155,7 +162,7 @@ destroy_prd() {
   WORKSPACE_URL=""
   cd "${root}/05a_databricks_account"
   terraform init -input=false -reconfigure 2>/dev/null || terraform init -input=false
-  WORKSPACE_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || true)
+  WORKSPACE_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || true)  # capture-then-check: empty URL is handled by the API fallback + loud guard below
   if [[ -z "$WORKSPACE_URL" ]]; then
     echo "::warning::TF output returned empty workspace URL — trying Databricks API fallback"
     TOKEN=$(curl -sf -X POST \
@@ -165,14 +172,14 @@ destroy_prd() {
       --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
       --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
       --data-urlencode "scope=all-apis" \
-      | jq -r '.access_token' 2>/dev/null || true)
+      | jq -r '.access_token' 2>/dev/null || true)  # capture-then-check: empty/null token guarded below
     if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
       WORKSPACE_URL=$(curl -sf \
         -H "Authorization: Bearer $TOKEN" \
         "https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}/workspaces" \
         2>/dev/null \
         | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_url // empty' \
-        2>/dev/null || true)
+        2>/dev/null || true)  # capture-then-check: empty result handled by the loud guard below
     fi
   fi
   cd "${REPO_ROOT}"

@@ -20,7 +20,7 @@ TOKEN=$(curl -sf -X POST \
   --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
   --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
   --data-urlencode "scope=all-apis" \
-  | jq -r '.access_token' 2>/dev/null || true)
+  | jq -r '.access_token' 2>/dev/null || true)  # capture-then-check: empty/null token fails loudly below
 
 if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
   echo "::error::Could not acquire Databricks OAuth token — check DATABRICKS_CLIENT_ID/SECRET secrets."
@@ -47,28 +47,28 @@ tf_import() {
 echo "==> Checking for pre-existing Databricks account resources to import..."
 
 CRED_ID=$(curl -sf -H "$AUTH" "${ACCT}/credentials" 2>/dev/null \
-  | jq -r '[.[] | select(.credentials_name=="dm-chain-explorer-credentials")][0].credentials_id // empty' 2>/dev/null || true)
+  | jq -r '[.[] | select(.credentials_name=="dm-chain-explorer-credentials")][0].credentials_id // empty' 2>/dev/null || true)  # idempotent lookup: empty id => resource absent, import skipped
 [ -n "$CRED_ID" ] && tf_import "MWS credentials" "databricks_mws_credentials.dm" "${DATABRICKS_ACCOUNT_ID}/${CRED_ID}"
 
 STOR_ID=$(curl -sf -H "$AUTH" "${ACCT}/storage-configurations" 2>/dev/null \
-  | jq -r '[.[] | select(.storage_configuration_name=="dm-chain-explorer-storage")][0].storage_configuration_id // empty' 2>/dev/null || true)
+  | jq -r '[.[] | select(.storage_configuration_name=="dm-chain-explorer-storage")][0].storage_configuration_id // empty' 2>/dev/null || true)  # idempotent lookup: empty id => resource absent, import skipped
 [ -n "$STOR_ID" ] && tf_import "MWS storage config" "databricks_mws_storage_configurations.dm" "${DATABRICKS_ACCOUNT_ID}/${STOR_ID}"
 
 NET_ID=$(curl -sf -H "$AUTH" "${ACCT}/networks" 2>/dev/null \
-  | jq -r '[.[] | select(.network_name=="dm-chain-explorer-network")][0].network_id // empty' 2>/dev/null || true)
+  | jq -r '[.[] | select(.network_name=="dm-chain-explorer-network")][0].network_id // empty' 2>/dev/null || true)  # idempotent lookup: empty id => resource absent, import skipped
 [ -n "$NET_ID" ] && tf_import "MWS network" "databricks_mws_networks.dm" "${DATABRICKS_ACCOUNT_ID}/${NET_ID}"
 
 WS_ID=$(curl -sf -H "$AUTH" "${ACCT}/workspaces" 2>/dev/null \
-  | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_id // empty' 2>/dev/null || true)
+  | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_id // empty' 2>/dev/null || true)  # idempotent lookup: empty id => resource absent, import skipped
 [ -n "$WS_ID" ] && tf_import "MWS workspace" "databricks_mws_workspaces.dm" "${DATABRICKS_ACCOUNT_ID}/${WS_ID}"
 
 MS_ID=$(curl -sf -H "$AUTH" "https://accounts.cloud.databricks.com/api/2.1/unity-catalog/metastores" 2>/dev/null \
-  | jq -r '[.metastores[]? | select(.name=="dm-chain-explorer-metastore")][0].metastore_id // empty' 2>/dev/null || true)
+  | jq -r '[.metastores[]? | select(.name=="dm-chain-explorer-metastore")][0].metastore_id // empty' 2>/dev/null || true)  # idempotent lookup: empty id falls back to TF state below
 
 # Fallback: read metastore_id from TF state if API returned nothing
 if [ -z "${MS_ID:-}" ]; then
   MS_ID=$(terraform state show databricks_metastore.dm 2>/dev/null \
-    | grep -E '^\s+id\s*=' | head -1 | sed 's/.*=\s*"\(.*\)"/\1/' || true)
+    | grep -E '^\s+id\s*=' | head -1 | sed 's/.*=\s*"\(.*\)"/\1/' || true)  # idempotent lookup: empty id => metastore absent, import skipped
   [ -n "$MS_ID" ] && echo "  Metastore ID read from TF state: $MS_ID"
 fi
 [ -n "$MS_ID" ] && tf_import "Unity Catalog metastore" "databricks_metastore.dm" "$MS_ID"
@@ -86,10 +86,10 @@ fi
 if [ -n "${WS_ID:-}" ]; then
   PA_JSON=$(curl -sf -H "$AUTH" \
     "${ACCT}/workspaces/${WS_ID}/permissionassignments" 2>/dev/null \
-    | jq -r '[.permission_assignments[]? | select(any(.permissions[]?; . == "ADMIN")) | .principal.principal_id]' 2>/dev/null || true)
+    | jq -r '[.permission_assignments[]? | select(any(.permissions[]?; . == "ADMIN")) | .principal.principal_id]' 2>/dev/null || true)  # idempotent lookup: empty set => no admin assignments to import
 
   # Import user admin assignment (first non-SP principal that is a user)
-  PA_USER=$(echo "$PA_JSON" | jq -r '.[0] // empty' 2>/dev/null || true)
+  PA_USER=$(echo "$PA_JSON" | jq -r '.[0] // empty' 2>/dev/null || true)  # idempotent lookup: empty => no user admin assignment
   [ -n "$PA_USER" ] && tf_import "MWS permission assignment (admin user)" \
     "databricks_mws_permission_assignment.admin" "${WS_ID}|${PA_USER}"
 
@@ -97,10 +97,10 @@ if [ -n "${WS_ID:-}" ]; then
   SP_PRINCIPAL_ID=$(curl -sf -H "$AUTH" \
     "${ACCT}/servicePrincipals" 2>/dev/null \
     | jq -r --arg cid "${TF_VAR_databricks_client_id}" \
-      '[.Resources[]? | select(.applicationId==($cid|tonumber))][0].id // empty' 2>/dev/null || true)
+      '[.Resources[]? | select(.applicationId==($cid|tonumber))][0].id // empty' 2>/dev/null || true)  # idempotent lookup: empty => SP principal absent
   if [ -n "$SP_PRINCIPAL_ID" ]; then
     SP_PA_ID=$(echo "$PA_JSON" | jq -r --arg pid "$SP_PRINCIPAL_ID" \
-      'map(select(. == ($pid|tonumber))) | .[0] // empty' 2>/dev/null || true)
+      'map(select(. == ($pid|tonumber))) | .[0] // empty' 2>/dev/null || true)  # idempotent lookup: empty => no SP admin assignment to import
     [ -n "$SP_PA_ID" ] && tf_import "MWS permission assignment (terraform SP)" \
       "databricks_mws_permission_assignment.terraform_sp" "${WS_ID}|${SP_PA_ID}"
   fi

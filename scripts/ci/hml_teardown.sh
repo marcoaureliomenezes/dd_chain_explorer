@@ -22,7 +22,7 @@ TASKS=$(aws ecs list-tasks --cluster "${HML_ECS_CLUSTER}" \
   --query 'taskArns' --output json 2>/dev/null || echo '[]')
 for TASK_ARN in $(echo "$TASKS" | jq -r '.[]'); do
   aws ecs stop-task --cluster "${HML_ECS_CLUSTER}" --task "$TASK_ARN" \
-    --reason "HML teardown" 2>/dev/null || true
+    --reason "HML teardown" 2>/dev/null || true  # idempotent teardown — task may already be stopped/gone
 done
 
 # ── Deregister task definitions ────────────────────────────────────────────────
@@ -33,7 +33,7 @@ for FAMILY in hml-dm-mined-blocks-watcher hml-dm-orphan-blocks-watcher \
     --query 'taskDefinitionArns' --output json 2>/dev/null || echo '[]')
   for ARN in $(echo "$REVISIONS" | jq -r '.[]'); do
     aws ecs deregister-task-definition --task-definition "$ARN" \
-      --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || true
+      --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || true  # idempotent teardown — task def may already be deregistered
   done
 done
 
@@ -43,7 +43,7 @@ done
 if [ -n "${HML_SG_ID:-}" ]; then
   echo "==> Deleting HML security group ${HML_SG_ID} (waiting 20s for tasks to stop)..."
   sleep 20
-  aws ec2 delete-security-group --group-id "${HML_SG_ID}" 2>/dev/null || true
+  aws ec2 delete-security-group --group-id "${HML_SG_ID}" 2>/dev/null || true  # idempotent teardown — SG may already be deleted
 fi
 
 echo "==> HML teardown complete."

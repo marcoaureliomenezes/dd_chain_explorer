@@ -49,6 +49,6 @@ aws ec2 authorize-security-group-ingress \
   --group-id "${HML_SG_ID}" --protocol tcp --port 0-65535 --source-group "${HML_SG_ID}"
 aws ec2 authorize-security-group-egress \
   --group-id "${HML_SG_ID}" \
-  --ip-permissions '[{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]' 2>/dev/null || true
+  --ip-permissions '[{"IpProtocol":"tcp","FromPort":443,"ToPort":443,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}]' 2>/dev/null || true  # idempotent provision — egress rule may already exist
 
 echo "==> HML environment provisioned — SG: ${HML_SG_ID}"
