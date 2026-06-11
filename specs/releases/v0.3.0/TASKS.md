@@ -65,6 +65,16 @@ software-engineer scope.
     (g) Single-source constraint (F-ARCH-4): the gate's stack list + dependency
         declarations live in the same single data-driven map file consumed by
         `plan_on_pr.yml` (T-R6-A8) — no stack name hardcoded in more than one place.
+  Status note (2026-06-11, alpha-2 re-close): acceptance (a)–(e) and (g) are code-complete
+  and verified — deploy_env.sh consumes the approved `.plan-artifacts` per ADR-R6-5
+  (saved-plan apply when upstreams unchanged; re-plan + plan_gate_check.sh `plan-diff`
+  fail-closed on divergence), stack list is map-driven, pre-gate plan jobs assume
+  AWS_DEPLOY_ROLE_READONLY, hermetic apply-path tests green, actionlint exit 0.
+  Acceptance (f) live graduation evidence (one full green hml run URL + artifact list
+  before the first prd run) is **PENDING operator-era execution** — operator-blocked on
+  OP-R6-2 (OIDC provider), OP-R6-3 (hml required_reviewers), B2 apply, and the
+  AWS_DEPLOY_ROLE_* / AWS_DEPLOY_ROLE_READONLY vars being set (mirrors the T-R6-B3
+  PENDING treatment). The run URL is to be captured at first live hml run.
   Parallelism: Wave 2; same-file edits coordinated with A4/A5/A6 (sequential commits).
 
 - [ ] T-R6-A3 — **hml GitHub environment required_reviewers (OP-R6-3)** | Owner: operator (verification: devops-engineer) | Priority: HIGH
