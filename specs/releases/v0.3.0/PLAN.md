@@ -1,6 +1,6 @@
 # PLAN: v0.3.0
 
-**Status:** Em revisão
+**Status:** Aprovado
 **Release ID:** v0.3.0
 **Phase:** PLAN
 **Owner:** product-engineer
@@ -103,7 +103,7 @@ SAN    S1,S2 → S3 ; S4 ; S5,S6 in CLOSURE memory window              [product-
 |------|--------|-----------|
 | A2 gate redesign breaks hml/prd deploy | deploy outage | dev path untouched; hml graduation gate REQUIRED before first prd run (T-R6-A2 acceptance); rollback = `git revert` of the workflow commit (plan artifacts additive) |
 | Intra-stack plan staleness (`tfplan` older than the stack's OWN state) | apply refused by Terraform | acceptable failure mode — re-run plan phase; document in workflow summary |
-| Cross-stack divergence: a saved downstream plan computed against pre-apply upstream outputs would apply **silently** (Terraform does NOT refuse it) | approver approves content that is not what gets applied | ADR-R6-5 semantics: downstream-of-applied-upstream stacks are re-planned post-gate; run STOPS for re-approval on any diff vs the approved summary — no saved-plan apply across a changed dependency level |
+| Cross-stack divergence: a saved downstream plan computed against pre-apply upstream outputs would apply **silently** (Terraform does NOT refuse it) | approver approves content that is not what gets applied | ADR-R6-5 semantics: downstream-of-applied-upstream stacks are re-planned post-gate; on any diff vs the approved summary the run fails closed (diff as artifact + job summary; operator re-trigger re-enters the normal gate) — no saved-plan apply across a changed dependency level |
 | OIDC `sub` claim mismatch (environment vs ref binding) | auth failures at cutover | sub claims pinned per the ADR-R6-7 trust matrix (prd = `environment:production`); 4-role non-mutating assumption evidence required before static-key retirement (F-QA-3) |
 | Same-file contention A2↔A5/A6↔B3 | merge churn | single owner (devops-engineer), sequential commits, B3 strictly last |
 | fmt fix touches 15 files across stacks | noisy diff | mechanical `terraform fmt` only — no semantic edits; reviewed as one commit |

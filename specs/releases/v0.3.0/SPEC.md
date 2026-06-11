@@ -1,6 +1,6 @@
 # SPEC: v0.3.0
 
-**Status:** Em revisão
+**Status:** Aprovado
 **Release ID:** v0.3.0
 **Phase:** SPEC
 **Owner:** product-engineer
@@ -59,8 +59,17 @@ No product features. No data-pipeline changes.
     downstream of an upstream that **did apply changes** (or that had no pre-gate plan)
     is **re-planned** after the upstream apply; if the re-plan matches the approved
     summary (same add/change/destroy counts + resource-address set) apply proceeds;
-    if it **differs** — or there was no approved plan — the run **STOPS** at a second
-    gated approval presenting the new plan. **No silent divergence, ever.**
+    if it **differs** — or there was no approved plan — the run **STOPS**.
+    **No silent divergence, ever.**
+  - *Divergence STOP mechanism (pinned — F-SE-1):* the STOP is implemented as
+    **fail-closed + operator re-trigger**. On divergence the apply job **fails**
+    (exit ≠ 0; no further downstream applies) with the approved-summary-vs-re-plan
+    diff published as a run **artifact** and in the **job summary**. The operator
+    reviews the diff and re-runs the deploy; the re-triggered run **re-plans
+    everything** and passes through the **normal informed environment gate** again —
+    re-approval IS the normal gate of the re-triggered run, now presenting the new
+    plan. No second environment-gated job, no new GitHub environment: the ADR-R6-7
+    trust matrix and the operator-actions table are unchanged.
   - Terraform's own saved-plan staleness check guards only the stack's **own** state
     (intra-stack TOCTOU); cross-stack divergence is handled exclusively by the
     re-plan + diff-and-stop mechanism above.
@@ -121,7 +130,7 @@ None to the data platform. The CI control plane changes shape:
 | Item | Findings | Delta |
 |---|---|---|
 | A1 per-stack apply signal | CI-C2 | `scripts/ci/deploy_env.sh:77` stops grepping `tail -1` over the shared `$GITHUB_OUTPUT`; apply decision derives from `tf_plan.sh`'s real exit signal per stack; the silent `/dev/null` skip path (`deploy_env.sh:61`) is removed — a missing signal fails loudly |
-| A2 plan-visible informed gate | CI-C1 + ADR-R6-4/R6-5 | `deploy_cloud_infra.yml` PRD (`:181-210`) and HML (`:248-273`) restructured to the **dependency-chain-aware** two-phase flow of ADR-R6-5: pre-gate plan phase uploads every currently-plannable stack's plan (`tfplan` + full `plan.txt`) as artifacts + consolidated add/change/destroy summary; environment-gated apply phase applies **saved** plans for upstream-unchanged stacks and **re-plans + diff-and-stops** downstream of any in-run upstream apply (second gated stage; prd 05a→05b is the canonical case); any plan containing destroys requires an explicit acknowledgment input enforced by `scripts/ci/plan_gate_check.sh`; `dev` keeps its existing auto per-stack gating. Graduation: the new flow must be proven green on **hml before the first prd run**; rollback = `git revert` of the workflow commit (plan artifacts are additive) |
+| A2 plan-visible informed gate | CI-C1 + ADR-R6-4/R6-5 | `deploy_cloud_infra.yml` PRD (`:181-210`) and HML (`:248-273`) restructured to the **dependency-chain-aware** two-phase flow of ADR-R6-5: pre-gate plan phase uploads every currently-plannable stack's plan (`tfplan` + full `plan.txt`) as artifacts + consolidated add/change/destroy summary; environment-gated apply phase applies **saved** plans for upstream-unchanged stacks and **re-plans + diff-and-stops** downstream of any in-run upstream apply (fail-closed + operator re-trigger per ADR-R6-5; prd 05a→05b is the canonical case); any plan containing destroys requires an explicit acknowledgment input enforced by `scripts/ci/plan_gate_check.sh`; `dev` keeps its existing auto per-stack gating. Graduation: the new flow must be proven green on **hml before the first prd run**; rollback = `git revert` of the workflow commit (plan artifacts are additive) |
 | A3 hml environment gate | CI-C1 | `hml` GitHub environment gains required_reviewers (operator one-time GitHub setting — see Named operator actions); `dev` stays auto |
 | A4 concurrency groups | CI-C3, CI-M9 | `destroy_all_cloud_infra.yml`, `auto-bump-version.yml`, `drift_detection.yml` gain `concurrency:` groups with `cancel-in-progress: false` |
 | A5 error-masking purge | CI-H8, CI-M1, CI-M2 | `deploy_all_dm_applications.yml:949-954` plan no longer piped through `tee` without `pipefail`; apply gated on plan changes; `terraform_wrapper: false` parity; `\|\| true` removed from verify/test/lock-check steps (kept only for genuine idempotent teardown); plan summaries stop truncating via `tail -N` — full plan uploaded as artifact (CI-M2) |
@@ -162,7 +171,7 @@ rotates it**. No log scrubbing will be performed.
 |---|---|---|
 | `deploy_cloud_infra.yml` / `destroy_cloud_infra.yml` / `destroy_all_cloud_infra.yml` jobs with `environment: dev` | dev deploy | `repo:<org>/<repo>:environment:dev` |
 | Same workflows' jobs with `environment: hml`; `deploy_all_dm_applications.yml` jobs gaining `environment: hml-apps` (see below) | hml deploy | `repo:<org>/<repo>:environment:hml` **and** `…:environment:hml-apps` |
-| All jobs with `environment: production` (`deploy_cloud_infra.yml:188`; `deploy_all_dm_applications.yml:797,854,927,960`; `destroy_cloud_infra.yml:119`; destroy-all prd jobs) | prd deploy | `repo:<org>/<repo>:environment:production` — the GitHub env is named **`production`**, bound as-is, **no rename** |
+| All jobs with `environment: production` (`deploy_cloud_infra.yml:188`; `deploy_all_dm_applications.yml:797,854,927` — `all-prod-tag` at `:960` performs no AWS auth and needs no role; `destroy_cloud_infra.yml:119`; destroy-all prd jobs) | prd deploy | `repo:<org>/<repo>:environment:production` — the GitHub env is named **`production`**, bound as-is, **no rename** |
 | `plan_on_pr.yml` (trigger `pull_request`, no environment) | read-only plan | `repo:<org>/<repo>:pull_request` |
 | `drift_detection.yml` (`schedule`/`workflow_dispatch`, branch ref, no environment); `deploy_all_dm_applications.yml` job `all-check-infra` (read-only) | read-only plan | `repo:<org>/<repo>:ref:refs/heads/<default-branch>` (exact branch pinned at implementation) |
 | `auto-bump-version.yml` | none | performs no AWS auth |
@@ -248,8 +257,10 @@ picked-but-unsolved. There are no unpicked Open bugs.
    stack's plan artifact + consolidated add/change/destroy summary before the
    environment gate (non-plannable stacks listed as deferred, never skipped); post-gate,
    upstream-unchanged stacks apply only their saved plan binaries; stacks downstream of
-   an in-run upstream apply (or without a pre-gate plan) are re-planned and the run
-   STOPS for re-approval whenever the re-plan differs from the approved summary;
+   an in-run upstream apply (or without a pre-gate plan) are re-planned and, whenever
+   the re-plan differs from the approved summary, the run fails closed with the diff
+   published as artifact + job summary (re-approval = the normal environment gate of
+   the operator-re-triggered run — ADR-R6-5 pinned mechanism);
    destroy-containing plans require explicit acknowledgment (enforced by
    `scripts/ci/plan_gate_check.sh`, verified by its fixture unit test); all edited
    workflows pass `actionlint`; the flow is proven by one green hml run (run URL +

@@ -1,6 +1,6 @@
 # TASKS: v0.3.0
 
-**Status:** Em revisão
+**Status:** Aprovado
 **Release:** v0.3.0
 **Phase:** TASKS
 **Branch:** feature/specs-first-docs-cleanup
@@ -45,7 +45,11 @@ software-engineer scope.
         binary only; a stack downstream of an in-run upstream apply (or without a
         pre-gate plan) is RE-PLANNED — apply proceeds iff the re-plan matches the
         approved summary (add/change/destroy counts + resource-address set); otherwise
-        the run STOPS at a second gated approval presenting the new plan. prd 05a→05b
+        the run FAILS CLOSED (exit ≠ 0, no further downstream applies) with the
+        approved-vs-re-plan diff published as a run artifact + job summary; re-approval
+        = the operator re-triggers the deploy and the re-run (full re-plan) passes the
+        NORMAL informed environment gate presenting the new plan (ADR-R6-5 pinned
+        mechanism — no second gated job, no new environment). prd 05a→05b
         (`deploy_env.sh:147-184`) is the canonical covered case.
     (c) Destroy acknowledgment (F-QA-2): destroy-detection + ack check implemented in
         `scripts/ci/plan_gate_check.sh`; unit test fed fixture plans asserts exit ≠ 0
