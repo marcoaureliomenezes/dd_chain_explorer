@@ -51,6 +51,7 @@ jobs:
   safety-check:
     name: Safety check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - name: Enforce develop branch
@@ -73,6 +74,7 @@ jobs:
     name: DEV — Destroy 02_lambda
     needs: safety-check
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: dev
     defaults:
       run:
@@ -99,6 +101,7 @@ jobs:
     needs: dev-destroy-lambda
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: dev
     defaults:
       run:
@@ -138,6 +141,7 @@ jobs:
     name: HML — Destroy 05_databricks
     needs: safety-check
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: hml
     defaults:
       run:
@@ -167,6 +171,7 @@ jobs:
     needs: hml-destroy-databricks
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: hml
     defaults:
       run:
@@ -192,6 +197,7 @@ jobs:
     needs: hml-destroy-ecs
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: hml
     defaults:
       run:
@@ -234,6 +240,7 @@ jobs:
     needs: hml-destroy-peripherals
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: hml
     defaults:
       run:
@@ -259,6 +266,7 @@ jobs:
     needs: hml-destroy-iam
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: hml
     defaults:
       run:
@@ -304,6 +312,7 @@ jobs:
     name: PRD — Empty ECR repos
     needs: safety-check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     environment: production
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -323,6 +332,7 @@ jobs:
     name: PRD — Destroy 06_lambda
     needs: prd-empty-ecr
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -348,6 +358,7 @@ jobs:
     name: PRD — Destroy 07_ecs
     needs: prd-empty-ecr
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -375,6 +386,7 @@ jobs:
     needs: [prd-destroy-lambda, prd-destroy-ecs]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -421,6 +433,7 @@ jobs:
     needs: prd-destroy-databricks-workspace
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -453,6 +466,7 @@ jobs:
     needs: prd-destroy-databricks-account
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -497,6 +511,7 @@ jobs:
     needs: prd-destroy-peripherals
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -524,6 +539,7 @@ jobs:
     needs: prd-destroy-iam
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     defaults:
       run:
@@ -555,6 +571,7 @@ jobs:
     needs: [prd-destroy-vpc, hml-destroy-vpc, dev-destroy-peripherals]
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -593,6 +610,7 @@ jobs:
     needs: destroy-tf-state
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - run: |
           echo "## Destroy ALL Cloud Infra — Complete" >> $GITHUB_STEP_SUMMARY

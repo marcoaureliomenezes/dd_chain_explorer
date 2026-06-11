@@ -33,6 +33,7 @@ jobs:
   safety-check:
     name: Safety check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - name: Enforce develop branch
@@ -54,6 +55,7 @@ jobs:
     needs: safety-check
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: dev
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -85,6 +87,7 @@ jobs:
     needs: safety-check
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: hml
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -116,6 +119,7 @@ jobs:
     needs: safety-check
     if: github.event.inputs.environment == 'prd'
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4

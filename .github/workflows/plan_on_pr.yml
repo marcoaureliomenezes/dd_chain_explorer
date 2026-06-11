@@ -38,6 +38,7 @@ jobs:
   detect-changes:
     name: Detect changed modules
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       dev_peripherals: ${{ steps.detect.outputs.dev_peripherals }}
       dev_lambda:      ${{ steps.detect.outputs.dev_lambda }}
@@ -89,6 +90,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.dev_peripherals == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/dev/01_peripherals
@@ -116,6 +118,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.dev_lambda == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/dev/02_lambda
@@ -145,6 +148,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.hml_vpc == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/hml/02_vpc
@@ -172,6 +176,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.hml_iam == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/hml/03_iam
@@ -199,6 +204,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.hml_peripherals == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/hml/04_peripherals
@@ -228,6 +234,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.prd_vpc == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/prd/02_vpc
@@ -255,6 +262,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.prd_iam == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/prd/03_iam
@@ -282,6 +290,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.prd_peripherals == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/prd/04_peripherals
@@ -309,6 +318,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.prd_lambda == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/prd/06_lambda
@@ -336,6 +346,7 @@ jobs:
     needs: detect-changes
     if: needs.detect-changes.outputs.prd_ecs == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: services/prd/07_ecs

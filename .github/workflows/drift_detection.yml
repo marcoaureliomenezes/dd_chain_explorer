@@ -37,6 +37,7 @@ jobs:
   drift-dev-peripherals:
     name: Drift — DEV/Peripherals
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/dev/01_peripherals
@@ -68,6 +69,7 @@ jobs:
   drift-dev-lambda:
     name: Drift — DEV/Lambda
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/dev/02_lambda
@@ -101,6 +103,7 @@ jobs:
   drift-prd-vpc:
     name: Drift — PRD/VPC
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/prd/02_vpc
@@ -132,6 +135,7 @@ jobs:
   drift-prd-iam:
     name: Drift — PRD/IAM
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/prd/03_iam
@@ -163,6 +167,7 @@ jobs:
   drift-prd-peripherals:
     name: Drift — PRD/Peripherals
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/prd/04_peripherals
@@ -194,6 +199,7 @@ jobs:
   drift-prd-lambda:
     name: Drift — PRD/Lambda
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/prd/06_lambda
@@ -225,6 +231,7 @@ jobs:
   drift-prd-ecs:
     name: Drift — PRD/ECS
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     defaults:
       run:
         working-directory: services/prd/07_ecs
@@ -267,6 +274,7 @@ jobs:
       - drift-prd-ecs
     if: always()
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Report drift results
         run: |

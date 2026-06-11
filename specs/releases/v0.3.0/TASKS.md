@@ -95,7 +95,7 @@ software-engineer scope.
         `grep '^(Plan:|No changes)'` summary line.
   Parallelism: Wave 2; sequential with A2 in the shared file.
 
-- [-] T-R6-A6 — **timeout-minutes on every job, all 7 workflows (CI-H4)** | Owner: devops-engineer | Priority: HIGH
+- [x] T-R6-A6 — **timeout-minutes on every job, all 7 workflows (CI-H4)** | Owner: devops-engineer | Priority: HIGH
   Write-set: all 7 files under `.github/workflows/`
   Acceptance: every `jobs.<id>` has `timeout-minutes` (15 plan/lint; 30–45
   apply/stabilize); `grep -c timeout-minutes` ≥ job count per file.
