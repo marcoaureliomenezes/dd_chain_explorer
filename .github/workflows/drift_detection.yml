@@ -16,6 +16,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 # CI-M9 — Serialize drift scans. Concurrent runs plan against the same remote
 # state and collide on the Terraform state lock. Do not cancel an in-flight scan
@@ -49,9 +50,11 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (read-only role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: aws sts get-caller-identity
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -81,9 +84,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -115,9 +117,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -147,9 +148,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -179,9 +179,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -211,9 +210,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -243,9 +241,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan

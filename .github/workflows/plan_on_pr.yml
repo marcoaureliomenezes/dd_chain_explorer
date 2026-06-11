@@ -22,6 +22,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  id-token: write
 
 concurrency:
   group: plan-pr-${{ github.event.pull_request.number }}
@@ -139,9 +140,11 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (read-only role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: aws sts get-caller-identity
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -167,9 +170,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -197,9 +199,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -225,9 +226,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -253,9 +253,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -283,9 +282,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -311,9 +309,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -339,9 +336,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -367,9 +363,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -395,9 +390,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
