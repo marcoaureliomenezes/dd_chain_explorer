@@ -16,7 +16,7 @@ software-engineer scope.
 
 ## WS-A — CI safety
 
-- [ ] T-R6-A1 — **Per-stack apply signal in deploy scripts (CI-C2)** | Owner: devops-engineer | Priority: CRITICAL
+- [-] T-R6-A1 — **Per-stack apply signal in deploy scripts (CI-C2)** | Owner: devops-engineer | Priority: CRITICAL
   Write-set: `scripts/ci/deploy_env.sh`, `scripts/ci/tf_plan.sh`
   Acceptance:
     (a) No `grep`/`tail -1` read of `$GITHUB_OUTPUT` anywhere in `deploy_env.sh`
