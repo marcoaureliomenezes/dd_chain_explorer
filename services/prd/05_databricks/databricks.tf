@@ -76,13 +76,13 @@ resource "databricks_mws_networks" "dm" {
 # Databricks MWS Workspace
 # -----------------------------------------------------------------------
 resource "databricks_mws_workspaces" "dm" {
-  provider        = databricks.accounts
-  account_id      = data.databricks_current_config.accounts.account_id
-  workspace_name  = var.workspace_name
-  aws_region      = var.region
-  credentials_id  = databricks_mws_credentials.dm.credentials_id
+  provider                 = databricks.accounts
+  account_id               = data.databricks_current_config.accounts.account_id
+  workspace_name           = var.workspace_name
+  aws_region               = var.region
+  credentials_id           = databricks_mws_credentials.dm.credentials_id
   storage_configuration_id = databricks_mws_storage_configurations.dm.storage_configuration_id
-  network_id      = databricks_mws_networks.dm.network_id
+  network_id               = databricks_mws_networks.dm.network_id
 
   is_no_public_ip_enabled = true
 
@@ -203,8 +203,8 @@ resource "aws_s3_bucket_policy" "databricks_bucket" {
 # Unity Catalog — Metastore (account-level)
 # -----------------------------------------------------------------------
 resource "databricks_metastore" "dm" {
-  provider      = databricks.accounts
-  name          = "dm-chain-explorer-metastore"
+  provider = databricks.accounts
+  name     = "dm-chain-explorer-metastore"
   # storage_root removido: usamos external tables com paths S3 explícitos.
   # External locations (lakehouse, raw) fornecem acesso aos buckets.
   region        = var.region
@@ -305,13 +305,13 @@ resource "databricks_cluster" "dm" {
   autotermination_minutes = 60
 
   aws_attributes {
-    instance_profile_arn   = databricks_instance_profile.cluster.id
-    availability           = "SPOT_WITH_FALLBACK"
-    zone_id                = "auto"
-    ebs_volume_type        = "GENERAL_PURPOSE_SSD"
-    ebs_volume_count       = 1
-    ebs_volume_size        = 32
-    first_on_demand        = 1
+    instance_profile_arn = databricks_instance_profile.cluster.id
+    availability         = "SPOT_WITH_FALLBACK"
+    zone_id              = "auto"
+    ebs_volume_type      = "GENERAL_PURPOSE_SSD"
+    ebs_volume_count     = 1
+    ebs_volume_size      = 32
+    first_on_demand      = 1
   }
 
   spark_conf = {

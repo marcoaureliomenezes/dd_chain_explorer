@@ -1,7 +1,7 @@
 data "aws_caller_identity" "current" {}
 
 locals {
-  ecr_base        = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
+  ecr_base         = "${data.aws_caller_identity.current.account_id}.dkr.ecr.${var.region}.amazonaws.com"
   ecr_image_stream = "${local.ecr_base}/onchain-stream-txs:${var.docker_image_stream}"
   ecr_image_batch  = "${local.ecr_base}/onchain-batch-txs:${var.docker_image_batch}"
 

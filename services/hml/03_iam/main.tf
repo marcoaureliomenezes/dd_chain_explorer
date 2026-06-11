@@ -158,8 +158,8 @@ resource "aws_iam_role_policy" "contracts_ingestion_lambda" {
         Resource = "${local.raw_bucket_arn}/*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["ssm:GetParametersByPath", "ssm:GetParameter"]
+        Effect = "Allow"
+        Action = ["ssm:GetParametersByPath", "ssm:GetParameter"]
         Resource = [
           "arn:aws:ssm:${var.region}:*:parameter/etherscan-api-keys/*",
           "arn:aws:ssm:${var.region}:*:parameter/etherscan-api-keys",

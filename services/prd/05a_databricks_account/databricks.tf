@@ -151,13 +151,13 @@ resource "databricks_mws_networks" "dm" {
 # Databricks MWS Workspace
 # -----------------------------------------------------------------------
 resource "databricks_mws_workspaces" "dm" {
-  provider        = databricks.accounts
-  account_id      = data.databricks_current_config.accounts.account_id
-  workspace_name  = var.workspace_name
-  aws_region      = var.region
-  credentials_id  = databricks_mws_credentials.dm.credentials_id
+  provider                 = databricks.accounts
+  account_id               = data.databricks_current_config.accounts.account_id
+  workspace_name           = var.workspace_name
+  aws_region               = var.region
+  credentials_id           = databricks_mws_credentials.dm.credentials_id
   storage_configuration_id = databricks_mws_storage_configurations.dm.storage_configuration_id
-  network_id      = databricks_mws_networks.dm.network_id
+  network_id               = databricks_mws_networks.dm.network_id
 
   is_no_public_ip_enabled = true
 }

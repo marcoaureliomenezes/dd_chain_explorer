@@ -70,14 +70,14 @@ resource "aws_ecs_task_definition" "mined_blocks_watcher" {
 
   container_definitions = jsonencode([{
     name      = "mined-blocks-watcher"
-    image = local.ecr_image_stream
+    image     = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/1_mined_blocks_watcher.py",
       "/app/configs/producers.ini"
     ]
     environment = concat(local.common_stream_env, [
-      { name = "CLOCK_FREQUENCY",  value = "1" },
+      { name = "CLOCK_FREQUENCY", value = "1" },
       { name = "SSM_SECRET_NAME", value = "/web3-api-keys/alchemy/api-key-1" },
     ])
     healthCheck = {
@@ -105,7 +105,7 @@ resource "aws_ecs_task_definition" "orphan_blocks_watcher" {
 
   container_definitions = jsonencode([{
     name      = "orphan-blocks-watcher"
-    image = local.ecr_image_stream
+    image     = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/2_orphan_blocks_watcher.py",
@@ -113,7 +113,7 @@ resource "aws_ecs_task_definition" "orphan_blocks_watcher" {
     ]
     environment = concat(local.common_stream_env, [
       { name = "NUM_CONFIRMATIONS", value = "10" },
-      { name = "SSM_SECRET_NAME",  value = "/web3-api-keys/alchemy/api-key-2" },
+      { name = "SSM_SECRET_NAME", value = "/web3-api-keys/alchemy/api-key-2" },
     ])
     healthCheck = {
       command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
@@ -140,14 +140,14 @@ resource "aws_ecs_task_definition" "block_data_crawler" {
 
   container_definitions = jsonencode([{
     name      = "block-data-crawler"
-    image = local.ecr_image_stream
+    image     = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/3_block_data_crawler.py",
       "/app/configs/producers.ini", "/app/configs/consumers.ini"
     ]
     environment = concat(local.common_stream_env, [
-      { name = "TXS_PER_BLOCK",  value = "0" },
+      { name = "TXS_PER_BLOCK", value = "0" },
       { name = "SSM_SECRET_NAME", value = "/web3-api-keys/alchemy/api-key-2" },
     ])
     healthCheck = {
@@ -175,7 +175,7 @@ resource "aws_ecs_task_definition" "mined_txs_crawler" {
 
   container_definitions = jsonencode([{
     name      = "mined-txs-crawler"
-    image = local.ecr_image_stream
+    image     = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/4_mined_txs_crawler.py",
@@ -210,7 +210,7 @@ resource "aws_ecs_task_definition" "txs_input_decoder" {
 
   container_definitions = jsonencode([{
     name      = "txs-input-decoder"
-    image = local.ecr_image_stream
+    image     = local.ecr_image_stream
     essential = true
     command = [
       "python", "-u", "/app/5_txs_input_decoder.py",
@@ -218,7 +218,7 @@ resource "aws_ecs_task_definition" "txs_input_decoder" {
     ]
     environment = concat(local.common_stream_env, [
       { name = "SSM_ETHERSCAN_PATH", value = "/etherscan-api-keys" },
-      { name = "ABI_CACHE_DIR",     value = "/tmp/abi_cache" },
+      { name = "ABI_CACHE_DIR", value = "/tmp/abi_cache" },
     ])
     healthCheck = {
       command     = ["CMD-SHELL", "kill -0 1 || exit 1"]
@@ -333,7 +333,7 @@ resource "aws_ecs_service" "txs_input_decoder" {
   name            = "dm-txs-input-decoder"
   cluster         = aws_ecs_cluster.dm.id
   task_definition = aws_ecs_task_definition.txs_input_decoder.arn
-  desired_count   = 0  # TODO-C03: PROD target = 3 réplicas para cobrir as 4 partições de mainnet.4
+  desired_count   = 0 # TODO-C03: PROD target = 3 réplicas para cobrir as 4 partições de mainnet.4
   launch_type     = "FARGATE"
 
   network_configuration {

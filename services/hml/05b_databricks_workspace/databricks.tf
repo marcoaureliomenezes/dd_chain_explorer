@@ -63,12 +63,12 @@ resource "databricks_cluster" "dm" {
   autotermination_minutes = 30
 
   aws_attributes {
-    availability         = "SPOT_WITH_FALLBACK"
-    zone_id              = "auto"
-    ebs_volume_type      = "GENERAL_PURPOSE_SSD"
-    ebs_volume_count     = 1
-    ebs_volume_size      = 32
-    first_on_demand      = 1
+    availability     = "SPOT_WITH_FALLBACK"
+    zone_id          = "auto"
+    ebs_volume_type  = "GENERAL_PURPOSE_SSD"
+    ebs_volume_count = 1
+    ebs_volume_size  = 32
+    first_on_demand  = 1
   }
 
   spark_conf = {

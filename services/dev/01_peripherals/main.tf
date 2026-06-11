@@ -33,11 +33,11 @@ provider "aws" {
 
 locals {
   common_tags = {
-    "owner"       = "marco-menezes"
-    "managed-by"  = "terraform"
-    "cost-center" = "dd-chain-explorer"
-    "environment" = var.environment
-    "project"     = "dd-chain-explorer"
+    "owner"           = "marco-menezes"
+    "managed-by"      = "terraform"
+    "cost-center"     = "dd-chain-explorer"
+    "environment"     = var.environment
+    "project"         = "dd-chain-explorer"
     "project_version" = var.project_version
   }
 }
@@ -120,14 +120,14 @@ module "sqs" {
 module "cloudwatch_logs" {
   source = "../../modules/cloudwatch_logs"
 
-  environment            = var.environment
-  region                 = var.region
-  common_tags            = local.common_tags
-  log_group_name         = "/apps/dm-chain-explorer"
-  retention_in_days      = 3
-  firehose_enabled       = true
-  firehose_s3_bucket_arn = module.s3_ingestion.bucket_arn
-  firehose_s3_prefix     = "raw/app_logs/"
+  environment                      = var.environment
+  region                           = var.region
+  common_tags                      = local.common_tags
+  log_group_name                   = "/apps/dm-chain-explorer"
+  retention_in_days                = 3
+  firehose_enabled                 = true
+  firehose_s3_bucket_arn           = module.s3_ingestion.bucket_arn
+  firehose_s3_prefix               = "raw/app_logs/"
   firehose_buffer_size_mb          = 1
   firehose_buffer_interval_seconds = 60
 }

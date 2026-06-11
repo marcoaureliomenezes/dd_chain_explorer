@@ -40,11 +40,11 @@ data "terraform_remote_state" "peripherals" {
 
 locals {
   common_tags = {
-    "owner"       = "marco-menezes"
-    "managed-by"  = "terraform"
-    "cost-center" = "dd-chain-explorer"
-    "environment" = var.environment
-    "project"     = "dd-chain-explorer"
+    "owner"           = "marco-menezes"
+    "managed-by"      = "terraform"
+    "cost-center"     = "dd-chain-explorer"
+    "environment"     = var.environment
+    "project"         = "dd-chain-explorer"
     "project_version" = var.project_version
   }
 
@@ -96,17 +96,17 @@ resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
 module "lambda_gold_to_dynamodb" {
   source = "../../modules/lambda"
 
-  environment    = var.environment
-  common_tags    = local.common_tags
-  name_prefix    = local.name_prefix
-  function_name  = "gold-to-dynamodb"
-  description    = "Syncs Gold API key consumption data from S3 to DynamoDB"
-  handler        = "handler.handler"
-  runtime        = "python3.12"
-  timeout        = 60
-  memory_size    = 128
-  role_arn       = aws_iam_role.gold_to_dynamodb_lambda.arn
-  source_file    = "${path.module}/../../../apps/lambda/gold_to_dynamodb/handler.py"
+  environment     = var.environment
+  common_tags     = local.common_tags
+  name_prefix     = local.name_prefix
+  function_name   = "gold-to-dynamodb"
+  description     = "Syncs Gold API key consumption data from S3 to DynamoDB"
+  handler         = "handler.handler"
+  runtime         = "python3.12"
+  timeout         = 60
+  memory_size     = 128
+  role_arn        = aws_iam_role.gold_to_dynamodb_lambda.arn
+  source_file     = "${path.module}/../../../apps/lambda/gold_to_dynamodb/handler.py"
   output_zip_path = "${path.module}/.lambda_zip/gold_to_dynamodb.zip"
 
   environment_variables = {
