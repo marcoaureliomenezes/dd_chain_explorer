@@ -179,6 +179,24 @@ software-engineer scope.
         assumed-role ARNs) are recorded in this task's handoff BEFORE OP-R6-4 is
         triggered.
   Parallelism: strictly last in WS-A/B sequence. OP-R6-4 is blocked on (f).
+  Status note (2026-06-11, software-engineer under operator waiver): CODE-COMPLETE.
+  (a) PASS — `git grep -l 'AWS_ACCESS_KEY_ID\|AWS_SECRET_ACCESS_KEY' .github/workflows/`
+  returns empty. (b) PASS — every `configure-aws-credentials` uses `role-to-assume`
+  (`vars.AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}`) per the ADR-R6-7 matrix;
+  `permissions: id-token: write` present at workflow level on all 6 AWS-auth workflows
+  (+ the `all-prod-dabs-deploy` job override). (c) PASS — `plan_on_pr.yml`,
+  `drift_detection.yml`, and `all-check-infra` assume ONLY `AWS_DEPLOY_ROLE_READONLY`.
+  (d) PASS — the 9 named mutating jobs carry `environment: hml-apps` + the hml role;
+  `all-prod-tag` keeps no AWS auth. F-QA-3 `aws sts get-caller-identity` evidence steps
+  added for dev/hml/prd/readonly roles (+ the hml-apps sub-claim). actionlint
+  (-shellcheck=) exit 0 on all 7 workflows.
+  PENDING (live evidence — marker stays `[-]`): (e) one PR-plan + one dev-deploy + one
+  drift run under OIDC, and (f) the 4-role `sts get-caller-identity` run URLs +
+  assumed-role ARNs. Both require operator OP-R6-2 (GitHub OIDC identity provider) and
+  the `services/prd/03_iam` role apply (T-R6-B2) FIRST, plus the repo/org variables
+  `AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}` set to the applied role ARNs. OP-R6-4
+  (static-key secret deletion) stays blocked on (f). Operator deletes the GitHub
+  secrets — never this agent.
 
 ## Sanitization (parallel-safe — `specs/**` only)
 
