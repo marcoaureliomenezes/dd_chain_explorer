@@ -12,9 +12,11 @@ SPEC/PLAN/TASKS lifecycle. It was never an executed release under the current ca
 
 ## Validations
 
-- `git log --follow specs/_archive/releases/legacy/` — content archived verbatim, no edits.
-- `grep -r "Implementado" specs/releases/` → 0 matches in the live tree after the move.
-- `dadaia specs doctor` — SPEC-DOC-007 legacy-token warnings cleared by the archive.
+| Description | Command | Evidence |
+|-------------|---------|----------|
+| Archived verbatim, no edits | `git log --follow specs/_archive/releases/legacy/` | single move commit 0a5d513 (T-R6-S4) |
+| Non-canonical token gone from live tree | `grep -r "Implementado" specs/releases/` | 0 matches after the move |
+| Legacy-token warnings cleared | `dadaia specs doctor` | SPEC-DOC-007 warnings absent post-archive (doctor run 2026-06-11) |
 
 ## Drifts
 
