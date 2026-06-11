@@ -137,7 +137,7 @@ software-engineer scope.
 
 ## WS-B2/B3 — OIDC migration (ADR-R6-3)
 
-- [ ] T-R6-B2 — **Terraform: 4 OIDC IAM roles (account-level — ADR-R6-6)** | Owner: software-engineer | Priority: HIGH
+- [-] T-R6-B2 — **Terraform: 4 OIDC IAM roles (account-level — ADR-R6-6)** | Owner: software-engineer | Priority: HIGH
   Write-set: `services/prd/03_iam/**` only (all 4 roles live in the account-level prd
   IAM stack; `services/dev/03_iam` does NOT exist and is NOT created; hml `03_iam`
   untouched)
