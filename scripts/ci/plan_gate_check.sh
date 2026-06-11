@@ -62,9 +62,13 @@ plan_counts() {
 plan_addresses() {
   local plan_file="$1"
   [[ -f "$plan_file" ]] || return 0
+  # A plan with zero pending addresses (e.g. a "No changes." re-plan) makes grep exit 1.
+  # That is NOT an error here — an empty address set is a valid, expected result — so we
+  # must not let it trip the caller's `set -e`/`pipefail`. `|| true` keeps the empty set.
   grep -E '^[[:space:]]*# .* will be (created|destroyed|updated in-place|replaced|read during apply)' "$plan_file" \
     | sed -E 's/^[[:space:]]*# (.*) will be .*/\1/' \
-    | sort -u
+    | sort -u \
+    || true  # no matching addresses → empty set, not a failure
 }
 
 # Return 0 (true) if the plan has any pending destroy.

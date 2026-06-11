@@ -211,7 +211,12 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          # Pre-gate plan job carries NO `environment:` — its OIDC sub claim is the
+          # branch-ref (`repo:<org>/<repo>:ref:refs/heads/<branch>`), which only the
+          # READONLY trust accepts (oidc.tf:134). A deploy role's trust requires an
+          # environment-scoped sub and would deny AssumeRoleWithWebIdentity here
+          # (F-QA-A1-2). Plan-only = read-only, matching drift_detection.yml.
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
       - name: Plan PRD (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" prd
@@ -234,16 +239,18 @@ jobs:
 
   # ── PRD — Phase 2: environment-gated APPLY ─────────────────────
   #  The single informed environment gate (ADR-R6-4). After approval, deploy_env.sh
-  #  applies in dependency order. Per ADR-R6-5 it re-plans each stack against current
-  #  state immediately before its apply and applies ONLY that fresh per-stack tfplan —
-  #  it never applies a stale saved plan, so a downstream stack whose upstream changed
-  #  in-run (canonical 05a->05b: 05b's TF_VAR_workspace_host is re-derived from 05a's
-  #  POST-apply output) is re-planned, not applied blind. This is the fail-closed
-  #  re-plan branch of ADR-R6-5 (strictly stronger than reusing a saved binary). The
-  #  saved pre-gate plans downloaded below are the approved baseline kept as run
-  #  evidence; scripts/ci/plan_gate_check.sh `plan-diff` is the divergence guard a
-  #  saved-plan-reuse optimization would gate on (unit-tested; fails closed on any
-  #  count/address divergence).
+  #  applies in the dependency order declared in scripts/ci/stack_map.json. Per ADR-R6-5
+  #  (consumed via the saved plans downloaded below): a stack whose upstreams applied NO
+  #  in-run change applies its SAVED approved plan binary directly (exactly what the gate
+  #  approver reviewed); a stack downstream of an in-run upstream apply, or one with no
+  #  pre-gate plan (the bootstrap_plannable:false 05b, whose TF_VAR_workspace_host is
+  #  re-derived from 05a's POST-apply output), is RE-PLANNED and the fresh plan is gated
+  #  against the approved summary via scripts/ci/plan_gate_check.sh `plan-diff` — apply
+  #  proceeds iff add/change/destroy counts AND the changed-address set match; on any
+  #  divergence the run FAILS CLOSED (no further downstream applies) and publishes the
+  #  approved-vs-re-plan diff to the job summary + a divergence artifact. This is
+  #  ADR-R6-5 "No silent divergence, ever" — the apply never executes an unreviewed plan
+  #  without the divergence guard asserting it matches the approved one.
 
   prd-apply:
     name: PRD — Apply (gated)
@@ -341,7 +348,10 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          # Pre-gate plan job carries NO `environment:` — branch-ref OIDC sub, accepted
+          # only by the READONLY trust (oidc.tf:134). Borrowing a deploy role here both
+          # fails role assumption and escalates privilege (F-QA-A1-2).
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
       - name: Plan HML (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" hml

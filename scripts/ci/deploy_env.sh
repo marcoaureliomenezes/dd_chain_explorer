@@ -1,8 +1,24 @@
 #!/usr/bin/env bash
-# deploy_env.sh — Sequential deploy of all Terraform modules for a given environment.
+# deploy_env.sh — Sequential, map-driven apply of all Terraform stacks for an env.
 #
-# Applies modules in dependency order (fail-fast: stops on first error).
-# Writes per-module status lines to $GITHUB_STEP_SUMMARY.
+# The post-gate APPLY phase of the informed gate (ADR-R6-4/R6-5). The stack list and
+# dependency order are NOT hardcoded here — they are read from the single-source map
+# scripts/ci/stack_map.json (F-ARCH-4 / F-QA-A1-3). For each stack, in declared order:
+#
+#   - If NONE of the stack's upstreams applied a change in this run AND a saved approved
+#     plan binary exists under $PLAN_ARTIFACT_DIR/<id>/tfplan, apply that SAVED approved
+#     plan directly (terraform apply tfplan) — exactly what the gate approver reviewed.
+#   - Otherwise (an upstream changed in-run, OR the stack had no pre-gate plan, e.g. the
+#     bootstrap_plannable:false 05b), RE-PLAN against current state and run
+#     `plan_gate_check.sh plan-diff <approved.txt> <replan.txt>`:
+#       * exit 0  → re-plan matches the approved summary → apply the fresh tfplan;
+#       * exit 3  → DIVERGENCE → FAIL CLOSED (no further downstream applies), publishing
+#                   the approved-vs-re-plan diff to the job summary + a diff artifact.
+#         Re-approval = the operator re-triggers the deploy; the re-run's full re-plan
+#         passes the NORMAL informed environment gate (ADR-R6-5 pinned mechanism).
+#
+# This guarantees ADR-R6-5 "No silent divergence, ever": apply never executes a plan the
+# approver did not see without the divergence guard asserting it matches the approved one.
 #
 # Usage:
 #   bash scripts/ci/deploy_env.sh <environment>
@@ -19,6 +35,15 @@
 #   TF_VAR_databricks_client_id, TF_VAR_databricks_client_secret
 #   Optional: SKIP_DATABRICKS=true, FAST_MODE=true
 #
+# Optional env vars:
+#   PLAN_ARTIFACT_DIR — where the apply job downloaded the saved pre-gate plans
+#                       (default: $REPO_ROOT/.plan-artifacts).
+#   STACK_MAP         — path to the stack map JSON (default scripts/ci/stack_map.json).
+#   DIVERGENCE_DIR    — where to write the published divergence diff (default:
+#                       $REPO_ROOT/.plan-divergence).
+#   TF_BIN            — terraform binary (default: terraform). Overridable for hermetic
+#                       tests via a stub on PATH.
+#
 # Writes to GITHUB_OUTPUT (prd only):
 #   workspace_url — Databricks workspace URL (from 05a output, used by 05b)
 set -euo pipefail
@@ -33,18 +58,64 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SKIP_DATABRICKS="${SKIP_DATABRICKS:-false}"
 FAST_MODE="${FAST_MODE:-false}"
 TF_VERSION="${TF_VERSION:-1.7.0}"
+TF_BIN="${TF_BIN:-terraform}"
+STACK_MAP="${STACK_MAP:-${REPO_ROOT}/scripts/ci/stack_map.json}"
+PLAN_ARTIFACT_DIR="${PLAN_ARTIFACT_DIR:-${REPO_ROOT}/.plan-artifacts}"
+DIVERGENCE_DIR="${DIVERGENCE_DIR:-${REPO_ROOT}/.plan-divergence}"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "::error::jq is required by deploy_env.sh"
+  exit 1
+fi
+if [[ ! -f "$STACK_MAP" ]]; then
+  echo "::error::stack map not found: ${STACK_MAP}"
+  exit 1
+fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 summary() { echo "$*" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
 
-deploy_module() {
-  local module_dir="$1"   # absolute path to module directory
-  local module_name="$2"  # display name for summary
+# Stacks that applied a change in this run (by id). A downstream stack of any of these
+# must be re-planned + divergence-checked, never applied from its stale saved plan.
+APPLIED_STACKS=()
+
+stack_field() {
+  local sid="$1" field="$2"
+  jq -r --arg e "$ENV" --arg s "$sid" --arg f "$field" \
+    '.environments[$e].stacks[] | select(.id==$s) | .[$f]' "$STACK_MAP"
+}
+
+stack_upstreams() {
+  local sid="$1"
+  jq -r --arg e "$ENV" --arg s "$sid" \
+    '.environments[$e].stacks[] | select(.id==$s) | .upstreams[]?' "$STACK_MAP"
+}
+
+# Return 0 if any upstream of <sid> is in APPLIED_STACKS (i.e. changed in-run).
+upstream_applied_changes() {
+  local sid="$1" up applied
+  while IFS= read -r up; do
+    [[ -z "$up" ]] && continue
+    for applied in "${APPLIED_STACKS[@]:-}"; do
+      [[ "$up" == "$applied" ]] && return 0
+    done
+  done < <(stack_upstreams "$sid")
+  return 1
+}
+
+# Apply one stack from the map (id). Consumes the saved approved plan when the stack's
+# upstreams were unchanged in-run; otherwise re-plans and divergence-gates (ADR-R6-5).
+# $1 = stack id; $2 = module_dir (absolute, allows callers to pass a special-cased dir).
+deploy_stack() {
+  local sid="$1"
+  local module_dir="$2"
+  local module_name
+  module_name="$(stack_field "$sid" label)"
 
   echo ""
   echo "════════════════════════════════════════════════════════"
-  echo "  DEPLOYING: ${module_name}"
+  echo "  DEPLOYING: ${module_name}  (stack: ${sid})"
   echo "  DIR:  ${module_dir}"
   echo "════════════════════════════════════════════════════════"
 
@@ -59,61 +130,111 @@ deploy_module() {
     exit 1
   fi
 
-  terraform init -input=false
-  terraform validate
+  "${TF_BIN}" init -input=false
+  "${TF_BIN}" validate
+
+  local approved_plan="${PLAN_ARTIFACT_DIR}/${sid}/tfplan"
+  local approved_txt="${PLAN_ARTIFACT_DIR}/${sid}/plan.txt"
+
+  if upstream_applied_changes "${sid}"; then
+    echo "::notice::${module_name}: an upstream applied changes in-run — re-planning and divergence-checking against the approved plan (ADR-R6-5)."
+    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}"
+  elif [[ -f "${approved_plan}" ]]; then
+    # Upstreams unchanged → apply the SAVED approved plan binary the gate reviewer saw.
+    echo "::notice::${module_name}: upstreams unchanged — applying the saved approved plan."
+    if grep -qE '^No changes\.' "${approved_txt}" 2>/dev/null; then
+      summary "| ✅ | ${module_name} | no changes (saved plan) |"
+    else
+      "${TF_BIN}" apply -input=false -auto-approve "${approved_plan}"
+      summary "| ✅ | ${module_name} | applied saved approved plan |"
+      APPLIED_STACKS+=("${sid}")
+    fi
+  else
+    # No pre-gate plan for this stack (e.g. bootstrap_plannable:false 05b) → re-plan and
+    # divergence-gate. With no approved plan, plan_gate_check.sh plan-diff fails closed
+    # unless the re-plan is itself a no-op, which is the only safe auto-apply.
+    echo "::notice::${module_name}: no saved approved plan — re-planning and divergence-checking (ADR-R6-5)."
+    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}"
+  fi
+
+  cd "${REPO_ROOT}"
+}
+
+# Re-plan the current stack (cwd is the module dir) and gate the fresh plan against the
+# approved summary via plan_gate_check.sh plan-diff. Fail closed (exit ≠ 0) on divergence.
+deploy_stack_replan_diff() {
+  local sid="$1" module_name="$2" approved_txt="$3"
 
   export MODULE_NAME="${module_name}"
   export TAIL_LINES="${TAIL_LINES:-20}"
   export GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 
-  # Per-stack apply signal: tf_plan.sh writes a `tfplan.haschanges` file into THIS
-  # module's working directory. Each stack therefore carries its own signal — we never
-  # grep a shared append-only $GITHUB_OUTPUT with `tail -1` (the CI-C2 cross-stack
-  # contamination bug). GITHUB_OUTPUT is left to its real runner value when present
-  # (and tf_plan.sh degrades cleanly without it); the apply decision does NOT depend on
-  # it here.
-  local plan_signal_file="${module_dir}/tfplan.haschanges"
+  local plan_signal_file="${PWD}/tfplan.haschanges"
   rm -f "${plan_signal_file}"
   export PLAN_SIGNAL_FILE="${plan_signal_file}"
 
-  # Plan
   set +e
   bash "${REPO_ROOT}/scripts/ci/tf_plan.sh"
-  PLAN_RC=$?
+  local plan_rc=$?
   set -e
-
-  if [[ "$PLAN_RC" -ne 0 ]]; then
-    summary "| ❌ | ${module_name} | plan failed |"
-    echo "::error::Plan failed for ${module_name}"
+  if [[ "$plan_rc" -ne 0 ]]; then
+    summary "| ❌ | ${module_name} | re-plan failed |"
+    echo "::error::Re-plan failed for ${module_name}"
     exit 1
   fi
-
-  # Apply decision derives from the per-stack signal file written by tf_plan.sh.
-  # A missing signal is NOT a silent skip (the removed `/dev/null` fallback) — it
-  # means the plan step did not record a decision and the run must fail loudly.
   if [[ ! -f "${plan_signal_file}" ]]; then
     summary "| ❌ | ${module_name} | missing plan signal |"
     echo "::error::Missing plan signal for ${module_name}: ${plan_signal_file} not written by tf_plan.sh"
     exit 1
   fi
 
+  # Divergence gate: compare the fresh re-plan (plan.txt, written by tf_plan.sh in cwd)
+  # against the approved pre-gate summary. exit 3 = divergence → fail closed.
+  local replan_txt="${PWD}/plan.txt"
+  set +e
+  local diff_out
+  diff_out="$(bash "${REPO_ROOT}/scripts/ci/plan_gate_check.sh" plan-diff "${approved_txt}" "${replan_txt}" 2>&1)"
+  local diff_rc=$?
+  set -e
+  echo "${diff_out}"
+
+  if [[ "$diff_rc" -eq 3 ]]; then
+    mkdir -p "${DIVERGENCE_DIR}"
+    local div_file="${DIVERGENCE_DIR}/${sid}.diff.txt"
+    printf '%s\n' "${diff_out}" > "${div_file}"
+    summary "| ❌ | ${module_name} | re-plan DIVERGES from approved plan — failed closed |"
+    summary ""
+    summary "<details><summary>Divergence diff (${module_name})</summary>"
+    summary ""
+    summary '```'
+    summary "${diff_out}"
+    summary '```'
+    summary "</details>"
+    echo "::error::${module_name}: re-plan diverges from the approved plan — failing closed (no further downstream applies). Diff: ${div_file}"
+    exit 3
+  elif [[ "$diff_rc" -ne 0 ]]; then
+    summary "| ❌ | ${module_name} | plan-diff gate error (rc=${diff_rc}) |"
+    echo "::error::plan-diff gate errored for ${module_name} (rc=${diff_rc})"
+    exit "${diff_rc}"
+  fi
+
+  # Re-plan matches the approved summary → safe to apply the fresh tfplan.
   local plan_has_changes
   plan_has_changes="$(cat "${plan_signal_file}")"
   if [[ "$plan_has_changes" == "true" ]]; then
-    terraform apply -input=false -auto-approve tfplan
-    summary "| ✅ | ${module_name} | applied |"
+    "${TF_BIN}" apply -input=false -auto-approve tfplan
+    summary "| ✅ | ${module_name} | re-plan matched approved — applied |"
+    APPLIED_STACKS+=("${sid}")
   elif [[ "$plan_has_changes" == "false" ]]; then
-    summary "| ✅ | ${module_name} | no changes |"
+    summary "| ✅ | ${module_name} | no changes (re-plan) |"
   else
     summary "| ❌ | ${module_name} | invalid plan signal |"
     echo "::error::Invalid plan signal for ${module_name}: '${plan_has_changes}' (expected true|false)"
     exit 1
   fi
-
-  cd "${REPO_ROOT}"
 }
 
-# ── HML module order ──────────────────────────────────────────────────────────
+# ── HML deploy ────────────────────────────────────────────────────────────────
 
 deploy_hml() {
   local root="${REPO_ROOT}/services/hml"
@@ -123,27 +244,40 @@ deploy_hml() {
   summary "| Status | Module | Result |"
   summary "|--------|--------|--------|"
 
-  deploy_module "${root}/02_vpc"              "HML/VPC"
-  deploy_module "${root}/04_peripherals"      "HML/Peripherals"
-  deploy_module "${root}/03_iam"              "HML/IAM"
-  deploy_module "${root}/07_ecs"              "HML/ECS"
-
-  if [[ "$SKIP_DATABRICKS" != "true" ]]; then
-    deploy_module "${root}/05_databricks"     "HML/Databricks"
-    # 05b uses workspace-level PAT token from TF remote state.
-    # Unset OAuth env vars to avoid "two auth methods" conflict with the token-based provider.
-    (unset DATABRICKS_ACCOUNT_ID DATABRICKS_CLIENT_ID DATABRICKS_CLIENT_SECRET; \
-      deploy_module "${root}/05b_databricks_workspace" "HML/DatabricksWorkspace")
-  else
-    summary "| ⏭️ | HML/Databricks | skipped (SKIP_DATABRICKS=true) |"
-    summary "| ⏭️ | HML/DatabricksWorkspace | skipped |"
-  fi
+  # Stack order is the map's declared order, EXCEPT databricks stacks are gated on
+  # SKIP_DATABRICKS. Iterate the map; skip databricks ids when SKIP_DATABRICKS=true.
+  local sid path
+  while IFS= read -r sid; do
+    path="$(stack_field "$sid" path)"
+    case "$sid" in
+      databricks)
+        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
+          summary "| ⏭️ | HML/Databricks | skipped (SKIP_DATABRICKS=true) |"
+          continue
+        fi
+        deploy_stack "$sid" "${REPO_ROOT}/${path}"
+        ;;
+      databricks_workspace)
+        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
+          summary "| ⏭️ | HML/DatabricksWorkspace | skipped |"
+          continue
+        fi
+        # 05b uses workspace-level PAT token from TF remote state. Unset OAuth env vars
+        # to avoid "two auth methods" conflict with the token-based provider.
+        (unset DATABRICKS_ACCOUNT_ID DATABRICKS_CLIENT_ID DATABRICKS_CLIENT_SECRET; \
+          deploy_stack "$sid" "${REPO_ROOT}/${path}")
+        ;;
+      *)
+        deploy_stack "$sid" "${REPO_ROOT}/${path}"
+        ;;
+    esac
+  done < <(jq -r --arg e "hml" '.environments[$e].stacks[].id' "$STACK_MAP")
 
   summary ""
   summary "> HML deploy complete."
 }
 
-# ── PRD module order ──────────────────────────────────────────────────────────
+# ── PRD deploy ────────────────────────────────────────────────────────────────
 
 deploy_prd() {
   local root="${REPO_ROOT}/services/prd"
@@ -153,70 +287,85 @@ deploy_prd() {
   summary "| Status | Module | Result |"
   summary "|--------|--------|--------|"
 
-  deploy_module "${root}/02_vpc"              "PRD/VPC"
-  deploy_module "${root}/04_peripherals"      "PRD/Peripherals"
-  deploy_module "${root}/03_iam"              "PRD/IAM"
-
-  # Lambda: needs .lambda_zip dir
-  mkdir -p "${root}/06_lambda/.lambda_zip"
-  deploy_module "${root}/06_lambda"           "PRD/Lambda"
-
-  deploy_module "${root}/07_ecs"              "PRD/ECS"
-
-  if [[ "$SKIP_DATABRICKS" != "true" ]]; then
-    # 05a: idempotent import first
-    cd "${root}/05a_databricks_account"
-    terraform init -input=false
-    bash "${REPO_ROOT}/scripts/ci/databricks_account_import.sh"
-    cd "${REPO_ROOT}"
-
-    deploy_module "${root}/05a_databricks_account" "PRD/DatabricksAccount"
-
-    # Read workspace URL output for 05b
-    cd "${root}/05a_databricks_account"
-    WORKSPACE_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || true)
-    if [[ -z "$WORKSPACE_URL" ]]; then
-      echo "::warning::Could not read workspace_url from 05a output — attempting API fallback"
-      TOKEN=$(curl -sf -X POST \
-        "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
-        -H "Content-Type: application/x-www-form-urlencoded" \
-        --data-urlencode "grant_type=client_credentials" \
-        --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
-        --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
-        --data-urlencode "scope=all-apis" \
-        | jq -r '.access_token' 2>/dev/null || true)
-      if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
-        WORKSPACE_URL=$(curl -sf \
-          -H "Authorization: Bearer $TOKEN" \
-          "https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}/workspaces" \
-          2>/dev/null \
-          | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_url // empty' \
-          2>/dev/null || true)
-      fi
-    fi
-    cd "${REPO_ROOT}"
-
-    if [[ -z "$WORKSPACE_URL" ]]; then
-      summary "| ❌ | PRD/DatabricksWorkspace | workspace URL could not be determined |"
-      echo "::error::Cannot deploy PRD/05b_databricks_workspace: workspace URL is empty"
-      exit 1
-    fi
-
-    echo "workspace_url=${WORKSPACE_URL}" >> "${GITHUB_OUTPUT:-/dev/null}"
-    export TF_VAR_workspace_host="${WORKSPACE_URL}"
-    export TF_VAR_create_cluster="${TF_VAR_create_cluster:-true}"
-    if [[ "$FAST_MODE" == "true" ]]; then
-      export TF_VAR_create_cluster="false"
-    fi
-
-    deploy_module "${root}/05b_databricks_workspace" "PRD/DatabricksWorkspace"
-  else
-    summary "| ⏭️ | PRD/DatabricksAccount | skipped (SKIP_DATABRICKS=true) |"
-    summary "| ⏭️ | PRD/DatabricksWorkspace | skipped |"
-  fi
+  local sid path
+  while IFS= read -r sid; do
+    path="$(stack_field "$sid" path)"
+    case "$sid" in
+      lambda)
+        # Lambda: needs .lambda_zip dir
+        mkdir -p "${REPO_ROOT}/${path}/.lambda_zip"
+        deploy_stack "$sid" "${REPO_ROOT}/${path}"
+        ;;
+      databricks_account)
+        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
+          summary "| ⏭️ | PRD/DatabricksAccount | skipped (SKIP_DATABRICKS=true) |"
+          continue
+        fi
+        # 05a: idempotent import first
+        cd "${REPO_ROOT}/${path}"
+        "${TF_BIN}" init -input=false
+        bash "${REPO_ROOT}/scripts/ci/databricks_account_import.sh"
+        cd "${REPO_ROOT}"
+        deploy_stack "$sid" "${REPO_ROOT}/${path}"
+        prd_read_workspace_url "${REPO_ROOT}/${path}"
+        ;;
+      databricks_workspace)
+        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
+          summary "| ⏭️ | PRD/DatabricksWorkspace | skipped |"
+          continue
+        fi
+        deploy_stack "$sid" "${REPO_ROOT}/${path}"
+        ;;
+      *)
+        deploy_stack "$sid" "${REPO_ROOT}/${path}"
+        ;;
+    esac
+  done < <(jq -r --arg e "prd" '.environments[$e].stacks[].id' "$STACK_MAP")
 
   summary ""
   summary "> PRD deploy complete."
+}
+
+# Derive the Databricks workspace URL from 05a's post-apply output (used by 05b) and
+# export it. 05b is bootstrap_plannable:false precisely because this value only exists
+# post-apply — so 05b always takes the re-plan + divergence-gate branch.
+prd_read_workspace_url() {
+  local account_dir="$1"
+  cd "${account_dir}"
+  WORKSPACE_URL=$("${TF_BIN}" output -raw databricks_workspace_url 2>/dev/null || true)  # capture-then-check: emptiness handled loudly below
+  if [[ -z "$WORKSPACE_URL" ]]; then
+    echo "::warning::Could not read workspace_url from 05a output — attempting API fallback"
+    TOKEN=$(curl -sf -X POST \
+      "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
+      -H "Content-Type: application/x-www-form-urlencoded" \
+      --data-urlencode "grant_type=client_credentials" \
+      --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
+      --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
+      --data-urlencode "scope=all-apis" \
+      | jq -r '.access_token' 2>/dev/null || true)  # capture-then-check: empty/null token handled below
+    if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
+      WORKSPACE_URL=$(curl -sf \
+        -H "Authorization: Bearer $TOKEN" \
+        "https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}/workspaces" \
+        2>/dev/null \
+        | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_url // empty' \
+        2>/dev/null || true)  # capture-then-check: empty result handled by the loud guard below
+    fi
+  fi
+  cd "${REPO_ROOT}"
+
+  if [[ -z "$WORKSPACE_URL" ]]; then
+    summary "| ❌ | PRD/DatabricksWorkspace | workspace URL could not be determined |"
+    echo "::error::Cannot deploy PRD/05b_databricks_workspace: workspace URL is empty"
+    exit 1
+  fi
+
+  echo "workspace_url=${WORKSPACE_URL}" >> "${GITHUB_OUTPUT:-/dev/null}"
+  export TF_VAR_workspace_host="${WORKSPACE_URL}"
+  export TF_VAR_create_cluster="${TF_VAR_create_cluster:-true}"
+  if [[ "$FAST_MODE" == "true" ]]; then
+    export TF_VAR_create_cluster="false"
+  fi
 }
 
 # ── Entry point ───────────────────────────────────────────────────────────────
