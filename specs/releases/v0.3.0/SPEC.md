@@ -42,6 +42,49 @@ No product features. No data-pipeline changes.
   approver; destroy-containing plans require explicit acknowledgment; `hml` GitHub
   environment gains required_reviewers; `dev` stays automatic.
 
+### Spec-review fold decisions (2026-06-11, F-ARCH/F-QA fold)
+
+- **ADR-R6-5 — dependency-chain gate semantics (F-ARCH-1).** The stacks form a runtime
+  dependency chain (120 `terraform_remote_state` refs; prd `05b_databricks_workspace`
+  derives `TF_VAR_workspace_host` from 05a's **post-apply** output —
+  `scripts/ci/deploy_env.sh:147-184`). Saved-plan integrity is therefore guaranteed
+  **per dependency level**, not globally:
+  - *Pre-gate plan phase:* every stack plannable against **current** state is planned;
+    `tfplan` binary + full `plan.txt` uploaded; consolidated add/change/destroy summary
+    rendered before the environment gate. A stack that cannot be planned yet (e.g. 05b
+    on first bootstrap, upstream output absent) is listed in the summary as
+    **deferred to post-upstream stage** — never silently skipped.
+  - *Post-gate apply phase (dependency order):* a stack whose upstreams applied **no
+    changes** in this run applies its **saved approved plan binary** as-is. A stack
+    downstream of an upstream that **did apply changes** (or that had no pre-gate plan)
+    is **re-planned** after the upstream apply; if the re-plan matches the approved
+    summary (same add/change/destroy counts + resource-address set) apply proceeds;
+    if it **differs** — or there was no approved plan — the run **STOPS** at a second
+    gated approval presenting the new plan. **No silent divergence, ever.**
+  - Terraform's own saved-plan staleness check guards only the stack's **own** state
+    (intra-stack TOCTOU); cross-stack divergence is handled exclusively by the
+    re-plan + diff-and-stop mechanism above.
+- **ADR-R6-6 — dev OIDC role home (F-ARCH-2).** `services/dev/03_iam` does **not exist**
+  (dev has only `00_compose`/`01_peripherals`/`02_lambda`) and no pipeline plans/applies
+  a dev IAM stack. Decision: **all 4 OIDC roles (dev/hml/prd deploy + read-only plan)
+  are defined in the account-level `services/prd/03_iam` stack** (where the read-only
+  role was already planned; `plan_on_pr.yml` already plans prd-iam). One stack, one
+  bootstrap: the first apply rides the existing static-key deploy path before cutover.
+  No new dev stack, no new pipeline wiring.
+- **ADR-R6-7 — per-job OIDC trust matrix (F-ARCH-3).** The prd GitHub environment is
+  named **`production`** (not `prd`) — trust policies bind to `environment:production`
+  as-is; **no environment rename** (renaming would move required_reviewers settings).
+  The read-only role's `sub` conditions are pinned for `pull_request` and branch-ref
+  contexts. The 9 mutating AWS jobs in `deploy_all_dm_applications.yml` that today have
+  **no** `environment:` gain **`environment: hml-apps`** — a deliberately
+  **reviewer-less** environment (keeps the application pipeline automatic; the single
+  informed gate of ADR-R6-4/5 lives in `deploy_cloud_infra.yml`) — authenticated by the
+  hml deploy role, whose trust covers both `hml` and `hml-apps`. Full matrix in
+  §WS-B2/B3.
+- **F-QA tool decisions:** workflow pre-merge validation = **actionlint** on every
+  edited workflow; destroy-acknowledgment verification = **helper script
+  (`scripts/ci/plan_gate_check.sh`) + fixture unit test** (no live destroy run).
+
 ---
 
 ## Product deltas
@@ -78,13 +121,19 @@ None to the data platform. The CI control plane changes shape:
 | Item | Findings | Delta |
 |---|---|---|
 | A1 per-stack apply signal | CI-C2 | `scripts/ci/deploy_env.sh:77` stops grepping `tail -1` over the shared `$GITHUB_OUTPUT`; apply decision derives from `tf_plan.sh`'s real exit signal per stack; the silent `/dev/null` skip path (`deploy_env.sh:61`) is removed — a missing signal fails loudly |
-| A2 plan-visible informed gate | CI-C1 + ADR-R6-4 | `deploy_cloud_infra.yml` PRD (`:181-210`) and HML (`:248-273`) restructured: plan phase uploads every stack's plan (`tfplan` + full `plan.txt`) as artifacts and posts a consolidated add/change/destroy summary to the run summary; environment-gated apply phase applies the **saved** plans; any plan containing destroys requires an explicit acknowledgment input; `dev` keeps its existing auto per-stack gating |
+| A2 plan-visible informed gate | CI-C1 + ADR-R6-4/R6-5 | `deploy_cloud_infra.yml` PRD (`:181-210`) and HML (`:248-273`) restructured to the **dependency-chain-aware** two-phase flow of ADR-R6-5: pre-gate plan phase uploads every currently-plannable stack's plan (`tfplan` + full `plan.txt`) as artifacts + consolidated add/change/destroy summary; environment-gated apply phase applies **saved** plans for upstream-unchanged stacks and **re-plans + diff-and-stops** downstream of any in-run upstream apply (second gated stage; prd 05a→05b is the canonical case); any plan containing destroys requires an explicit acknowledgment input enforced by `scripts/ci/plan_gate_check.sh`; `dev` keeps its existing auto per-stack gating. Graduation: the new flow must be proven green on **hml before the first prd run**; rollback = `git revert` of the workflow commit (plan artifacts are additive) |
 | A3 hml environment gate | CI-C1 | `hml` GitHub environment gains required_reviewers (operator one-time GitHub setting — see Named operator actions); `dev` stays auto |
 | A4 concurrency groups | CI-C3, CI-M9 | `destroy_all_cloud_infra.yml`, `auto-bump-version.yml`, `drift_detection.yml` gain `concurrency:` groups with `cancel-in-progress: false` |
 | A5 error-masking purge | CI-H8, CI-M1, CI-M2 | `deploy_all_dm_applications.yml:949-954` plan no longer piped through `tee` without `pipefail`; apply gated on plan changes; `terraform_wrapper: false` parity; `\|\| true` removed from verify/test/lock-check steps (kept only for genuine idempotent teardown); plan summaries stop truncating via `tail -N` — full plan uploaded as artifact (CI-M2) |
 | A6 timeouts | CI-H4 | `timeout-minutes` on **every** job in all 7 workflows |
 | A7 fmt/validate gate | CI-H1 | `terraform fmt -check -recursive` + `terraform validate` CI gate added; the 15 currently-failing files mechanically fixed with `terraform fmt` |
 | A8 change-detection correctness | CI-H3, CI-M3 | module change triggers plans only for **dependent** stacks via a static stack→module map (replacing the blanket `^services/modules/` clause at `plan_on_pr.yml:67`); the `HEAD~1` fallback in `scripts/ci/detect_changes.sh:21` / `plan_on_pr.yml:60-61` fails loudly instead of silently degrading |
+
+**Single-source constraint (F-ARCH-4, anticipates epic WS-D):** the stack→module map,
+the stack→upstream dependency declarations (ADR-R6-5), and the gate's stack list MUST
+live in **one data-driven file** consumed by both `plan_on_pr.yml` and the deploy gate.
+No workflow YAML or shell helper may hardcode stack names in more than one place, so
+WS-D's future restructure edits exactly one artifact.
 
 ### WS-B1 — Stop logging the raw Infura key (SEC-H-01, CWE-532)
 
@@ -99,13 +148,34 @@ rotates it**. No log scrubbing will be performed.
 
 ### WS-B2/B3 — OIDC migration (SEC-H-02/M-05, CWE-798; ADR-R6-3)
 
-- **Terraform-owned (this release):** 4 IAM roles —
-  - `dev`/`hml`/`prd` deploy roles, defined in the respective `services/<env>/03_iam`
-    stacks, each with an OIDC trust policy whose `sub` condition binds to this repo's
-    corresponding GitHub **environment**;
-  - 1 read-only plan role (account-level; defined alongside the prd IAM stack) with
-    read/plan permissions + state-bucket read, used by `plan_on_pr.yml` and
-    `drift_detection.yml`.
+- **Terraform-owned (this release):** 4 IAM roles, **all defined in the account-level
+  `services/prd/03_iam` stack** (ADR-R6-6 — `services/dev/03_iam` does not exist and is
+  NOT created; hml's `03_iam` is not touched for these roles):
+  - `dev`/`hml`/`prd` deploy roles, each with an OIDC trust policy whose `sub`
+    condition binds to the GitHub environment(s) in the trust matrix below;
+  - 1 read-only plan role with read/plan permissions + state-bucket read, used by
+    `plan_on_pr.yml`, `drift_detection.yml`, and `all-check-infra`.
+
+**Per-job → role → sub-claim trust matrix (ADR-R6-7; normative for T-R6-B2/B3):**
+
+| Workflow / job set | Role | OIDC `sub` condition |
+|---|---|---|
+| `deploy_cloud_infra.yml` / `destroy_cloud_infra.yml` / `destroy_all_cloud_infra.yml` jobs with `environment: dev` | dev deploy | `repo:<org>/<repo>:environment:dev` |
+| Same workflows' jobs with `environment: hml`; `deploy_all_dm_applications.yml` jobs gaining `environment: hml-apps` (see below) | hml deploy | `repo:<org>/<repo>:environment:hml` **and** `…:environment:hml-apps` |
+| All jobs with `environment: production` (`deploy_cloud_infra.yml:188`; `deploy_all_dm_applications.yml:797,854,927,960`; `destroy_cloud_infra.yml:119`; destroy-all prd jobs) | prd deploy | `repo:<org>/<repo>:environment:production` — the GitHub env is named **`production`**, bound as-is, **no rename** |
+| `plan_on_pr.yml` (trigger `pull_request`, no environment) | read-only plan | `repo:<org>/<repo>:pull_request` |
+| `drift_detection.yml` (`schedule`/`workflow_dispatch`, branch ref, no environment); `deploy_all_dm_applications.yml` job `all-check-infra` (read-only) | read-only plan | `repo:<org>/<repo>:ref:refs/heads/<default-branch>` (exact branch pinned at implementation) |
+| `auto-bump-version.yml` | none | performs no AWS auth |
+
+**`deploy_all_dm_applications.yml` environment assignment (task-level change, in
+scope):** the 9 mutating AWS jobs that today carry **no** `environment:` —
+`all-stream-build-rc` (ECR push), `all-hml-infra-apply`, `all-hml-provision`,
+`all-hml-stream-launch`, `all-hml-lambda-deploy`, `all-hml-test-streaming`,
+`all-hml-test-dabs`, `all-hml-test-lambda`, `all-hml-teardown` — each gain
+`environment: hml-apps` so the hml deploy role can authenticate them. `hml-apps` is
+**reviewer-less by design** (auto-created on first run; the operator must NOT add
+required_reviewers to it — the informed gate stays in `deploy_cloud_infra.yml` per
+ADR-R6-4/5). `all-check-infra` keeps no environment and uses the read-only role.
 - **Operator one-time setup (NOT terraform in this release):** the AWS GitHub OIDC
   identity provider (`token.actions.githubusercontent.com`) — chicken-and-egg: CI cannot
   terraform its own identity provider while still authenticating with the keys being
@@ -116,6 +186,10 @@ rotates it**. No log scrubbing will be performed.
   detection assume only the read-only role (fixes SEC-M-05's deploy-creds-on-PR exposure).
 - **Sequencing:** OIDC workflow edits land **after** the WS-A gate redesign — same 7
   workflow files; sequencing avoids churn (grill priority table).
+- **Cutover safety (F-QA-3):** before OP-R6-4 retires the static keys, a non-mutating
+  role-assumption check (`aws sts get-caller-identity` from a workflow run, or a
+  plan-phase run) must succeed under **each of the 4 roles** — including the hml and
+  prd deploy roles — with the 4 evidences recorded in the T-R6-B3 handoff.
 
 ### Sanitization workstream (ADR-R6-1 fold + audit recommendation 4)
 
@@ -150,7 +224,7 @@ picked-but-unsolved. There are no unpicked Open bugs.
 | OP-R6-1 | **Rotate the exposed Infura API key(s)** | after WS-B1 merges/deploys | key remains valid + readable in historical CloudWatch/S3/Databricks logs until rotated (ADR-R6-2) |
 | OP-R6-2 | **Create the GitHub OIDC identity provider** in AWS account (one-time) | before T-R6-B3 (workflow cutover) | static keys remain in use until cutover |
 | OP-R6-3 | **Add required_reviewers to the `hml` GitHub environment** | with WS-A A3 | hml applies remain human-ungated until set |
-| OP-R6-4 | **Delete/deactivate the static IAM access keys + repo secrets** | after OIDC cutover validated | standing secret persists until deleted |
+| OP-R6-4 | **Delete/deactivate the static IAM access keys + repo secrets** | after OIDC cutover validated **incl. the 4-role assumption evidence (F-QA-3)** | standing secret persists until deleted |
 
 ---
 
@@ -170,9 +244,17 @@ picked-but-unsolved. There are no unpicked Open bugs.
 
 1. **A1:** `deploy_env.sh` contains no `grep`/`tail -1` over `$GITHUB_OUTPUT`; apply
    decision is per-stack from the plan's real exit signal; missing signal fails the run.
-2. **A2:** PRD and HML deploys upload every stack's plan artifact + consolidated
-   add/change/destroy summary before the environment gate; apply uses the saved plans;
-   destroy-containing plans require explicit acknowledgment; dev unchanged (auto).
+2. **A2 (per ADR-R6-5):** PRD and HML deploys upload every **currently-plannable**
+   stack's plan artifact + consolidated add/change/destroy summary before the
+   environment gate (non-plannable stacks listed as deferred, never skipped); post-gate,
+   upstream-unchanged stacks apply only their saved plan binaries; stacks downstream of
+   an in-run upstream apply (or without a pre-gate plan) are re-planned and the run
+   STOPS for re-approval whenever the re-plan differs from the approved summary;
+   destroy-containing plans require explicit acknowledgment (enforced by
+   `scripts/ci/plan_gate_check.sh`, verified by its fixture unit test); all edited
+   workflows pass `actionlint`; the flow is proven by one green hml run (run URL +
+   artifact list + pre-gate summary evidence) **before** the first prd run; dev
+   unchanged (auto).
 3. **A3:** `gh api` shows required_reviewers on `hml` (operator OP-R6-3 done); recorded
    in the task evidence.
 4. **A4:** `destroy_all_cloud_infra.yml`, `auto-bump-version.yml`, `drift_detection.yml`
@@ -187,9 +269,13 @@ picked-but-unsolved. There are no unpicked Open bugs.
 9. **B1:** no log statement in `4_mined_txs_crawler.py` emits raw key material (lines
    66/107/114 fixed); a unit test asserts log output contains no key value.
 10. **B2/B3:** `git grep -l 'AWS_ACCESS_KEY_ID\|AWS_SECRET_ACCESS_KEY' .github/workflows/`
-    returns empty; every AWS job uses `role-to-assume` + `id-token: write`; 4 roles exist
-    in Terraform (3 env-bound via OIDC `sub` to their GitHub environments + 1 read-only
-    plan role); `plan_on_pr.yml` and `drift_detection.yml` assume only the read-only role.
+    returns empty; every AWS job uses `role-to-assume` + `id-token: write`; the 4 roles
+    exist in the account-level `services/prd/03_iam` stack (ADR-R6-6) with `sub`
+    conditions **exactly** per the ADR-R6-7 trust matrix (prd binds
+    `environment:production`); the 9 named `deploy_all_dm_applications.yml` jobs carry
+    `environment: hml-apps`; `plan_on_pr.yml`, `drift_detection.yml`, and
+    `all-check-infra` assume only the read-only role; non-mutating assumption evidence
+    exists for **all 4 roles** before OP-R6-4 (F-QA-3).
 11. **Sanitization:** `DADAIA_CONTEXT=dd-chain-explorer dadaia specs doctor` reports 0
     ERRORs; all 8 bugs carry `session_id:`; 7+1 bugs Closed with `fixed_in:` evidence;
     `specs/domains/` and `specs/releases/legacy/` archived; token_estimates within ±10%;
@@ -221,6 +307,7 @@ picked-but-unsolved. There are no unpicked Open bugs.
 | OIDC cutover depends on operator one-time provider setup (OP-R6-2); if delayed, B3 blocks | B2 (terraform roles) can land first; workflows keep static keys until cutover; rc gate may ship WS-A+B1 without B3 |
 | WS-A and WS-B3 touch the same 7 workflow files | hard sequencing: WS-A merges before B3 edits begin (grill priority table) |
 | `devops` plugin required for CI-YAML ownership (`devops-engineer`) | if not installed: `dadaia plugin install devops`, or operator explicitly authorizes software-engineer scope for workflow files |
-| Plan-artifact gate redesign could break the working dev flow | dev path explicitly unchanged (ADR-R6-4); validation runs `plan_on_pr` + a dev deploy before hml/prd cutover |
+| Plan-artifact gate redesign could break the working dev flow | dev path explicitly unchanged (ADR-R6-4); validation runs `plan_on_pr` + a dev deploy before hml/prd cutover; hml graduation gate + `git revert` rollback (acceptance 2) |
+| `environment: hml-apps` on 9 dm-applications jobs changes their auth/gating surface | reviewer-less environment by design (ADR-R6-7) — behavior stays automatic; change is named in scope and covered by the B3 validation runs |
 | Closing bugs without re-verification risks registry lies | T-R6-S3 acceptance requires re-running each bug's verification command before flipping status |
 | `hml` required_reviewers adds friction to hml iteration | accepted by operator in grill Problem #4 (informed single gate per env) |

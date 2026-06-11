@@ -22,21 +22,44 @@ software-engineer scope.
         (today line 77); apply decision per stack derives from `tf_plan.sh`'s real
         signal (exit code or per-stack temp file).
     (b) The `/dev/null` fallback (`deploy_env.sh:61`) no longer silently skips applies —
-        a missing plan signal fails the run loudly.
+        a missing plan signal fails the run loudly. Verification (F-QA-4): run
+        `deploy_env.sh` with the per-stack signal absent → exit ≠ 0 + explicit
+        `::error::` (PLAN validation table row "Missing-signal fails loudly").
     (c) `tf_state_lock_check.sh || true` (`deploy_env.sh:54`) fails loudly instead.
+        Verification (F-QA-4): stub `tf_state_lock_check.sh` to `exit 1` → run fails.
   Parallelism: Wave 1; blocks T-R6-A2.
 
-- [ ] T-R6-A2 — **Plan-visible informed gate for PRD/HML deploys (CI-C1, ADR-R6-4)** | Owner: devops-engineer | Priority: CRITICAL
-  Write-set: `.github/workflows/deploy_cloud_infra.yml`, `scripts/ci/` (helpers as needed)
+- [ ] T-R6-A2 — **Dependency-chain-aware informed gate for PRD/HML deploys (CI-C1, ADR-R6-4/R6-5)** | Owner: devops-engineer | Priority: CRITICAL
+  Write-set: `.github/workflows/deploy_cloud_infra.yml`, `scripts/ci/` (helpers incl.
+  `plan_gate_check.sh` + its fixture unit test, single-source stack map file)
   Precondition: T-R6-A1 done.
   Acceptance:
-    (a) PRD and HML are two-phase: plan phase uploads every stack's `tfplan` binary +
-        full `plan.txt` as artifacts and writes a consolidated add/change/destroy
-        summary per stack to the run summary BEFORE the environment gate.
-    (b) Apply phase (behind `environment:`) applies the saved plans only.
-    (c) Any stack plan containing destroys requires an explicit acknowledgment input;
-        without it the apply fails.
+    (a) Pre-gate plan phase: every stack **plannable against current state** uploads its
+        `tfplan` binary + full `plan.txt` as artifacts and a consolidated
+        add/change/destroy summary per stack is written to the run summary BEFORE the
+        environment gate; non-plannable stacks (e.g. prd 05b on bootstrap, upstream
+        output absent) appear in the summary as "deferred to post-upstream stage" —
+        never silently skipped.
+    (b) Post-gate apply (dependency order, per the single-source stack map): a stack
+        whose upstreams applied NO in-run changes applies its saved approved plan
+        binary only; a stack downstream of an in-run upstream apply (or without a
+        pre-gate plan) is RE-PLANNED — apply proceeds iff the re-plan matches the
+        approved summary (add/change/destroy counts + resource-address set); otherwise
+        the run STOPS at a second gated approval presenting the new plan. prd 05a→05b
+        (`deploy_env.sh:147-184`) is the canonical covered case.
+    (c) Destroy acknowledgment (F-QA-2): destroy-detection + ack check implemented in
+        `scripts/ci/plan_gate_check.sh`; unit test fed fixture plans asserts exit ≠ 0
+        with destroys and no ack, exit 0 with ack, exit 0 for no-destroy plans.
     (d) DEV per-stack auto flow unchanged.
+    (e) Lint gate (F-QA-1): `actionlint` exits 0 on every edited workflow.
+    (f) Graduation + rollback (F-QA-1/QA-6): one full green hml run through the new
+        flow (run URL + artifact list + run-summary evidence showing per-stack counts
+        before the gate) is recorded BEFORE the first prd run; rollback path stated in
+        the task handoff: `git revert` of the workflow commit restores the previous
+        flow (saved-plan artifacts are additive).
+    (g) Single-source constraint (F-ARCH-4): the gate's stack list + dependency
+        declarations live in the same single data-driven map file consumed by
+        `plan_on_pr.yml` (T-R6-A8) — no stack name hardcoded in more than one place.
   Parallelism: Wave 2; same-file edits coordinated with A4/A5/A6 (sequential commits).
 
 - [ ] T-R6-A3 — **hml GitHub environment required_reviewers (OP-R6-3)** | Owner: operator (verification: devops-engineer) | Priority: HIGH
@@ -60,6 +83,9 @@ software-engineer scope.
         parity with other jobs.
     (b) `|| true` removed from verify/test/lock-check steps (kept only on genuine
         idempotent teardown; each kept instance justified by an inline comment).
+        Verification (F-QA-4): `grep -rn '|| true' .github/workflows/ scripts/ci/` —
+        every remaining instance carries the justification comment (PLAN validation
+        table row "Error-masking inventory").
     (c) Plan summaries no longer rely on `tail -N` alone — full `plan.txt` artifact +
         `grep '^(Plan:|No changes)'` summary line.
   Parallelism: Wave 2; sequential with A2 in the shared file.
@@ -82,9 +108,13 @@ software-engineer scope.
   Acceptance:
     (a) Static stack→module map: a module edit triggers plans only for stacks consuming
         that module (blanket `^services/modules/` clause at `plan_on_pr.yml:67` removed).
+        The map lives in the SAME single data-driven file as T-R6-A2's dependency
+        declarations (F-ARCH-4) — one file, two consumers, zero duplicated stack lists.
     (b) Unavailable merge-base fails the detection step loudly — no silent `HEAD~1`
-        fallback (`detect_changes.sh:21`, `plan_on_pr.yml:60-61`).
-  Parallelism: Wave 2, parallel-safe.
+        fallback (`detect_changes.sh:21`, `plan_on_pr.yml:60-61`). Verification
+        (F-QA-4): run `detect_changes.sh` in a simulated shallow clone (no merge-base)
+        → exit ≠ 0 + explicit error.
+  Parallelism: Wave 2, parallel-safe (coordinate the shared map file with T-R6-A2).
 
 ## WS-B1 — Secret logging
 
@@ -102,17 +132,23 @@ software-engineer scope.
 
 ## WS-B2/B3 — OIDC migration (ADR-R6-3)
 
-- [ ] T-R6-B2 — **Terraform: 4 OIDC IAM roles** | Owner: software-engineer | Priority: HIGH
-  Write-set: `services/dev/03_iam/**`, `services/hml/03_iam/**`, `services/prd/03_iam/**`
-  (deploy roles + read-only plan role alongside prd IAM stack)
+- [ ] T-R6-B2 — **Terraform: 4 OIDC IAM roles (account-level — ADR-R6-6)** | Owner: software-engineer | Priority: HIGH
+  Write-set: `services/prd/03_iam/**` only (all 4 roles live in the account-level prd
+  IAM stack; `services/dev/03_iam` does NOT exist and is NOT created; hml `03_iam`
+  untouched)
   Acceptance:
-    (a) dev/hml/prd deploy roles with OIDC trust policies; `sub` condition bound to this
-        repo's corresponding GitHub environment.
-    (b) 1 read-only plan role: plan/read permissions + state read; no mutating actions.
+    (a) dev/hml/prd deploy roles with OIDC trust policies; `sub` conditions EXACTLY per
+        the SPEC ADR-R6-7 trust matrix: dev → `environment:dev`; hml →
+        `environment:hml` AND `environment:hml-apps`; prd → `environment:production`
+        (the GitHub environment's real name — NOT `prd`).
+    (b) 1 read-only plan role: plan/read permissions + state read; no mutating actions;
+        trust covers `repo:<org>/<repo>:pull_request` + the default-branch ref claim
+        (`drift_detection.yml`, `all-check-infra`).
     (c) Trust policies reference the account OIDC provider (created by operator,
         OP-R6-2) via data source/ARN — the provider itself is NOT created by this
         terraform (chicken-and-egg, documented in SPEC).
-    (d) `terraform validate` + plan reviewed for all touched stacks.
+    (d) `terraform validate` + plan reviewed for the touched stack; first apply rides
+        the existing static-key deploy path (bootstrap, ADR-R6-6).
   Parallelism: Wave 1–2, parallel with WS-A (disjoint files). Blocks T-R6-B3.
 
 - [ ] T-R6-B3 — **Workflows: static keys → OIDC role-assumption** | Owner: devops-engineer | Priority: HIGH
@@ -120,12 +156,24 @@ software-engineer scope.
   Precondition: ALL T-R6-A* merged (same files); T-R6-B2 applied; OP-R6-2 done.
   Acceptance:
     (a) `git grep -l 'AWS_ACCESS_KEY_ID\|AWS_SECRET_ACCESS_KEY' .github/workflows/` → empty.
-    (b) Every `configure-aws-credentials` uses `role-to-assume`; `permissions:
-        id-token: write` present where needed.
-    (c) `plan_on_pr.yml` + `drift_detection.yml` assume ONLY the read-only plan role
-        (fixes SEC-M-05).
-    (d) Validation: one PR plan run, one dev deploy, one drift run — all green under OIDC.
-  Parallelism: strictly last in WS-A/B sequence.
+    (b) Every `configure-aws-credentials` uses `role-to-assume` per the ADR-R6-7 trust
+        matrix; `permissions: id-token: write` present where needed.
+    (c) `plan_on_pr.yml` + `drift_detection.yml` + `deploy_all_dm_applications.yml`'s
+        `all-check-infra` assume ONLY the read-only plan role (fixes SEC-M-05).
+    (d) The 9 named mutating no-environment jobs in `deploy_all_dm_applications.yml`
+        (`all-stream-build-rc`, `all-hml-infra-apply`, `all-hml-provision`,
+        `all-hml-stream-launch`, `all-hml-lambda-deploy`, `all-hml-test-streaming`,
+        `all-hml-test-dabs`, `all-hml-test-lambda`, `all-hml-teardown`) gain
+        `environment: hml-apps` (reviewer-less — no required_reviewers ever added) and
+        authenticate via the hml deploy role.
+    (e) Validation: one PR plan run, one dev deploy, one drift run — all green under
+        OIDC.
+    (f) Cutover-safety evidence (F-QA-3): a non-mutating role-assumption check
+        (`aws sts get-caller-identity` from a workflow run) succeeds under EACH of the
+        4 roles — including hml and prd deploy roles — and the 4 evidences (run URLs +
+        assumed-role ARNs) are recorded in this task's handoff BEFORE OP-R6-4 is
+        triggered.
+  Parallelism: strictly last in WS-A/B sequence. OP-R6-4 is blocked on (f).
 
 ## Sanitization (parallel-safe — `specs/**` only)
 
@@ -181,7 +229,7 @@ software-engineer scope.
 | T-R6-A4..A8 | — (A5/A6 sequence commits with A2 in shared files) | T-R6-B3 |
 | T-R6-B1 | — | OP-R6-1 (operator rotation) |
 | T-R6-B2 | — (provider ARN from OP-R6-2 at apply time) | T-R6-B3 |
-| T-R6-B3 | all T-R6-A*, T-R6-B2, OP-R6-2 | OP-R6-4 |
+| T-R6-B3 | all T-R6-A*, T-R6-B2, OP-R6-2 | OP-R6-4 (gated on B3(f): 4-role assumption evidence — F-QA-3) |
 | T-R6-S1 | — | doctor-clean criterion |
 | T-R6-S2 | — | T-R6-S3 (drift-04) |
 | T-R6-S3 | T-R6-S2 | — |
