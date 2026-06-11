@@ -48,6 +48,12 @@ variable "github_default_branch" {
   default     = "master"
 }
 
+variable "github_deploy_branch" {
+  description = "Branch the deploy workflow dispatches from (branch_guard.sh); trusted by the read-only plan role for pre-gate plan jobs"
+  type        = string
+  default     = "develop"
+}
+
 variable "github_oidc_provider_arn" {
   description = "ARN of the operator-created GitHub OIDC identity provider (OP-R6-2). Empty string => look it up via data source by URL; the provider itself is NEVER created by this terraform."
   type        = string

@@ -132,6 +132,11 @@ data "aws_iam_policy_document" "gha_readonly_plan_assume" {
       values = [
         "${local.github_sub_prefix}:pull_request",
         "${local.github_sub_prefix}:ref:refs/heads/${var.github_default_branch}",
+        # Deploy pre-gate plan jobs (prd-plan/hml-plan) dispatch from develop
+        # (branch_guard.sh:6). The READONLY plan role must trust develop so
+        # AssumeRoleWithWebIdentity succeeds at the first live pre-gate plan run
+        # (F-QA-A1R-1). master remains trusted for drift/all-check-infra runs.
+        "${local.github_sub_prefix}:ref:refs/heads/${var.github_deploy_branch}",
       ]
     }
   }
