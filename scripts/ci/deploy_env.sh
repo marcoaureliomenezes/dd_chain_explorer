@@ -50,16 +50,31 @@ deploy_module() {
 
   cd "${module_dir}"
 
-  # State lock check (best-effort — does not fail pipeline)
-  bash "${REPO_ROOT}/scripts/ci/tf_state_lock_check.sh" || true
+  # State lock check — fails the run loudly on a real lock (CI-C2 / F-QA-4).
+  # A stale or active state lock must NOT be swallowed: applying over a held lock
+  # races another writer and can corrupt remote state.
+  if ! bash "${REPO_ROOT}/scripts/ci/tf_state_lock_check.sh"; then
+    summary "| ❌ | ${module_name} | state lock check failed |"
+    echo "::error::State lock check failed for ${module_name}"
+    exit 1
+  fi
 
   terraform init -input=false
   terraform validate
 
   export MODULE_NAME="${module_name}"
   export TAIL_LINES="${TAIL_LINES:-20}"
-  export GITHUB_OUTPUT="${GITHUB_OUTPUT:-/dev/null}"
   export GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
+
+  # Per-stack apply signal: tf_plan.sh writes a `tfplan.haschanges` file into THIS
+  # module's working directory. Each stack therefore carries its own signal — we never
+  # grep a shared append-only $GITHUB_OUTPUT with `tail -1` (the CI-C2 cross-stack
+  # contamination bug). GITHUB_OUTPUT is left to its real runner value when present
+  # (and tf_plan.sh degrades cleanly without it); the apply decision does NOT depend on
+  # it here.
+  local plan_signal_file="${module_dir}/tfplan.haschanges"
+  rm -f "${plan_signal_file}"
+  export PLAN_SIGNAL_FILE="${plan_signal_file}"
 
   # Plan
   set +e
@@ -73,13 +88,26 @@ deploy_module() {
     exit 1
   fi
 
-  # Apply only if plan has changes
-  PLAN_HAS_CHANGES=$(grep "plan_has_changes=" "${GITHUB_OUTPUT}" 2>/dev/null | tail -1 | cut -d= -f2 || echo "false")
-  if [[ "$PLAN_HAS_CHANGES" == "true" ]]; then
+  # Apply decision derives from the per-stack signal file written by tf_plan.sh.
+  # A missing signal is NOT a silent skip (the removed `/dev/null` fallback) — it
+  # means the plan step did not record a decision and the run must fail loudly.
+  if [[ ! -f "${plan_signal_file}" ]]; then
+    summary "| ❌ | ${module_name} | missing plan signal |"
+    echo "::error::Missing plan signal for ${module_name}: ${plan_signal_file} not written by tf_plan.sh"
+    exit 1
+  fi
+
+  local plan_has_changes
+  plan_has_changes="$(cat "${plan_signal_file}")"
+  if [[ "$plan_has_changes" == "true" ]]; then
     terraform apply -input=false -auto-approve tfplan
     summary "| ✅ | ${module_name} | applied |"
-  else
+  elif [[ "$plan_has_changes" == "false" ]]; then
     summary "| ✅ | ${module_name} | no changes |"
+  else
+    summary "| ❌ | ${module_name} | invalid plan signal |"
+    echo "::error::Invalid plan signal for ${module_name}: '${plan_has_changes}' (expected true|false)"
+    exit 1
   fi
 
   cd "${REPO_ROOT}"
