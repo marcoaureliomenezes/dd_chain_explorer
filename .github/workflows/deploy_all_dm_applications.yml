@@ -22,6 +22,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   AWS_REGION:              sa-east-1
@@ -109,6 +110,7 @@ jobs:
     name: Stream — Build & push RC image
     needs: [all-check-version]
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 15
     outputs:
       rc_tag:       ${{ steps.meta.outputs.rc_tag }}
@@ -118,9 +120,12 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (hml deploy role
+      # via the hml-apps environment sub-claim).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: aws sts get-caller-identity
       - name: Resolve RC tag & ECR registry
         id: meta
         run: |
@@ -231,6 +236,7 @@ jobs:
     name: HML — Apply IAM + peripherals Terraform (idempotent)
     needs: [all-check-version]
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -240,9 +246,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Apply HML IAM roles (ECS task execution + task roles — idempotent)
         run: |
           terraform -chdir="$GITHUB_WORKSPACE/services/hml/03_iam" \
@@ -281,6 +286,7 @@ jobs:
     name: HML — Provision ephemeral environment
     needs: [all-hml-infra-apply, all-stream-build-rc, all-lambda-build-artifacts, all-dabs-validate]
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     outputs:
       hml_sg_id:            ${{ steps.provision.outputs.hml_sg_id }}
@@ -290,9 +296,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Provision HML streaming infrastructure
         id: provision
         run: bash "$GITHUB_WORKSPACE/scripts/ci/hml_provision.sh"
@@ -303,13 +308,13 @@ jobs:
     name: HML — Launch streaming ECS tasks (RC image)
     needs: [all-hml-provision, all-stream-build-rc]
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     steps:
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Register task definitions and launch ECS tasks
         run: |
           EXEC_ROLE=$(aws iam get-role --role-name dm-chain-explorer-ecs-task-execution-role-hml --query 'Role.Arn' --output text)
@@ -445,6 +450,7 @@ jobs:
     name: HML — Deploy ephemeral Lambda functions
     needs: all-hml-dabs-deploy
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     outputs:
       dynamodb_table:  ${{ steps.tf-outputs.outputs.dynamodb_table }}
@@ -459,9 +465,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: lambda-artifacts
@@ -534,6 +539,7 @@ jobs:
     name: HML Test — Streaming (SQS / Kinesis / DynamoDB / Firehose / S3)
     needs: all-hml-lambda-deploy
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     outputs:
       test_passed: ${{ steps.run-test.outputs.test_passed }}
@@ -541,9 +547,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Run HML streaming integration test
         id: run-test
         env:
@@ -578,6 +583,7 @@ jobs:
     needs: [all-hml-lambda-deploy, all-hml-test-streaming]
     if: needs.all-hml-test-streaming.result == 'success'
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     outputs:
       test_passed: ${{ steps.validate.outputs.test_passed }}
@@ -588,9 +594,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Verify raw data exists in S3 before triggering DLT
         working-directory: ${{ github.workspace }}
         run: |
@@ -648,15 +653,15 @@ jobs:
     name: HML Test — Lambda (contracts_ingestion / gold_to_dynamodb)
     needs: all-hml-lambda-deploy
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     outputs:
       test_passed: ${{ steps.run-test.outputs.test_passed }}
     steps:
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Invoke contracts_ingestion (dry_run)
         id: invoke-ci
         run: |
@@ -733,14 +738,14 @@ jobs:
       - all-hml-test-lambda
     if: always()
     runs-on: ubuntu-latest
+    environment: hml-apps
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Teardown HML streaming infrastructure
         run: bash "$GITHUB_WORKSPACE/scripts/ci/hml_teardown.sh"
         env:
@@ -801,9 +806,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Check streaming prerequisites (ECS cluster + ECR repo)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/check_infra_prerequisites.sh"
         env:
@@ -843,9 +847,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Resolve ECR registry & tags
         id: meta
         run: |
@@ -899,6 +902,7 @@ jobs:
     environment: production
     permissions:
       contents: write
+      id-token: write
     defaults:
       run:
         working-directory: ${{ env.DABS_PATH }}
@@ -908,9 +912,8 @@ jobs:
           persist-credentials: true
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Read PROD Databricks workspace URL from Terraform state
         id: prod-ws
         working-directory: ${{ github.workspace }}
@@ -977,9 +980,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
         with:
           name: lambda-artifacts
