@@ -136,9 +136,19 @@ deploy_stack() {
   local approved_plan="${PLAN_ARTIFACT_DIR}/${sid}/tfplan"
   local approved_txt="${PLAN_ARTIFACT_DIR}/${sid}/plan.txt"
 
+  # A stack DECLARED bootstrap_plannable:false in the map is "deferred" — the pre-gate
+  # summary tells the approver it will be planned post-upstream (ADR-R6-5 "deferred,
+  # never skipped"). Its no-approved-plan re-plan takes the informed deferred path, not
+  # an unconditional fail-closed. Any OTHER stack missing an approved plan IS a contract
+  # break and must fail closed.
+  local deferred="false"
+  if [[ "$(stack_field "$sid" bootstrap_plannable)" == "false" ]]; then
+    deferred="true"
+  fi
+
   if upstream_applied_changes "${sid}"; then
     echo "::notice::${module_name}: an upstream applied changes in-run — re-planning and divergence-checking against the approved plan (ADR-R6-5)."
-    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}"
+    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
   elif [[ -f "${approved_plan}" ]]; then
     # Upstreams unchanged → apply the SAVED approved plan binary the gate reviewer saw.
     echo "::notice::${module_name}: upstreams unchanged — applying the saved approved plan."
@@ -149,12 +159,19 @@ deploy_stack() {
       summary "| ✅ | ${module_name} | applied saved approved plan |"
       APPLIED_STACKS+=("${sid}")
     fi
+  elif [[ "${deferred}" == "true" ]]; then
+    # Declared-deferred stack (e.g. 05b) with no pre-gate plan — the approver was already
+    # told this stack is "deferred to post-upstream stage". Re-plan now (upstream outputs
+    # are available) and apply the informed post-gate re-plan; the divergence gate runs in
+    # --deferred mode so a missing-approved plan is the deferred path, not exit 3. The
+    # destroy-ack gate still protects it.
+    echo "::notice::${module_name}: declared-deferred stack, no pre-gate plan — informed post-gate re-plan (ADR-R6-5 deferred path)."
+    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
   else
-    # No pre-gate plan for this stack (e.g. bootstrap_plannable:false 05b) → re-plan and
-    # divergence-gate. With no approved plan, plan_gate_check.sh plan-diff fails closed
-    # unless the re-plan is itself a no-op, which is the only safe auto-apply.
+    # A non-deferred stack with NO approved plan is a broken contract: plan_gate_check.sh
+    # plan-diff fails closed (exit 3) on the missing approved plan.
     echo "::notice::${module_name}: no saved approved plan — re-planning and divergence-checking (ADR-R6-5)."
-    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}"
+    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
   fi
 
   cd "${REPO_ROOT}"
@@ -163,7 +180,7 @@ deploy_stack() {
 # Re-plan the current stack (cwd is the module dir) and gate the fresh plan against the
 # approved summary via plan_gate_check.sh plan-diff. Fail closed (exit ≠ 0) on divergence.
 deploy_stack_replan_diff() {
-  local sid="$1" module_name="$2" approved_txt="$3"
+  local sid="$1" module_name="$2" approved_txt="$3" deferred="${4:-false}"
 
   export MODULE_NAME="${module_name}"
   export TAIL_LINES="${TAIL_LINES:-20}"
@@ -190,10 +207,28 @@ deploy_stack_replan_diff() {
 
   # Divergence gate: compare the fresh re-plan (plan.txt, written by tf_plan.sh in cwd)
   # against the approved pre-gate summary. exit 3 = divergence → fail closed.
+  # For a declared-deferred stack with no approved plan, pass --deferred so the missing
+  # approved plan is the informed post-gate path (ADR-R6-5), not unconditional exit 3.
   local replan_txt="${PWD}/plan.txt"
+  local diff_args=(plan-diff)
+  if [[ "$deferred" == "true" && ! -f "$approved_txt" ]]; then
+    diff_args+=(--deferred)
+    # The approver never saw a pre-gate plan for this deferred stack, so run the
+    # destroy-ack gate over the fresh re-plan before applying it — destroys still need an
+    # explicit acknowledgment even on the deferred path.
+    set +e
+    bash "${REPO_ROOT}/scripts/ci/plan_gate_check.sh" destroy-ack "${DESTROY_ACK:-false}" "${replan_txt}"
+    local ack_rc=$?
+    set -e
+    if [[ "$ack_rc" -ne 0 ]]; then
+      summary "| ❌ | ${module_name} | deferred re-plan destroys without acknowledgment |"
+      echo "::error::${module_name}: deferred re-plan contains destroys but DESTROY_ACK is not set."
+      exit "$ack_rc"
+    fi
+  fi
   set +e
   local diff_out
-  diff_out="$(bash "${REPO_ROOT}/scripts/ci/plan_gate_check.sh" plan-diff "${approved_txt}" "${replan_txt}" 2>&1)"
+  diff_out="$(bash "${REPO_ROOT}/scripts/ci/plan_gate_check.sh" "${diff_args[@]}" "${approved_txt}" "${replan_txt}" 2>&1)"
   local diff_rc=$?
   set -e
   echo "${diff_out}"
@@ -369,19 +404,22 @@ prd_read_workspace_url() {
 }
 
 # ── Entry point ───────────────────────────────────────────────────────────────
+# Guard: when sourced (DEPLOY_ENV_SOURCE_ONLY=1) expose the helper functions for
+# hermetic unit tests without running a deploy. Otherwise run the env's deploy.
+if [[ "${DEPLOY_ENV_SOURCE_ONLY:-}" != "1" ]]; then
+  summary ""
+  summary "## Deploy \`${ENV}\` — $(date -u '+%Y-%m-%d %H:%M UTC')"
+  summary ""
 
-summary ""
-summary "## Deploy \`${ENV}\` — $(date -u '+%Y-%m-%d %H:%M UTC')"
-summary ""
+  case "$ENV" in
+    hml) deploy_hml ;;
+    prd) deploy_prd ;;
+    *)
+      echo "::error::Unknown environment '${ENV}'. Supported: hml, prd"
+      exit 1
+      ;;
+  esac
 
-case "$ENV" in
-  hml) deploy_hml ;;
-  prd) deploy_prd ;;
-  *)
-    echo "::error::Unknown environment '${ENV}'. Supported: hml, prd"
-    exit 1
-    ;;
-esac
-
-echo ""
-echo "✅ deploy_env.sh ${ENV} — DONE"
+  echo ""
+  echo "✅ deploy_env.sh ${ENV} — DONE"
+fi

@@ -16,15 +16,25 @@
 #     Print the "add change destroy" triple parsed from a plan.txt (or "0 0 0").
 #     Single source of plan-count parsing for the plan-phase summary.
 #
-#   plan-diff <approved.txt> <replan.txt>
+#   plan-diff [--deferred] <approved.txt> <replan.txt>
 #     Cross-stack divergence gate (ADR-R6-5). Compares the approved pre-gate plan
 #     against a post-upstream-apply re-plan for the same stack. Compares the
 #     add/change/destroy counts AND the set of changed resource addresses. Exit 0 if
 #     they match (apply may proceed against the re-planned tfplan); exit 3 if they
 #     diverge (the caller FAILS CLOSED — no further downstream applies — and publishes
-#     this diff as artifact + job summary, per the ADR-R6-5 pinned mechanism). A
-#     missing approved plan (no pre-gate plan for a downstream stack) is also a
-#     divergence -> exit 3.
+#     this diff as artifact + job summary, per the ADR-R6-5 pinned mechanism).
+#
+#     Missing-approved semantics depend on whether the stack was DECLARED deferred:
+#       * NON-deferred stack, approved plan absent → fail-closed divergence (exit 3).
+#         A downstream stack that should have had a pre-gate plan but does not is a
+#         broken contract and must stop the run.
+#       * --deferred stack (declared bootstrap_plannable:false in stack_map.json, listed
+#         in the pre-gate summary as "deferred to post-upstream stage"), approved plan
+#         absent → the DEFERRED path (ADR-R6-5 "deferred, never skipped"): the re-plan is
+#         informed/post-gate, so exit 0 and let the caller apply the fresh re-plan. The
+#         destroy-ack gate still protects it; the approver was already told this stack
+#         would be planned post-apply. The re-plan output is still published as artifact +
+#         job summary so the approver remains informed.
 #
 # Exit codes:
 #   0  ok (no destroys / acknowledged / re-plan matches approved)
@@ -126,13 +136,26 @@ cmd_destroy_ack() {
 }
 
 cmd_plan_diff() {
+  local deferred="false"
+  if [[ "${1:-}" == "--deferred" ]]; then
+    deferred="true"
+    shift
+  fi
   if [[ "$#" -ne 2 ]]; then
-    err "usage: plan_gate_check.sh plan-diff <approved.txt> <replan.txt>"
+    err "usage: plan_gate_check.sh plan-diff [--deferred] <approved.txt> <replan.txt>"
     exit 64
   fi
   local approved="$1" replan="$2"
 
   if [[ ! -f "$approved" ]]; then
+    if [[ "$deferred" == "true" ]]; then
+      # Declared-deferred stack (bootstrap_plannable:false) — the approver was already
+      # informed in the pre-gate summary that this stack would be planned post-upstream.
+      # Take the DEFERRED path (ADR-R6-5 "deferred, never skipped"): allow the informed
+      # post-gate re-plan to apply. The destroy-ack gate still guards it.
+      echo "plan-gate: declared-deferred stack, no pre-gate plan — applying informed post-gate re-plan (ADR-R6-5 deferred path)."
+      return 0
+    fi
     err "No approved pre-gate plan for this stack — cannot apply a saved plan; re-plan required."
     echo "DIVERGENCE: approved plan '${approved}' is absent." >&2
     exit 3
@@ -183,8 +206,8 @@ main() {
     -h|--help|"")
       cat >&2 <<'USAGE'
 plan_gate_check.sh — informed-gate safety checks over terraform plan text.
-  destroy-ack <ack> <plan.txt> [plan.txt ...]   destroy acknowledgment gate (ADR-R6-4)
-  plan-diff   <approved.txt> <replan.txt>        cross-stack divergence gate (ADR-R6-5)
+  destroy-ack <ack> <plan.txt> [plan.txt ...]          destroy acknowledgment gate (ADR-R6-4)
+  plan-diff   [--deferred] <approved.txt> <replan.txt>  cross-stack divergence gate (ADR-R6-5)
 USAGE
       exit 64
       ;;

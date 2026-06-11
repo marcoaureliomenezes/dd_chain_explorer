@@ -60,7 +60,15 @@ No product features. No data-pipeline changes.
     is **re-planned** after the upstream apply; if the re-plan matches the approved
     summary (same add/change/destroy counts + resource-address set) apply proceeds;
     if it **differs** — or there was no approved plan — the run **STOPS**.
-    **No silent divergence, ever.**
+    **No silent divergence, ever.** *Carve-out — declared-deferred (bootstrap) stacks:*
+    a stack declared `bootstrap_plannable:false` in `stack_map.json` (e.g. prd 05b,
+    whose `workspace_host` only exists post-05a-apply) is listed in the pre-gate summary
+    as **deferred to post-upstream stage** — the approver is **informed** it will be
+    planned post-apply. For such a declared-deferred stack the absent approved plan is
+    **not** a STOP: the apply phase runs an informed **post-gate re-plan** (gated by the
+    destroy-acknowledgment check) and applies it. This is "deferred, never skipped" — the
+    missing-approved STOP applies only to **non-deferred** stacks, where a missing pre-gate
+    plan is a broken contract.
   - *Divergence STOP mechanism (pinned — F-SE-1):* the STOP is implemented as
     **fail-closed + operator re-trigger**. On divergence the apply job **fails**
     (exit ≠ 0; no further downstream applies) with the approved-summary-vs-re-plan

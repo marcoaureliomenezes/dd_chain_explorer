@@ -122,6 +122,17 @@ def _run(tmp_path: Path, env_extra: dict[str, str]) -> subprocess.CompletedProce
     proc.apply_log = apply_log.read_text() if apply_log.exists() else ""  # type: ignore[attr-defined]
     proc.div_dir = div_dir  # type: ignore[attr-defined]
     proc.artifact_dir = artifact_dir  # type: ignore[attr-defined]
+    # deploy_hml cds into the REAL services/<env>/<stack> module dirs and tf_plan.sh
+    # writes plan.txt + tfplan.haschanges there. Those are throwaway plan artifacts and
+    # MUST NOT be left inside the repo working tree (services/** must stay clean). Remove
+    # any the run produced under services/.
+    for leak in REPO_ROOT.joinpath("services").rglob("plan.txt"):
+        leak.unlink(missing_ok=True)
+    for leak in REPO_ROOT.joinpath("services").rglob("tfplan.haschanges"):
+        leak.unlink(missing_ok=True)
+    for leak in REPO_ROOT.joinpath("services").rglob("tfplan"):
+        if leak.is_file():
+            leak.unlink(missing_ok=True)
     return proc
 
 
@@ -195,6 +206,125 @@ def test_no_saved_plan_replans_and_gates(tmp_path: Path) -> None:
     assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
     log = proc.apply_log  # type: ignore[attr-defined]
     assert "07_ecs" not in log
+
+
+def _run_replan_diff(
+    tmp_path: Path,
+    *,
+    deferred: bool,
+    approved_present: bool,
+    replan_changes: bool,
+    destroy_ack: str = "false",
+    destroys: bool = False,
+) -> subprocess.CompletedProcess:
+    """Source deploy_env.sh and drive deploy_stack_replan_diff for the prd 05b
+    (databricks_workspace) deferred stack in isolation (F-QA-A1R-2). The terraform stub
+    plans 05b's module dir; whether it has changes/destroys is shaped per call."""
+    bindir = _make_bindir(tmp_path)
+    artifact_dir = tmp_path / ".plan-artifacts"
+    artifact_dir.mkdir()
+    apply_log = tmp_path / "apply.log"
+    apply_log.touch()
+    approved_txt = artifact_dir / "databricks_workspace" / "plan.txt"
+    if approved_present:
+        approved_txt.parent.mkdir(parents=True, exist_ok=True)
+        approved_txt.write_text("No changes. Your infrastructure matches the configuration.\n")
+
+    # A terraform stub for the 05b module: plan emits changes/destroys per flags.
+    if not replan_changes:
+        plan_echo = 'echo "No changes. Your infrastructure matches the configuration."'
+        plan_exit = "0"
+    elif destroys:
+        plan_echo = (
+            'echo "  # aws_x.y will be destroyed"; '
+            'echo "Plan: 0 to add, 0 to change, 1 to destroy."'
+        )
+        plan_exit = "2"
+    else:
+        plan_echo = (
+            'echo "  # aws_x.y will be created"; '
+            'echo "Plan: 1 to add, 0 to change, 0 to destroy."'
+        )
+        plan_exit = "2"
+    stub = f"""#!/usr/bin/env bash
+set -u
+case "${{1:-}}" in
+  init|validate|output) exit 0 ;;
+  plan)
+    out_file="tfplan"
+    for a in "$@"; do case "$a" in -out=*) out_file="${{a#-out=}}";; esac; done
+    : > "$out_file"
+    {plan_echo}
+    exit {plan_exit} ;;
+  apply) echo "05b_databricks_workspace ${{!#}}" >> "${{TF_APPLY_LOG:-/dev/null}}"; exit 0 ;;
+  *) exit 0 ;;
+esac
+"""
+    (bindir / "terraform").write_text(stub)
+    (bindir / "terraform").chmod(0o755)
+
+    # Operate in a throwaway module dir (init/validate/plan are stubbed, so real .tf is
+    # not needed) — keeps tfplan/plan.txt OUT of services/** (no artifact leak).
+    module_dir = tmp_path / "module"
+    module_dir.mkdir()
+    harness = f"""
+set -euo pipefail
+export DEPLOY_ENV_SOURCE_ONLY=1
+export PLAN_ARTIFACT_DIR={artifact_dir!s}
+export DIVERGENCE_DIR={tmp_path / '.plan-divergence'!s}
+export TF_APPLY_LOG={apply_log!s}
+export DESTROY_ACK={destroy_ack}
+export GITHUB_STEP_SUMMARY={tmp_path / 'summary.md'!s}
+# shellcheck disable=SC1090
+source {DEPLOY_ENV!s} prd
+cd {module_dir!s}
+deploy_stack_replan_diff databricks_workspace "PRD/DatabricksWorkspace" \
+  "{approved_txt!s}" {"true" if deferred else "false"}
+"""
+    env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"}
+    proc = subprocess.run(
+        ["bash", "-c", harness], cwd=str(REPO_ROOT), env=env,
+        capture_output=True, text=True,
+    )
+    proc.apply_log = apply_log.read_text()  # type: ignore[attr-defined]
+    return proc
+
+
+def test_deferred_missing_approved_noop_takes_deferred_path(tmp_path: Path) -> None:
+    """05b is declared-deferred; with no approved plan and a no-op re-plan, the deferred
+    path lets the run proceed (exit 0) — NOT the unconditional exit 3 of F-QA-A1R-2."""
+    proc = _run_replan_diff(
+        tmp_path, deferred=True, approved_present=False, replan_changes=False
+    )
+    assert proc.returncode == 0, (proc.stdout, proc.stderr)
+
+
+def test_deferred_missing_approved_with_changes_applies(tmp_path: Path) -> None:
+    """Deferred 05b with changes (no destroys): informed post-gate re-plan applies."""
+    proc = _run_replan_diff(
+        tmp_path, deferred=True, approved_present=False, replan_changes=True
+    )
+    assert proc.returncode == 0, (proc.stdout, proc.stderr)
+    assert "05b_databricks_workspace tfplan" in proc.apply_log  # type: ignore[attr-defined]
+
+
+def test_deferred_missing_approved_destroy_without_ack_fails(tmp_path: Path) -> None:
+    """The deferred path still runs destroy-ack: a destroying re-plan without ack stops."""
+    proc = _run_replan_diff(
+        tmp_path, deferred=True, approved_present=False,
+        replan_changes=True, destroys=True, destroy_ack="false",
+    )
+    assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
+    assert "05b_databricks_workspace" not in proc.apply_log  # type: ignore[attr-defined]
+
+
+def test_nondeferred_missing_approved_fails_closed(tmp_path: Path) -> None:
+    """A NON-deferred stack missing its approved plan fails closed (exit 3) even via the
+    sourced apply path — the fail-closed contract is preserved for non-deferred stacks."""
+    proc = _run_replan_diff(
+        tmp_path, deferred=False, approved_present=False, replan_changes=True
+    )
+    assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
 
 
 def test_deploy_order_matches_stack_map(tmp_path: Path) -> None:

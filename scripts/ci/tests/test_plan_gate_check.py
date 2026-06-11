@@ -154,11 +154,42 @@ def test_plan_diff_divergent_counts_fail_closed(tmp_path: Path) -> None:
     assert "DIVERGES" in res.stderr
 
 
-def test_plan_diff_missing_approved_fails_closed(tmp_path: Path) -> None:
+def test_plan_diff_missing_approved_nondeferred_fails_closed(tmp_path: Path) -> None:
+    """A NON-deferred stack with no approved pre-gate plan is a broken contract -> exit 3
+    (F-QA-A1R-2: missing-approved for a non-deferred stack stays fail-closed)."""
     replan = _write(tmp_path, "replan.txt", ADD_ONLY_PLAN)
     res = _run("plan-diff", str(tmp_path / "absent.txt"), replan)
     assert res.returncode == 3, res.stderr
     assert "absent" in res.stderr.lower()
+
+
+def test_plan_diff_missing_approved_deferred_takes_deferred_path(tmp_path: Path) -> None:
+    """A DECLARED-deferred stack (--deferred) with no approved plan follows the informed
+    post-gate deferred path, NOT unconditional exit 3 (F-QA-A1R-2, ADR-R6-5 'deferred,
+    never skipped'). A no-op re-plan is allowed through (exit 0)."""
+    replan = _write(tmp_path, "replan.txt", NO_CHANGES_PLAN)
+    res = _run("plan-diff", "--deferred", str(tmp_path / "absent.txt"), replan)
+    assert res.returncode == 0, f"deferred path must allow, got {res.returncode}: {res.stderr}"
+    assert "deferred" in res.stdout.lower()
+
+
+def test_plan_diff_missing_approved_deferred_with_changes_allowed(tmp_path: Path) -> None:
+    """The deferred path also allows a re-plan WITH changes (the approver was informed in
+    the pre-gate summary it would be planned post-upstream); the destroy-ack gate in
+    deploy_env.sh guards destroys separately."""
+    replan = _write(tmp_path, "replan.txt", ADD_ONLY_PLAN)
+    res = _run("plan-diff", "--deferred", str(tmp_path / "absent.txt"), replan)
+    assert res.returncode == 0, f"deferred path must allow, got {res.returncode}: {res.stderr}"
+
+
+def test_plan_diff_deferred_still_diffs_when_approved_present(tmp_path: Path) -> None:
+    """--deferred only changes the MISSING-approved behaviour; when an approved plan DOES
+    exist the normal divergence comparison still applies and a divergent re-plan exits 3."""
+    approved = _write(tmp_path, "approved.txt", ADD_ONLY_PLAN)
+    replan = _write(tmp_path, "replan.txt", DESTROY_PLAN)
+    res = _run("plan-diff", "--deferred", approved, replan)
+    assert res.returncode == 3, res.stderr
+    assert "DIVERGES" in res.stderr
 
 
 def test_plan_diff_same_counts_different_addresses_fail(tmp_path: Path) -> None:

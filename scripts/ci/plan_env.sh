@@ -94,6 +94,18 @@ for sid in "${STACK_IDS[@]}"; do
   echo "  PLAN: ${label}  (${rel_path})"
   echo "════════════════════════════════════════════════════════"
 
+  # A stack DECLARED bootstrap_plannable:false in the map (e.g. 05b) cannot produce a
+  # pre-gate plan against current state — its upstream output (workspace_host) only exists
+  # post-apply (ADR-R6-5). Do NOT attempt the plan; declare it DEFERRED in the summary so
+  # the approver is explicitly informed it will be planned post-upstream — never silently
+  # skipped. The apply phase plans it post-upstream via the --deferred divergence path.
+  if [[ "${bootstrap_plannable}" == "false" ]]; then
+    echo "::notice::${label} is declared bootstrap_plannable:false — DEFERRED to post-upstream stage (not planned pre-gate)."
+    summary "| ${label} | - | - | - | ⏭️ deferred to post-upstream stage (will plan post-apply) |"
+    cd "${REPO_ROOT}"
+    continue
+  fi
+
   cd "${module_dir}"
   terraform init -input=false
 
@@ -120,13 +132,9 @@ for sid in "${STACK_IDS[@]}"; do
   set -e
 
   if [[ "${PLAN_RC}" -ne 0 ]]; then
-    if [[ "${bootstrap_plannable}" == "false" ]]; then
-      # Non-plannable stack with absent upstream output — defer, never silently skip.
-      echo "::notice::${label} cannot be planned yet (upstream output absent) — deferred to post-upstream stage."
-      summary "| ${label} | - | - | - | ⏭️ deferred to post-upstream stage |"
-      cd "${REPO_ROOT}"
-      continue
-    fi
+    # Declared-deferred (bootstrap_plannable:false) stacks were already skipped above, so
+    # any plan failure here is a real failure of a stack that SHOULD plan against current
+    # state — fail the plan phase loudly rather than silently deferring.
     echo "::error::Plan failed for ${label}"
     summary "| ${label} | - | - | - | ❌ plan failed |"
     exit 1
