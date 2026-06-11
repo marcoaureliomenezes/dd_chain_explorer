@@ -1,0 +1,156 @@
+{
+  "$comment": [
+    "SINGLE-SOURCE stack dependency map (F-ARCH-4, ADR-R6-5).",
+    "This is the ONE data-driven file that declares, per environment:",
+    "  - the ordered list of Terraform stacks deployed by deploy_cloud_infra.yml,",
+    "  - each stack's module path under services/,",
+    "  - each stack's upstream stacks (the dependency chain — derived from the",
+    "    terraform_remote_state references in the .tf sources),",
+    "  - bootstrap_plannable: false when the stack cannot be planned against current",
+    "    state on a clean bootstrap because an upstream output only exists post-apply",
+    "    (the canonical case: 05b reads TF_VAR_workspace_host from 05a's post-apply",
+    "    output, deploy_env.sh:147-184). Such stacks are reported in the pre-gate plan",
+    "    summary as 'deferred to post-upstream stage' — never silently skipped.",
+    "  - modules: the shared services/modules/* consumed by the stack (T-R6-A8 uses",
+    "    this for module-edit -> dependent-stack change detection; no stack name is",
+    "    hardcoded in plan_on_pr.yml or any deploy helper — they all read THIS file).",
+    "No stack name may be hardcoded in more than one place. Both deploy_cloud_infra.yml",
+    "(the informed gate, T-R6-A2) and plan_on_pr.yml (change detection, T-R6-A8) read",
+    "this file. WS-D's future stack restructure edits exactly this artifact."
+  ],
+  "version": 1,
+  "environments": {
+    "dev": {
+      "stacks": [
+        {
+          "id": "peripherals",
+          "label": "DEV/Peripherals",
+          "path": "services/dev/01_peripherals",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": []
+        },
+        {
+          "id": "lambda",
+          "label": "DEV/Lambda",
+          "path": "services/dev/02_lambda",
+          "upstreams": ["peripherals"],
+          "bootstrap_plannable": true,
+          "modules": []
+        }
+      ]
+    },
+    "hml": {
+      "stacks": [
+        {
+          "id": "vpc",
+          "label": "HML/VPC",
+          "path": "services/hml/02_vpc",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["vpc"]
+        },
+        {
+          "id": "peripherals",
+          "label": "HML/Peripherals",
+          "path": "services/hml/04_peripherals",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["s3", "dynamodb", "kinesis", "sqs", "cloudwatch_logs"]
+        },
+        {
+          "id": "iam",
+          "label": "HML/IAM",
+          "path": "services/hml/03_iam",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["iam"]
+        },
+        {
+          "id": "ecs",
+          "label": "HML/ECS",
+          "path": "services/hml/07_ecs",
+          "upstreams": ["vpc"],
+          "bootstrap_plannable": true,
+          "modules": ["ecs"]
+        },
+        {
+          "id": "databricks",
+          "label": "HML/Databricks",
+          "path": "services/hml/05_databricks",
+          "upstreams": ["vpc", "iam", "peripherals"],
+          "bootstrap_plannable": true,
+          "modules": []
+        },
+        {
+          "id": "databricks_workspace",
+          "label": "HML/DatabricksWorkspace",
+          "path": "services/hml/05b_databricks_workspace",
+          "upstreams": ["iam", "peripherals", "databricks"],
+          "bootstrap_plannable": false,
+          "modules": []
+        }
+      ]
+    },
+    "prd": {
+      "stacks": [
+        {
+          "id": "vpc",
+          "label": "PRD/VPC",
+          "path": "services/prd/02_vpc",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["vpc"]
+        },
+        {
+          "id": "peripherals",
+          "label": "PRD/Peripherals",
+          "path": "services/prd/04_peripherals",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["s3", "dynamodb", "kinesis", "sqs", "cloudwatch_logs"]
+        },
+        {
+          "id": "iam",
+          "label": "PRD/IAM",
+          "path": "services/prd/03_iam",
+          "upstreams": ["vpc"],
+          "bootstrap_plannable": true,
+          "modules": ["iam"]
+        },
+        {
+          "id": "lambda",
+          "label": "PRD/Lambda",
+          "path": "services/prd/06_lambda",
+          "upstreams": ["peripherals"],
+          "bootstrap_plannable": true,
+          "modules": ["lambda"]
+        },
+        {
+          "id": "ecs",
+          "label": "PRD/ECS",
+          "path": "services/prd/07_ecs",
+          "upstreams": ["vpc", "iam", "peripherals"],
+          "bootstrap_plannable": true,
+          "modules": ["ecs"]
+        },
+        {
+          "id": "databricks_account",
+          "label": "PRD/DatabricksAccount",
+          "path": "services/prd/05a_databricks_account",
+          "upstreams": ["vpc", "iam", "peripherals"],
+          "bootstrap_plannable": true,
+          "modules": []
+        },
+        {
+          "id": "databricks_workspace",
+          "label": "PRD/DatabricksWorkspace",
+          "path": "services/prd/05b_databricks_workspace",
+          "upstreams": ["iam", "peripherals", "databricks_account"],
+          "bootstrap_plannable": false,
+          "modules": []
+        }
+      ]
+    }
+  }
+}

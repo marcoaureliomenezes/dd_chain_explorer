@@ -30,7 +30,7 @@ software-engineer scope.
         Verification (F-QA-4): stub `tf_state_lock_check.sh` to `exit 1` → run fails.
   Parallelism: Wave 1; blocks T-R6-A2.
 
-- [-] T-R6-A2 — **Dependency-chain-aware informed gate for PRD/HML deploys (CI-C1, ADR-R6-4/R6-5)** | Owner: devops-engineer | Priority: CRITICAL
+- [x] T-R6-A2 — **Dependency-chain-aware informed gate for PRD/HML deploys (CI-C1, ADR-R6-4/R6-5)** | Owner: devops-engineer | Priority: CRITICAL
   Write-set: `.github/workflows/deploy_cloud_infra.yml`, `scripts/ci/` (helpers incl.
   `plan_gate_check.sh` + its fixture unit test, single-source stack map file)
   Precondition: T-R6-A1 done.
