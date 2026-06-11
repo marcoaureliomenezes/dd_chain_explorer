@@ -123,7 +123,7 @@ software-engineer scope.
 
 ## WS-B1 — Secret logging
 
-- [ ] T-R6-B1 — **Stop logging raw Infura key (SEC-H-01, CWE-532; ADR-R6-2)** | Owner: software-engineer | Priority: HIGH
+- [-] T-R6-B1 — **Stop logging raw Infura key (SEC-H-01, CWE-532; ADR-R6-2)** | Owner: software-engineer | Priority: HIGH
   Write-set: `apps/docker/onchain-stream-txs/src/4_mined_txs_crawler.py`,
   `apps/docker/onchain-stream-txs/tests/unit/` (new/updated tests)
   Acceptance:
@@ -182,7 +182,7 @@ software-engineer scope.
 
 ## Sanitization (parallel-safe — `specs/**` only)
 
-- [ ] T-R6-S1 — **session_id frontmatter on all 8 bug files** | Owner: product-engineer | Priority: HIGH
+- [-] T-R6-S1 — **session_id frontmatter on all 8 bug files** | Owner: product-engineer | Priority: HIGH
   Write-set: `specs/bugs/*.md` (8 files)
   Acceptance: each file gains `session_id: null` (never fabricate an ID); doctor TREE-7
   ERROR count drops 8 → 0.
