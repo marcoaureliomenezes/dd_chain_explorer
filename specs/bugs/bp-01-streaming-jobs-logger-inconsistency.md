@@ -1,9 +1,12 @@
 ---
 name: bp-01-streaming-jobs-logger-inconsistency
-status: Open
+status: Closed
 severity: MEDIUM
 reported: 2026-06-08
 surface: apps/docker/onchain-stream-txs/src/*.py (best-practices — logger wiring)
+session_id: null
+fixed_in: c789e9c
+closed: 2026-06-11
 audit_ref: discovered during PM remediation grill (not in audit.md — operator add-on security/best-practices pass)
 ---
 
@@ -36,3 +39,8 @@ the same workstream as the tests. Scope the security/best-practices pass to
 confirm there are no other latent global/closure references, no bare excepts (none
 found in a first scan), and that secret material (Etherscan keys, SSM names) is
 sourced from ParameterStore/env only (job 5 uses ParameterStoreClient — confirm).
+
+**Closure evidence (2026-06-11, T-R6-S3):** re-verified on disk — all 5 job classes log
+via `self.logger` inside methods (e.g. `1_mined_blocks_watcher.py:46,60`); module-global
+`LOGGER` is confined to `if __name__ == '__main__'` blocks (jobs 1–2) and absent from
+jobs 3–5 entirely. Fixed in commit `c789e9c`.

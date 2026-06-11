@@ -1,9 +1,12 @@
 ---
 name: drift-05-release-closure-hygiene
-status: Open
+status: Closed
 severity: MEDIUM
 reported: 2026-06-08
 surface: specs/releases/{analytics-enrichment-r4,cost-and-availability-r2,data-quality-r3}
+session_id: null
+fixed_in: cb218f7
+closed: 2026-06-11
 audit_ref: specs/audits/20260609T013037Z/audit.md#DRIFT-05
 ---
 
@@ -30,3 +33,8 @@ Aprovado-TASKS releases with empty closures and no active release pointer.
 Draft template (verified). Operator decision required: were these releases
 actually implemented (→ populate CLOSURE) or abandoned (→ archive)? Owner:
 product-engineer (sole CLOSURE/ACTIVE/memory author).
+
+**Closure evidence (2026-06-11, T-R6-S3):** re-verified — `cost-and-availability-r2`,
+`data-quality-r3`, and `analytics-enrichment-r4` now live under
+`specs/_archive/releases/`, each with a populated `CLOSURE.md` carrying
+`**Status:** Aprovado` (forensic closures, tasks T-R5-C1..C3). Fixed in commit `cb218f7`.

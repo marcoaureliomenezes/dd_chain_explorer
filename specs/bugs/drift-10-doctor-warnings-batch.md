@@ -4,6 +4,7 @@ status: Open
 severity: LOW
 reported: 2026-06-08
 surface: specs/domains/ (legacy specs) + specs/memory atoms (token_estimate + headings)
+session_id: null
 audit_ref: specs/audits/20260609T013037Z/audit.md#DRIFT-10
 ---
 

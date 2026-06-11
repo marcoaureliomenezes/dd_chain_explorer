@@ -188,12 +188,12 @@ software-engineer scope.
   ERROR count drops 8 → 0.
   Parallelism: any time.
 
-- [ ] T-R6-S2 — **rmdir empty configs/ and schemas/ dirs (drift-04 residue)** | Owner: software-engineer | Priority: LOW
+- [x] T-R6-S2 — **rmdir empty configs/ and schemas/ dirs (drift-04 residue)** | Owner: software-engineer | Priority: LOW
   Write-set: `apps/docker/onchain-stream-txs/src/configs/`, `apps/docker/onchain-stream-txs/src/schemas/` (delete empty dirs)
   Acceptance: both dirs absent from disk.
   Parallelism: any time; blocks drift-04 closure in T-R6-S3.
 
-- [-] T-R6-S3 — **Close the 7 fixed bugs with evidence** | Owner: product-engineer | Priority: MEDIUM
+- [x] T-R6-S3 — **Close the 7 fixed bugs with evidence** | Owner: product-engineer | Priority: MEDIUM
   Write-set: `specs/bugs/{bp-01-streaming-jobs-logger-inconsistency,drift-01-streaming-jobs-zero-tests,drift-02-dadaia-dir-inside-repo,drift-03-specs-bkp-migration-leftover,drift-04-kafka-avro-dead-code,drift-05-release-closure-hygiene,drift-06-08-sdd-structure-gaps}.md`
   Precondition: T-R6-S2 (for drift-04 only).
   Acceptance: for EACH bug, re-run its verification (per `sdd-drift-audit.md` §Bug

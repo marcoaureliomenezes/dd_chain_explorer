@@ -1,9 +1,12 @@
 ---
 name: drift-06-08-sdd-structure-gaps
-status: Open
+status: Closed
 severity: MEDIUM
 reported: 2026-06-08
 surface: specs/ tree (missing SDD required files — TREE-4, TREE-5, TREE-5M, CAT-1)
+session_id: null
+fixed_in: cb218f7
+closed: 2026-06-11
 audit_ref: specs/audits/20260609T013037Z/audit.md#DRIFT-06
 ---
 
@@ -31,3 +34,7 @@ library source (`dadaia_workspace/public/data/`) — owner ai-engineer via
 `dadaia memory catalog generate`. `specs/bugs/` created in this pass. Verify the
 library actually ships a `specs/AGENTS.md` template for consumer repos; if it
 does not, that is itself an upstream library gap to file against dadaia-workspace.
+
+**Closure evidence (2026-06-11, T-R6-S3):** re-verified on disk — `specs/AGENTS.md`,
+`specs/memory/AGENTS.md`, `specs/memory/product/catalog.json`, and `specs/bugs/`
+(8 registered files) all present. Fixed in commit `cb218f7`.

@@ -1,9 +1,12 @@
 ---
 name: drift-03-specs-bkp-migration-leftover
-status: Open
+status: Closed
 severity: MEDIUM
 reported: 2026-06-08
 surface: repos/dd-chain-explorer/specs_bkp/ (migration leftover)
+session_id: null
+fixed_in: cb218f7
+closed: 2026-06-11
 audit_ref: specs/audits/20260609T013037Z/audit.md#DRIFT-03
 ---
 
@@ -28,3 +31,6 @@ v1 layout), so the backup is redundant.
 the only copy of the pre-migration tree. Possible upstream library bug: `specs
 upgrade` leaving the backup inside the repo working tree rather than under
 `.dadaia/`; consider filing against dadaia-workspace.
+
+**Closure evidence (2026-06-11, T-R6-S3):** re-verified — `specs_bkp/` is absent from
+disk (path probe: does not exist). Fixed in commit `cb218f7`.

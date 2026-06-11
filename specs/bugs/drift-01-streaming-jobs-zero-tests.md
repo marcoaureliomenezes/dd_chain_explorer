@@ -1,9 +1,12 @@
 ---
 name: drift-01-streaming-jobs-zero-tests
-status: Open
+status: Closed
 severity: HIGH
 reported: 2026-06-08
 surface: apps/docker/onchain-stream-txs/src (5 streaming job entry points)
+session_id: null
+fixed_in: 226740e
+closed: 2026-06-11
 audit_ref: specs/audits/20260609T013037Z/audit.md#DRIFT-01
 ---
 
@@ -31,3 +34,8 @@ have at least contract-level unit tests.
 4/10). Decoder job 5 (17 KB, multi-key Etherscan + DynamoDB ABI cache + 4byte
 fallback) is the highest-value target. Remediation: qa-engineer defines the
 test plan, software-engineer implements.
+
+**Closure evidence (2026-06-11, T-R6-S3):** re-verified on disk — 71 `def test_`
+across 6 files in `apps/docker/onchain-stream-txs/tests/unit/` covering all 5 jobs +
+etherscan multi-key. Fixed in commit `226740e`. (CI wiring of these tests is tracked
+separately — audit DRIFT-N08.)
