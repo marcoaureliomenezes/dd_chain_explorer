@@ -34,6 +34,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   AWS_REGION:      sa-east-1
@@ -97,9 +98,11 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (dev deploy role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: aws sts get-caller-identity
       - run: terraform init -input=false
       - run: terraform validate
       - name: Read VERSION
@@ -142,9 +145,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
@@ -209,9 +211,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Plan PRD (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" prd
         env:
@@ -263,9 +264,11 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (prd deploy role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: aws sts get-caller-identity
       - name: Download saved plans
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4
         with:
@@ -338,9 +341,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Plan HML (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" hml
         env:
@@ -378,9 +380,11 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (hml deploy role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: aws sts get-caller-identity
       - name: Download saved plans
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4
         with:

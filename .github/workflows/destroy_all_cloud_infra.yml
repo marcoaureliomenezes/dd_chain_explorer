@@ -24,6 +24,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 # CI-C3 — Serialize the nuclear teardown. This workflow deletes the shared
 # 01_tf_state S3 bucket + DynamoDB lock table; two concurrent dispatches racing
@@ -87,9 +88,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
@@ -114,9 +114,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Empty DEV S3 bucket and remove from TF state
         run: |
@@ -154,9 +153,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
@@ -184,9 +182,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -210,9 +207,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Empty HML S3 buckets and remove from TF state
         run: |
@@ -253,9 +249,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -279,9 +274,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Delete ephemeral HML security groups (not in TF state)
         run: |
           # idempotent teardown of ephemeral SGs not tracked in TF state — the VPC may
@@ -318,9 +312,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Empty PRD ECR repositories
         run: bash "$GITHUB_WORKSPACE/scripts/ci/empty_s3_and_ecr.sh"
       - if: always()
@@ -345,9 +338,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
@@ -371,9 +363,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -399,9 +390,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Get workspace URL from 05a state
         id: ws_url
@@ -446,9 +436,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
         env:
@@ -479,9 +468,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - name: Empty PRD S3 buckets and remove from TF state
         run: |
@@ -524,9 +512,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -552,9 +539,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - run: terraform init -input=false
       - run: terraform destroy -auto-approve -input=false -no-color
       - if: always()
@@ -577,9 +563,8 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Empty TF state S3 bucket
         run: |
           bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" \

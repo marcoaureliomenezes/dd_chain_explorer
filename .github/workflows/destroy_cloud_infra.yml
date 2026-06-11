@@ -23,6 +23,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 env:
   AWS_REGION: sa-east-1
@@ -65,9 +66,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Destroy DEV
         run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" dev
 
@@ -97,9 +97,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Destroy HML
         run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" hml "${{ github.event.inputs.full_destroy }}"
         env:
@@ -129,9 +128,8 @@ jobs:
           terraform_wrapper: false
       - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
       - name: Destroy PRD
         run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" prd
         env:
