@@ -34,9 +34,46 @@ env:
 # ──────────────────────────────────────────────────────────────────────────────
 jobs:
 
+  # ── 0. Fail-fast quality gate (T-R6-A7, CI-H1) ────────────────────────────
+  # terraform fmt -check + validate + actionlint on every PR touching services/
+  # or scripts/ci/. Runs before the speculative plans so format/syntax drift is
+  # rejected without spending plan time.
+  quality:
+    name: Quality gate (fmt / validate / actionlint)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform fmt (check, recursive)
+        run: terraform fmt -check -recursive services/
+
+      - name: Terraform validate (per stack/module)
+        run: |
+          set -euo pipefail
+          # Validate every directory holding Terraform sources. -backend=false
+          # keeps validate offline (no remote state / no AWS credentials).
+          while IFS= read -r dir; do
+            echo "::group::validate ${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false >/dev/null
+            terraform -chdir="${dir}" validate
+            echo "::endgroup::"
+          done < <(find services -type f -name '*.tf' -printf '%h\n' | sort -u)
+
+      - name: actionlint (workflow lint)
+        run: |
+          set -euo pipefail
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color
+
   # ── 1. Detect which modules changed in this PR ────────────────────────────
   detect-changes:
     name: Detect changed modules
+    needs: quality
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:

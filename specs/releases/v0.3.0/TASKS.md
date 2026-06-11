@@ -101,7 +101,7 @@ software-engineer scope.
   apply/stabilize); `grep -c timeout-minutes` ≥ job count per file.
   Parallelism: Wave 2; trivially mergeable, commit after A2/A5 in shared files.
 
-- [-] T-R6-A7 — **terraform fmt fix + fmt/validate CI gate (CI-H1)** | Owner: devops-engineer | Priority: HIGH
+- [x] T-R6-A7 — **terraform fmt fix + fmt/validate CI gate (CI-H1)** | Owner: devops-engineer | Priority: HIGH
   Write-set: the 15 fmt-failing files under `services/` (mechanical `terraform fmt`
   only), `.github/workflows/plan_on_pr.yml` (gate step)
   Acceptance: `terraform fmt -check -recursive services/` exits 0; `plan_on_pr.yml`
