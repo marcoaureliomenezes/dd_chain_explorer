@@ -17,6 +17,14 @@ on:
 permissions:
   contents: read
 
+# CI-M9 — Serialize drift scans. Concurrent runs plan against the same remote
+# state and collide on the Terraform state lock. Do not cancel an in-flight scan
+# (cancel-in-progress: false) so a manual workflow_dispatch never aborts the
+# scheduled run mid-plan and leave a stale lock.
+concurrency:
+  group: drift-detection
+  cancel-in-progress: false
+
 env:
   AWS_REGION: sa-east-1
   TF_VERSION: 1.7.0

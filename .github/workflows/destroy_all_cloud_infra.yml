@@ -25,6 +25,15 @@ on:
 permissions:
   contents: read
 
+# CI-C3 — Serialize the nuclear teardown. This workflow deletes the shared
+# 01_tf_state S3 bucket + DynamoDB lock table; two concurrent dispatches racing
+# the same backend would corrupt/orphan remote state for all stacks. Never cancel
+# an in-flight destroy mid-teardown (cancel-in-progress: false) — a half-killed
+# destroy is worse than serializing.
+concurrency:
+  group: destroy-all-cloud-infra
+  cancel-in-progress: false
+
 env:
   AWS_REGION:      sa-east-1
   TF_VERSION:      1.7.0

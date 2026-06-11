@@ -9,6 +9,13 @@ on:
 permissions:
   contents: write
 
+# CI-M9 — Serialize VERSION bumps. Two PRs merging to develop near-simultaneously
+# would race the bump (lost update / push conflict). Do not cancel an in-flight
+# bump (cancel-in-progress: false) — a cancelled bump can leave VERSION half-written.
+concurrency:
+  group: version-bump
+  cancel-in-progress: false
+
 jobs:
   bump:
     name: Bump VERSION on merge
