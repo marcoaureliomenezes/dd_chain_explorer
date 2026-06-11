@@ -123,7 +123,7 @@ software-engineer scope.
 
 ## WS-B1 — Secret logging
 
-- [-] T-R6-B1 — **Stop logging raw Infura key (SEC-H-01, CWE-532; ADR-R6-2)** | Owner: software-engineer | Priority: HIGH
+- [x] T-R6-B1 — **Stop logging raw Infura key (SEC-H-01, CWE-532; ADR-R6-2)** | Owner: software-engineer | Priority: HIGH
   Write-set: `apps/docker/onchain-stream-txs/src/4_mined_txs_crawler.py`,
   `apps/docker/onchain-stream-txs/tests/unit/` (new/updated tests)
   Acceptance:
@@ -182,7 +182,7 @@ software-engineer scope.
 
 ## Sanitization (parallel-safe — `specs/**` only)
 
-- [-] T-R6-S1 — **session_id frontmatter on all 8 bug files** | Owner: product-engineer | Priority: HIGH
+- [x] T-R6-S1 — **session_id frontmatter on all 8 bug files** | Owner: product-engineer | Priority: HIGH
   Write-set: `specs/bugs/*.md` (8 files)
   Acceptance: each file gains `session_id: null` (never fabricate an ID); doctor TREE-7
   ERROR count drops 8 → 0.
@@ -193,7 +193,7 @@ software-engineer scope.
   Acceptance: both dirs absent from disk.
   Parallelism: any time; blocks drift-04 closure in T-R6-S3.
 
-- [ ] T-R6-S3 — **Close the 7 fixed bugs with evidence** | Owner: product-engineer | Priority: MEDIUM
+- [-] T-R6-S3 — **Close the 7 fixed bugs with evidence** | Owner: product-engineer | Priority: MEDIUM
   Write-set: `specs/bugs/{bp-01-streaming-jobs-logger-inconsistency,drift-01-streaming-jobs-zero-tests,drift-02-dadaia-dir-inside-repo,drift-03-specs-bkp-migration-leftover,drift-04-kafka-avro-dead-code,drift-05-release-closure-hygiene,drift-06-08-sdd-structure-gaps}.md`
   Precondition: T-R6-S2 (for drift-04 only).
   Acceptance: for EACH bug, re-run its verification (per `sdd-drift-audit.md` §Bug

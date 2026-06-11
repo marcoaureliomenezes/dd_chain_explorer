@@ -8,6 +8,7 @@ Covers:
   - _fetch_tx_with_rotation error path (rate limit 429): rotates key and retries.
   - run() happy path: consumes SQS, fetches tx, produces to Kinesis.
 """
+import hashlib
 import importlib.util
 import logging
 import json
@@ -235,3 +236,106 @@ class TestRun:
         api_mgr.free_api_keys.return_value = None
         proc = _make_processor(sqs=sqs, api_keys_manager=api_mgr)
         proc.run()
+
+
+# A secret-looking raw Infura key used across the redaction tests below.
+_SECRET_KEY = "abcdef0123456789deadbeefcafef00d"
+
+
+class TestKeyRef:
+    """SEC-H-01 / CWE-532: _key_ref must never expose raw key material."""
+
+    def test_key_ref_does_not_contain_raw_key(self):
+        ref = _mod._key_ref(_SECRET_KEY)
+        assert _SECRET_KEY not in ref
+        # No substring of the raw key longer than the digest prefix length leaks.
+        assert _SECRET_KEY[:8] != ref
+
+    def test_key_ref_is_short_sha256_prefix(self):
+        ref = _mod._key_ref(_SECRET_KEY)
+        expected = hashlib.sha256(_SECRET_KEY.encode("utf-8")).hexdigest()[:8]
+        assert ref == expected
+        assert len(ref) == 8
+
+    def test_key_ref_is_stable_for_correlation(self):
+        assert _mod._key_ref(_SECRET_KEY) == _mod._key_ref(_SECRET_KEY)
+
+    def test_key_ref_distinguishes_keys(self):
+        assert _mod._key_ref("key-a") != _mod._key_ref("key-b")
+
+    def test_key_ref_handles_empty(self):
+        assert _mod._key_ref("") == "<none>"
+
+
+class TestNoRawKeyInLogs:
+    """No log statement in the job may emit the raw API key (lines 66/107/114)."""
+
+    def _capture_logs(self, fn):
+        """Run fn with a logging handler capturing all records; return joined text."""
+        records = []
+
+        class _Capture(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        logger = logging.getLogger("test.job4.nokey")
+        logger.setLevel(logging.DEBUG)
+        handler = _Capture()
+        logger.addHandler(handler)
+        try:
+            fn(logger)
+        finally:
+            logger.removeHandler(handler)
+        return "\n".join(records)
+
+    def test_rate_limit_warning_redacts_key(self):
+        """Line 66: 429 rate-limit warning must not contain the raw key."""
+
+        def run(logger):
+            http_error = Exception("429")
+            http_error.response = MagicMock()
+            http_error.response.status_code = 429
+            web3 = MagicMock()
+            web3.extract_tx_data.side_effect = [http_error, {"hash": "0xabc"}]
+            api_mgr = MagicMock()
+            api_mgr.api_keys = [_SECRET_KEY, "key2"]
+            api_mgr.elect_new_api_key.return_value = "key2"
+            proc = _make_processor(web3=web3, api_keys_manager=api_mgr)
+            proc.logger = logger
+            with patch.object(_mod, "HTTPError", type(http_error)):
+                proc._fetch_tx_with_rotation("0xabc", _SECRET_KEY)
+
+        logs = self._capture_logs(run)
+        assert "Rate limit" in logs
+        assert _SECRET_KEY not in logs
+
+    def test_run_loop_log_lines_redact_key(self):
+        """Lines 107 & 114: in-loop API-KEY info logs must not contain the raw key."""
+
+        def run(logger):
+            sqs = MagicMock()
+            kinesis = MagicMock()
+            web3 = MagicMock()
+            api_mgr = MagicMock()
+            # 100 messages so counter % txs_threshold == 0 fires line 114;
+            # check_if_api_key_is_mine False fires line 107.
+            msgs = [
+                {"Body": json.dumps({"tx_hash": f"0x{i:064x}"}),
+                 "ReceiptHandle": f"r-{i}"}
+                for i in range(100)
+            ]
+            sqs.consume_queue.return_value = iter(msgs)
+            web3.extract_tx_data.return_value = {"hash": "0xabc"}
+            web3.parse_transaction_data.return_value = {"hash": "0xabc"}
+            api_mgr.api_keys = [_SECRET_KEY]
+            api_mgr.elect_new_api_key.return_value = _SECRET_KEY
+            api_mgr.check_if_api_key_is_mine.return_value = False
+            api_mgr.free_api_keys.return_value = None
+            proc = _make_processor(web3=web3, sqs=sqs,
+                                   api_keys_manager=api_mgr, kinesis=kinesis)
+            proc.logger = logger
+            proc.run()
+
+        logs = self._capture_logs(run)
+        assert "API KEY" in logs  # the info lines did fire
+        assert _SECRET_KEY not in logs

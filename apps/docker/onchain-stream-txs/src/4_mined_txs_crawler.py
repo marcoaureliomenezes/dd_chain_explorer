@@ -1,3 +1,4 @@
+import hashlib
 import json
 import logging
 import os
@@ -6,6 +7,18 @@ import uuid
 
 from logging import Logger
 from typing import Any, Dict
+
+
+def _key_ref(api_key: str) -> str:
+  """Return a non-reversible reference for an API key, safe to log (CWE-532).
+
+  Never logs raw key material. Uses a truncated SHA-256 digest so the same key
+  yields a stable, correlatable identifier across log lines without exposing the
+  secret. Mirrors the key-redaction discipline in utils_decode/etherscan_multi.py.
+  """
+  if not api_key:
+    return "<none>"
+  return hashlib.sha256(api_key.encode("utf-8")).hexdigest()[:8]
 
 from requests import HTTPError
 from dm_chain_utils.dm_dynamodb import DMDynamoDB
@@ -63,7 +76,7 @@ class RawTransactionsProcessor:
       except HTTPError as err:
         status = err.response.status_code if err.response is not None else None
         if status == 429:
-          self.logger.warning(f"Rate limit (429) na key {actual_api_key}, tentativa {attempt + 1}/{max_retries}. Rotacionando.")
+          self.logger.warning(f"Rate limit (429) na key {_key_ref(actual_api_key)}, tentativa {attempt + 1}/{max_retries}. Rotacionando.")
           try:
             actual_api_key = self._rotate_api_key(actual_api_key)
           except RuntimeError:
@@ -104,14 +117,14 @@ class RawTransactionsProcessor:
         self.logger.error(f"Error producing to Kinesis: {e}")
 
       if not self.api_keys_manager.check_if_api_key_is_mine(actual_api_key):
-        self.logger.info(f"API KEY {actual_api_key} is being used by another process.")
+        self.logger.info(f"API KEY {_key_ref(actual_api_key)} is being used by another process.")
         new_api_key = self.api_keys_manager.elect_new_api_key()
         if new_api_key:
           actual_api_key = new_api_key
           self.web3.get_node_connection(actual_api_key, 'infura')
 
       if counter % self.txs_threshold == 0:
-        self.logger.info(f"API KEY {actual_api_key} reached throughput threshold.")
+        self.logger.info(f"API KEY {_key_ref(actual_api_key)} reached throughput threshold.")
         new_api_key = self.api_keys_manager.elect_new_api_key()
         if new_api_key:
           self.api_keys_manager.release_api_key_from_semaphore(actual_api_key)
