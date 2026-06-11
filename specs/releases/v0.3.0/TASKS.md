@@ -202,7 +202,7 @@ software-engineer scope.
   stays Open until T-R6-S6.
   Parallelism: any time after preconditions.
 
-- [-] T-R6-S4 — **T-R5-F1: archive specs/domains/ + releases/legacy** | Owner: product-engineer (git mv run by PM/operator) | Priority: LOW
+- [x] T-R6-S4 — **T-R5-F1: archive specs/domains/ + releases/legacy** | Owner: product-engineer (git mv run by PM/operator) | Priority: LOW
   Write-set: `specs/domains/` → `specs/_archive/legacy-domains/<timestamp>/`;
   `specs/releases/legacy/` → `specs/_archive/`
   Acceptance: `specs/domains/` gone from live tree; doctor SPEC-DOC-007 warnings (8)

@@ -79,6 +79,73 @@ sufficient; extend TTL to 6h if needed.
 
 ---
 
+## Memory gaps from legacy-domains archive (T-R6-S4, 2026-06-10)
+
+Content found in the archived `specs/domains/**` + `specs/releases/legacy/SPEC.md`
+(now `specs/_archive/legacy-domains/2026-06-10/` + `specs/_archive/releases/legacy/`)
+that is NOT yet represented in `specs/memory/` atoms. Target: v0.3.0 CLOSURE memory
+pass (T-R6-S5/S6 window) or a follow-up release.
+
+### GAP-LD-1 — No devops/CI-CD memory atom
+
+**Summary:** GitFlow branch policy, the 7-workflow inventory + purposes, the `scripts/ci/`
+script table, the version/tag scheme (`v{VER}`, `-dabs`, `-lambda`, `-infra`, `-lib`),
+the HML-ephemeral/`if: always()` teardown law, and FR-DO rules existed only in
+`devops/SPEC.md` — no memory atom covers CI/CD. v0.3.0 (WS-A/B3) rewrites much of this
+flow, so the atom should be authored at CLOSURE from post-v0.3.0 reality, not from the
+archived snapshot.
+**Source:** `specs/_archive/legacy-domains/2026-06-10/devops/SPEC.md`
+**Suggested resolution:** New `specs/memory/product/ci-cd.md` atom (or architecture.md
+section) written by product-engineer in the v0.3.0 CLOSURE phase.
+
+### GAP-LD-2 — Product latency NFR targets not in memory
+
+**Summary:** NFR-P001 (Ethereum → S3 Bronze < 2 min), NFR-P002 (S3 → Gold < 5 min) from
+the legacy product spec are stated nowhere in `specs/memory/`.
+**Source:** `specs/_archive/releases/legacy/SPEC.md` §Requisitos Não-Funcionais
+**Suggested resolution:** Add latency budget lines to `specs/memory/product/index.md`
+(or capture-layer/medallion atoms) at CLOSURE — after verifying they still hold.
+
+### GAP-LD-3 — Behavioral invariants of streaming jobs possibly under-documented
+
+**Summary:** FR-level invariants from `applications/SPEC.md` — gap recovery (FR-APP-002),
+4-stage calldata decode order (FR-APP-006), DynamoDB SEMAPHORE TTL-60s key exclusivity
+(FR-APP-005), deadlock-never-drops-tx-hash (NFR-APP-004) — verify presence in
+`specs/memory/product/capture-layer.md`; add any missing ones at CLOSURE.
+**Source:** `specs/_archive/legacy-domains/2026-06-10/applications/SPEC.md`
+**Suggested resolution:** Verification + delta edit of capture-layer atom in CLOSURE window.
+
+### GAP-LD-4 — Alerts inventory partial in memory
+
+**Summary:** `alert_api_keys` (80%/24h + 50%/1h pre-warn) and `alert_dynamodb_deadlock`
+(P1) were documented in `data-analytics/SPEC.md`; data-catalog atom mentions only
+"1 alert". Verify and complete the alerts inventory in serving-layer/data-catalog atoms.
+**Source:** `specs/_archive/legacy-domains/2026-06-10/data-analytics/SPEC.md`
+**Suggested resolution:** Verification + delta edit at CLOSURE.
+
+### GAP-LD-5 — Engineering scaffold/code standards not in memory
+
+**Summary:** `beteugeuse dlt/job create` scaffold rule (FR-DE-013) and the
+`spark_python_task` code template (argparse, no `dbutils`, no `print()`, no catalog
+hardcode) existed only in `data-engineering/SPEC.md`. If beteugeuse is still the
+mandated scaffold tool, this belongs in `specs/memory/quality-assurance.md` or
+tech-stack.md.
+**Source:** `specs/_archive/legacy-domains/2026-06-10/data-engineering/SPEC.md`
+**Suggested resolution:** Confirm tooling still current with operator; add to
+quality-assurance.md at CLOSURE if so.
+
+### GAP-LD-6 — INV-2 (REST API) design input now lives in the archive
+
+**Summary:** The only written design for the unimplemented REST API (discovery interview
+answers, endpoint specs, US-001..) is the archived spec-first trio. INV-2 above should
+use `specs/_archive/legacy-domains/2026-06-10/applications/rest-api/{SPEC,PLAN,TASKS}.md`
+as its design input when a rest-api release is planned. (INV-2's old reference
+`specs/SPEC.md` US-P005 is now `specs/_archive/releases/legacy/SPEC.md`.)
+**Source:** archive move T-R6-S4
+**Suggested resolution:** No memory write needed — pointer note only.
+
+---
+
 ## Hotfixes Pendentes
 
 <!-- No hotfixes identified at time of this audit. -->
