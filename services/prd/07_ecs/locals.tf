@@ -15,56 +15,6 @@ locals {
     "project_version" = var.project_version
   }
 
-  # Variáveis de ambiente comuns a todos os jobs de streaming.
-  # Os nomes devem corresponder exatamente ao os.getenv() nos scripts Python.
-  # Pós-migração Kafka → Kinesis/SQS/CloudWatch (ver docs/migrar_kafka.md).
-  common_stream_env = [
-    {
-      name  = "NETWORK"
-      value = "mainnet"
-    },
-    {
-      name  = "APP_ENV"
-      value = "prod"
-    },
-    {
-      name  = "AWS_DEFAULT_REGION"
-      value = var.region
-    },
-    {
-      name  = "DYNAMODB_TABLE"
-      value = data.terraform_remote_state.dynamodb.outputs.dynamodb_table_name
-    },
-    # --- Kinesis Data Stream (transactions only — blocks and decoded use Firehose Direct Put) ---
-    {
-      name  = "KINESIS_STREAM_TRANSACTIONS"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.kinesis_stream_names["mainnet-transactions-data"]
-    },
-    # --- Firehose Direct Put Streams ---
-    {
-      name  = "FIREHOSE_STREAM_BLOCKS"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.firehose_direct_put_stream_names["mainnet-blocks-data"]
-    },
-    {
-      name  = "FIREHOSE_STREAM_DECODED"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.firehose_direct_put_stream_names["mainnet-transactions-decoded"]
-    },
-    # --- SQS Queues ---
-    {
-      name  = "SQS_QUEUE_URL_MINED_BLOCKS"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.sqs_queue_urls["mainnet-mined-blocks-events"]
-    },
-    {
-      name  = "SQS_QUEUE_URL_TXS_HASH_IDS"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.sqs_queue_urls["mainnet-block-txs-hash-id"]
-    },
-    # --- CloudWatch Logs ---
-    {
-      name  = "CLOUDWATCH_LOG_GROUP"
-      value = data.terraform_remote_state.kinesis_sqs.outputs.cloudwatch_log_group_name
-    },
-  ]
-
   log_config = {
     logDriver = "awslogs"
     options = {
