@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # Tears down the ephemeral HML environment created by hml_provision.sh:
-#   - Stops and deregisters ECS tasks/task definitions
-#   - Deletes ECS cluster + security group
+#   - Stops running ECS tasks
+#   - Deletes the ephemeral security group
 #
-# Persistent resources (Kinesis, SQS, Firehose, DynamoDB, CloudWatch, S3) are
-# managed by Terraform (services/hml/04_peripherals) and are NOT deleted here.
+# Persistent resources (DynamoDB, CloudWatch log group, S3) are managed by
+# Terraform (services/hml/04_peripherals) and are NOT deleted here. The streaming
+# capture layer (Kinesis/SQS/Firehose + the 5 producer task-defs) was retired in
+# v0.4.0 — capture now runs in the separate dd-chain-capture project.
 #
 # Workflow-level env vars used directly (auto-available on runner):
 #   HML_ECS_CLUSTER — e.g. dm-hml-ecs
@@ -26,20 +28,13 @@ for TASK_ARN in $(echo "$TASKS" | jq -r '.[]'); do
 done
 
 # ── Deregister task definitions ────────────────────────────────────────────────
-echo "==> Deregistering HML task definitions..."
-for FAMILY in hml-dm-mined-blocks-watcher hml-dm-orphan-blocks-watcher \
-              hml-dm-block-data-crawler hml-dm-mined-txs-crawler hml-dm-txs-input-decoder; do
-  REVISIONS=$(aws ecs list-task-definitions --family-prefix "$FAMILY" \
-    --query 'taskDefinitionArns' --output json 2>/dev/null || echo '[]')
-  for ARN in $(echo "$REVISIONS" | jq -r '.[]'); do
-    aws ecs deregister-task-definition --task-definition "$ARN" \
-      --query 'taskDefinition.taskDefinitionArn' --output text 2>/dev/null || true  # idempotent teardown — task def may already be deregistered
-  done
-done
+# The 5 streaming-producer task-def families were retired in v0.4.0 (capture now
+# runs in the dd-chain-capture project), so there are no producer families to
+# deregister here. Any surviving ephemeral task defs are cleaned by their own
+# provision step; nothing capture-related remains to tear down.
 
 # ── Delete security group ─────────────────────────────────────────────────────
 # ECS cluster is Terraform-managed (services/hml/07_ecs) — NOT deleted here.
-# Kinesis is destroyed by the Terraform targeted-destroy step in the workflow.
 if [ -n "${HML_SG_ID:-}" ]; then
   echo "==> Deleting HML security group ${HML_SG_ID} (waiting 20s for tasks to stop)..."
   sleep 20
