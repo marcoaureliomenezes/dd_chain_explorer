@@ -56,7 +56,7 @@
           "path": "services/hml/04_peripherals",
           "upstreams": [],
           "bootstrap_plannable": true,
-          "modules": ["s3", "dynamodb", "kinesis", "sqs", "cloudwatch_logs"]
+          "modules": ["s3", "dynamodb", "cloudwatch_logs"]
         },
         {
           "id": "iam",
@@ -108,7 +108,7 @@
           "path": "services/prd/04_peripherals",
           "upstreams": [],
           "bootstrap_plannable": true,
-          "modules": ["s3", "dynamodb", "kinesis", "sqs", "cloudwatch_logs"]
+          "modules": ["s3", "dynamodb", "cloudwatch_logs"]
         },
         {
           "id": "iam",

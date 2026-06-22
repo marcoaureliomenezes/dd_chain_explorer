@@ -2,12 +2,14 @@
 # scripts/prod_standby.sh
 #
 # Coloca o ambiente de produção em modo standby:
-#   1. Escala todos os ECS services para desired_count=0
-#   2. Aguarda o drain de tasks
-#   3. Pausa clusters interativos do Databricks PROD
+#   1. Pausa clusters interativos do Databricks PROD
+#
+# NOTE (v0.4.0 — capture-layer retirement): the 5 streaming-producer ECS services
+# were retired (capture now runs in the separate dd-chain-capture project), so the
+# ECS scale-to-0 block this script previously carried no longer applies. Only the
+# Databricks pause remains.
 #
 # Pré-requisitos:
-#   - AWS CLI autenticado (perfil padrão ou AWS_ACCESS_KEY_ID/SECRET em env)
 #   - Python + requests instalados (para o script Databricks)
 #   - ~/.databrickscfg com perfil [prd] apontando para o workspace URL
 #
@@ -19,7 +21,6 @@
 set -euo pipefail
 
 AWS_REGION="${AWS_REGION:-sa-east-1}"
-ECS_CLUSTER="dm-chain-explorer-ecs"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SKIP_DATABRICKS=false
@@ -34,83 +35,20 @@ while [[ $# -gt 0 ]]; do
 done
 
 # ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-ecs_scale() {
-  local service="$1"
-  local count="$2"
-  if [ "$DRY_RUN" = "true" ]; then
-    echo "  [DRY RUN] would set $service → desired_count=$count"
-    return
-  fi
-  aws ecs update-service \
-    --cluster "$ECS_CLUSTER" \
-    --service  "$service" \
-    --desired-count "$count" \
-    --region   "$AWS_REGION" \
-    --query    'service.serviceName' \
-    --output   text
-}
-
-# ---------------------------------------------------------------------------
-# Check AWS connectivity
+# Banner
 # ---------------------------------------------------------------------------
 echo ""
 echo "=== PROD Standby ($(date -u '+%Y-%m-%dT%H:%M:%SZ')) ==="
-echo "Cluster : $ECS_CLUSTER"
 echo "Region  : $AWS_REGION"
 if [ "$DRY_RUN" = "true" ]; then
   echo "Mode    : DRY RUN"
 fi
 echo ""
 
-if ! aws sts get-caller-identity --region "$AWS_REGION" --query 'Account' --output text &>/dev/null; then
-  echo "ERROR: AWS CLI not authenticated. Configure credentials before running standby."
-  exit 1
-fi
-
 # ---------------------------------------------------------------------------
-# Step 1 — ECS: scale all services to 0
+# Databricks: pause interactive clusters
 # ---------------------------------------------------------------------------
-echo "--- [1/3] ECS: scaling services to 0 ---"
-
-declare -A ECS_SERVICES=(
-  [dm-mined-blocks-watcher]=1
-  [dm-orphan-blocks-watcher]=1
-  [dm-block-data-crawler]=1
-  [dm-mined-txs-crawler]=8
-  [dm-txs-input-decoder]=3
-)
-
-for SERVICE in "${!ECS_SERVICES[@]}"; do
-  echo -n "  Scaling $SERVICE → 0 ... "
-  ecs_scale "$SERVICE" 0
-  echo "[OK]"
-done
-
-# ---------------------------------------------------------------------------
-# Step 2 — ECS: wait for all tasks to drain
-# ---------------------------------------------------------------------------
-if [ "$DRY_RUN" = "false" ]; then
-  echo ""
-  echo "--- [2/3] ECS: waiting for tasks to drain (timeout: 5 min) ---"
-  SERVICES_LIST=$(echo "${!ECS_SERVICES[@]}" | tr ' ' '\n' | sort | tr '\n' ' ')
-  aws ecs wait services-stable \
-    --cluster "$ECS_CLUSTER" \
-    --services $SERVICES_LIST \
-    --region  "$AWS_REGION" \
-    2>/dev/null && echo "  All ECS tasks drained." \
-    || echo "  [WARN] Timed out waiting for drain — tasks may still be stopping."
-else
-  echo ""
-  echo "--- [2/3] ECS: wait (skipped in dry-run) ---"
-fi
-
-# ---------------------------------------------------------------------------
-# Step 3 — Databricks: pause interactive clusters
-# ---------------------------------------------------------------------------
-echo ""
-echo "--- [3/3] Databricks: pausing interactive clusters ---"
+echo "--- Databricks: pausing interactive clusters ---"
 
 if [ "$SKIP_DATABRICKS" = "true" ]; then
   echo "  Skipped (--skip-databricks)."
@@ -133,7 +71,6 @@ echo ""
 echo "=== Standby complete ==="
 echo ""
 echo "Resources standing by:"
-echo "  ECS services (${#ECS_SERVICES[@]}) → desired_count=0 (no Fargate charges)"
 echo "  Databricks interactive clusters    → terminated (no DBU charges)"
 echo ""
 echo "To resume: make prod_resume"

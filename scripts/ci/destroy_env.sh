@@ -69,8 +69,17 @@ destroy_module() {
   cd "${REPO_ROOT}"
 }
 
+# ──────────────────────────────────────────────────────────────────────────────
+# WARNING (OQ-3, v0.4.0): this script is a WHOLE-ENV TEARDOWN tool ONLY. It is NOT
+# the mechanism for the capture-layer retirement. module.dynamodb is a SURVIVOR
+# and remains a target here because a whole-env teardown intentionally destroys it;
+# do NOT run this script to retire kinesis/sqs/firehose. Capture removal is a
+# config-diff `terraform apply` via deploy_cloud_infra.yml (informed gate +
+# destroy_ack), per SPEC §7 / OQ-4. The kinesis/sqs modules were removed in v0.4.0,
+# so they are no longer valid -target= addresses and have been dropped below.
+# ──────────────────────────────────────────────────────────────────────────────
 # S3-preserved partial destroy (only non-S3 resources)
-S3_PRESERVED_TARGETS="-target=module.dynamodb -target=module.kinesis -target=module.sqs -target=module.cloudwatch_logs"
+S3_PRESERVED_TARGETS="-target=module.dynamodb -target=module.cloudwatch_logs"
 
 # ── DEV destroy order ─────────────────────────────────────────────────────────
 

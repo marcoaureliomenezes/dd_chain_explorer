@@ -53,7 +53,7 @@ def list_running_tasks(ecs, cluster: str, service_filter: str | None):
         resp = ecs.describe_tasks(cluster=cluster, tasks=task_arns[i:i+100])
         for t in resp["tasks"]:
             task_id   = t["taskArn"].split("/")[-1]
-            # service name is in the group field: "service:dm-mined-blocks-watcher"
+            # service name is in the group field, e.g. "service:<ecs-service-name>"
             group     = t.get("group", "")
             svc_name  = group.replace("service:", "") if group.startswith("service:") else group
             for c in t.get("containers", []):
