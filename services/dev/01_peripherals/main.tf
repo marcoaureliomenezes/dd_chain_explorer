@@ -70,64 +70,13 @@ module "dynamodb" {
   point_in_time_recovery = false
 }
 
-module "kinesis" {
-  source = "../../modules/kinesis"
-
-  environment = var.environment
-  region      = var.region
-  common_tags = local.common_tags
-
-  streams = {
-    "mainnet-transactions-data" = {
-      stream_mode      = "PROVISIONED"
-      shard_count      = 1
-      retention_period = 24
-    }
-  }
-
-  firehose_enabled       = true
-  firehose_s3_bucket_arn = module.s3_ingestion.bucket_arn
-  firehose_s3_prefix     = "raw/"
-
-  firehose_direct_put_streams = {
-    "mainnet-blocks-data"          = {}
-    "mainnet-transactions-decoded" = {}
-  }
-}
-
-module "sqs" {
-  source = "../../modules/sqs"
-
-  environment = var.environment
-  common_tags = local.common_tags
-
-  queues = {
-    "mainnet-mined-blocks-events" = {
-      visibility_timeout_seconds = 30
-      receive_wait_time_seconds  = 20
-      dlq_enabled                = true
-      dlq_max_receive_count      = 3
-    }
-    "mainnet-block-txs-hash-id" = {
-      visibility_timeout_seconds = 60
-      receive_wait_time_seconds  = 20
-      dlq_enabled                = true
-      dlq_max_receive_count      = 3
-    }
-  }
-}
-
 module "cloudwatch_logs" {
   source = "../../modules/cloudwatch_logs"
 
-  environment                      = var.environment
-  region                           = var.region
-  common_tags                      = local.common_tags
-  log_group_name                   = "/apps/dm-chain-explorer"
-  retention_in_days                = 3
-  firehose_enabled                 = true
-  firehose_s3_bucket_arn           = module.s3_ingestion.bucket_arn
-  firehose_s3_prefix               = "raw/app_logs/"
-  firehose_buffer_size_mb          = 1
-  firehose_buffer_interval_seconds = 60
+  environment       = var.environment
+  region            = var.region
+  common_tags       = local.common_tags
+  log_group_name    = "/apps/dm-chain-explorer"
+  retention_in_days = 3
+  firehose_enabled  = false
 }
