@@ -1,2 +1,2 @@
-release: none
-phase: ARCHIVED
+release: v0.4.0
+phase: IMPLEMENTATION
