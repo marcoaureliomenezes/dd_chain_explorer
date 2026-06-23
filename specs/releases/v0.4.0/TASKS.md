@@ -64,10 +64,11 @@ operator-gated task (T-4.1).
     needed, record "no change required" in the commit.
 
 ### Review checkpoint R1 (after WS-A + WS-B)
-- [ ] **T-R.1** — Review checkpoint: `qa-engineer` + `code-reviewer` confirm the
+- [x] **T-R.1** — Review checkpoint: `qa-engineer` + `code-reviewer` confirm the
   dependents (07_ecs producers removed, lambdas still plan, no orphan remote-state source)
   are correct and no survivor reference dangles. Owner: reviewers. Done: green review
-  handoff for the WS-A/WS-B commit.
+  handoff for the WS-A/WS-B commit. **DONE — covered by the combined R2 full review at
+  HEAD de70033: code-reviewer APPROVE-WITH-CHANGES + qa-engineer APPROVE (both legs green).**
 
 ---
 
@@ -160,11 +161,15 @@ operator-gated task (T-4.1).
     returns nothing); suites do not assert against destroyed resources; `bash -n` clean.
 
 ### Review checkpoint R2 (after WS-C + WS-D — full code change set)
-- [ ] **T-R.2** — Full review: `qa-engineer` + `code-reviewer` + `security-reviewer` on the
+- [x] **T-R.2** — Full review: `qa-engineer` + `code-reviewer` + `security-reviewer` on the
   complete merged change set. Confirm AC-2/AC-5/AC-6/AC-8 (validate clean, batch/ECR intact,
   no orphan refs/modules/tooling, fmt/actionlint/`bash -n` green) and that
   S3/DynamoDB/log-group declarations are untouched. Owner: reviewers. Done: green review
-  handoffs for the merge commit.
+  handoffs for the merge commit. **DONE — 3× green at HEAD de70033: code-reviewer
+  APPROVE-WITH-CHANGES (safe to apply), qa-engineer APPROVE (execution-ready),
+  security-reviewer APPROVE (IAM blast radius capture-only). Non-blocking CLOSURE cleanups:
+  drop unconsumed `iam` remote-state source + 4 unused locals in 07_ecs; rename
+  `kinesis_sqs` alias in 06_lambda. Handoffs under .dadaia/handoff/dd-chain-explorer/.**
 
 ---
 
