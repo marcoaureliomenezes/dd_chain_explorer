@@ -175,10 +175,17 @@ operator-gated task (T-4.1).
 
 ## WS-E — Live removal execution (operator-gated, irreversible)
 
-- [ ] **T-4.1** — Execute the live config-diff destroy via CI. **OPERATOR-GATED — do not
-  run without explicit operator go.** There is NO manual stack sequence (SPEC §6): one
-  `deploy_cloud_infra.yml` dispatch per env applies the whole merged change set in
-  `stack_map.json` order under the informed gate + `destroy_ack`.
+- [x] **T-4.1** — Execute the live destroy. **DONE 2026-06-22 — operator-authorized
+  surgical targeted destroy** (chosen over the CI config-diff apply to avoid bundling the
+  unmerged-v0.3.0 survivor drift seen in the dev plan). Mechanism: `terraform destroy
+  -target=module.kinesis -target=module.sqs -target=<6 cloudwatch firehose resources>` on
+  `prd/04_peripherals` then `dev/01_peripherals`. **prd: 18 destroyed; dev: 18 destroyed
+  (preview 0-add/0-change — no survivor touched).** AC-0 verified (0 producer services/tasks
+  on every cluster). AC-1 verified: Kinesis/Firehose/SQS list empty post-destroy. AC-3
+  verified: all 5 S3 buckets + all 3 DynamoDB tables + `/apps/dm-chain-explorer-{dev,prd}`
+  log groups remain. hml had nothing live (code-only). Note: the SPEC's `deploy_cloud_infra.yml`
+  CI mechanism was not used because v0.3.0 (PR #28 → master) is unmerged and develop/master
+  lag it, which would have bundled unrelated changes; targeted destroy was the surgical fit.
   - Owner: operator (triggers `deploy_cloud_infra.yml`); devops-engineer assists if
     dispatched. product-engineer does NOT run CLI.
   - Write set: none in-repo (AWS live state only).
