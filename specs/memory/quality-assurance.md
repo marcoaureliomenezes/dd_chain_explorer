@@ -8,8 +8,6 @@ tags:
   - quality-assurance
   - testing
   - anti-slop
-agent_tier: self-pull
-token_estimate: 420
 last_updated: "2026-06-11"
 release_origin: audit-remediation-r5
 ---

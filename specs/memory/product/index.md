@@ -8,8 +8,6 @@ tags:
   - catalog
   - product
   - index
-agent_tier: self-pull
-token_estimate: 400
 last_updated: "2026-06-08"
 release_origin: memory-compliance-migration
 ---

@@ -1,3 +1,3 @@
 ---
-specs_pattern_version: 1
+specs_pattern_version: 5
 ---

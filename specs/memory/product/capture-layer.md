@@ -10,8 +10,6 @@ tags:
   - streaming
   - ethereum
   - kinesis
-agent_tier: self-pull
-token_estimate: 740
 last_updated: "2026-06-11"
 release_origin: v0.3.0
 ---
