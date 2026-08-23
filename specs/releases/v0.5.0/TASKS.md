@@ -86,17 +86,19 @@
   - Deps: T-B.1 · AC-11 · Findings: DRIFT-13, ARCH-C1, CI-M11
   - Evidence: `ls services/prd services/hml services/modules`; `terraform validate` clean on every survivor.
 
-- [-] **T-B.3** — Module, grant and dead-IaC surgery: firehose branch + `[0]` index out of `modules/cloudwatch_logs`; capture grants out of `modules/iam` and `prd/03_iam/iam.tf`; the **E2 cross-account/cluster role set** (dead since the PRD workspace was destroyed 2026-04-11 — the load-bearing UC credential is `dm-databricks-dev-s3-role`, not these); the hard-coded `databricks_account_uuid` **default** (variable kept, default removed — public repo); the `kinesis_sqs` **and `prd/vpc`** remote-state aliases and every consumer of them; 6 unused variables and the ignored `prevent_destroy` variable (B1, F-07).
+- [x] **T-B.3** — Module, grant and dead-IaC surgery: firehose branch + `[0]` index out of `modules/cloudwatch_logs`; capture grants out of `modules/iam` and `prd/03_iam/iam.tf`; the **E2 cross-account/cluster role set** (dead since the PRD workspace was destroyed 2026-04-11 — the load-bearing UC credential is `dm-databricks-dev-s3-role`, not these); the hard-coded `databricks_account_uuid` **default** (variable kept, default removed — public repo); the `kinesis_sqs` **and `prd/vpc`** remote-state aliases and every consumer of them; 6 unused variables and the ignored `prevent_destroy` variable (B1, F-07).
   - Owner: software-engineer · Write set: `services/modules/{cloudwatch_logs,iam,s3}/**`, `services/prd/03_iam/**` (except `oidc.tf`, removed by T-B.3a), `services/prd/06_lambda/**`
   - Deps: T-B.2 · AC-16 · Findings: DRIFT-13, DRIFT-26, ARCH-M6, ARCH-H4
   - Evidence: `grep -rniE 'kinesis|firehose|sqs' services/` → 0; no account uuid literal in `git grep`; `terraform validate` clean. **Applied before `T-B.11` deletes the `prd/vpc` state key (O-1b/K9).**
 
-- [ ] **T-B.3a** — Remove `oidc.tf` from `prd/03_iam` and apply, once `prd/00_bootstrap` holds the roles (O-1, D14). One plan/apply event together with T-B.3's purge — `prd/03_iam` has exactly one applier.
+- [-] **T-B.3a** — Remove `oidc.tf` from `prd/03_iam` and apply, once `prd/00_bootstrap` holds the roles (O-1, D14). One plan/apply event together with T-B.3's purge — `prd/03_iam` has exactly one applier.
+  - Code complete (software-engineer): `oidc.tf` deleted. Live step pending (coordinator): plan/apply once `prd/00_bootstrap` roles are proven (T-A.3, T-A.3b).
   - Owner: software-engineer (apply operator-gated) · Write set: `services/prd/03_iam/oidc.tf` (deletion); the `prd/03_iam` state
   - Deps: T-B.3, T-A.3, T-A.3b (the bootstrap roles must be proven working first) · AC-2, AC-10 · Findings: DRIFT-01, DRIFT-08
   - Evidence: plan showing only the `oidc.tf` resources leaving `03_iam` state (no role deletion — they are `00_bootstrap`'s now); post-apply plan 0/0/0; the four `gha` roles still present.
 
 - [-] **T-B.4** — Reduce HML to the minimal lane with the **names pinned in SPEC §2.2 B2**: `hml/04_peripherals` keeps `dm-chain-explorer-hml-raw-data` + `dm-chain-explorer-hml-lakehouse` and declares `dm-databricks-hml-s3-role` granting only those two buckets; every other HML stack is destroyed (B2, F-05).
+  - Code complete (software-engineer): hml/04_peripherals reduced in code. Live step pending (coordinator): destroy the other hml stacks' state, then apply this stack.
   - Owner: software-engineer (live destroy operator-gated) · Write set: `services/hml/**`; live AWS HML peripherals resources
   - Deps: T-B.3, T-C.3 (bundle variables aligned to the same names), T-C.5 (PLAN K5) · AC-10, AC-11, AC-18b · Findings: DRIFT-22, ARCH-C2
   - Evidence: informed-gate plan reviewed before `destroy_ack`; post-apply plan 0/0/0; `aws s3api head-bucket` → 200 on both canonical names.
