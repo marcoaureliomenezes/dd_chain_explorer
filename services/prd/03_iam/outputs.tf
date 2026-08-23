@@ -7,25 +7,8 @@ output "ecs_task_role_arn" {
 }
 
 # -----------------------------------------------------------------------
-# GitHub Actions OIDC role ARNs (ADR-R6-3/R6-7) — consumed by the workflow
-# `role-to-assume` cutover in T-R6-B3.
+# NOTE — the GitHub Actions OIDC provider reference and the four gha_* roles
+# (oidc.tf) moved to services/prd/00_bootstrap (T-B.3a, D14): 03_iam has one
+# applier and that stack owns their apply going forward. Their outputs live
+# there now.
 # -----------------------------------------------------------------------
-output "gha_deploy_dev_role_arn" {
-  description = "OIDC deploy role for the dev GitHub environment"
-  value       = aws_iam_role.gha_deploy_dev.arn
-}
-
-output "gha_deploy_hml_role_arn" {
-  description = "OIDC deploy role for the hml + hml-apps GitHub environments"
-  value       = aws_iam_role.gha_deploy_hml.arn
-}
-
-output "gha_deploy_prd_role_arn" {
-  description = "OIDC deploy role for the production GitHub environment"
-  value       = aws_iam_role.gha_deploy_prd.arn
-}
-
-output "gha_readonly_plan_role_arn" {
-  description = "OIDC read-only plan role for plan_on_pr.yml, drift_detection.yml, all-check-infra"
-  value       = aws_iam_role.gha_readonly_plan.arn
-}
