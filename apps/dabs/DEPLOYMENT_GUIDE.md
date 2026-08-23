@@ -234,7 +234,7 @@ databricks bundle deploy --target dev
 ```
 
 **Configuration**:
-- Workspace: `https://dbc-409f1007-5779.cloud.databricks.com`
+- Workspace: `$DATABRICKS_HOST` (Free-Edition workspace — export before deploying)
 - Catalog: `dev`
 - S3 bucket: `dm-chain-explorer-dev-ingestion`
 - Pipelines: PAUSED (manual trigger only)
@@ -245,7 +245,7 @@ databricks bundle deploy --target hml
 ```
 
 **Configuration**:
-- Workspace: `https://dbc-409f1007-5779.cloud.databricks.com` (same as DEV)
+- Workspace: `$DATABRICKS_HOST` (same Free-Edition workspace as DEV)
 - Catalog: `hml`
 - S3 bucket: `dm-chain-explorer-hml-lakehouse`
 - Pipelines: PAUSED (trigger via CI/CD)

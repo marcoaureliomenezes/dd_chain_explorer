@@ -24,7 +24,9 @@ targets:
     presets:
       name_prefix: "[dev] "
     workspace:
-      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      # host: resolved from the DATABRICKS_HOST env var at validate/deploy
+      # time (CLI 0.270 does not support variable interpolation on this
+      # authentication field). Set it to the Free-Edition workspace URL.
       root_path: "~/.bundle/${bundle.name}/dev"
     variables:
       catalog: "dev"
@@ -49,11 +51,13 @@ targets:
     presets:
       name_prefix: "[hml] "
     workspace:
-      host: "https://dbc-409f1007-5779.cloud.databricks.com"
+      # host: resolved from the DATABRICKS_HOST env var at validate/deploy
+      # time (CLI 0.270 does not support variable interpolation on this
+      # authentication field). Set it to the Free-Edition workspace URL.
       root_path: "~/.bundle/${bundle.name}/hml"
     variables:
       catalog: "hml"
-      ingestion_s3_bucket: "dm-chain-explorer-hml-raw"
+      ingestion_s3_bucket: "dm-chain-explorer-hml-raw-data"
       dlt_development: false
       dlt_continuous: false
     resources:
@@ -71,8 +75,15 @@ targets:
 
   prod:
     mode: production
+    # prod runs as the dm_spn_user service principal (never a personal
+    # identity) — dev/hml deploy interactively as the operator.
+    run_as:
+      service_principal_name: "02d610ae-7682-4f91-9053-4f7ed6880d96"
     workspace:
-      host: ""
+      # host: intentionally unset. Resolved from DATABRICKS_HOST at
+      # runtime; no value is provided anywhere in this bundle because no
+      # prod Databricks workspace exists yet (ADR-002) — `validate -t
+      # prod` must fail without an explicit DATABRICKS_HOST export.
       root_path: "/Workspace/.bundle/${bundle.name}/prod"
     variables:
       catalog: "prd"
