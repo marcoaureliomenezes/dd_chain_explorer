@@ -16,6 +16,7 @@
   - Owner: software-engineer · Write set: `services/prd/00_bootstrap/**`
   - Deps: — · AC-2, AC-2b · Findings: DRIFT-01, DRIFT-08, SEC-H-02, SEC-I-01
   - Evidence: explicit statement list, no managed-policy attachment, no `iam:*` on `"*"`; `terraform validate`/`fmt -check` clean on the new stack.
+  - **Note (T-A.2 rev2 remaining HIGH, closed):** the boundary only bound at `iam:CreateRole` time, and none of the 8 pre-existing project `aws_iam_role` resources outside this stack carried it, leaving the CreateRole→PutRolePolicy→PassRole chain fully open against any one of them. Fix, one commit: `DenyRolePermissionsBoundaryTampering` narrowed to `iam:DeleteRolePermissionsBoundary` only; a new boundary-conditioned `ProjectIamRoleSetBoundary` Allow added for the retrofit path (`iam:PutRolePermissionsBoundary` StringEquals `iam:PermissionsBoundary` = `ci_boundary_policy_arn`); `permissions_boundary` set on all 8 roles (`services/prd/03_iam/iam.tf` ×2, `services/prd/06_lambda/lambda.tf` ×1, `services/prd/06_lambda/lambda_contracts_ingestion.tf` ×2, `services/dev/01_peripherals/main.tf` ×1, `services/hml/04_peripherals/main.tf` ×1, `services/dev/02_lambda/main.tf` ×1), each read via a `data.terraform_remote_state.bootstrap` block on the `prd/bootstrap` state key (literal backend config, mirroring the existing `dev/02_lambda`/`prd/06_lambda` remote-state pattern — no new CI `-var`). LOW residuals (`s3:DeleteBucketPolicy`, `s3:PutBucketLogging`, `s3:PutBucketOwnershipControls` on the state-backend Deny; `s3:PutObjectAcl` + `s3:DeleteBucketPolicy` on the public-exposure Deny) closed the same commit. `scripts/ci/tests/test_bootstrap_iam_policy.py` gained 2 cases (12 total, was 10): a locked-count static scan asserting every project `aws_iam_role` under `services/` sets `permissions_boundary`, and a case on the new `ProjectIamRoleSetBoundary` condition. `terraform fmt -check`/`validate` clean on `00_bootstrap` + the 5 touched stacks.
 
 - [ ] **T-A.2** — Security verdict on the bootstrap IAM policy delta before any apply.
   - Owner: security-reviewer · Write set: `.dadaia/handoff/dd-chain-explorer/` (handoff only)
@@ -219,7 +220,7 @@
   - Deps: T-D.3 · AC-21 · Findings: DRIFT-06, DRIFT-07, CI-M6, DRIFT-N07, DRIFT-N09
   - Evidence: `grep -rn 'dm-chain-utils==' .` → 0; `git ls-files '*.zip' '*.whl'` → 0; `git check-ignore .lambda_zip/`; `pip-audit -r apps/lambda/requirements.lock` clean or every finding covered by an ignore recorded in AC-21.
 
-- [ ] **T-D.7** — Set the library version declarations to `0.5.0` (`utils/pyproject.toml`, `utils/src/dm_chain_utils/__init__.py`) — **the one ordered-not-disjoint seam: runs after `T-A.9`** (O-4, K3).
+- [-] **T-D.7** — Set the library version declarations to `0.5.0` (`utils/pyproject.toml`, `utils/src/dm_chain_utils/__init__.py`) — **the one ordered-not-disjoint seam: runs after `T-A.9`** (O-4, K3).
   - Owner: software-engineer · Write set: `utils/pyproject.toml`, `utils/src/dm_chain_utils/__init__.py`
   - Deps: T-A.9, T-D.4 · AC-8 · Findings: DRIFT-11, CI-M6
   - Evidence: `grep -n version utils/pyproject.toml utils/src/dm_chain_utils/__init__.py` → `0.5.0`; `grep -rn '0\.2\.9' -- . ':!specs'` → 0.
