@@ -25,12 +25,6 @@ provider "aws" {
   }
 }
 
-data "aws_caller_identity" "current" {}
-
-# S3 ARNs derived from account ID — works during both apply and destroy
-locals {
-  account_id            = data.aws_caller_identity.current.account_id
-  raw_bucket_arn        = "arn:aws:s3:::dm-chain-explorer-raw-data"
-  lakehouse_bucket_arn  = "arn:aws:s3:::dm-chain-explorer-lakehouse"
-  databricks_bucket_arn = "arn:aws:s3:::dm-chain-explorer-databricks"
-}
+# NOTE (T-B.3, security rev3 HIGH) — the `aws_caller_identity` data source
+# and the account-id-derived S3 ARN locals were removed together with the
+# ECS task role/policies (iam.tf) that were their only consumers.
