@@ -81,7 +81,7 @@
   - Deps: — · AC-13 · Findings: DRIFT-16
   - Evidence: `gh run list --status in_progress` empty beforehand; `terraform force-unlock` output; `aws dynamodb scan --table-name <lock-table> --select COUNT` → 0.
 
-- [ ] **T-B.2** — Delete the capture-era and never-applied stacks and modules (B1).
+- [-] **T-B.2** — Delete the capture-era and never-applied stacks and modules (B1).
   - Owner: software-engineer · Write set: `services/prd/{02_vpc,05_databricks,05a_databricks_account,05b_databricks_workspace,07_ecs}`, `services/hml/{02_vpc,03_iam,05_databricks,05b_databricks_workspace,07_ecs}`, `services/modules/{ecs,vpc}` (deletion)
   - Deps: T-B.1 · AC-11 · Findings: DRIFT-13, ARCH-C1, CI-M11
   - Evidence: `ls services/prd services/hml services/modules`; `terraform validate` clean on every survivor.
