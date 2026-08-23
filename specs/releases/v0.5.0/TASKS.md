@@ -52,7 +52,7 @@
   - Deps: T-A.6; T-D.4 (layer-build inputs, PLAN K6) · AC-4, AC-6, AC-21 · Findings: DRIFT-07, DRIFT-14, DRIFT-15, DRIFT-26, CI-M9, ARCH-H6
   - Evidence: `gh workflow list`; per-workflow `concurrency:` grep; `actionlint` clean; a green `plan_on_pr` run URL from a fresh clone.
 
-- [-] **T-A.8** — Make `scripts/ci/` truthful and the plan path lock-free: `stack_map.json` declares dev module edges and drops phantom prd edges, the four hard-coded stack lists read it, `check_prd_version.sh` reads `VERSION`, `tf_plan.sh` passes **`-lock=false`** on the read-only plan path (F-04); new `scripts/ci/tests` cases assert the map, the `-lock=false` flag, and that `destroy_all`'s stack set equals `stack_map.json`'s survivors (A4, A6).
+- [ ] **T-A.8** — Make `scripts/ci/` truthful and the plan path lock-free: `stack_map.json` declares dev module edges and drops phantom prd edges, the four hard-coded stack lists read it, `check_prd_version.sh` reads `VERSION`, `tf_plan.sh` passes **`-lock=false`** on the read-only plan path (F-04); new `scripts/ci/tests` cases assert the map, the `-lock=false` flag, and that `destroy_all`'s stack set equals `stack_map.json`'s survivors (A4, A6).
   - Owner: software-engineer · Write set: `scripts/ci/**` except the three files of T-A.6
   - Deps: T-A.7 · AC-4b, AC-9 · Findings: DRIFT-14, DRIFT-15
   - Evidence: `pytest scripts/ci/tests -p no:cacheprovider` green **and** the CI job log proving the suite ran; `grep -n 'lock=false' scripts/ci/tf_plan.sh`; the read-only role's policy carries no `dynamodb:PutItem`/`DeleteItem`.
