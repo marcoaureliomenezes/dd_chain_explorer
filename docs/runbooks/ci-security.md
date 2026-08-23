@@ -76,34 +76,33 @@ release's `action.yml` before pinning. `.github/dependabot.yml` now tracks
 `github-actions` (repo root) and `pip` (`apps/lambda/`) weekly so pins stay current
 automatically going forward.
 
-## F-07 — environment-scoped Databricks secrets, no ternary fallback
+## F-07 / F-09 / F-10 / F-11 / F-12 — NOT YET IMPLEMENTED (deferred, this session)
 
-`deploy_all_dm_applications.yml`'s per-target Databricks credential selection no longer
-uses a `cond && secretA || secretB` ternary (an empty/unset secret would otherwise
-silently fall through to a different environment's credential). Each job that carries an
-`environment:` reads same-named environment secrets `DATABRICKS_HOST` /
-`DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` directly, with a fail-closed
-non-empty preflight assertion. OAuth M2M service-principal auth replaces PAT-style
-`DATABRICKS_TOKEN`. Databricks credentials are referenced only in jobs carrying
-`environment:` — never in the environment-less pre-gate plan jobs.
+Only F-01, F-04 and F-06 above landed in this session (commits `51d579a`, `97603f5`,
+`bc41801` on `feature/0.5.0`). The remaining items from the audit's ordered remediation
+list are still open and are tracked here so the next session picks up exactly where
+this one stopped — do not assume any of the following is done:
 
-## F-09 / F-10 / F-11 — injection indirection, checkout hygiene, session attribution
+- **F-07** — `deploy_all_dm_applications.yml`'s Databricks credential selection still
+  uses the `cond && secretA || secretB` ternary against `DATABRICKS_PROD_HOST` /
+  `DATABRICKS_HML_HOST` / `DATABRICKS_DEV_HOST` / `DATABRICKS_PROD_TOKEN` /
+  `DATABRICKS_HML_TOKEN` / `DATABRICKS_DEV_TOKEN` (`deploy_all_dm_applications.yml:211-212`)
+  — several of those secrets are undefined at the repo level today (drift, F-08). This
+  needs environment-scoped `DATABRICKS_HOST`/`DATABRICKS_CLIENT_ID`/
+  `DATABRICKS_CLIENT_SECRET` (OAuth M2M) created by the operator as environment secrets
+  first, then the workflow/`deploy_all.sh` wiring updated to read them directly with a
+  fail-closed non-empty assertion.
+- **F-09** — the 4 interpolated inputs (`inputs.confirm`, `inputs.target`,
+  `github.event.inputs.full_destroy`, `github.base_ref`) still substitute directly into
+  `run:` blocks; not yet routed through `env:`.
+- **F-10** — no `actions/checkout` step yet sets `persist-credentials: false`; the
+  `prd-create-tag` job in `deploy_cloud_infra.yml` still does `git fetch origin master` /
+  `git checkout master` (should be `main`).
+- **F-11** — no `configure-aws-credentials` step yet sets `role-session-name` /
+  `mask-aws-account-id: true`; the `aws sts get-caller-identity` evidence steps still
+  print the full, unmasked account id + role ARN to public logs.
+- **F-12** — no `step-security/harden-runner` step exists in any workflow; no `zizmor`
+  step runs inside CI (`quality` job); `.github/workflows/scorecard.yml` does not exist.
 
-- Every previously-interpolated `${{ inputs.* }}` / `${{ github.event.* }}` /
-  `${{ github.base_ref }}` value used inside a `run:` block is now routed through `env:`
-  first (no raw `${{ }}` substitution inside a shell script).
-- `actions/checkout` sets `persist-credentials: false` everywhere except
-  `prd-create-tag` (which pushes a tag and legitimately needs the token); that job's
-  stale `git fetch origin master` / `git checkout master` is corrected to `main`.
-- Every `aws-actions/configure-aws-credentials` step sets
-  `role-session-name: gha-<workflow>-<job>` (CloudTrail attribution) and
-  `mask-aws-account-id: true`. The `aws sts get-caller-identity` evidence steps mask the
-  account id in their printed output instead of echoing it in full to public logs.
-
-## F-12 — runner hardening, zizmor in CI, Scorecard
-
-`step-security/harden-runner` (SHA-pinned, `egress-policy: audit`) is the first step of
-every AWS/Databricks-touching job. The `quality` job in `plan_on_pr.yml` runs
-`zizmor --persona regular` against `.github/workflows` and fails on any error-level
-finding. `.github/workflows/scorecard.yml` runs OpenSSF Scorecard weekly and on
-`workflow_dispatch`.
+Repo-settings-only findings (F-02, F-03, F-05, F-08, F-13) remain entirely with the
+operator, as noted at the top of this runbook.
