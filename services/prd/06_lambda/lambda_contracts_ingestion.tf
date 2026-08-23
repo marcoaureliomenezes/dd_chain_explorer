@@ -116,7 +116,7 @@ resource "aws_lambda_function" "contracts_ingestion" {
       NETWORK              = "mainnet"
       SSM_ETHERSCAN_PATH   = "/etherscan-api-keys"
       DYNAMODB_TABLE       = data.terraform_remote_state.dynamodb.outputs.dynamodb_table_name
-      CLOUDWATCH_LOG_GROUP = data.terraform_remote_state.kinesis_sqs.outputs.cloudwatch_log_group_name
+      CLOUDWATCH_LOG_GROUP = data.terraform_remote_state.s3.outputs.cloudwatch_log_group_name
     }
   }
 
@@ -163,6 +163,13 @@ resource "aws_iam_role_policy" "eventbridge_invoke_contracts_ingestion" {
 resource "aws_scheduler_schedule" "contracts_ingestion_hourly" {
   name       = "${local.name_prefix}-contracts-ingestion-hourly"
   group_name = "default"
+
+  # DISABLED through Terraform (T-B.7, B4, DRIFT-21): every run processed 0
+  # contracts because DynamoDB has been empty since the capture layer's
+  # retirement — it was burning Etherscan quota and log storage for nothing.
+  # The Lambda, its role and the job_export_gold -> gold_to_dynamodb ->
+  # DynamoDB CONSUMPTION chain are kept, consumer-unverified (CLOSURE.md).
+  state = "DISABLED"
 
   schedule_expression          = "rate(1 hour)"
   schedule_expression_timezone = "America/Sao_Paulo"
