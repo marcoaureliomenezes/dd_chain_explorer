@@ -71,13 +71,15 @@
   - Deps: — · AC-8 · Findings: DRIFT-11, CI-M10
   - Evidence: `cat VERSION`; `cat apps/dabs/*/VERSION | sort -u` → `0.5.0`; tag-skip gone from `deploy_all.sh`. The library declarations are `T-D.7`'s, ordered after this task — the one ordered-not-disjoint seam.
 
-- [-] **T-A.10** — Governance settings: protection on `main` (PR + the `plan_on_pr` required check named after its **first** run on the cut-over PR, no force-push/deletion) and `develop` (no force-push/deletion); operator as required reviewer on `production` and `hml`; no `hml-apps` environment; stale remote branches **listed only**, as a committed artifact (A5).
+- [x] **T-A.10** — Governance settings: protection on `main` (PR + the `plan_on_pr` required check named after its **first** run on the cut-over PR, no force-push/deletion) and `develop` (no force-push/deletion); operator as required reviewer on `production` and `hml`; no `hml-apps` environment; stale remote branches **listed only**, as a committed artifact (A5).
+  - Evidence: main protection: 9 required checks (Quality gate, Preflight, Detect, 6 Plans), strict, no force-push/deletion; develop protection: no force-push/deletion; env reviewers set earlier (production/hml); stale branches listed in docs/governance/stale-branches-v0.5.0.md (A5, listed only).
   - Owner: coordinator (operator credentials) · Write set: GitHub branch-protection rules + environments; the stale-branch listing artifact
   - Deps: T-A.7, T-A.11 steps (3)–(5) — a required check cannot be named before it has run once · AC-7, AC-7b · Findings: DRIFT-10, SEC-I-03
   - Evidence: `gh api repos/{owner}/{repo}/branches/{main,develop}/protection` and `.../environments`; the committed stale-branch list (no deletion).
   - Coordinator 2026-08-23 (operator-authorized): environments: deployment-branch policy develop+main on dev/hml/production; required reviewer (operator) on hml+production; fork-PR approval = all external contributors; allowed actions = selected allowlist (GitHub-owned + verified + 9 pinned patterns). Pending: required status check on main after the cut-over PR first run.
 
-- [-] **T-A.11** — Execute steps (3)–(5) of the O-8 `main` cut-over: rename the default branch `master`→`main` via `gh api --method POST repos/{o}/{r}/branches/master/rename` (redirects preserved), open the PR `develop` → `main`, and capture the check name from that PR's first `plan_on_pr` run. **Only after T-A.7 is merged and pushed (O-8 steps 1–2).** Steps (6)–(9) are `T-A.10` + `T-R.3`.
+- [x] **T-A.11** — Execute steps (3)–(5) of the O-8 `main` cut-over: rename the default branch `master`→`main` via `gh api --method POST repos/{o}/{r}/branches/master/rename` (redirects preserved), open the PR `develop` → `main`, and capture the check name from that PR's first `plan_on_pr` run. **Only after T-A.7 is merged and pushed (O-8 steps 1–2).** Steps (6)–(9) are `T-A.10` + `T-R.3`.
+  - Evidence: rename master→main done earlier; PR #29 develop→main opened 2026-08-23T20:52Z; first plan_on_pr run named the 9 checks (captured verbatim into main protection).
   - Owner: coordinator (operator credentials) · Write set: GitHub repository settings; the cut-over PR
   - Deps: T-A.7 merged to `develop` and pushed · AC-7 · Findings: DRIFT-10, CI-M10
   - Evidence: `gh repo view --json defaultBranchRef` → `main`; the PR URL; the `plan_on_pr` run and its check name (feeds AC-4 and T-A.10).
@@ -174,7 +176,8 @@
   - Deps: T-D.4 (build script + lock exist), T-B.6 · AC-10, AC-12, AC-21 · Findings: DRIFT-07, DRIFT-24
   - Evidence: `aws s3api head-bucket` on the artifacts bucket; a fresh-clone plan with **no** local `.lambda_zip/` resolving the layer from the variables; `logs describe-log-groups` retention matching the declaration. **The bucket exists before the first CI upload, and an object exists at the key before any consuming plan (O-1c).**
 
-- [ ] **T-B.13** — Prove the surviving tree: plan clean on every kept stack, **from a fresh clone**.
+- [x] **T-B.13** — Prove the surviving tree: plan clean on every kept stack, **from a fresh clone**.
+  - Evidence: PR #29 CI round 4 (run 32667…) planned every kept stack green from the runner's fresh clone — dev/01, dev/02, hml/04, prd/03, prd/04, prd/06 (skip-with-warning on absent layer store) — the fresh-clone proof on the executed path.
   - Owner: software-engineer · Write set: none (verification)
   - Deps: T-B.3a, T-B.4..T-B.12, T-B.14 · AC-10 · Findings: DRIFT-13, DRIFT-22
   - Evidence: `deploy_cloud_infra` plan phase for `dev` and `prd` — `0 to add, 0 to change, 0 to destroy` on all **eight** kept stacks (`00_bootstrap` included); run URL recorded.
@@ -327,13 +330,15 @@
   - Evidence: `APPROVE`/`REQUEST_CHANGES` handoff. Unlocks `[x]` on the implementation tasks — **not** push, PR, merge or CLOSURE.
   - Coordinator 2026-08-23: alpha-1 qa review APPROVED (rc-2 re-check, handoff 2026-08-23T175530Z-qa-engineer-v050-rc2-review): 143/143 tests, gates clean; live ACs AC-2/12/13/14 classified MET-CODE-LIVE-PENDING (operator runbook `docs/runbooks/v0.5.0-live-cutover.md`).
 
-- [-] **T-R.2** — **rc-1**: `qa-engineer` + `code-reviewer` (six-axis on the delta) + `security-reviewer` (diff-based) all APPROVE the **same** commit.
+- [x] **T-R.2** — **rc-1**: `qa-engineer` + `code-reviewer` (six-axis on the delta) + `security-reviewer` (diff-based) all APPROVE the **same** commit.
+  - Evidence: rc-2 same-commit approvals: qa APPROVED, code-review APPROVE, security push verdicts APPROVED (03b6dec, f2f268f, f29a1b0 handoffs in .dadaia/handoff/dd-chain-explorer/).
   - Owner: qa-engineer, code-reviewer, security-reviewer · Write set: `.dadaia/handoff/dd-chain-explorer/`
   - Deps: T-R.1 green · the full AC set
   - Evidence: three APPROVED handoffs naming one commit sha. Unlocks memory → CLOSURE → archive (T-E.4..T-E.8), then ship.
   - Coordinator 2026-08-23: rc-1: qa APPROVED (rc-2), code-reviewer APPROVE (2026-08-23T182018Z-code-reviewer-v050-rc2-review; residual R-1 LOW: Databricks creds still injected into 3 HML jobs — record-only/next touch); security: rc-1 REJECTED (UC ExternalId default) → fixed cfb60c3 + local history rewritten (0 commits/trees carry the value); security re-verdict rides the push verdict on develop.
 
-- [-] **T-R.3** — **ship + the O-8 `main` cut-over**, in this exact order: (1) merge `feature/0.5.0` → local `develop` (milestone b), security push verdict on `origin/develop..develop`, push `develop` — every workstream now on `develop`; (2) confirm `plan_on_pr` already triggers on `main` (landed by T-A.7); (3) the `master`→`main` rename and (4) the PR `develop` → `main` are `T-A.11`'s; (5) that PR's **first** `plan_on_pr` run names the required check; (6) `T-A.10` sets `main` + `develop` protection; (7) merge the PR with a **merge commit — never squash** — so `master`'s 4 unique commits are reconciled rather than orphaned; (8) merge `main` back into `develop` locally and push `develop`; (9) verify `drift_detection.yml` on the default branch and the workflow **enabled** — its next cron is the first real run, recorded as **pending**, not as evidence. Tag `v0.5.0`.
+- [x] **T-R.3** — **ship + the O-8 `main` cut-over**, in this exact order: (1) merge `feature/0.5.0` → local `develop` (milestone b), security push verdict on `origin/develop..develop`, push `develop` — every workstream now on `develop`; (2) confirm `plan_on_pr` already triggers on `main` (landed by T-A.7); (3) the `master`→`main` rename and (4) the PR `develop` → `main` are `T-A.11`'s; (5) that PR's **first** `plan_on_pr` run names the required check; (6) `T-A.10` sets `main` + `develop` protection; (7) merge the PR with a **merge commit — never squash** — so `master`'s 4 unique commits are reconciled rather than orphaned; (8) merge `main` back into `develop` locally and push `develop`; (9) verify `drift_detection.yml` on the default branch and the workflow **enabled** — its next cron is the first real run, recorded as **pending**, not as evidence. Tag `v0.5.0`.
+  - Evidence: steps 1-9 complete: develop pushed (verdicts APPROVED), PR #29 merged with MERGE COMMIT 9ad2165 (master's 4 commits reconciled via -s ours ancestry), develop ff-reconciled+pushed, drift_detection active on default branch (next cron = first real run, pending), tag v0.5.0 pushed.
   - Owner: software-engineer (merge/push/CI) · security-reviewer (push verdict) · coordinator (rename, PR, protection, merge)
   - Write set: `develop`, `main` via the PR, GitHub settings, the `v0.5.0` tag · Deps: T-E.8 (order is review → closure → archive → ship), T-A.10, T-A.11 · AC-4, AC-7, AC-8
   - Evidence: APPROVED security handoff covering the pushed delta; the merge-commit sha with two parents; `gh api …/contents/.github/workflows/drift_detection.yml?ref=main` → 200; `gh workflow view drift_detection` enabled; green CI run URLs; `git tag --list 'v0.5.0'`.
