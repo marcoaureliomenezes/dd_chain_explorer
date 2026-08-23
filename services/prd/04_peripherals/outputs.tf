@@ -37,3 +37,11 @@ output "dynamodb_table_name" {
 output "dynamodb_table_arn" {
   value = module.dynamodb.table_arn
 }
+
+# Artifacts
+output "artifacts_bucket_arn" {
+  value = module.s3_artifacts.bucket_arn
+}
+output "artifacts_bucket_name" {
+  value = module.s3_artifacts.bucket_name
+}

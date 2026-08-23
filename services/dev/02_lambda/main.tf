@@ -118,3 +118,23 @@ module "lambda_gold_to_dynamodb" {
   s3_trigger_prefix      = "exports/gold_api_keys/"
   s3_trigger_suffix      = ".json"
 }
+
+# ---------------------------------------------------------------------------
+# CloudWatch Log Group for the kept dev Lambda (T-B.14, F-09/DRIFT-24) —
+# already live (Lambda-created), outside any state. Declared + imported so
+# Terraform owns retention (AC-10's clean plan is the proof).
+# ---------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "gold_to_dynamodb_dev" {
+  name              = "/aws/lambda/${module.lambda_gold_to_dynamodb.function_name}"
+  retention_in_days = 30
+  tags              = local.common_tags
+}
+
+# Declarative import (Terraform >= 1.5, this stack pins ~> 1.9). Documented
+# fallback for the coordinator:
+#   terraform import 'aws_cloudwatch_log_group.gold_to_dynamodb_dev' /aws/lambda/dm-chain-explorer-gold-to-dynamodb-dev
+import {
+  to = aws_cloudwatch_log_group.gold_to_dynamodb_dev
+  id = "/aws/lambda/${local.name_prefix}-gold-to-dynamodb-${var.environment}"
+}

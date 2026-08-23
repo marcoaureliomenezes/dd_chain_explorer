@@ -43,3 +43,9 @@ variable "project_version" {
   type        = string
   default     = "0.0.0"
 }
+
+variable "artifacts_bucket_name" {
+  description = "Name of the build-artifacts S3 bucket (Lambda layer zips, T-B.14/D15). Dev consumes the same bucket under a dev/ prefix."
+  type        = string
+  default     = "dm-chain-explorer-artifacts"
+}

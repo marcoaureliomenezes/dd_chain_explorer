@@ -29,6 +29,17 @@ module "s3_raw" {
   ]
 }
 
+module "s3_artifacts" {
+  source = "../../modules/s3"
+
+  environment        = var.environment
+  region             = var.region
+  common_tags        = local.common_tags
+  bucket_name        = var.artifacts_bucket_name
+  versioning_enabled = true
+  ownership_controls = "BucketOwnerEnforced"
+}
+
 module "s3_lakehouse" {
   source = "../../modules/s3"
 
