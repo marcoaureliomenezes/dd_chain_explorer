@@ -15,6 +15,13 @@
 > remediation release **v0.5.0**. Intake report:
 > `.dadaia/reports/dd-chain-explorer/project-manager/2026-08-23T152638Z-intake-report-audit-20260823.md`.
 > Proposed disposition per entry is stated in its Description (`pick v0.5.0` / `defer`).
+> **Purge-on-pick v0.6.0 (2026-08-23).** The operator demand `three-repo-segregation-migration`
+> (grill-me 2026-08-23, 2 rounds, 9 ADRs, operator-confirmed — handoff
+> `2026-08-23T203850Z-project-manager-grillme-3repo-segregation`; approved intake by direct
+> operator ratification) was picked by release v0.6.0 in the commit that created
+> `specs/releases/v0.6.0/SPEC.md` — its `**Consumes:**` line is the provenance. LEDGER line
+> at v0.6.0 CLOSURE's disposition sweep.
+>
 > **Purge-on-pick (2026-08-23).** The 18 `v050-*` entries picked by release v0.5.0 left ACTIVE in
 > the commit that created `specs/releases/v0.5.0/SPEC.md` (its `**Consumes:**` line is the provenance,
 > together with the intake report above). LEDGER lines are added at CLOSURE's disposition sweep.
