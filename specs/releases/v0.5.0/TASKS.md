@@ -111,7 +111,7 @@
   - Deps: T-B.3 · AC-10 · Findings: DRIFT-26, SEC-M-03, SEC-L-02, ARCH-L7
   - Evidence: no state-persisted token in the diff; plan clean.
 
-- [ ] **T-B.7** — Disable the hourly PRD `contracts-ingestion` schedule **through Terraform**; keep the Lambda and the `job_export_gold → gold_to_dynamodb → DynamoDB` chain (B4).
+- [-] **T-B.7** — Disable the hourly PRD `contracts-ingestion` schedule **through Terraform**; keep the Lambda and the `job_export_gold → gold_to_dynamodb → DynamoDB` chain (B4).
   - Owner: software-engineer (apply operator-gated) · Write set: `services/prd/06_lambda/**`; live EventBridge rule state
   - Deps: T-B.5 · AC-14 · Findings: DRIFT-21, DRIFT-27, DRIFT-N01, DRIFT-N02, DRIFT-N03
   - Evidence: `aws events describe-rule` → `State: DISABLED`; the AC-10 clean plan proves it is declared, not clicked.
