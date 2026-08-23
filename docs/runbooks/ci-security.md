@@ -76,33 +76,115 @@ release's `action.yml` before pinning. `.github/dependabot.yml` now tracks
 `github-actions` (repo root) and `pip` (`apps/lambda/`) weekly so pins stay current
 automatically going forward.
 
-## F-07 / F-09 / F-10 / F-11 / F-12 — NOT YET IMPLEMENTED (deferred, this session)
+## F-07 — environment-scoped Databricks secrets, fail-closed auth wiring
 
-Only F-01, F-04 and F-06 above landed in this session (commits `51d579a`, `97603f5`,
-`bc41801` on `feature/0.5.0`). The remaining items from the audit's ordered remediation
-list are still open and are tracked here so the next session picks up exactly where
-this one stopped — do not assume any of the following is done:
+`deploy_all_dm_applications.yml`'s `deploy-dabs` job selected `DATABRICKS_HOST`/
+`DATABRICKS_TOKEN` via a `cond && secretA || secretB` ternary against repo-scoped
+`DATABRICKS_{PROD,HML,DEV}_{HOST,TOKEN}` secrets — several of which were undefined
+(drift, F-08), so an empty secret silently fell through to another environment's
+credential. The coordinator provisioned OAuth M2M service-principal **environment**
+secrets (`DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`) on the
+`dev` and `hml` GitHub environments; `production` carries none (no prod Databricks
+workspace exists). `deploy-dabs` now reads only those three environment-scoped secrets
+and asserts all three are non-empty before invoking `deploy_all.sh` — a `target=prod`
+dispatch fails closed by design instead of silently deploying with an empty/wrong
+credential.
 
-- **F-07** — `deploy_all_dm_applications.yml`'s Databricks credential selection still
-  uses the `cond && secretA || secretB` ternary against `DATABRICKS_PROD_HOST` /
-  `DATABRICKS_HML_HOST` / `DATABRICKS_DEV_HOST` / `DATABRICKS_PROD_TOKEN` /
-  `DATABRICKS_HML_TOKEN` / `DATABRICKS_DEV_TOKEN` (`deploy_all_dm_applications.yml:211-212`)
-  — several of those secrets are undefined at the repo level today (drift, F-08). This
-  needs environment-scoped `DATABRICKS_HOST`/`DATABRICKS_CLIENT_ID`/
-  `DATABRICKS_CLIENT_SECRET` (OAuth M2M) created by the operator as environment secrets
-  first, then the workflow/`deploy_all.sh` wiring updated to read them directly with a
-  fail-closed non-empty assertion.
-- **F-09** — the 4 interpolated inputs (`inputs.confirm`, `inputs.target`,
-  `github.event.inputs.full_destroy`, `github.base_ref`) still substitute directly into
-  `run:` blocks; not yet routed through `env:`.
-- **F-10** — no `actions/checkout` step yet sets `persist-credentials: false`; the
-  `prd-create-tag` job in `deploy_cloud_infra.yml` still does `git fetch origin master` /
-  `git checkout master` (should be `main`).
-- **F-11** — no `configure-aws-credentials` step yet sets `role-session-name` /
-  `mask-aws-account-id: true`; the `aws sts get-caller-identity` evidence steps still
-  print the full, unmasked account id + role ARN to public logs.
-- **F-12** — no `step-security/harden-runner` step exists in any workflow; no `zizmor`
-  step runs inside CI (`quality` job); `.github/workflows/scorecard.yml` does not exist.
+`deploy_cloud_infra.yml`'s `hml-plan`/`hml-apply` and `destroy_cloud_infra.yml`'s
+`hml-destroy` jobs referenced repo-scoped `DATABRICKS_ACCOUNT_ID`/`CLIENT_ID`/
+`CLIENT_SECRET` that no `databricks` Terraform provider block or CLI call on those
+paths ever consumed (grep-verified: no `provider "databricks"` block exists anywhere
+in `services/**`) — dead reads of secrets slated for retirement, removed.
+`TF_VAR_databricks_hml_uc_external_id` (a real, consumed IAM-trust-policy variable) is
+unchanged. `apps/dabs/deploy_all.sh` and `scripts/ci/deploy_env.sh` docstrings updated
+to match (the latter's claimed `TF_VAR_databricks_client_id`/`secret` requirement was
+stale drift, never actually read by the script).
+
+**Addendum — skip prd/06_lambda advisory plans when the layer store is absent.**
+`plan_on_pr.yml`'s `plan-prd-lambda` and `drift_detection.yml`'s `drift-prd-lambda` are
+non-gating advisory lanes, but `scripts/ci/resolve_layer.sh` failed the whole job
+whenever `s3://dm-chain-explorer-artifacts` had no layer object — and that bucket is
+deliberately not provisioned yet during the v0.5.0 live cutover
+(`docs/runbooks/v0.5.0-live-cutover.md` §5). `resolve_layer.sh` now collapses a missing
+bucket (`NoSuchBucket`) into the same "no artifact found" signal an empty prefix already
+produced (any other AWS error still fails hard). The new
+`scripts/ci/resolve_layer_or_skip.sh` wraps it for these two advisory lanes only: on
+"not yet provisioned" it emits a `::warning::` and reports `skip=true` (exit 0), and the
+Terraform Plan step is skipped via `if: steps.resolve-layer.outputs.skip != 'true'`.
+`deploy_cloud_infra.yml`'s `prd-plan` (the pre-gate plan feeding the environment-gated
+`prd-apply`) is untouched — it still calls `resolve_layer.sh` directly and fails hard.
+
+## F-09 — `env:` indirection for every flagged `run:` interpolation
+
+zizmor's `template-injection` audit (error/high-level, `--persona auditor`) flagged four
+raw `${{ }}` expressions substituted directly into `run:` script bodies: `inputs.confirm`
+(`destroy_all_cloud_infra.yml`), `github.event.inputs.full_destroy`
+(`destroy_cloud_infra.yml`), `github.base_ref` (`plan_on_pr.yml`), and `inputs.target`
+(every occurrence in `deploy_all_dm_applications.yml`'s `run:` bodies — `preflight-oidc`,
+`check-version`, `deploy-lambda`'s stack-path resolution, `deploy-dabs`). All four now go
+through a step-level `env:` block and are read back as a shell variable (`${CONFIRM}`,
+`${FULL_DESTROY}`, `${BASE_REF}`, `${TARGET}`) — no `${{ }}` is substituted directly into
+a `run:` body for any of them anywhere in the six original workflows.
+
+## F-10 — `persist-credentials: false` on every checkout; `master` -> `main`
+
+Every `actions/checkout` step (37 of 38 — zizmor `artipacked`, warning-level) now carries
+`persist-credentials: false`: the default persists the `GITHUB_TOKEN` into `.git/config`
+for the rest of the job, unnecessary attack surface once nothing after checkout needs to
+authenticate as the runner. The sole exception is `deploy_cloud_infra.yml`'s
+`prd-create-tag` job, which legitimately needs the persisted credential to `git push` the
+release tag — left at its default (`true`), now with an explanatory comment.
+
+That job's "Tag master" step referenced a branch that has never existed in this repo
+(`main` is the only long-lived branch): `git fetch origin master` / `git checkout master`
+would have failed outright the first time this job actually ran. Fixed to `main` (fetch,
+checkout, step name, and the step-summary text).
+
+## F-11 — `role-session-name` + `mask-aws-account-id`; redacted identity echoes
+
+All 29 `aws-actions/configure-aws-credentials` steps across the six workflows now carry a
+static, per-job `role-session-name` (`gha-<workflow>-<job>`, e.g.
+`gha-deploy-cloud-infra-prd-apply` — a literal string, never an interpolated event/input
+value, so CloudTrail can attribute a session back to the workflow/job that created it) and
+`mask-aws-account-id: true`.
+
+The 5 "Verify assumed role (sts get-caller-identity)" evidence steps printed the full,
+unmasked 12-digit account id + role ARN to public build logs. Each now prints only the ARN
+with the account id masked: `aws sts get-caller-identity --query Arn --output text | sed
+-E 's/[0-9]{12}/************/'`.
+
+## F-12 — `harden-runner` on every job, a `zizmor` CI gate, and Scorecard
+
+`step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c` (`v2.21.0`,
+commit-verified via `gh api repos/step-security/harden-runner/git/ref/tags/v2.21.0`) is
+now the first step of all 48 jobs across the six original workflows,
+`egress-policy: audit` (observe-only for now — moving to `block` with a reviewed
+allowlist is a follow-up, not blocked on this session).
+
+`plan_on_pr.yml`'s `quality` job now runs `zizmor` (pinned `1.29.0` via `pip install`,
+matching the version this audit itself used — not hash-locked into
+`apps/lambda/requirements-dev.lock`, since zizmor is a workflow-lint tool with no runtime
+coupling to the Lambda dev environment) with `--persona regular --offline --min-severity
+high` against `.github/workflows` on every PR. This repo is currently clean at that
+threshold: `zizmor --persona auditor --offline .github/workflows` reports 64 findings —
+21 informational, 35 low, 8 medium, **0 high** — down from the original audit's 9
+error-level findings (all in `template-injection`, now closed by F-09) and 0
+`excessive-permissions` (F-04) findings. Remaining findings are non-actionable at
+workflow-code level: 46 `template-injection` (info/help — benign `env.*`/`steps.*.outputs.*`/
+`vars.*` reads inside `run:`, not attacker-controlled), 7 `secrets-outside-env`
+(`DATABRICKS_UC_EXTERNAL_ID` read by the pre-gate plan jobs that deliberately carry no
+`environment:` — F-02, operator scope, tracked separately), 8 `undocumented-permissions`
+and 2 `concurrency-limits` (help-level style suggestions), and 1 `artipacked`
+(`prd-create-tag`'s intentional `persist-credentials: true`, documented above under
+F-10).
+
+New `.github/workflows/scorecard.yml` runs OpenSSF Scorecard weekly (Monday 06:30 UTC,
+offset from `drift_detection.yml`'s 06:00) plus `workflow_dispatch`, pinned to
+`ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc` (`v2.4.4`, dereferenced
+from its annotated tag via `git/tags/<sha>`), workflow-level `permissions: {}` with only
+the `analysis` job granted `contents: read` + `id-token: write` (least privilege —
+`security-events: write` is correctly omitted: this repo is public and does not upload
+SARIF to GitHub code scanning), `publish_results: true` for the public badge/API.
 
 Repo-settings-only findings (F-02, F-03, F-05, F-08, F-13) remain entirely with the
 operator, as noted at the top of this runbook.
