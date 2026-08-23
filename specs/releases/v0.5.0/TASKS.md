@@ -166,7 +166,7 @@
   - Deps: T-C.1 · AC-17, AC-18 · Findings: DRIFT-19, ARCH-M3
   - Evidence: both directories absent from disk; `databricks bundle summary -t dev` with no empty `pipeline_id`; the in-bundle trigger job of each DLT bundle validated.
 
-- [-] **T-C.3** — Guard the workspace host on **every** target (`dev`, `hml`, `prod` all read it from a `DATABRICKS_HOST`-style env var or bundle variable; prod's has no default, so `validate -t prod` fails unset and no `cloud.databricks.com` literal survives); parametrise the dashboard catalog; align the published embed setting; set `run_as` to the service principal; align every hml bundle variable to SPEC §2.2 B2's pinned bucket names (C3, PLAN K5, F-06).
+- [x] **T-C.3** — Guard the workspace host on **every** target (`dev`, `hml`, `prod` all read it from a `DATABRICKS_HOST`-style env var or bundle variable; prod's has no default, so `validate -t prod` fails unset and no `cloud.databricks.com` literal survives); parametrise the dashboard catalog; align the published embed setting; set `run_as` to the service principal; align every hml bundle variable to SPEC §2.2 B2's pinned bucket names (C3, PLAN K5, F-06).
   - Owner: software-engineer · Write set: `apps/dabs/**` (targets, variables, dashboards)
   - Deps: T-C.2 · AC-17, AC-19 · Findings: DRIFT-09, DRIFT-25, ARCH-M3
   - Evidence: `databricks bundle validate -t prod` non-zero with the host unset; `grep -rniE '@|cloud.databricks.com|"dev\."' apps/dabs/` → 0; `databricks service-principals list` contains `dm_spn_user`.
