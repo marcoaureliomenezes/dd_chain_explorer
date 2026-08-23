@@ -13,3 +13,6 @@ output "dynamodb_table_arn" {
 output "cloudwatch_log_group_name" {
   value = module.cloudwatch_logs.log_group_name
 }
+output "databricks_dev_s3_role_arn" {
+  value = aws_iam_role.databricks_dev_s3_role.arn
+}
