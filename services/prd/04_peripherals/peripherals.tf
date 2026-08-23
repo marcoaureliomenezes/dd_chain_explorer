@@ -88,7 +88,11 @@ module "s3_databricks" {
     }
   ]
 
-  folder_prefixes = ["checkpoints", "staging", "unity-catalog"]
+  # folder_prefixes removed (v0.5.0): the .keep prefix markers were the last
+  # remnant of a pattern already retired in dev (T-B.6/B5) and in the lakehouse
+  # bucket (ISSUE-029/AWS-03). S3 prefixes need no materialization, and the
+  # read-only plan role deliberately carries no s3:GetObject (T-A.2 MEDIUM #1),
+  # so state-held marker objects broke every speculative plan refresh.
 }
 
 # ---------------------------------------------------------------------------
