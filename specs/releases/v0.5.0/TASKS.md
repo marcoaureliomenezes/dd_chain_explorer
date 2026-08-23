@@ -42,7 +42,7 @@
   - Deps: T-A.4 · AC-3 · Findings: DRIFT-09, SEC-H-02
   - Evidence: `aws iam list-access-keys --user-name <ci-user>` → `Inactive`.
 
-- [-] **T-A.6** — Purge the capture lane from the application deploy workflow; reduce the HML lane scripts; delete the tombstoned gate call (A3).
+- [x] **T-A.6** — Purge the capture lane from the application deploy workflow; reduce the HML lane scripts; delete the tombstoned gate call (A3).
   - Owner: software-engineer · Write set: `.github/workflows/deploy_all_dm_applications.yml`, `scripts/ci/hml_provision.sh`, `scripts/ci/hml_teardown.sh`
   - Deps: — · AC-5 · Findings: DRIFT-02, CI-M1
   - Evidence: job graph = Lambda + DABs only; `grep -rniE 'kinesis|firehose|sqs|ecs|onchain-stream' .github/workflows/ scripts/ci/` → 0; `actionlint` + `bash -n` clean.
