@@ -375,17 +375,26 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
-      - name: Resolve lambda layer artifact (T-A.7, WS-A)
+      - name: Resolve lambda layer artifact (T-A.7, WS-A) — skip if not yet provisioned
         id: resolve-layer
         run: |
           set -euo pipefail
-          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer.sh" \
+          # Addendum (2026-08-23): this is a NON-GATING advisory plan — the
+          # lambda-layer artifact store may not be provisioned yet (PRD resource
+          # creation is deliberately deferred, docs/runbooks/v0.5.0-live-cutover.md
+          # §5). resolve_layer_or_skip.sh warns + reports skip=true instead of
+          # failing the job in that case; any OTHER failure still fails hard.
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer_or_skip.sh" \
             dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
           echo "${OUT}"
-          echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
-          echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
-          echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
+          SKIP="$(echo "${OUT}" | grep -oP 'skip=\K\S+')"
+          echo "skip=${SKIP}" >> "$GITHUB_OUTPUT"
+          if [ "${SKIP}" != "true" ]; then
+            echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
+            echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
+          fi
       - name: Terraform Plan
+        if: steps.resolve-layer.outputs.skip != 'true'
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
           MODULE_NAME: PRD/Lambda

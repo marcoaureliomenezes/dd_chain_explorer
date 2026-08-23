@@ -45,18 +45,42 @@ PREFIX="$2"
 # Newest object under the prefix by LastModified. `list-objects-v2` does not
 # guarantee any particular ordering across pages/requests, so sort client-side via
 # the JMESPath query instead of trusting API response order.
+#
+# The bucket itself may not exist yet (e.g. PRD resource creation deliberately
+# deferred — docs/runbooks/v0.5.0-live-cutover.md §5): under `set -e` that call
+# would otherwise abort with a raw, uncatchable AWS CLI error (NoSuchBucket).
+# Capture the exit status and stderr explicitly so a missing bucket collapses
+# into the exact same "no artifact found" signal as an empty (existing-bucket,
+# no-objects) prefix — one message, one exit code, for every caller (including
+# scripts/ci/resolve_layer_or_skip.sh) to detect uniformly. Any OTHER AWS error
+# (auth, throttling, ...) is never masked as "not found" — it is echoed verbatim
+# and still fails this script.
+LIST_STDERR="$(mktemp)"
+trap 'rm -f "${LIST_STDERR}"' EXIT
+
+set +e
 LATEST_KEY="$(
   aws s3api list-objects-v2 \
     --bucket "${BUCKET}" \
     --prefix "${PREFIX}" \
     --query 'reverse(sort_by(Contents, &LastModified))[0].Key' \
-    --output text
+    --output text 2>"${LIST_STDERR}"
 )"
+LIST_STATUS=$?
+set -e
 
-if [ -z "${LATEST_KEY}" ] || [ "${LATEST_KEY}" = "None" ]; then
+if [ "${LIST_STATUS}" -ne 0 ] && ! grep -q "NoSuchBucket" "${LIST_STDERR}"; then
+  cat "${LIST_STDERR}" >&2
+  echo "::error::aws s3api list-objects-v2 failed for s3://${BUCKET}/${PREFIX} (not a" \
+    "missing-bucket/missing-object condition — see the AWS error above)." >&2
+  exit 1
+fi
+
+if [ "${LIST_STATUS}" -ne 0 ] || [ -z "${LATEST_KEY}" ] || [ "${LATEST_KEY}" = "None" ]; then
   echo "::error::No lambda-layer artifact found under s3://${BUCKET}/${PREFIX} — the" \
     "'Deploy All DM Applications' workflow (target=prod) builds and uploads this" \
-    "object and has never run for this environment (or the bucket/prefix is wrong)." \
+    "object and has never run for this environment (or the bucket/prefix is wrong," \
+    "or the artifact store has not been provisioned yet)." \
     "Run it once before any infra-only plan/apply can resolve a real" \
     "layer_s3_key/layer_sha256. See docs/runbooks/lambda-layer.md." >&2
   exit 1

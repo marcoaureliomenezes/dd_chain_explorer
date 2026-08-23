@@ -29,6 +29,10 @@ set -euo pipefail
 sub="$1 $2"
 case "$sub" in
   "s3api list-objects-v2")
+    if [ -n "${STUB_LIST_OBJECTS_ERROR:-}" ]; then
+      echo "${STUB_LIST_OBJECTS_ERROR}" >&2
+      exit "${STUB_LIST_OBJECTS_EXIT_CODE:-255}"
+    fi
     echo "${STUB_LATEST_KEY:-None}"
     ;;
   "s3api head-object")
@@ -111,6 +115,49 @@ def test_no_object_under_prefix_fails_loudly(stub_path: Path) -> None:
     assert "No lambda-layer artifact found" in res.stderr
     assert "Deploy All DM Applications" in res.stderr
     assert "docs/runbooks/lambda-layer.md" in res.stderr
+
+
+def test_bucket_not_yet_provisioned_fails_loudly_same_as_no_object(stub_path: Path) -> None:
+    """A missing bucket (NoSuchBucket) must collapse into the exact same
+    'No lambda-layer artifact found' signal as an existing-but-empty prefix —
+    addendum to the F-01..F-12 remediation, 2026-08-23 — so a caller (e.g.
+    resolve_layer_or_skip.sh) can detect 'nothing provisioned yet' uniformly,
+    regardless of whether the bucket exists."""
+    res = _run(
+        stub_path,
+        {
+            "STUB_LIST_OBJECTS_ERROR": (
+                "An error occurred (NoSuchBucket) when calling the ListObjectsV2 "
+                "operation: The specified bucket does not exist"
+            ),
+            "STUB_LIST_OBJECTS_EXIT_CODE": "255",
+        },
+        "dm-chain-explorer-artifacts",
+        "lambda-layers/dm-chain-utils/",
+    )
+    assert res.returncode != 0
+    assert "No lambda-layer artifact found" in res.stderr
+    assert "Deploy All DM Applications" in res.stderr
+
+
+def test_other_list_objects_failure_is_not_masked_as_no_object(stub_path: Path) -> None:
+    """A real AWS error (auth, throttling, ...) must never be reported as the
+    friendly 'no artifact found yet' message — only NoSuchBucket/empty-result
+    collapse into that signal."""
+    res = _run(
+        stub_path,
+        {
+            "STUB_LIST_OBJECTS_ERROR": (
+                "An error occurred (AccessDenied) when calling the ListObjectsV2 operation"
+            ),
+            "STUB_LIST_OBJECTS_EXIT_CODE": "255",
+        },
+        "dm-chain-explorer-artifacts",
+        "lambda-layers/dm-chain-utils/",
+    )
+    assert res.returncode != 0
+    assert "No lambda-layer artifact found" not in res.stderr
+    assert "AccessDenied" in res.stderr
 
 
 def test_metadata_mismatch_fails_loudly(stub_path: Path) -> None:
