@@ -233,20 +233,27 @@
 
 ## WS-E — Governance documents, dispositions, memory truth
 
-- [-] **T-E.1** — Author `specs/constitution.md` from the archived 231-line version, scoped to the infra / CI / Databricks reality (E1).
+- [x] **T-E.1** — Author `specs/constitution.md` from the archived 231-line version, scoped to the infra / CI / Databricks reality (E1).
   - Owner: product-engineer · Write set: `specs/constitution.md`
   - Deps: — · AC-26 · Findings: DRIFT-31
   - Evidence: `wc -l specs/constitution.md` (not the 33-byte stub); `dadaia specs doctor`.
+  - Done 2026-08-23: constitution authored, 154 lines (ceiling 160), frontmatter `specs_pattern_version: 5` preserved. Ten sections — repository surfaces (Terraform `services/`, GitHub Actions control plane, `apps/dabs` + two Lambdas) with capture external to `dd-chain-capture` and the S3 raw bucket as the sole boundary; environments `dev`/`hml` (minimal)/`prd` and the single Free-Edition Databricks workspace; the ten principles (public repo, secrets never in tree, OIDC-only CI with an operator-applied bootstrap stack, one version axis = SDD release id, no tracked binaries, tests declare intent and size, memory is current truth, Terraform as sole infra authority, the four-branch law, one audit → one remediation release); security non-negotiables; Terraform, Databricks/DABs, data conventions, Python, commit format, data classification. Dead law dropped: Kinesis/Firehose/SQS/ECS stack rows, the `master`/`release/*` GitFlow, the `VERSION`-driven tag family and auto-bump, the Makefile command reference, and the 16-bundle/prod-workspace assumptions. No absolute local paths, e-mail addresses, secrets or account ids; concrete bucket names replaced by placeholders (public repo).
 
-- [ ] **T-E.2** — Bug-ledger repair (E4): a terminal event for the misfiled tooling bug, and the resolved-before-reported timestamp anomaly.
+- [x] **T-E.2** — Bug-ledger repair (E4): a terminal event for the misfiled tooling bug, and the resolved-before-reported timestamp anomaly.
   - Owner: product-engineer · Write set: `specs/bugs/bugs.jsonl`
   - Deps: — · AC-28 · Findings: DRIFT-31
+  - Done 2026-08-23 (executed by the PM at definition time, recorded here): terminal event `superseded` appended 2026-08-23 (PM); `drift-04` timestamp anomaly: record-only (ledger is append-only; correcting a past event would require a new event kind — left as documented anomaly). The ledger shows 0 open bugs.
   - Evidence: exact command — `dadaia bugs append --bug-id sdd-artifact-linter-mutates-task-markers --event rejected --reported-by product-engineer --reason "not a bug of this context: workspace-library tooling, re-registered upstream in the dadaia-workspace context"`. `rejected` is the terminal kind for a misfiled record; `superseded` is reserved for supersession by a slug in **this** context's picked set. Then correct the migration-synthesized `reported` timestamp of `drift-04-kafka-avro-dead-code` so it precedes its `resolved` event. Then `dadaia bugs status` → 0 open and `dadaia specs doctor` SPEC-DOC-032/033 clean.
 
-- [ ] **T-E.3** — SDD-tree verification (E4 residual): confirm no release SPEC lives outside `_archive/` — at authoring time every `SPEC.md` other than the active release is already archived — and `git mv` any survivor; confirm the v0.4.0 archive and the single-source backlog are intact.
+- [x] **T-E.3** — SDD-tree verification (E4 residual): confirm no release SPEC lives outside `_archive/` — at authoring time every `SPEC.md` other than the active release is already archived — and `git mv` any survivor; confirm the v0.4.0 archive and the single-source backlog are intact.
   - Owner: product-engineer · Write set: `specs/_archive/**` via `git mv` only
   - Deps: — · AC-25 · Findings: DRIFT-03, DRIFT-30, ARCH-L8, ARCH-M8
   - Evidence: the file listing; `dadaia specs doctor` + `dadaia backlog doctor` output.
+  - Done 2026-08-23 — verified by file listing, **no survivor found, no `git mv` executed**:
+    - Every `SPEC.md` under `specs/`: `releases/v0.5.0/SPEC.md` (the active release) and 15 archived — `_archive/releases/{v0.4.0, v0.3.0, analytics-enrichment-r4, audit-remediation-r5, capture-decoupling-r5, cost-and-availability-r2, data-quality-r3, legacy, pipeline-restart-r1}/SPEC.md` and `_archive/legacy-domains/2026-06-10/{applications, applications/rest-api, infrastructure, devops, data-engineering, data-analytics}/SPEC.md`. No release SPEC lives outside `_archive/` other than the active one → ARCH-L8 confirmed already relocated at intake; ARCH-M8's stray REST-API spec is inside `_archive/legacy-domains/`.
+    - v0.4.0 archive intact: `_archive/releases/v0.4.0/` holds `SPEC.md`, `PLAN.md`, `TASKS.md`, `CLOSURE.md` (DRIFT-03 closed).
+    - Backlog single-source intact: `specs/backlog/` holds `BACKLOG.md` plus `_archive/` (`.gitkeep` + 7 superseded entry files: `remediation-audit-20260609.md`, `candidates.md`, `ideas.md`, `platform-audit-remediation-20260611.md`, `v0.3.0-operator-cutover-and-next.md`, `rebuild-abandoned-r2-r3-r4-capabilities.md`, `streaming-jobs-security-hardening.md`) — no per-entry file at the top level (DRIFT-30 confirmed). Note: no `README.md` in `specs/backlog/`; the single-source layout does not require one.
+    - `dadaia specs doctor` / `dadaia backlog doctor`: not run here — product-engineer has no shell; the coordinator runs both at the alpha-1 boundary.
 
 - [ ] **T-E.4** — **(CLOSURE)** Author the capture-deprecation ADR (supersession by `dd-chain-capture`, S3 as the sole boundary, parked-until-delivery posture, sunset criteria) and rewrite the ADR-005 lambda-union claim to the streaming-only reality (E2).
   - Owner: product-engineer · Write set: `specs/memory/architecture.md`
