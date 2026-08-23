@@ -1,14 +1,16 @@
 #!/usr/bin/env bash
-# deploy_all.sh — Deploy DABs components in apps/dabs/ with version-aware skip logic.
+# deploy_all.sh — Deploy DABs components in apps/dabs/.
 #
 # Each subdirectory with a databricks.yml is an autonomous DABs component.
-# A component is SKIPPED when the PRD git tag dabs/{bundle-name}-v{VERSION} already exists.
-# VERSION is read from the VERSION file inside each component directory.
+# VERSION is read from the VERSION file inside each component directory and is
+# informational only — the one version axis is the SDD release id (VERSION at the
+# repo root), and re-deploying the same version is expected within a release; no
+# tag-existence check gates a deploy.
 #
 # Usage:
 #   ./deploy_all.sh dev                              # Deploy all to dev
-#   ./deploy_all.sh hml                              # Deploy all to hml (skips PRD-tagged)
-#   ./deploy_all.sh prod --tag                       # Deploy to prod, then create git tags
+#   ./deploy_all.sh hml                              # Deploy all to hml
+#   ./deploy_all.sh prod                             # Deploy all to prod
 #   ./deploy_all.sh dev dlt_ethereum job_ddl_setup   # Deploy specific components
 #
 # Exit codes:
@@ -27,35 +29,19 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${1:-dev}"
 shift || true
 
-DO_TAG=false
-FILTER_COMPONENTS=()
-for arg in "$@"; do
-  if [[ "$arg" == "--tag" ]]; then
-    DO_TAG=true
-  else
-    FILTER_COMPONENTS+=("$arg")
-  fi
-done
+FILTER_COMPONENTS=("$@")
 
 # ── Colors ──────────────────────────────────────────────────────────────────
 GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
 RED='\033[0;31m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
 NC='\033[0m'
 
 echo -e "${BOLD}${CYAN}DABs Deploy — target: ${TARGET}${NC}"
-[[ "$DO_TAG" == true ]] && echo -e "${BOLD}  (will create git tags after successful PRD deploys)${NC}"
-echo ""
-
-# Fetch remote tags so we can check what's already deployed in PRD
-echo "Fetching remote tags..."
-git fetch --tags --quiet 2>/dev/null || echo -e "${YELLOW}Warning: could not fetch remote tags (offline?)${NC}"
 echo ""
 
 DEPLOYED=()
-SKIPPED=()
 FAILED=()
 
 for component_dir in "${SCRIPT_DIR}"/*/; do
@@ -84,22 +70,11 @@ for component_dir in "${SCRIPT_DIR}"/*/; do
   fi
   VERSION=$(tr -d '[:space:]' < "$VERSION_FILE")
 
-  # ── Get bundle name → build PRD tag ────────────────────────────────────
-  BUNDLE_NAME=$(grep -m1 "^  name:" "${component_dir}databricks.yml" | awk '{print $2}')
-  PRD_TAG="dabs/${BUNDLE_NAME}-v${VERSION}"
-
-  # ── Skip if PRD tag already exists ─────────────────────────────────────
-  if git tag -l "$PRD_TAG" | grep -q "$PRD_TAG"; then
-    echo -e "  ${YELLOW}[SKIP]${NC}   ${component_name} @ ${VERSION} — tag ${PRD_TAG} exists"
-    SKIPPED+=("$component_name")
-    continue
-  fi
-
   # ── Deploy ─────────────────────────────────────────────────────────────
   echo -e "  ${CYAN}[DEPLOY]${NC}  ${component_name} @ ${VERSION} → target=${TARGET}"
   if (cd "${component_dir}" && databricks bundle deploy --target "${TARGET}"); then
     echo -e "  ${GREEN}[OK]${NC}     ${component_name}"
-    DEPLOYED+=("${component_name}:${PRD_TAG}")
+    DEPLOYED+=("${component_name}")
   else
     echo -e "  ${RED}[FAIL]${NC}   ${component_name}"
     FAILED+=("$component_name")
@@ -109,21 +84,13 @@ done
 
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo "══════════════════════════════════════════════════"
-echo -e "Deployed: ${GREEN}${#DEPLOYED[@]}${NC}  |  Skipped: ${YELLOW}${#SKIPPED[@]}${NC}  |  Failed: ${RED}${#FAILED[@]}${NC}"
+echo -e "Deployed: ${GREEN}${#DEPLOYED[@]}${NC}  |  Failed: ${RED}${#FAILED[@]}${NC}"
 
 if [[ ${#DEPLOYED[@]} -gt 0 ]]; then
   echo ""
   echo "Deployed components:"
   for entry in "${DEPLOYED[@]}"; do
-    echo -e "  ${GREEN}✔${NC}  ${entry%%:*}"
-  done
-fi
-
-if [[ ${#SKIPPED[@]} -gt 0 ]]; then
-  echo ""
-  echo "Skipped (already in PRD):"
-  for s in "${SKIPPED[@]}"; do
-    echo -e "  ${YELLOW}–${NC}  $s"
+    echo -e "  ${GREEN}✔${NC}  ${entry}"
   done
 fi
 
@@ -135,24 +102,6 @@ if [[ ${#FAILED[@]} -gt 0 ]]; then
     echo -e "  ${RED}✘${NC}  $f"
   done
   exit 1
-fi
-
-# ── Create PRD git tags for each successfully deployed component ─────────────
-if [[ "$DO_TAG" == true && ${#DEPLOYED[@]} -gt 0 ]]; then
-  echo ""
-  echo "Creating git tags for deployed components..."
-  for entry in "${DEPLOYED[@]}"; do
-    TAG="${entry##*:}"
-    COMP="${entry%%:*}"
-    if git tag -a "$TAG" -m "DABs deploy: ${COMP} ${TAG}"; then
-      echo -e "  ${GREEN}Tagged${NC}: $TAG"
-    else
-      echo -e "  ${YELLOW}Tag already exists (skipped)${NC}: $TAG"
-    fi
-  done
-  echo "Pushing tags to origin..."
-  git push origin --tags --quiet
-  echo -e "${GREEN}Tags pushed.${NC}"
 fi
 
 echo ""
