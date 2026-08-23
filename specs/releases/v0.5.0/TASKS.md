@@ -185,7 +185,7 @@
   - Deps: T-C.3 · AC-18, AC-24 · Findings: DRIFT-25, DRIFT-26, DRIFT-27
   - Evidence: job definitions scoped to non-DLT objects; no f-string SQL in the diff; `validate -t dev` clean.
 
-- [ ] **T-C.5** — Validate every surviving bundle in `dev` and `hml` before any deploy (O-6).
+- [-] **T-C.5** — Validate every surviving bundle in `dev` and `hml` before any deploy (O-6).
   - Owner: software-engineer · Write set: none (verification)
   - Deps: T-C.4 · AC-17 · Findings: DRIFT-18
   - Evidence: exit-0 `databricks bundle validate -t dev` and `-t hml`, captured per bundle name.
