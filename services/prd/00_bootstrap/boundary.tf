@@ -73,7 +73,17 @@ data "aws_iam_policy_document" "ci_boundary" {
     resources = local.ssm_parameter_arns
   }
 
-  # Deliberately no statement grants any `iam:*`, `sts:*` or sensitive
+  # Unity Catalog storage-credential roles must be able to assume THEMSELVES
+  # (Databricks validates it). This is the only `sts:*` the boundary admits,
+  # scoped to the project's UC roles — never to the gha roles.
+  statement {
+    sid       = "BoundaryUnityCatalogSelfAssume"
+    effect    = "Allow"
+    actions   = ["sts:AssumeRole"]
+    resources = local.uc_storage_role_arns
+  }
+
+  # Deliberately no other statement grants any `iam:*`, `sts:*` or sensitive
   # network/account-level action — a boundary-limited role's ceiling stops
   # at this project's data-plane resources.
 }

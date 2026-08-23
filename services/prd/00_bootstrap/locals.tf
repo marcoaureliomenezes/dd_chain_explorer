@@ -58,6 +58,12 @@ locals {
     "arn:aws:iam::${local.account_id}:role/${p}*"
   ]
 
+  # Unity Catalog storage-credential roles — the only roles the boundary lets
+  # assume themselves (Databricks requires self-assumption).
+  uc_storage_role_arns = [
+    "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-databricks-*-s3-role",
+  ]
+
   iam_instance_profile_arns = [
     for p in var.project_name_prefixes :
     "arn:aws:iam::${local.account_id}:instance-profile/${p}*"

@@ -191,6 +191,14 @@ data "aws_iam_policy_document" "databricks_hml_s3_policy" {
       module.s3_lakehouse.bucket_arn,
     ]
   }
+  # Unity Catalog requires the storage-credential role to be self-assuming
+  # (trust statement above + this permission; the CI boundary admits it).
+  statement {
+    sid       = "SelfAssume"
+    effect    = "Allow"
+    actions   = ["sts:AssumeRole"]
+    resources = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-databricks-hml-s3-role"]
+  }
 }
 
 resource "aws_iam_role_policy" "databricks_hml_s3_policy" {
