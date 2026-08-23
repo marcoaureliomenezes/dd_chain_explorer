@@ -26,6 +26,7 @@ or whitespace separated). The env var DIFF_BASE_OK must be "true" — the caller
 responsible for failing loud when no merge-base exists (see detect_changes.sh /
 plan_on_pr.yml); this script refuses to run on a silently-degraded diff.
 """
+
 from __future__ import annotations
 
 import json

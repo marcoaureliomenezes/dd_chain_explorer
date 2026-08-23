@@ -21,9 +21,7 @@ def _load() -> dict:
 
 
 def _load_changed_stacks():
-    spec = importlib.util.spec_from_file_location(
-        "changed_stacks", CI_DIR / "changed_stacks.py"
-    )
+    spec = importlib.util.spec_from_file_location("changed_stacks", CI_DIR / "changed_stacks.py")
     assert spec and spec.loader
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -66,7 +64,14 @@ def test_no_dependency_cycles() -> None:
         visiting: set[str] = set()
         done: set[str] = set()
 
-        def visit(node: str, path: list[str]) -> None:
+        def visit(
+            node: str,
+            path: list[str],
+            deps: dict[str, list[str]] = deps,
+            visiting: set[str] = visiting,
+            done: set[str] = done,
+            env: str = env,
+        ) -> None:
             if node in done:
                 return
             assert node not in visiting, f"{env}: cycle through {path + [node]}"
@@ -106,6 +111,7 @@ def test_declared_modules_exist_on_disk() -> None:
 
 
 # ── change-detection (T-R6-A8): module edit -> only dependent stacks ──────────
+
 
 def test_stack_own_path_edit_triggers_only_that_stack() -> None:
     cs = _load_changed_stacks()
@@ -179,11 +185,7 @@ def test_plan_on_pr_working_dirs_match_stack_map() -> None:
     subset — it need not plan every stack, but it must never plan a path the map does not
     declare, which would mean a second source of truth)."""
     data = _load()
-    map_paths = {
-        s["path"].rstrip("/")
-        for env in data["environments"].values()
-        for s in env["stacks"]
-    }
+    map_paths = {s["path"].rstrip("/") for env in data["environments"].values() for s in env["stacks"]}
     wf_dirs = _working_dirs(WORKFLOWS_DIR / "plan_on_pr.yml")
     assert wf_dirs, "plan_on_pr.yml declares no working-directory jobs"
     orphan_jobs = wf_dirs - map_paths

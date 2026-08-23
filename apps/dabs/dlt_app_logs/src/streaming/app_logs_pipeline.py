@@ -23,11 +23,10 @@
 import dlt
 from pyspark.sql import functions as F
 
-
 # ── Configuration ─────────────────────────────────────────────────────────────
 
 INGESTION_BUCKET = spark.conf.get("ingestion.s3.bucket", "dm-chain-explorer-dev-ingestion")
-S3_RAW_BASE      = f"s3://{INGESTION_BUCKET}/raw"
+S3_RAW_BASE = f"s3://{INGESTION_BUCKET}/raw"
 
 
 def _configured_logger_names(key: str, default_csv: str) -> list[str]:
@@ -60,6 +59,7 @@ BATCH_APP_NAMES = _configured_logger_names(
 
 # ── Auto Loader Helper ─────────────────────────────────────────────────────────
 
+
 def _auto_loader_fluentbit(stream_name: str):
     """
     Auto Loader reader for Fluent Bit NDJSON log files in S3.
@@ -72,19 +72,12 @@ def _auto_loader_fluentbit(stream_name: str):
     """
     path = f"{S3_RAW_BASE}/{stream_name}/"
     schema = (
-        "timestamp LONG, "
-        "logger STRING, "
-        "level STRING, "
-        "filename STRING, "
-        "function_name STRING, "
-        "message STRING"
+        "timestamp LONG, logger STRING, level STRING, filename STRING, function_name STRING, message STRING"
     )
     return (
-        spark.readStream
-        .format("cloudFiles")
+        spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
-        .option("cloudFiles.schemaLocation",
-                f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}_v2")
+        .option("cloudFiles.schemaLocation", f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}_v2")
         .schema(schema)
         .load(path)
     )
@@ -104,6 +97,7 @@ def _auto_loader_fluentbit(stream_name: str):
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="b_app_logs_data",
     comment="Bronze: logs das aplicações on-chain via Fluent Bit → S3 (NDJSON)",
@@ -113,10 +107,7 @@ def _auto_loader_fluentbit(stream_name: str):
     },
 )
 def bronze_app_logs_data():
-    return (
-        _auto_loader_fluentbit("app_logs")
-        .withColumn("_ingested_at", F.current_timestamp())
-    )
+    return _auto_loader_fluentbit("app_logs").withColumn("_ingested_at", F.current_timestamp())
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -132,6 +123,7 @@ def bronze_app_logs_data():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="s_logs.logs_streaming",
     comment="Silver: logs das aplicações de streaming on-chain",
@@ -140,23 +132,20 @@ def bronze_app_logs_data():
         "pipelines.autoOptimize.managed": "true",
     },
 )
-@dlt.expect_or_drop("valid_level",   "level IS NOT NULL")
+@dlt.expect_or_drop("valid_level", "level IS NOT NULL")
 @dlt.expect_or_drop("valid_message", "message IS NOT NULL")
 def silver_logs_streaming():
     df = dlt.read_stream("b_app_logs_data")
-    return (
-        df.select(
-            F.col("timestamp").alias("event_ts_epoch"),
-            F.to_timestamp(F.col("timestamp")).alias("event_time"),
-            F.col("logger"),
-            F.col("level"),
-            F.col("filename"),
-            F.col("function_name"),
-            F.col("message"),
-            F.col("_ingested_at"),
-        )
-        .filter(F.col("logger").isin(STREAMING_APP_NAMES))
-    )
+    return df.select(
+        F.col("timestamp").alias("event_ts_epoch"),
+        F.to_timestamp(F.col("timestamp")).alias("event_time"),
+        F.col("logger"),
+        F.col("level"),
+        F.col("filename"),
+        F.col("function_name"),
+        F.col("message"),
+        F.col("_ingested_at"),
+    ).filter(F.col("logger").isin(STREAMING_APP_NAMES))
 
 
 # COMMAND ----------
@@ -167,6 +156,7 @@ def silver_logs_streaming():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="s_logs.logs_batch",
     comment="Silver: logs das aplicações batch on-chain",
@@ -175,23 +165,20 @@ def silver_logs_streaming():
         "pipelines.autoOptimize.managed": "true",
     },
 )
-@dlt.expect_or_drop("valid_level",   "level IS NOT NULL")
+@dlt.expect_or_drop("valid_level", "level IS NOT NULL")
 @dlt.expect_or_drop("valid_message", "message IS NOT NULL")
 def silver_logs_batch():
     df = dlt.read_stream("b_app_logs_data")
-    return (
-        df.select(
-            F.col("timestamp").alias("event_ts_epoch"),
-            F.to_timestamp(F.col("timestamp")).alias("event_time"),
-            F.col("logger"),
-            F.col("level"),
-            F.col("filename"),
-            F.col("function_name"),
-            F.col("message"),
-            F.col("_ingested_at"),
-        )
-        .filter(F.col("logger").isin(BATCH_APP_NAMES))
-    )
+    return df.select(
+        F.col("timestamp").alias("event_ts_epoch"),
+        F.to_timestamp(F.col("timestamp")).alias("event_time"),
+        F.col("logger"),
+        F.col("level"),
+        F.col("filename"),
+        F.col("function_name"),
+        F.col("message"),
+        F.col("_ingested_at"),
+    ).filter(F.col("logger").isin(BATCH_APP_NAMES))
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -206,6 +193,7 @@ def silver_logs_batch():
 # MAGIC Fonte: mensagens com padrão `etherscan;api_call;api_key_name:{name};action:{act};...`
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="g_api_keys.etherscan_consumption",
@@ -251,21 +239,21 @@ def gold_etherscan_consumption():
         F.count(F.when(F.col("call_status") == "ok", 1)).alias("calls_ok_total"),
         F.count(F.when(F.col("call_status") != "ok", 1)).alias("calls_error_total"),
         # ── janelas de tempo (baseadas no _ingested_at da mensagem) ──
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)
-        ).alias("calls_1h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)
-        ).alias("calls_2h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)
-        ).alias("calls_12h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)
-        ).alias("calls_24h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)
-        ).alias("calls_48h"),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)).alias(
+            "calls_1h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)).alias(
+            "calls_2h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)).alias(
+            "calls_12h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)).alias(
+            "calls_24h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)).alias(
+            "calls_48h"
+        ),
         F.max("_ingested_at").alias("last_call_at"),
         F.current_timestamp().alias("computed_at"),
     )
@@ -281,6 +269,7 @@ def gold_etherscan_consumption():
 # MAGIC `raw/app_logs/` no bucket S3 de raw data.
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="g_api_keys.web3_keys_consumption",
@@ -318,38 +307,38 @@ def gold_web3_keys_consumption():
         .withColumn(
             "vendor",
             F.when(F.lower(F.col("api_key_name")).contains("alchemy"), F.lit("alchemy"))
-             .when(F.lower(F.col("api_key_name")).contains("infura"),  F.lit("infura"))
-             .otherwise(F.lit("unknown")),
+            .when(F.lower(F.col("api_key_name")).contains("infura"), F.lit("infura"))
+            .otherwise(F.lit("unknown")),
         )
         .withColumn(
             "call_status",
-            F.when(F.col("message").contains(";Error:"),     F.lit("error"))
-             .when(F.col("message").contains(";HTTPError:"), F.lit("http_error"))
-             .otherwise(F.lit("ok")),
+            F.when(F.col("message").contains(";Error:"), F.lit("error"))
+            .when(F.col("message").contains(";HTTPError:"), F.lit("http_error"))
+            .otherwise(F.lit("ok")),
         )
         .filter(F.col("api_key_name") != "")
     )
 
     return df.groupBy("api_key_name", "vendor").agg(
         F.count("*").alias("calls_total"),
-        F.count(F.when(F.col("call_status") == "ok",     1)).alias("calls_ok_total"),
-        F.count(F.when(F.col("call_status") != "ok",     1)).alias("calls_error_total"),
+        F.count(F.when(F.col("call_status") == "ok", 1)).alias("calls_ok_total"),
+        F.count(F.when(F.col("call_status") != "ok", 1)).alias("calls_error_total"),
         # ── janelas de tempo (baseadas no _ingested_at da mensagem) ──
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)
-        ).alias("calls_1h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)
-        ).alias("calls_2h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)
-        ).alias("calls_12h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)
-        ).alias("calls_24h"),
-        F.count(
-            F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)
-        ).alias("calls_48h"),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"), 1)).alias(
+            "calls_1h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 2 HOURS"), 1)).alias(
+            "calls_2h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 12 HOURS"), 1)).alias(
+            "calls_12h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 24 HOURS"), 1)).alias(
+            "calls_24h"
+        ),
+        F.count(F.when(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 48 HOURS"), 1)).alias(
+            "calls_48h"
+        ),
         F.max("_ingested_at").alias("last_call_at"),
         F.current_timestamp().alias("computed_at"),
     )

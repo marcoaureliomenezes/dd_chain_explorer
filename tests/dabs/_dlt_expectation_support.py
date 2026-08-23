@@ -24,7 +24,9 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-_DECORATOR_RE = re.compile(r'^@dlt\.(expect_or_drop|expect)\(\s*"([^"]+)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)\s*$')
+_DECORATOR_RE = re.compile(
+    r'^@dlt\.(expect_or_drop|expect)\(\s*"([^"]+)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\)\s*(?:#.*)?$'
+)
 _DEF_RE = re.compile(r"^def\s+(\w+)\s*\(")
 
 _IS_NOT_NULL_RE = re.compile(r"^(\w+)\s+IS\s+NOT\s+NULL$")

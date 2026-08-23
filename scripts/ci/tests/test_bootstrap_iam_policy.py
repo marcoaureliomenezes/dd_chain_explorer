@@ -72,9 +72,7 @@ def _statement_blocks(policy_doc_text: str) -> list[str]:
 def _policy_document_blocks(text: str) -> dict[str, str]:
     """Map policy-document local name -> its full block text."""
     out: dict[str, str] = {}
-    for m in re.finditer(
-        r'data\s+"aws_iam_policy_document"\s+"(\w+)"\s*\{', text
-    ):
+    for m in re.finditer(r'data\s+"aws_iam_policy_document"\s+"(\w+)"\s*\{', text):
         depth = 1
         i = m.end()
         while depth and i < len(text):
@@ -117,14 +115,13 @@ def test_every_allow_statement_resource_is_project_scoped() -> None:
                 violations.append(f"{doc_name}.{sid}: no resources attribute")
                 continue
             if '"*"' in resources or resources.strip() == "*":
-                violations.append(f"{doc_name}.{sid}: resources includes literal \"*\"")
+                violations.append(f'{doc_name}.{sid}: resources includes literal "*"')
                 continue
             referenced_locals = set(re.findall(r"local\.(\w+)", resources))
             unscoped = referenced_locals - ALLOWED_RESOURCE_LOCALS
             if not referenced_locals:
                 violations.append(
-                    f"{doc_name}.{sid}: resources references no known local — "
-                    f"got {resources!r}"
+                    f"{doc_name}.{sid}: resources references no known local — got {resources!r}"
                 )
             elif unscoped:
                 violations.append(
@@ -132,9 +129,7 @@ def test_every_allow_statement_resource_is_project_scoped() -> None:
                     f"{sorted(unscoped)} — got {resources!r}"
                 )
 
-    assert not violations, "Allow statement(s) not provably project-scoped:\n" + "\n".join(
-        violations
-    )
+    assert not violations, "Allow statement(s) not provably project-scoped:\n" + "\n".join(violations)
 
 
 def test_self_mutation_deny_covers_iam_star_and_user_credential_verbs() -> None:
@@ -193,9 +188,7 @@ def test_self_mutation_deny_covers_iam_star_and_user_credential_verbs() -> None:
     # deliberately NOT denied here: it is the sole retrofit path onto the 8
     # pre-existing project roles, permitted only conditionally by the
     # ProjectIamRoleSetBoundary Allow (asserted separately below).
-    boundary_tamper_deny = next(
-        s for s in deny_statements if "DenyRolePermissionsBoundaryTampering" in s
-    )
+    boundary_tamper_deny = next(s for s in deny_statements if "DenyRolePermissionsBoundaryTampering" in s)
     assert "iam:DeleteRolePermissionsBoundary" in boundary_tamper_deny
     assert "iam:PutRolePermissionsBoundary" not in boundary_tamper_deny
 
@@ -255,9 +248,7 @@ def test_pass_role_requires_passed_to_service_condition() -> None:
     text = _read("policies.tf")
     documents = _policy_document_blocks(text)
     deploy_doc = documents["gha_deploy_permissions"]
-    pass_role_stmt = next(
-        s for s in _statement_blocks(deploy_doc) if "ProjectIamPassRole" in s
-    )
+    pass_role_stmt = next(s for s in _statement_blocks(deploy_doc) if "ProjectIamPassRole" in s)
     assert "iam:PassedToService" in pass_role_stmt
     assert "lambda.amazonaws.com" in pass_role_stmt
     assert "events.amazonaws.com" in pass_role_stmt
@@ -345,8 +336,10 @@ def test_every_project_iam_role_sets_permissions_boundary() -> None:
     assert role_blocks, "expected at least one project aws_iam_role under services/"
     # Locks the exact count from the T-A.2 rev2 verdict's file:line list so a
     # newly-added project role cannot silently reopen the gap unnoticed.
-    assert len(role_blocks) == 8, (
-        f"expected exactly 8 project aws_iam_role resources outside "
+    # 8 -> 6 (T-B.3, security rev3 HIGH): the 2 prd/03_iam ECS task/execution
+    # roles were removed as capture-era residue with no live consumer.
+    assert len(role_blocks) == 6, (
+        f"expected exactly 6 project aws_iam_role resources outside "
         f"00_bootstrap, found {len(role_blocks)}: "
         f"{[(str(f.relative_to(REPO_ROOT)), name) for f, name, _ in role_blocks]}"
     )
@@ -356,9 +349,8 @@ def test_every_project_iam_role_sets_permissions_boundary() -> None:
         for tf_file, role_name, block in role_blocks
         if "permissions_boundary" not in block
     ]
-    assert not violations, (
-        "project aws_iam_role resource(s) with no permissions_boundary:\n"
-        + "\n".join(violations)
+    assert not violations, "project aws_iam_role resource(s) with no permissions_boundary:\n" + "\n".join(
+        violations
     )
 
 

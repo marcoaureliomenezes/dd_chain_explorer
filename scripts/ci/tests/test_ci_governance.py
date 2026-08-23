@@ -39,11 +39,7 @@ def _on_disk_stack_dirs() -> set[str]:
 
 def test_map_equals_on_disk_survivors() -> None:
     data = _load_map()
-    map_paths = {
-        s["path"]
-        for env in data["environments"].values()
-        for s in env["stacks"]
-    }
+    map_paths = {s["path"] for env in data["environments"].values() for s in env["stacks"]}
     on_disk = _on_disk_stack_dirs()
     assert map_paths == on_disk, (map_paths ^ on_disk, map_paths, on_disk)
 
@@ -53,16 +49,20 @@ def test_bootstrap_excluded_from_ci_stack_lists() -> None:
     for either the default (plan/apply) or --destroyable set."""
     default = subprocess.run(
         ["bash", str(CI_DIR / "stack_list.sh"), "prd"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split()
     destroyable = subprocess.run(
         ["bash", str(CI_DIR / "stack_list.sh"), "prd", "--destroyable"],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.split()
     assert "bootstrap" not in default
     assert "bootstrap" not in destroyable
     assert "tf_state" not in destroyable  # never_destroy
-    assert "tf_state" in default          # plannable, just never destroyed
+    assert "tf_state" in default  # plannable, just never destroyed
 
 
 def test_destroy_all_stack_set_equals_map_destroyable_set() -> None:
@@ -70,13 +70,10 @@ def test_destroy_all_stack_set_equals_map_destroyable_set() -> None:
     the map's destroyable survivor set — no more, no less (T-A.8, F-ARCH-4)."""
     wf = (WORKFLOWS_DIR / "destroy_all_cloud_infra.yml").read_text()
     wf_dirs = set(re.findall(r'chdir="\$\{\{\s*env\.\w+_ROOT\s*\}\}/(\w+)"', wf))
-    root_map = {"DEV_ROOT": "dev", "HML_ROOT": "hml", "PRD_ROOT": "prd"}
     roots = dict(re.findall(r"(\w+_ROOT):\s*services/(\w+)", wf))
     expected = set()
     for env_key, env in roots.items():
-        for m in re.finditer(
-            rf'chdir="\$\{{\{{\s*env\.{env_key}\s*\}}\}}/(\w+)"', wf
-        ):
+        for m in re.finditer(rf'chdir="\$\{{\{{\s*env\.{env_key}\s*\}}\}}/(\w+)"', wf):
             expected.add(f"services/{env}/{m.group(1)}")
     data = _load_map()
     destroyable_paths = {
@@ -129,7 +126,12 @@ def test_publish_oidc_vars_maps_four_role_names() -> None:
     script = CI_DIR / "publish_oidc_vars.sh"
     assert script.is_file(), "scripts/ci/publish_oidc_vars.sh must exist (T-A.4)"
     src = script.read_text()
-    for name in ("AWS_DEPLOY_ROLE_DEV", "AWS_DEPLOY_ROLE_HML", "AWS_DEPLOY_ROLE_PRD", "AWS_DEPLOY_ROLE_READONLY"):
+    for name in (
+        "AWS_DEPLOY_ROLE_DEV",
+        "AWS_DEPLOY_ROLE_HML",
+        "AWS_DEPLOY_ROLE_PRD",
+        "AWS_DEPLOY_ROLE_READONLY",
+    ):
         assert name in src, f"publish_oidc_vars.sh does not reference {name}"
     assert "gh variable set" in src
     assert "--dry-run" in src and "--apply" in src

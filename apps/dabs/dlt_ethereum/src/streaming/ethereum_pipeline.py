@@ -39,9 +39,7 @@ import re
 
 import dlt
 from pyspark.sql import functions as F
-from pyspark.sql.types import StringType, StructType, StructField, LongType, ArrayType, IntegerType
 from pyspark.sql.window import Window
-
 
 # Unity Catalog identifiers cannot be bind-parameterized in Spark SQL — validate
 # the name against a strict allow-list pattern before any f-string interpolation
@@ -60,8 +58,8 @@ def _validated_identifier(name: str, what: str) -> str:
 # Auto Loader reads from the Firehose delivery prefix.
 
 INGESTION_BUCKET = spark.conf.get("ingestion.s3.bucket", "dm-chain-explorer-dev-ingestion")
-S3_RAW_BASE      = f"s3://{INGESTION_BUCKET}/raw"
-CATALOG          = _validated_identifier(spark.conf.get("catalog", "dev"), "catalog")
+S3_RAW_BASE = f"s3://{INGESTION_BUCKET}/raw"
+CATALOG = _validated_identifier(spark.conf.get("catalog", "dev"), "catalog")
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -77,12 +75,12 @@ CATALOG          = _validated_identifier(spark.conf.get("catalog", "dev"), "cata
 
 # COMMAND ----------
 
+
 def _auto_loader_json(stream_name: str):
     """Auto Loader reader for NDJSON files delivered by Firehose."""
     path = f"{S3_RAW_BASE}/{stream_name}/"
     return (
-        spark.readStream
-        .format("cloudFiles")
+        spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
         .option("cloudFiles.schemaLocation", f"s3://{INGESTION_BUCKET}/checkpoints/schemas/{stream_name}")
         .option("cloudFiles.inferColumnTypes", "true")
@@ -128,10 +126,12 @@ def bronze_eth_transactions():
 )
 def bronze_eth_txs_input_decoded():
     return (
-        spark.readStream
-        .format("cloudFiles")
+        spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "json")
-        .option("cloudFiles.schemaLocation", f"s3://{INGESTION_BUCKET}/checkpoints/schemas/mainnet-transactions-decoded")
+        .option(
+            "cloudFiles.schemaLocation",
+            f"s3://{INGESTION_BUCKET}/checkpoints/schemas/mainnet-transactions-decoded",
+        )
         .option("cloudFiles.inferColumnTypes", "true")
         .option("cloudFiles.partitionColumns", "")
         .option(
@@ -160,6 +160,7 @@ def bronze_eth_txs_input_decoded():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="s_apps.eth_blocks",
     comment="Silver: dados completos dos blocos Ethereum (header + withdrawals)",
@@ -169,7 +170,7 @@ def bronze_eth_txs_input_decoded():
     },
 )
 @dlt.expect_or_drop("valid_block_number", "block_number IS NOT NULL")
-@dlt.expect_or_drop("valid_hash",         "block_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_hash", "block_hash IS NOT NULL")
 def silver_eth_blocks():
     df = dlt.read_stream("eth_mined_blocks")
     return df.select(
@@ -208,6 +209,7 @@ def silver_eth_blocks():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="s_apps.eth_transactions_staging",
     comment="Silver staging: transações Ethereum raw — tabela interna DLT, não consultar diretamente. Use s_apps.transactions_ethereum.",
@@ -217,16 +219,16 @@ def silver_eth_blocks():
     },
     partition_cols=["dat_ref"],
 )
-@dlt.expect_or_drop("valid_hash",         "tx_hash IS NOT NULL")
-@dlt.expect_or_drop("valid_block",        "block_number IS NOT NULL")
+@dlt.expect_or_drop("valid_hash", "tx_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_block", "block_number IS NOT NULL")
 # ISSUE-030 / DE-P-003: from_address promoted from expect → expect_or_drop.
 # A transaction without a valid from_address is fundamentally malformed and must not
 # propagate into Silver/Gold layers where it would corrupt canonical-chain accounting.
-@dlt.expect_or_drop("valid_from_address", "from_address IS NOT NULL AND from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect_or_drop("valid_from_address", "from_address IS NOT NULL AND from_address RLIKE '^0x[a-fA-F0-9]{40}$'")  # fmt: skip
 # to_address intentionally remains expect (not expect_or_drop): NULL is valid for
 # contract-creation transactions (EIP-155). Dropping these rows would silently omit
 # all contract deploys from Silver, breaking g_apps.contract_deploy_metrics_hourly.
-@dlt.expect("valid_to_address",           "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect("valid_to_address", "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_eth_transactions_staging():
     df = dlt.read_stream("eth_transactions")
     return df.select(
@@ -258,6 +260,7 @@ def silver_eth_transactions_staging():
 # MAGIC Reads from bronze `eth_txs_input_decoded` (JSON fields from Firehose).
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="s_apps.txs_inputs_decoded_fast",
@@ -297,6 +300,7 @@ def silver_txs_inputs_decoded_fast():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="s_apps.transactions_ethereum",
     comment=(
@@ -310,14 +314,14 @@ def silver_txs_inputs_decoded_fast():
     },
     partition_cols=["dat_ref"],
 )
-@dlt.expect_or_drop("valid_hash",         "tx_hash IS NOT NULL")
-@dlt.expect_or_drop("valid_block",        "block_number IS NOT NULL")
+@dlt.expect_or_drop("valid_hash", "tx_hash IS NOT NULL")
+@dlt.expect_or_drop("valid_block", "block_number IS NOT NULL")
 # Consistent with eth_transactions_staging: from_address must be valid (expect_or_drop).
 # Records reaching this table already passed the staging filter, but the expectation
 # is preserved here for DLT lineage tracking and explicit documentation of the contract.
-@dlt.expect_or_drop("valid_from_address", "from_address IS NOT NULL AND from_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect_or_drop("valid_from_address", "from_address IS NOT NULL AND from_address RLIKE '^0x[a-fA-F0-9]{40}$'")  # fmt: skip
 # to_address remains expect: NULL is valid for contract-creation transactions.
-@dlt.expect("valid_to_address",           "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
+@dlt.expect("valid_to_address", "to_address IS NULL OR to_address RLIKE '^0x[a-fA-F0-9]{40}$'")
 def silver_transactions_ethereum():
     # ── Stream: transações raw ───────────────────────────────────────────────
     # dlt.read_stream → Streaming Table (consume novos registros incrementalmente)
@@ -326,18 +330,15 @@ def silver_transactions_ethereum():
     # ── Static: inputs decodificados (snapshot) ──────────────────────────────
     # DLT NÃO suporta Stream-Stream JOIN. Decoded inputs são lidos como
     # snapshot estático (dlt.read) — será atualizado a cada update do pipeline.
-    decoded = (
-        dlt.read("s_apps.txs_inputs_decoded_fast")
-        .select(
-            F.col("tx_hash").alias("d_tx_hash"),
-            F.col("contract_address"),
-            F.col("method"),
-            F.col("parms"),
-            F.col("method_id"),
-            F.col("decode_type"),
-            F.col("decode_source"),
-            F.col("decode_confidence"),
-        )
+    decoded = dlt.read("s_apps.txs_inputs_decoded_fast").select(
+        F.col("tx_hash").alias("d_tx_hash"),
+        F.col("contract_address"),
+        F.col("method"),
+        F.col("parms"),
+        F.col("method_id"),
+        F.col("decode_type"),
+        F.col("decode_source"),
+        F.col("decode_confidence"),
     )
 
     # ── Stream-Static LEFT JOIN por tx_hash ──────────────────────────────────
@@ -345,15 +346,12 @@ def silver_transactions_ethereum():
 
     # ── Stream-Static JOIN: enriquece com dados do bloco (timestamp + gas) ───
     # dlt.read() retorna snapshot do bloco — suportado como stream-static join.
-    blocks = (
-        dlt.read("s_apps.eth_blocks")
-        .select(
-            F.col("block_number").alias("b_block_number"),
-            F.from_unixtime("block_timestamp", "yyyy-MM-dd HH:mm:ss").alias("tx_timestamp"),
-            F.col("gas_limit").alias("block_gas_limit"),
-            F.col("gas_used").alias("block_gas_used"),
-            F.col("base_fee_per_gas"),
-        )
+    blocks = dlt.read("s_apps.eth_blocks").select(
+        F.col("block_number").alias("b_block_number"),
+        F.from_unixtime("block_timestamp", "yyyy-MM-dd HH:mm:ss").alias("tx_timestamp"),
+        F.col("gas_limit").alias("block_gas_limit"),
+        F.col("gas_used").alias("block_gas_used"),
+        F.col("base_fee_per_gas"),
     )
 
     # ── Stream-Static JOIN: status de canonicidade do bloco ─────────────────
@@ -362,22 +360,18 @@ def silver_transactions_ethereum():
     # chain_status 'orphan'    → tx_status 'orphaned'
     # chain_status 'unconfirmed' / NULL (bloco novo, índice ainda sem cobertura)
     #                          → tx_status 'unconfirmed'
-    canonical = (
-        dlt.read("s_apps.eth_canonical_blocks_index")
-        .select(
-            F.col("block_number").alias("c_block_number"),
-            F.col("block_hash").alias("c_block_hash"),
-            F.col("chain_status"),
-        )
+    canonical = dlt.read("s_apps.eth_canonical_blocks_index").select(
+        F.col("block_number").alias("c_block_number"),
+        F.col("block_hash").alias("c_block_hash"),
+        F.col("chain_status"),
     )
 
     return (
-        joined
-        .join(blocks, joined["block_number"] == blocks["b_block_number"], "left")
+        joined.join(blocks, joined["block_number"] == blocks["b_block_number"], "left")
         .join(
             canonical,
-            (joined["block_number"] == canonical["c_block_number"]) &
-            (joined["block_hash"]   == canonical["c_block_hash"]),
+            (joined["block_number"] == canonical["c_block_number"])
+            & (joined["block_hash"] == canonical["c_block_hash"]),
             "left",
         )
         .select(
@@ -396,12 +390,12 @@ def silver_transactions_ethereum():
             F.col("tx_type"),
             # Classificação semântica do tipo de transação (P02)
             F.when(F.col("to_address").isNull(), F.lit("contract_deploy"))
-             .when(
-                 F.col("input").isNull() | (F.col("input") == F.lit("0x")) | (F.col("input") == F.lit("")),
-                 F.lit("peer_to_peer")
-             )
-             .otherwise(F.lit("contract_interaction"))
-             .alias("tx_type_semantic"),
+            .when(
+                F.col("input").isNull() | (F.col("input") == F.lit("0x")) | (F.col("input") == F.lit("")),
+                F.lit("peer_to_peer"),
+            )
+            .otherwise(F.lit("contract_interaction"))
+            .alias("tx_type_semantic"),
             # Campos do bloco
             F.col("tx_timestamp"),
             F.col("block_gas_limit"),
@@ -417,9 +411,9 @@ def silver_transactions_ethereum():
             F.col("decode_confidence"),
             # Status de canonicidade derivado do bloco
             F.when(F.col("chain_status") == "canonical", F.lit("valid"))
-             .when(F.col("chain_status") == "orphan",    F.lit("orphaned"))
-             .otherwise(F.lit("unconfirmed"))
-             .alias("tx_status"),
+            .when(F.col("chain_status") == "orphan", F.lit("orphaned"))
+            .otherwise(F.lit("unconfirmed"))
+            .alias("tx_status"),
             # Placeholders para enriquecimento batch (P04 — preenchidos via transactions_batch)
             F.lit(None).cast("long").alias("receipt_status"),
             F.lit(None).cast("long").alias("is_error"),
@@ -438,6 +432,7 @@ def silver_transactions_ethereum():
 # MAGIC (Shanghai/Capella, Abril 2023). Máximo de 16 saques por bloco.
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="s_apps.eth_blocks_withdrawals",
@@ -506,6 +501,7 @@ def silver_eth_blocks_withdrawals():
 # 1,000 blocks ≈ 3.3 hours at 12 s/block. This comfortably exceeds the maximum observed
 # mainnet reorg depth (~7 blocks). Blocks older than this window are presumed canonical.
 _CANONICAL_WINDOW_BLOCKS = 1_000
+
 
 @dlt.table(
     name="s_apps.eth_canonical_blocks_index",
@@ -600,6 +596,7 @@ def silver_eth_canonical_blocks_index():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.popular_contracts_ranking",
     comment="Gold MV: top 100 contratos mais populares por volume de transações",
@@ -621,8 +618,7 @@ def gold_popular_contracts_ranking():
     df = df.filter(F.col("_ingested_at") >= F.expr("current_timestamp() - INTERVAL 1 HOUR"))
 
     return (
-        df
-        .groupBy("to_address")
+        df.groupBy("to_address")
         .agg(
             F.count("*").alias("tx_count"),
             F.max("_ingested_at").alias("last_seen"),
@@ -651,6 +647,7 @@ def gold_popular_contracts_ranking():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.peer_to_peer_txs",
     comment="Gold MV: transferências ETH diretas entre endereços EOA (input vazio ou nulo)",
@@ -664,12 +661,8 @@ def gold_peer_to_peer_txs():
         dlt.read("s_apps.transactions_ethereum")
         .filter(F.col("tx_status") == "valid")
         .filter(
-            F.col("to_address").isNotNull() &
-            (
-                F.col("input").isNull() |
-                (F.col("input") == "") |
-                (F.col("input") == "0x")
-            )
+            F.col("to_address").isNotNull()
+            & (F.col("input").isNull() | (F.col("input") == "") | (F.col("input") == "0x"))
         )
         .select(
             F.col("tx_hash"),
@@ -697,6 +690,7 @@ def gold_peer_to_peer_txs():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.ethereum_gas_consume",
     comment="Gold MV: consumo de gas por transação com classificação de tipo (peer_to_peer | contract_interaction | contract_deploy)",
@@ -711,12 +705,10 @@ def gold_ethereum_gas_consume():
     # Porcentagem de gas que esta tx consumiu no bloco.
     # Nota: `gas` aqui é o gas limit da tx (streaming não carrega
     # gas_used do receipt). block_gas_used é o total efetivo do bloco.
-    gas_pct_of_block = (
-        F.when(
-            F.col("block_gas_used").isNotNull() & (F.col("block_gas_used") > 0),
-            F.round(F.col("gas").cast("double") / F.col("block_gas_used") * 100, 4),
-        ).otherwise(F.lit(None).cast("double"))
-    )
+    gas_pct_of_block = F.when(
+        F.col("block_gas_used").isNotNull() & (F.col("block_gas_used") > 0),
+        F.round(F.col("gas").cast("double") / F.col("block_gas_used") * 100, 4),
+    ).otherwise(F.lit(None).cast("double"))
 
     return txs.select(
         F.col("block_number"),
@@ -746,6 +738,7 @@ def gold_ethereum_gas_consume():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.transactions_lambda",
     comment="Gold MV: visão Lambda de transações de contratos populares com input decodificado",
@@ -761,33 +754,28 @@ def gold_transactions_lambda():
     Inclui tx_status 'valid' e 'unconfirmed' — exclui apenas 'orphaned'.
     """
     df_ranking = dlt.read("g_apps.popular_contracts_ranking").select("contract_address")
-    df_stream = (
-        dlt.read("s_apps.transactions_ethereum")
-        .filter(F.col("tx_status").isin("valid", "unconfirmed"))
+    df_stream = dlt.read("s_apps.transactions_ethereum").filter(
+        F.col("tx_status").isin("valid", "unconfirmed")
     )
 
-    return (
-        df_stream
-        .join(df_ranking, df_stream.to_address == df_ranking.contract_address, "inner")
-        .select(
-            F.col("tx_hash"),
-            F.col("block_number"),
-            F.col("from_address"),
-            F.col("to_address").alias("contract_address"),
-            F.col("value"),
-            F.col("gas"),
-            F.col("gas_price"),
-            F.col("input"),
-            F.col("method"),
-            F.col("parms"),
-            F.col("method_id"),
-            F.col("decode_type"),
-            F.col("decode_source"),
-            F.col("decode_confidence"),
-            F.col("tx_type_semantic"),
-            F.col("tx_status"),
-            F.col("tx_timestamp").alias("event_time"),
-        )
+    return df_stream.join(df_ranking, df_stream.to_address == df_ranking.contract_address, "inner").select(
+        F.col("tx_hash"),
+        F.col("block_number"),
+        F.col("from_address"),
+        F.col("to_address").alias("contract_address"),
+        F.col("value"),
+        F.col("gas"),
+        F.col("gas_price"),
+        F.col("input"),
+        F.col("method"),
+        F.col("parms"),
+        F.col("method_id"),
+        F.col("decode_type"),
+        F.col("decode_source"),
+        F.col("decode_confidence"),
+        F.col("tx_type_semantic"),
+        F.col("tx_status"),
+        F.col("tx_timestamp").alias("event_time"),
     )
 
 
@@ -799,6 +787,7 @@ def gold_transactions_lambda():
 # MAGIC utilização de blocos e volume de transações (TODO-P06).
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="g_network.network_metrics_hourly",
@@ -822,71 +811,53 @@ def gold_network_metrics_hourly():
     - avg_block_utilization_pct : utilização média do bloco (gas_used/gas_limit × 100)
     - avg_txs_per_block         : média de transações por bloco
     """
-    blocks = (
-        dlt.read("s_apps.eth_blocks")
-        .select(
-            F.date_trunc("hour", F.col("block_time")).alias("hour_bucket"),
-            F.col("block_number"),
-            F.col("gas_used").alias("block_gas_used"),
-            F.col("gas_limit").alias("block_gas_limit"),
-            F.col("transaction_count"),
-        )
+    blocks = dlt.read("s_apps.eth_blocks").select(
+        F.date_trunc("hour", F.col("block_time")).alias("hour_bucket"),
+        F.col("block_number"),
+        F.col("gas_used").alias("block_gas_used"),
+        F.col("gas_limit").alias("block_gas_limit"),
+        F.col("transaction_count"),
     )
 
-    txs = (
-        dlt.read("s_apps.eth_transactions_staging")
-        .select(
-            F.date_trunc("hour", F.col("_ingested_at")).alias("hour_bucket"),
-            F.col("tx_hash"),
-            F.col("gas_price"),
-        )
+    txs = dlt.read("s_apps.eth_transactions_staging").select(
+        F.date_trunc("hour", F.col("_ingested_at")).alias("hour_bucket"),
+        F.col("tx_hash"),
+        F.col("gas_price"),
     )
 
-    blocks_agg = (
-        blocks
-        .groupBy("hour_bucket")
-        .agg(
-            F.count("block_number").alias("block_count"),
-            F.sum("transaction_count").alias("tx_count_from_blocks"),
-            F.avg("block_gas_used").alias("avg_block_gas_used"),
-            F.avg("block_gas_limit").alias("avg_block_gas_limit"),
-            F.avg(
-                F.when(
-                    F.col("block_gas_limit") > 0,
-                    F.col("block_gas_used").cast("double") / F.col("block_gas_limit") * 100,
-                ).otherwise(F.lit(None))
-            ).alias("avg_block_utilization_pct"),
-            F.avg("transaction_count").alias("avg_txs_per_block"),
-        )
+    blocks_agg = blocks.groupBy("hour_bucket").agg(
+        F.count("block_number").alias("block_count"),
+        F.sum("transaction_count").alias("tx_count_from_blocks"),
+        F.avg("block_gas_used").alias("avg_block_gas_used"),
+        F.avg("block_gas_limit").alias("avg_block_gas_limit"),
+        F.avg(
+            F.when(
+                F.col("block_gas_limit") > 0,
+                F.col("block_gas_used").cast("double") / F.col("block_gas_limit") * 100,
+            ).otherwise(F.lit(None))
+        ).alias("avg_block_utilization_pct"),
+        F.avg("transaction_count").alias("avg_txs_per_block"),
     )
 
-    txs_agg = (
-        txs
-        .groupBy("hour_bucket")
-        .agg(
-            F.count("tx_hash").alias("tx_count"),
-            F.avg(F.col("gas_price").cast("double") / 1e9).alias("avg_gas_price_gwei"),
-        )
+    txs_agg = txs.groupBy("hour_bucket").agg(
+        F.count("tx_hash").alias("tx_count"),
+        F.avg(F.col("gas_price").cast("double") / 1e9).alias("avg_gas_price_gwei"),
     )
 
-    return (
-        blocks_agg
-        .join(txs_agg, "hour_bucket", "left")
-        .select(
-            F.col("hour_bucket"),
-            F.col("block_count"),
-            F.coalesce(F.col("tx_count"), F.col("tx_count_from_blocks")).alias("tx_count"),
-            F.round(
-                F.coalesce(F.col("tx_count"), F.col("tx_count_from_blocks")).cast("double") / 3600,
-                2,
-            ).alias("tps_avg"),
-            F.round(F.col("avg_gas_price_gwei"), 4).alias("avg_gas_price_gwei"),
-            F.round(F.col("avg_block_gas_used"), 0).alias("avg_block_gas_used"),
-            F.round(F.col("avg_block_gas_limit"), 0).alias("avg_block_gas_limit"),
-            F.round(F.col("avg_block_utilization_pct"), 2).alias("avg_block_utilization_pct"),
-            F.round(F.col("avg_txs_per_block"), 1).alias("avg_txs_per_block"),
-            F.current_timestamp().alias("computed_at"),
-        )
+    return blocks_agg.join(txs_agg, "hour_bucket", "left").select(
+        F.col("hour_bucket"),
+        F.col("block_count"),
+        F.coalesce(F.col("tx_count"), F.col("tx_count_from_blocks")).alias("tx_count"),
+        F.round(
+            F.coalesce(F.col("tx_count"), F.col("tx_count_from_blocks")).cast("double") / 3600,
+            2,
+        ).alias("tps_avg"),
+        F.round(F.col("avg_gas_price_gwei"), 4).alias("avg_gas_price_gwei"),
+        F.round(F.col("avg_block_gas_used"), 0).alias("avg_block_gas_used"),
+        F.round(F.col("avg_block_gas_limit"), 0).alias("avg_block_gas_limit"),
+        F.round(F.col("avg_block_utilization_pct"), 2).alias("avg_block_utilization_pct"),
+        F.round(F.col("avg_txs_per_block"), 1).alias("avg_txs_per_block"),
+        F.current_timestamp().alias("computed_at"),
     )
 
 
@@ -899,6 +870,7 @@ def gold_network_metrics_hourly():
 # MAGIC entre P2P, chamadas de contrato e deploys. (UC2)
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="g_apps.gas_price_distribution_hourly",
@@ -918,8 +890,7 @@ def gold_gas_price_distribution_hourly():
     )
 
     return (
-        txs
-        .groupBy("hour_bucket", "tx_type_semantic")
+        txs.groupBy("hour_bucket", "tx_type_semantic")
         .agg(
             F.count("tx_hash").alias("tx_count"),
             F.percentile_approx("gas_price_gwei", 0.25).alias("gas_price_p25_gwei"),
@@ -952,6 +923,7 @@ def gold_gas_price_distribution_hourly():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.p2p_transfer_metrics_hourly",
     comment="Gold MV (UC3): métricas horárias de transferências ETH P2P (peer_to_peer)",
@@ -970,8 +942,7 @@ def gold_p2p_transfer_metrics_hourly():
     )
 
     return (
-        txs
-        .groupBy("hour_bucket")
+        txs.groupBy("hour_bucket")
         .agg(
             F.count("tx_hash").alias("tx_count"),
             F.countDistinct("from_address").alias("unique_senders"),
@@ -1003,6 +974,7 @@ def gold_p2p_transfer_metrics_hourly():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.contract_method_activity",
     comment="Gold MV (UC4): ranking de métodos chamados por contrato nas últimas 24h (TOP 50)",
@@ -1021,22 +993,17 @@ def gold_contract_method_activity():
         .filter(F.col("method").isNotNull())
     )
 
-    ranked = (
-        txs
-        .groupBy("contract_address", "method", "method_id", "decode_type")
-        .agg(
-            F.count("tx_hash").alias("call_count"),
-            F.countDistinct("from_address").alias("unique_callers"),
-            F.min(F.col("_ingested_at")).alias("first_seen"),
-            F.max(F.col("_ingested_at")).alias("last_seen"),
-        )
+    ranked = txs.groupBy("contract_address", "method", "method_id", "decode_type").agg(
+        F.count("tx_hash").alias("call_count"),
+        F.countDistinct("from_address").alias("unique_callers"),
+        F.min(F.col("_ingested_at")).alias("first_seen"),
+        F.max(F.col("_ingested_at")).alias("last_seen"),
     )
 
     ranking_window = Window.partitionBy("contract_address").orderBy(F.desc("call_count"))
 
     return (
-        ranked
-        .withColumn("rank", F.row_number().over(ranking_window))
+        ranked.withColumn("rank", F.row_number().over(ranking_window))
         .filter(F.col("rank") <= 50)
         .select(
             F.col("contract_address"),
@@ -1062,6 +1029,7 @@ def gold_contract_method_activity():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.contract_deploy_metrics_hourly",
     comment="Gold MV (UC5): métricas horárias de deploys de contratos Ethereum",
@@ -1080,8 +1048,7 @@ def gold_contract_deploy_metrics_hourly():
     )
 
     return (
-        txs
-        .groupBy("hour_bucket")
+        txs.groupBy("hour_bucket")
         .agg(
             F.count("tx_hash").alias("deploy_count"),
             F.countDistinct("from_address").alias("unique_deployers"),
@@ -1107,6 +1074,7 @@ def gold_contract_deploy_metrics_hourly():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_apps.contract_volume_ranking",
     comment="Gold MV (UC7): ranking de contratos por volume de ETH recebido nas últimas 24h",
@@ -1126,8 +1094,7 @@ def gold_contract_volume_ranking():
     )
 
     return (
-        txs
-        .groupBy("to_address")
+        txs.groupBy("to_address")
         .agg(
             F.count("tx_hash").alias("tx_count"),
             F.countDistinct("from_address").alias("unique_senders"),
@@ -1167,6 +1134,7 @@ def gold_contract_volume_ranking():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_network.eth_burn_hourly",
     comment=(
@@ -1186,13 +1154,10 @@ def gold_eth_burn_hourly():
     """
     blocks = dlt.read("s_apps.eth_blocks")
 
-    burn_wei = (
-        F.col("base_fee_per_gas").cast("double") * F.col("gas_used").cast("double")
-    )
+    burn_wei = F.col("base_fee_per_gas").cast("double") * F.col("gas_used").cast("double")
 
     return (
-        blocks
-        .withColumn("eth_burned_block", burn_wei / F.lit(1e18))
+        blocks.withColumn("eth_burned_block", burn_wei / F.lit(1e18))
         .withColumn("hour_bucket", F.date_trunc("hour", F.col("block_time")))
         .groupBy("hour_bucket")
         .agg(
@@ -1200,13 +1165,20 @@ def gold_eth_burn_hourly():
             F.round(F.sum("eth_burned_block"), 8).alias("eth_burned_total"),
             F.round(F.avg("eth_burned_block"), 8).alias("eth_burned_per_block_avg"),
             F.round(F.max("eth_burned_block"), 8).alias("eth_burned_per_block_max"),
-            F.round(F.avg(F.col("base_fee_per_gas").cast("double") / F.lit(1e9)), 4).alias("avg_base_fee_gwei"),
-            F.round(F.max(F.col("base_fee_per_gas").cast("double") / F.lit(1e9)), 4).alias("max_base_fee_gwei"),
-            F.round(F.avg(
-                F.when(F.col("gas_limit") > 0,
-                    F.col("gas_used").cast("double") / F.col("gas_limit") * 100
-                )
-            ), 2).alias("avg_block_utilization_pct"),
+            F.round(F.avg(F.col("base_fee_per_gas").cast("double") / F.lit(1e9)), 4).alias(
+                "avg_base_fee_gwei"
+            ),
+            F.round(F.max(F.col("base_fee_per_gas").cast("double") / F.lit(1e9)), 4).alias(
+                "max_base_fee_gwei"
+            ),
+            F.round(
+                F.avg(
+                    F.when(
+                        F.col("gas_limit") > 0, F.col("gas_used").cast("double") / F.col("gas_limit") * 100
+                    )
+                ),
+                2,
+            ).alias("avg_block_utilization_pct"),
         )
         .select(
             F.col("hour_bucket"),
@@ -1238,6 +1210,7 @@ def gold_eth_burn_hourly():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_network.validator_activity",
     comment=(
@@ -1263,31 +1236,24 @@ def gold_validator_activity():
     )
 
     # Agrupa por validador (fee recipient)
-    by_validator = (
-        blocks_24h
-        .groupBy("miner")
-        .agg(
-            F.count("block_number").alias("blocks_produced"),
-            F.min("block_time").alias("first_block_time"),
-            F.max("block_time").alias("last_block_time"),
-        )
+    by_validator = blocks_24h.groupBy("miner").agg(
+        F.count("block_number").alias("blocks_produced"),
+        F.min("block_time").alias("first_block_time"),
+        F.max("block_time").alias("last_block_time"),
     )
 
     # Janela global para calcular participação percentual sem .collect()
-    global_window = Window.rowsBetween(
-        Window.unboundedPreceding, Window.unboundedFollowing
-    )
+    global_window = Window.rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
 
     total_blocks_col = F.sum("blocks_produced").over(global_window)
-    pct_share_col    = F.col("blocks_produced").cast("double") / total_blocks_col * 100
-    hhi_component    = pct_share_col * pct_share_col
+    pct_share_col = F.col("blocks_produced").cast("double") / total_blocks_col * 100
+    hhi_component = pct_share_col * pct_share_col
 
     return (
-        by_validator
-        .withColumn("total_blocks_24h", total_blocks_col)
-        .withColumn("pct_share",        F.round(pct_share_col, 4))
-        .withColumn("hhi_component",    F.round(hhi_component, 4))
-        .withColumn("hhi_total",        F.round(F.sum(hhi_component).over(global_window), 2))
+        by_validator.withColumn("total_blocks_24h", total_blocks_col)
+        .withColumn("pct_share", F.round(pct_share_col, 4))
+        .withColumn("hhi_component", F.round(hhi_component, 4))
+        .withColumn("hhi_total", F.round(F.sum(hhi_component).over(global_window), 2))
         .select(
             F.col("miner").alias("fee_recipient"),
             F.col("blocks_produced"),
@@ -1315,6 +1281,7 @@ def gold_validator_activity():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_network.withdrawal_metrics",
     comment=(
@@ -1336,8 +1303,7 @@ def gold_withdrawal_metrics():
     withdrawals = dlt.read("s_apps.eth_blocks_withdrawals")
 
     return (
-        withdrawals
-        .withColumn(
+        withdrawals.withColumn(
             "hour_bucket",
             F.date_trunc("hour", F.to_timestamp(F.col("block_timestamp"), "yyyy-MM-dd HH:mm:ss")),
         )
@@ -1379,6 +1345,7 @@ def gold_withdrawal_metrics():
 
 # COMMAND ----------
 
+
 @dlt.table(
     name="g_network.block_production_health",
     comment=(
@@ -1402,8 +1369,7 @@ def gold_block_production_health():
     ordering_window = Window.orderBy("block_number")
 
     blocks_with_gap = (
-        blocks
-        .withColumn(
+        blocks.withColumn(
             "prev_timestamp",
             F.lag(F.col("block_timestamp").cast("long")).over(ordering_window),
         )
@@ -1422,21 +1388,16 @@ def gold_block_production_health():
         .withColumn("hour_bucket", F.date_trunc("hour", F.col("block_time")))
     )
 
-    hourly = (
-        blocks_with_gap
-        .groupBy("hour_bucket")
-        .agg(
-            F.count("block_number").alias("block_count"),
-            F.sum("missed_slots").alias("missed_slots_estimated"),
-            F.round(F.avg("slot_gap_sec"), 2).alias("avg_slot_gap_sec"),
-            F.round(F.max("slot_gap_sec"), 0).alias("max_slot_gap_sec"),
-            F.count(F.when(F.col("slot_gap_sec") > 12, True)).alias("gap_events_count"),
-        )
+    hourly = blocks_with_gap.groupBy("hour_bucket").agg(
+        F.count("block_number").alias("block_count"),
+        F.sum("missed_slots").alias("missed_slots_estimated"),
+        F.round(F.avg("slot_gap_sec"), 2).alias("avg_slot_gap_sec"),
+        F.round(F.max("slot_gap_sec"), 0).alias("max_slot_gap_sec"),
+        F.count(F.when(F.col("slot_gap_sec") > 12, True)).alias("gap_events_count"),
     )
 
     return (
-        hourly
-        .withColumn(
+        hourly.withColumn(
             "missed_slot_rate_pct",
             F.round(
                 F.when(
@@ -1461,6 +1422,7 @@ def gold_block_production_health():
         .orderBy("hour_bucket")
     )
 
+
 # COMMAND ----------
 # MAGIC %md
 # MAGIC ### G3. Chain Health Metrics — `g_network.chain_health_metrics`
@@ -1469,6 +1431,7 @@ def gold_block_production_health():
 # MAGIC Indicador de instabilidade de rede — reorgs e latência de propagação.
 
 # COMMAND ----------
+
 
 @dlt.table(
     name="g_network.chain_health_metrics",
@@ -1491,19 +1454,14 @@ def gold_chain_health_metrics():
     index = dlt.read("s_apps.eth_canonical_blocks_index")
     blocks = dlt.read("s_apps.eth_blocks")
 
-    block_status = (
-        index
-        .join(
-            blocks.select("block_number", "block_hash", "block_time"),
-            on=["block_number", "block_hash"],
-            how="inner",
-        )
-        .withColumn("hour_bucket", F.date_trunc("hour", F.col("block_time")))
-    )
+    block_status = index.join(
+        blocks.select("block_number", "block_hash", "block_time"),
+        on=["block_number", "block_hash"],
+        how="inner",
+    ).withColumn("hour_bucket", F.date_trunc("hour", F.col("block_time")))
 
     return (
-        block_status
-        .groupBy("hour_bucket")
+        block_status.groupBy("hour_bucket")
         .agg(
             F.count("*").alias("total_blocks"),
             F.sum(F.when(F.col("chain_status") == "canonical", 1).otherwise(0)).alias("canonical_count"),

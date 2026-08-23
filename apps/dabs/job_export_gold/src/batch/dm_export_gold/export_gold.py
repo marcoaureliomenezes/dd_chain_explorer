@@ -17,7 +17,8 @@ from __future__ import annotations
 import argparse
 import logging
 
-from pyspark.sql import SparkSession, functions as F
+from pyspark.sql import SparkSession
+from pyspark.sql import functions as F
 
 _log = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -53,38 +54,39 @@ class Exportgold:
         """Export Gold API key consumption views to S3."""
         _log.info(
             "Running export_gold | catalog=%s | export_s3_path=%s | storage_mode=%s",
-            self.catalog, self.export_s3_path, self.storage_mode,
+            self.catalog,
+            self.export_s3_path,
+            self.storage_mode,
         )
 
         cat = self.catalog
-        df_etherscan = (
-            self.spark.table(f"`{cat}`.g_api_keys.etherscan_consumption")
-            .withColumn("source", F.lit("etherscan"))
+        df_etherscan = self.spark.table(f"`{cat}`.g_api_keys.etherscan_consumption").withColumn(
+            "source", F.lit("etherscan")
         )
-        df_web3 = (
-            self.spark.table(f"`{cat}`.g_api_keys.web3_keys_consumption")
-            .withColumn("source", F.lit("web3"))
+        df_web3 = self.spark.table(f"`{cat}`.g_api_keys.web3_keys_consumption").withColumn(
+            "source", F.lit("web3")
         )
         df_combined = df_etherscan.unionByName(df_web3, allowMissingColumns=True)
 
         count = df_combined.count()
         _log.info("Exporting %d rows to S3", count)
 
-        (
-            df_combined.coalesce(1)
-            .write
-            .mode("overwrite")
-            .json(f"{self.export_s3_path}/gold_api_keys")
-        )
+        (df_combined.coalesce(1).write.mode("overwrite").json(f"{self.export_s3_path}/gold_api_keys"))
         _log.info("Gold API key consumption exported to %s/gold_api_keys", self.export_s3_path)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="dm-export-gold — export_gold")
-    parser.add_argument("--catalog",          required=True, help="Unity Catalog name")
-    parser.add_argument("--export-s3-path",   required=True, help="S3 path for exporting Gold views (e.g., s3://bucket/exports)")
-    parser.add_argument("--storage-mode",     default="managed", choices=["managed", "external"],
-                        help="Table storage mode: managed (DEV/HML) or external (PROD)")
+    parser.add_argument("--catalog", required=True, help="Unity Catalog name")
+    parser.add_argument(
+        "--export-s3-path", required=True, help="S3 path for exporting Gold views (e.g., s3://bucket/exports)"
+    )
+    parser.add_argument(
+        "--storage-mode",
+        default="managed",
+        choices=["managed", "external"],
+        help="Table storage mode: managed (DEV/HML) or external (PROD)",
+    )
     parser.add_argument("--lakehouse-bucket", default="", help="S3 bucket for EXTERNAL tables (PROD only)")
     args = parser.parse_args()
 

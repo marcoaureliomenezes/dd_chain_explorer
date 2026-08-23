@@ -78,22 +78,17 @@ def _make_bindir(tmp_path: Path) -> Path:
     return bindir
 
 
-def _stage_approved_plan(
-    artifact_dir: Path, sid: str, *, has_changes: bool
-) -> None:
+def _stage_approved_plan(artifact_dir: Path, sid: str, *, has_changes: bool) -> None:
     """Write a saved pre-gate plan (tfplan binary + plan.txt summary) for a stack."""
     sdir = artifact_dir / sid
     sdir.mkdir(parents=True, exist_ok=True)
     (sdir / "tfplan").write_text("approved-saved-plan")
     if has_changes:
         (sdir / "plan.txt").write_text(
-            "  # aws_s3_bucket.x will be created\n"
-            "Plan: 1 to add, 0 to change, 0 to destroy.\n"
+            "  # aws_s3_bucket.x will be created\nPlan: 1 to add, 0 to change, 0 to destroy.\n"
         )
     else:
-        (sdir / "plan.txt").write_text(
-            "No changes. Your infrastructure matches the configuration.\n"
-        )
+        (sdir / "plan.txt").write_text("No changes. Your infrastructure matches the configuration.\n")
 
 
 def _run(tmp_path: Path, env_extra: dict[str, str]) -> subprocess.CompletedProcess:
@@ -238,16 +233,10 @@ def _run_replan_diff(
         plan_echo = 'echo "No changes. Your infrastructure matches the configuration."'
         plan_exit = "0"
     elif destroys:
-        plan_echo = (
-            'echo "  # aws_x.y will be destroyed"; '
-            'echo "Plan: 0 to add, 0 to change, 1 to destroy."'
-        )
+        plan_echo = 'echo "  # aws_x.y will be destroyed"; echo "Plan: 0 to add, 0 to change, 1 to destroy."'
         plan_exit = "2"
     else:
-        plan_echo = (
-            'echo "  # aws_x.y will be created"; '
-            'echo "Plan: 1 to add, 0 to change, 0 to destroy."'
-        )
+        plan_echo = 'echo "  # aws_x.y will be created"; echo "Plan: 1 to add, 0 to change, 0 to destroy."'
         plan_exit = "2"
     stub = f"""#!/usr/bin/env bash
 set -u
@@ -274,10 +263,10 @@ esac
 set -euo pipefail
 export DEPLOY_ENV_SOURCE_ONLY=1
 export PLAN_ARTIFACT_DIR={artifact_dir!s}
-export DIVERGENCE_DIR={tmp_path / '.plan-divergence'!s}
+export DIVERGENCE_DIR={tmp_path / ".plan-divergence"!s}
 export TF_APPLY_LOG={apply_log!s}
 export DESTROY_ACK={destroy_ack}
-export GITHUB_STEP_SUMMARY={tmp_path / 'summary.md'!s}
+export GITHUB_STEP_SUMMARY={tmp_path / "summary.md"!s}
 # shellcheck disable=SC1090
 source {DEPLOY_ENV!s} prd
 cd {module_dir!s}
@@ -286,8 +275,11 @@ deploy_stack_replan_diff databricks_workspace "PRD/DatabricksWorkspace" \
 """
     env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"}
     proc = subprocess.run(
-        ["bash", "-c", harness], cwd=str(REPO_ROOT), env=env,
-        capture_output=True, text=True,
+        ["bash", "-c", harness],
+        cwd=str(REPO_ROOT),
+        env=env,
+        capture_output=True,
+        text=True,
     )
     proc.apply_log = apply_log.read_text()  # type: ignore[attr-defined]
     return proc
@@ -296,17 +288,13 @@ deploy_stack_replan_diff databricks_workspace "PRD/DatabricksWorkspace" \
 def test_deferred_missing_approved_noop_takes_deferred_path(tmp_path: Path) -> None:
     """05b is declared-deferred; with no approved plan and a no-op re-plan, the deferred
     path lets the run proceed (exit 0) — NOT the unconditional exit 3 of F-QA-A1R-2."""
-    proc = _run_replan_diff(
-        tmp_path, deferred=True, approved_present=False, replan_changes=False
-    )
+    proc = _run_replan_diff(tmp_path, deferred=True, approved_present=False, replan_changes=False)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
 
 
 def test_deferred_missing_approved_with_changes_applies(tmp_path: Path) -> None:
     """Deferred 05b with changes (no destroys): informed post-gate re-plan applies."""
-    proc = _run_replan_diff(
-        tmp_path, deferred=True, approved_present=False, replan_changes=True
-    )
+    proc = _run_replan_diff(tmp_path, deferred=True, approved_present=False, replan_changes=True)
     assert proc.returncode == 0, (proc.stdout, proc.stderr)
     assert "05b_databricks_workspace tfplan" in proc.apply_log  # type: ignore[attr-defined]
 
@@ -314,8 +302,12 @@ def test_deferred_missing_approved_with_changes_applies(tmp_path: Path) -> None:
 def test_deferred_missing_approved_destroy_without_ack_fails(tmp_path: Path) -> None:
     """The deferred path still runs destroy-ack: a destroying re-plan without ack stops."""
     proc = _run_replan_diff(
-        tmp_path, deferred=True, approved_present=False,
-        replan_changes=True, destroys=True, destroy_ack="false",
+        tmp_path,
+        deferred=True,
+        approved_present=False,
+        replan_changes=True,
+        destroys=True,
+        destroy_ack="false",
     )
     assert proc.returncode == 2, (proc.returncode, proc.stdout, proc.stderr)
     assert "05b_databricks_workspace" not in proc.apply_log  # type: ignore[attr-defined]
@@ -324,9 +316,7 @@ def test_deferred_missing_approved_destroy_without_ack_fails(tmp_path: Path) -> 
 def test_nondeferred_missing_approved_fails_closed(tmp_path: Path) -> None:
     """A NON-deferred stack missing its approved plan fails closed (exit 3) even via the
     sourced apply path — the fail-closed contract is preserved for non-deferred stacks."""
-    proc = _run_replan_diff(
-        tmp_path, deferred=False, approved_present=False, replan_changes=True
-    )
+    proc = _run_replan_diff(tmp_path, deferred=False, approved_present=False, replan_changes=True)
     assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
 
 
@@ -352,4 +342,6 @@ def test_deploy_order_matches_stack_map(tmp_path: Path) -> None:
     # every expected stack dir appears, in declared order
     idxs = [seen.index(p) for p in expected_paths]
     assert idxs == sorted(idxs), (expected_paths, seen)
+
+
 """Hermetic — no real venv, no AWS, no network. Run: pytest -p no:cacheprovider"""
