@@ -35,6 +35,15 @@ targets:
       pipelines:
         pipeline_app_logs:
           development: true
+      jobs:
+        workflow_trigger_app_logs:
+          # Platform parked — no data has flowed since capture retirement
+          # (v0.4.0); the Fluent-Bit NDJSON reader has never been deployed
+          # against live traffic. Unpause once raw/app_logs/*.ndjson lands.
+          schedule:
+            quartz_cron_expression: "0 2/3 * * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
 
   hml:
     presets:
@@ -51,6 +60,14 @@ targets:
       pipelines:
         pipeline_app_logs:
           development: false
+      jobs:
+        workflow_trigger_app_logs:
+          # Platform parked — hml has no ingested data. Unpause once
+          # dd-chain-capture delivers app logs to hml.
+          schedule:
+            quartz_cron_expression: "0 2/3 * * * ?"
+            timezone_id: "UTC"
+            pause_status: PAUSED
 
   prod:
     mode: production
@@ -62,9 +79,6 @@ targets:
       ingestion_s3_bucket: "dm-chain-explorer-lakehouse"
       dlt_development: false
       dlt_continuous: false
-    resources:
-      pipelines:
-        pipeline_app_logs:
-          development: false
-          schedule:
-            pause_status: UNPAUSED
+    # No trigger-job schedule override here: prod is not a deployed target in
+    # this release (no prod Databricks workspace exists — ADR-002); the host
+    # guard (T-C.3) makes `validate -t prod` fail unless DATABRICKS_HOST is set.

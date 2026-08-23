@@ -20,12 +20,11 @@ resources:
       continuous: ${var.dlt_continuous}
       channel: CURRENT
 
-      schedule:
-        # PROD: a cada 3 min, offset 2 min após ethereum, UNPAUSED (override em databricks.yml target prod)
-        # DEV/HML: PAUSED — acionar via dm-trigger-all-dlts ou make run_dev_pipelines
-        quartz_cron_expression: "0 2/3 * * * ?"
-        timezone_id: "America/Sao_Paulo"
-        pause_status: PAUSED
+      # No `schedule:` here — the DLT pipeline resource does not support it on
+      # CLI 0.270 (unknown field, silently dropped by `bundle validate`).
+      # Scheduling lives on the in-bundle trigger job instead
+      # (resources/workflows/workflow_trigger_app_logs.yml, `schedule:` per
+      # target in databricks.yml).
 
       tags:
         project: dd-chain-explorer
