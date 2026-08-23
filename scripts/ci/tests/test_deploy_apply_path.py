@@ -1,13 +1,16 @@
-"""Hermetic apply-path tests for scripts/ci/deploy_env.sh (T-R6-A2(b), ADR-R6-5).
+"""Hermetic apply-path tests for scripts/ci/deploy_env.sh (T-R6-A2(b), ADR-R6-5, F-01).
 
-Proves the post-gate apply phase CONSUMES the downloaded approved plan artifacts
-instead of blindly re-planning + applying (F-QA-A1-1):
+Proves the post-gate apply phase ALWAYS RE-PLANS under the deploy role and NEVER
+consumes a saved `tfplan` BINARY artifact (F-01, public-repo CI security audit,
+2026-08-23 — a tfplan binary embeds TF_VAR_* secret values in plaintext and GitHub
+Actions artifacts on a public repo are world-downloadable):
 
-  * upstream-unchanged stack  -> applies its SAVED approved tfplan binary;
-  * stack downstream of an in-run apply (or with no saved plan) -> RE-PLANS and gates
-    the fresh plan against the approved summary via plan_gate_check.sh plan-diff;
-    matching re-plan applies, DIVERGING re-plan FAILS CLOSED (exit 3) with a published
-    divergence diff.
+  * every stack -> RE-PLANNED locally and gated against the approved plan.txt TEXT
+    summary via plan_gate_check.sh plan-diff; matching re-plan applies the FRESH
+    tfplan, DIVERGING re-plan FAILS CLOSED (exit 3) with a published divergence diff;
+  * the approved-plan artifact staged/downloaded in these tests carries ONLY plan.txt
+    (no tfplan binary — mirrors what plan_env.sh now stages and the workflow now
+    uploads with retention-days: 1).
 
 terraform and aws are mocked by stub binaries on PATH (no real cloud, no real venv).
 Tests run prd (T-A.8 survivor set): tf_state, iam, peripherals, lambda
@@ -79,10 +82,11 @@ def _make_bindir(tmp_path: Path) -> Path:
 
 
 def _stage_approved_plan(artifact_dir: Path, sid: str, *, has_changes: bool) -> None:
-    """Write a saved pre-gate plan (tfplan binary + plan.txt summary) for a stack."""
+    """Write a saved pre-gate plan summary for a stack — plan.txt ONLY (F-01): the
+    real plan_env.sh no longer stages a tfplan binary, and deploy_env.sh must never
+    look for one."""
     sdir = artifact_dir / sid
     sdir.mkdir(parents=True, exist_ok=True)
-    (sdir / "tfplan").write_text("approved-saved-plan")
     if has_changes:
         (sdir / "plan.txt").write_text(
             "  # aws_s3_bucket.x will be created\nPlan: 1 to add, 0 to change, 0 to destroy.\n"
@@ -140,50 +144,55 @@ def _seed_all_no_change_plans(artifact_dir: Path) -> None:
         _stage_approved_plan(artifact_dir, sid, has_changes=False)
 
 
-def test_upstream_unchanged_applies_saved_plan(tmp_path: Path) -> None:
-    """peripherals has a saved plan with changes, upstreams=[] -> applies the SAVED
-    tfplan binary, NOT a freshly re-planned one. terraform plan is NOT consulted for it."""
+def test_upstream_unchanged_replans_and_applies_matching_plan(tmp_path: Path) -> None:
+    """peripherals has an approved plan.txt with changes, upstreams=[]. F-01: there is
+    no saved tfplan binary to consume, so it is ALWAYS re-planned; its re-plan matches
+    the approved summary (both 1-add) -> apply proceeds against the FRESH tfplan
+    produced locally, never a path under .plan-artifacts/."""
     artifact_dir = tmp_path / ".plan-artifacts"
     _seed_all_no_change_plans(artifact_dir)
     _stage_approved_plan(artifact_dir, "peripherals", has_changes=True)
-    # peripherals's saved plan binary must be the file applied:
-    proc = _run(tmp_path, {})
+    assert not (artifact_dir / "peripherals" / "tfplan").exists()
+    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "04_peripherals"})
     assert proc.returncode == 0, proc.stderr
     log = proc.apply_log  # type: ignore[attr-defined]
-    # The applied plan arg for 04_peripherals must be the absolute path into
-    # .plan-artifacts/peripherals
     assert "04_peripherals" in log
     peripherals_line = next(ln for ln in log.splitlines() if ln.startswith("04_peripherals "))
-    assert str(artifact_dir / "peripherals" / "tfplan") in peripherals_line, peripherals_line
+    # The applied plan arg is the fresh relative "tfplan" produced by THIS re-plan,
+    # never a path into .plan-artifacts/ (no binary is ever staged there any more).
+    assert peripherals_line.strip() == "04_peripherals tfplan", peripherals_line
+    assert str(artifact_dir) not in peripherals_line
 
 
 def test_replan_diff_match_applies_fresh_plan(tmp_path: Path) -> None:
-    """peripherals applies a change in-run; lambda (upstreams=[peripherals]) is
-    therefore RE-PLANNED. Its re-plan matches its approved summary (both 1-add) ->
-    apply proceeds against the FRESH tfplan, not the saved binary."""
+    """peripherals and lambda (upstreams=[peripherals]) both re-plan matching their
+    approved 1-add summaries -> both apply against their FRESH tfplan, never a saved
+    binary (none exists — F-01)."""
     artifact_dir = tmp_path / ".plan-artifacts"
     _seed_all_no_change_plans(artifact_dir)
     _stage_approved_plan(artifact_dir, "peripherals", has_changes=True)
     _stage_approved_plan(artifact_dir, "lambda", has_changes=True)
-    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "06_lambda"})
+    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "04_peripherals 06_lambda"})
     assert proc.returncode == 0, proc.stderr
     log = proc.apply_log  # type: ignore[attr-defined]
     lambda_line = next(ln for ln in log.splitlines() if ln.startswith("06_lambda "))
     # fresh re-plan tfplan is the relative "tfplan" in the module dir, NOT the artifact path
     assert lambda_line.strip() == "06_lambda tfplan", lambda_line
-    assert str(artifact_dir / "lambda" / "tfplan") not in lambda_line
+    assert str(artifact_dir / "lambda") not in lambda_line
 
 
 def test_replan_diff_divergence_fails_closed(tmp_path: Path) -> None:
-    """peripherals applies in-run -> lambda re-planned. The approved lambda summary was
-    1-add but the re-plan now returns NO changes -> DIVERGENCE -> fail closed (exit 3),
-    diff published, lambda NOT applied."""
+    """peripherals re-plans matching its approved summary and applies in-run -> lambda
+    (upstreams=[peripherals]) is re-planned. The approved lambda summary was 1-add but
+    the re-plan now returns NO changes -> DIVERGENCE -> fail closed (exit 3), diff
+    published, lambda NOT applied."""
     artifact_dir = tmp_path / ".plan-artifacts"
     _seed_all_no_change_plans(artifact_dir)
     _stage_approved_plan(artifact_dir, "peripherals", has_changes=True)
     _stage_approved_plan(artifact_dir, "lambda", has_changes=True)  # approved = 1 add
-    # lambda re-plan returns no changes (06_lambda NOT in changed list) -> diverges
-    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": ""})
+    # peripherals re-plans matching (1 add); lambda re-plan returns no changes
+    # (06_lambda NOT in changed list) -> diverges from its approved 1-add summary.
+    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "04_peripherals"})
     assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
     div_file = proc.div_dir / "lambda.diff.txt"  # type: ignore[attr-defined]
     assert div_file.exists(), "divergence diff must be published as an artifact"

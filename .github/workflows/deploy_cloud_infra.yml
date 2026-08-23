@@ -212,10 +212,12 @@ jobs:
 
   # ── PRD — Phase 1: pre-gate PLAN (informed gate, ADR-R6-4/R6-5) ─
   #  Plans every currently-plannable stack (per scripts/ci/stack_map.json),
-  #  uploads each tfplan binary + full plan.txt as artifacts, writes a
-  #  consolidated add/change/destroy summary BEFORE the environment gate, and
-  #  enforces the destroy-acknowledgment gate. NO environment gate here — the
-  #  approver reviews this job's run summary, then approves prd-apply.
+  #  uploads ONLY the redacted plan.txt text summary as an artifact (F-01 — never
+  #  the tfplan binary, which carries TF_VAR_* secret values in plaintext and would
+  #  be world-downloadable on this public repo), writes a consolidated
+  #  add/change/destroy summary BEFORE the environment gate, and enforces the
+  #  destroy-acknowledgment gate. NO environment gate here — the approver reviews
+  #  this job's run summary, then approves prd-apply.
 
   prd-plan:
     name: PRD — Plan (pre-gate)
@@ -270,28 +272,29 @@ jobs:
           TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
           TF_VAR_layer_s3_key:             ${{ steps.resolve-layer.outputs.layer_s3_key }}
           TF_VAR_layer_sha256_b64:         ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
-      - name: Upload saved plans
+      - name: Upload saved plan summaries (text only — F-01, never the tfplan binary)
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
         with:
           name: prd-saved-plans
-          path: .plan-artifacts/**
+          path: .plan-artifacts/**/plan.txt
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
 
   # ── PRD — Phase 2: environment-gated APPLY ─────────────────────
   #  The single informed environment gate (ADR-R6-4). After approval, deploy_env.sh
-  #  applies in the dependency order declared in scripts/ci/stack_map.json. Per ADR-R6-5
-  #  (consumed via the saved plans downloaded below): a stack whose upstreams applied NO
-  #  in-run change applies its SAVED approved plan binary directly (exactly what the gate
-  #  approver reviewed); a stack downstream of an in-run upstream apply, or one with no
-  #  pre-gate plan (the bootstrap_plannable:false 05b, whose TF_VAR_workspace_host is
-  #  re-derived from 05a's POST-apply output), is RE-PLANNED and the fresh plan is gated
-  #  against the approved summary via scripts/ci/plan_gate_check.sh `plan-diff` — apply
-  #  proceeds iff add/change/destroy counts AND the changed-address set match; on any
-  #  divergence the run FAILS CLOSED (no further downstream applies) and publishes the
-  #  approved-vs-re-plan diff to the job summary + a divergence artifact. This is
-  #  ADR-R6-5 "No silent divergence, ever" — the apply never executes an unreviewed plan
-  #  without the divergence guard asserting it matches the approved one.
+  #  applies in the dependency order declared in scripts/ci/stack_map.json. Per ADR-R6-5,
+  #  EVERY stack is RE-PLANNED here under the environment-gated deploy role (F-01 —
+  #  the downloaded artifact below carries ONLY the redacted plan.txt text summary, never
+  #  a tfplan binary) and the fresh plan is gated against that approved summary via
+  #  scripts/ci/plan_gate_check.sh `plan-diff` — apply proceeds iff add/change/destroy
+  #  counts AND the changed-address set match; on any divergence the run FAILS CLOSED (no
+  #  further downstream applies) and publishes the approved-vs-re-plan diff to the job
+  #  summary + a divergence artifact. A stack with no pre-gate plan (the
+  #  bootstrap_plannable:false 05b, whose TF_VAR_workspace_host is re-derived from 05a's
+  #  POST-apply output) takes the informed --deferred path instead of an unconditional
+  #  fail-closed. This is ADR-R6-5 "No silent divergence, ever" — the apply never
+  #  executes an unreviewed plan without the divergence guard asserting it matches the
+  #  approved one.
 
   prd-apply:
     name: PRD — Apply (gated)
@@ -317,7 +320,7 @@ jobs:
       # F-QA-3 cutover-safety: non-mutating role-assumption evidence (prd deploy role).
       - name: Verify assumed role (sts get-caller-identity)
         run: aws sts get-caller-identity
-      - name: Download saved plans
+      - name: Download saved plan summaries (text only — F-01)
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4
         with:
           name: prd-saved-plans
@@ -405,13 +408,13 @@ jobs:
           DESTROY_ACK:              ${{ github.event.inputs.destroy_ack }}
           PLAN_ARTIFACT_DIR:        ${{ github.workspace }}/.plan-artifacts
           TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
-      - name: Upload saved plans
+      - name: Upload saved plan summaries (text only — F-01, never the tfplan binary)
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
         with:
           name: hml-saved-plans
-          path: .plan-artifacts/**
+          path: .plan-artifacts/**/plan.txt
           if-no-files-found: warn
-          retention-days: 7
+          retention-days: 1
 
   # ── HML — Phase 2: environment-gated APPLY ─────────────────────
   hml-apply:
@@ -439,7 +442,7 @@ jobs:
       # F-QA-3 cutover-safety: non-mutating role-assumption evidence (hml deploy role).
       - name: Verify assumed role (sts get-caller-identity)
         run: aws sts get-caller-identity
-      - name: Download saved plans
+      - name: Download saved plan summaries (text only — F-01)
         uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16  # v4
         with:
           name: hml-saved-plans

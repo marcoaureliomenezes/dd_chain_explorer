@@ -3,19 +3,26 @@
 #
 # The post-gate APPLY phase of the informed gate (ADR-R6-4/R6-5). The stack list and
 # dependency order are NOT hardcoded here — they are read from the single-source map
-# scripts/ci/stack_map.json (F-ARCH-4 / F-QA-A1-3). For each stack, in declared order:
+# scripts/ci/stack_map.json (F-ARCH-4 / F-QA-A1-3). For EVERY stack, in declared order,
+# this ALWAYS re-plans against current state under the environment-gated deploy role and
+# runs `plan_gate_check.sh plan-diff <approved.txt> <replan.txt>` (F-01, public-repo CI
+# security audit, 2026-08-23):
+#   * exit 0  → re-plan matches the approved TEXT summary → apply the fresh tfplan;
+#   * exit 3  → DIVERGENCE (or, for a non-deferred stack, a missing approved summary) →
+#               FAIL CLOSED (no further downstream applies), publishing the
+#               approved-vs-re-plan diff to the job summary + a diff artifact.
+#     Re-approval = the operator re-triggers the deploy; the re-run's full re-plan
+#     passes the NORMAL informed environment gate (ADR-R6-5 pinned mechanism).
+#   * a declared-deferred stack (bootstrap_plannable:false, e.g. 05b) with no pre-gate
+#     plan takes the informed --deferred path instead of the unconditional exit 3.
 #
-#   - If NONE of the stack's upstreams applied a change in this run AND a saved approved
-#     plan binary exists under $PLAN_ARTIFACT_DIR/<id>/tfplan, apply that SAVED approved
-#     plan directly (terraform apply tfplan) — exactly what the gate approver reviewed.
-#   - Otherwise (an upstream changed in-run, OR the stack had no pre-gate plan, e.g. the
-#     bootstrap_plannable:false 05b), RE-PLAN against current state and run
-#     `plan_gate_check.sh plan-diff <approved.txt> <replan.txt>`:
-#       * exit 0  → re-plan matches the approved summary → apply the fresh tfplan;
-#       * exit 3  → DIVERGENCE → FAIL CLOSED (no further downstream applies), publishing
-#                   the approved-vs-re-plan diff to the job summary + a diff artifact.
-#         Re-approval = the operator re-triggers the deploy; the re-run's full re-plan
-#         passes the NORMAL informed environment gate (ADR-R6-5 pinned mechanism).
+# This apply phase NEVER consumes a saved `tfplan` BINARY artifact: a tfplan binary
+# embeds TF_VAR_* secret values (e.g. DATABRICKS_UC_EXTERNAL_ID) in plaintext regardless
+# of `sensitive = true` (which only redacts display), and GitHub Actions artifacts on a
+# public repo are downloadable by anyone with read access. The plan phase
+# (scripts/ci/plan_env.sh) stages and the workflow uploads ONLY the redacted plan.txt
+# text summary — this apply phase re-derives its own tfplan binary locally, under the
+# deploy role, and never trusts one produced by an earlier job.
 #
 # This guarantees ADR-R6-5 "No silent divergence, ever": apply never executes a plan the
 # approver did not see without the divergence guard asserting it matches the approved one.
@@ -133,7 +140,9 @@ deploy_stack() {
   "${TF_BIN}" init -input=false
   "${TF_BIN}" validate
 
-  local approved_plan="${PLAN_ARTIFACT_DIR}/${sid}/tfplan"
+  # F-01 — no saved `tfplan` binary is ever consumed here (none is staged by
+  # plan_env.sh / uploaded by the workflow any more). Only the redacted plan.txt TEXT
+  # summary is compared against a fresh, locally-produced re-plan.
   local approved_txt="${PLAN_ARTIFACT_DIR}/${sid}/plan.txt"
 
   # A stack DECLARED bootstrap_plannable:false in the map is "deferred" — the pre-gate
@@ -148,31 +157,12 @@ deploy_stack() {
 
   if upstream_applied_changes "${sid}"; then
     echo "::notice::${module_name}: an upstream applied changes in-run — re-planning and divergence-checking against the approved plan (ADR-R6-5)."
-    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
-  elif [[ -f "${approved_plan}" ]]; then
-    # Upstreams unchanged → apply the SAVED approved plan binary the gate reviewer saw.
-    echo "::notice::${module_name}: upstreams unchanged — applying the saved approved plan."
-    if grep -qE '^No changes\.' "${approved_txt}" 2>/dev/null; then
-      summary "| ✅ | ${module_name} | no changes (saved plan) |"
-    else
-      "${TF_BIN}" apply -input=false -auto-approve "${approved_plan}"
-      summary "| ✅ | ${module_name} | applied saved approved plan |"
-      APPLIED_STACKS+=("${sid}")
-    fi
   elif [[ "${deferred}" == "true" ]]; then
-    # Declared-deferred stack (e.g. 05b) with no pre-gate plan — the approver was already
-    # told this stack is "deferred to post-upstream stage". Re-plan now (upstream outputs
-    # are available) and apply the informed post-gate re-plan; the divergence gate runs in
-    # --deferred mode so a missing-approved plan is the deferred path, not exit 3. The
-    # destroy-ack gate still protects it.
     echo "::notice::${module_name}: declared-deferred stack, no pre-gate plan — informed post-gate re-plan (ADR-R6-5 deferred path)."
-    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
   else
-    # A non-deferred stack with NO approved plan is a broken contract: plan_gate_check.sh
-    # plan-diff fails closed (exit 3) on the missing approved plan.
-    echo "::notice::${module_name}: no saved approved plan — re-planning and divergence-checking (ADR-R6-5)."
-    deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
+    echo "::notice::${module_name}: re-planning under the deploy role and divergence-checking against the approved plan.txt summary (ADR-R6-5, F-01)."
   fi
+  deploy_stack_replan_diff "${sid}" "${module_name}" "${approved_txt}" "${deferred}"
 
   cd "${REPO_ROOT}"
 }

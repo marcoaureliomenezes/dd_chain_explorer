@@ -4,9 +4,17 @@
 # Reads the single-source stack map (scripts/ci/stack_map.json) and, for the given
 # environment, plans every stack that is plannable against CURRENT state. For each:
 #   - terraform init + validate + plan (via tf_plan.sh) producing tfplan + plan.txt;
-#   - the tfplan binary + full plan.txt are left under $PLAN_ARTIFACT_DIR/<stack-id>/
-#     so the workflow can upload them as artifacts and the apply phase can re-use the
-#     SAVED approved plan binary;
+#   - ONLY the full plan.txt (a redacted TEXT summary) is left under
+#     $PLAN_ARTIFACT_DIR/<stack-id>/ so the workflow can upload it as a public-repo
+#     artifact (retention-days: 1) for the human reviewer AND so the apply phase can
+#     diff-gate its own re-plan against it (scripts/ci/plan_gate_check.sh plan-diff,
+#     ADR-R6-5). The `tfplan` BINARY is never staged, never uploaded, and never
+#     leaves the plan job's own filesystem: it embeds TF_VAR_* secret values (e.g.
+#     DATABRICKS_UC_EXTERNAL_ID) in plaintext regardless of `sensitive = true` (which
+#     only redacts display), and GitHub Actions artifacts on a public repo are
+#     downloadable by anyone with read access (F-01, public-repo CI security audit,
+#     2026-08-23). The apply phase (deploy_env.sh) ALWAYS re-plans under the
+#     environment-gated deploy role and never trusts a saved plan binary;
 #   - a consolidated add/change/destroy summary row per stack is written to the run
 #     summary BEFORE the environment gate.
 # Stacks marked bootstrap_plannable:false in the map whose upstream output is not yet
@@ -140,8 +148,8 @@ for sid in "${STACK_IDS[@]}"; do
     exit 1
   fi
 
-  # Stage the saved plan binary + full plan.txt for artifact upload + apply re-use.
-  cp -f tfplan "${stage_dir}/tfplan"
+  # Stage ONLY the redacted plan.txt text summary for artifact upload + the apply
+  # phase's re-plan diff gate (F-01) — the tfplan BINARY never leaves this job.
   cp -f plan.txt "${stage_dir}/plan.txt"
   PLAN_TXT_FILES+=("${stage_dir}/plan.txt")
 
