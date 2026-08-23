@@ -109,8 +109,8 @@ jobs:
           [ -d utils/tests ] && TARGETS+=(utils/tests)
           pytest "${TARGETS[@]}" -p no:cacheprovider -v
 
-      - name: pip-audit — apps/lambda/requirements.lock
-        run: pip-audit -r apps/lambda/requirements.lock
+      - name: pip-audit — apps/lambda/requirements.txt
+        run: pip-audit -r apps/lambda/requirements.txt
 
       - name: actionlint (workflow lint, pinned version + checksum)
         env:
