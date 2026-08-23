@@ -1,6 +1,0 @@
-resources:
-  dashboards:
-    dev_network_overview:
-      display_name: "[dev] Network Overview"
-      warehouse_id: a2a66f2adb0faf18
-      file_path: ../src/dev_network_overview.lvdash.json

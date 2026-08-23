@@ -96,7 +96,7 @@
   - Deps: T-B.3, T-A.3, T-A.3b (the bootstrap roles must be proven working first) · AC-2, AC-10 · Findings: DRIFT-01, DRIFT-08
   - Evidence: plan showing only the `oidc.tf` resources leaving `03_iam` state (no role deletion — they are `00_bootstrap`'s now); post-apply plan 0/0/0; the four `gha` roles still present.
 
-- [ ] **T-B.4** — Reduce HML to the minimal lane with the **names pinned in SPEC §2.2 B2**: `hml/04_peripherals` keeps `dm-chain-explorer-hml-raw-data` + `dm-chain-explorer-hml-lakehouse` and declares `dm-databricks-hml-s3-role` granting only those two buckets; every other HML stack is destroyed (B2, F-05).
+- [-] **T-B.4** — Reduce HML to the minimal lane with the **names pinned in SPEC §2.2 B2**: `hml/04_peripherals` keeps `dm-chain-explorer-hml-raw-data` + `dm-chain-explorer-hml-lakehouse` and declares `dm-databricks-hml-s3-role` granting only those two buckets; every other HML stack is destroyed (B2, F-05).
   - Owner: software-engineer (live destroy operator-gated) · Write set: `services/hml/**`; live AWS HML peripherals resources
   - Deps: T-B.3, T-C.3 (bundle variables aligned to the same names), T-C.5 (PLAN K5) · AC-10, AC-11, AC-18b · Findings: DRIFT-22, ARCH-C2
   - Evidence: informed-gate plan reviewed before `destroy_ack`; post-apply plan 0/0/0; `aws s3api head-bucket` → 200 on both canonical names.
