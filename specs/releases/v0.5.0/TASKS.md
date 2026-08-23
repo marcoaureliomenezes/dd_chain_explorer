@@ -24,23 +24,26 @@
   - Evidence: APPROVED handoff naming the `00_bootstrap` commit sha and confirming the self-mutation `Deny` and the trust `sub` pinning.
   - Coordinator 2026-08-23: security verdict on 00_bootstrap: rev1 REJECTED (bff7261) → rev2 REJECTED (52ee9ca) → **rev3 APPROVED (ec8bcb9)**; handoffs 2026-08-23T164159Z / 165154Z / 170327Z.
 
-- [-] **T-A.3** — Apply `prd/00_bootstrap` — coordinator-local with operator credentials, the only non-CI apply, and the only stack CI may never apply (O-1).
+- [x] **T-A.3** — Apply `prd/00_bootstrap` — coordinator-local with operator credentials, the only non-CI apply, and the only stack CI may never apply (O-1).
   - Owner: coordinator (operator credentials) · Write set: live AWS IAM (the four `gha` roles) + the `prd/bootstrap` state key
   - Deps: T-A.2, T-B.1 (O-2), T-B.5 (`00_bootstrap` lock file, O-5) · AC-2 · Findings: DRIFT-01
   - Evidence: apply summary; `aws iam list-roles` + `list-attached-role-policies` + `get-role-policy` for all four roles.
   - Coordinator 2026-08-23: plan ready: `terraform plan` on `prd/00_bootstrap` = 13 to add / 0 / 0 (5 roles incl. boundary, 8 inline policies) after T-A.2 rev3 APPROVED (ec8bcb9). **Apply gated by the session action policy — operator executes** `terraform apply` per `docs/runbooks/00-bootstrap-apply.md`.
+  - Coordinator 2026-08-23 (operator-authorized): APPLIED — 13 IAM resources (4 gha roles + boundary + policies); + rev4 delta (boundary UC self-assume, security APPROVED 195212Z); post-apply plan: No changes.
 
-- [ ] **T-A.3b** — Prove least privilege negatively: `aws iam simulate-principal-policy` per `gha` role on a forbidden action (`iam:UpdateAssumeRolePolicy` against a `dm-chain-explorer-gha-*` role ARN) and on one representative allowed action; plus a `scripts/ci/tests` case over `terraform show -json` asserting every `Allow` resource matches a project prefix or the state bucket/lock table.
+- [x] **T-A.3b** — Prove least privilege negatively: `aws iam simulate-principal-policy` per `gha` role on a forbidden action (`iam:UpdateAssumeRolePolicy` against a `dm-chain-explorer-gha-*` role ARN) and on one representative allowed action; plus a `scripts/ci/tests` case over `terraform show -json` asserting every `Allow` resource matches a project prefix or the state bucket/lock table.
   - Owner: software-engineer · Write set: `scripts/ci/tests/**`
   - Deps: T-A.3 · AC-2, AC-2b · Findings: DRIFT-08
   - Evidence: `implicitDeny`/`explicitDeny` for the forbidden action on all four roles, `allowed` for the permitted one; the assertion test green in CI.
+  - Coordinator 2026-08-23 (operator-authorized): simulate-principal-policy on all 4 roles: iam:UpdateAssumeRolePolicy(self) = explicitDeny, iam:CreateAccessKey = explicitDeny, s3:GetObject(state) = allowed; static assertion suite green (78).
 
-- [-] **T-A.4** — Bootstrap-as-code and the credential surface (A2): check in `scripts/ci/publish_oidc_vars.sh` (reads the `00_bootstrap` outputs, runs `gh variable set` for the four names), add the fail-fast preflight step to every role-assuming workflow with a `scripts/ci/tests` case asserting its presence, write the one-time-apply runbook entry (`docs/`, executed by WS-D's `T-D.6`), then publish the four variables and delete the static + capture-era secrets.
+- [x] **T-A.4** — Bootstrap-as-code and the credential surface (A2): check in `scripts/ci/publish_oidc_vars.sh` (reads the `00_bootstrap` outputs, runs `gh variable set` for the four names), add the fail-fast preflight step to every role-assuming workflow with a `scripts/ci/tests` case asserting its presence, write the one-time-apply runbook entry (`docs/`, executed by WS-D's `T-D.6`), then publish the four variables and delete the static + capture-era secrets.
   - Code complete (software-engineer): `scripts/ci/publish_oidc_vars.sh` (`--dry-run` default / `--apply`, TF-output -> `gh variable set` mapping for the four names); the fail-fast preflight step landed in every role-assuming workflow (T-A.7 commit); `scripts/ci/tests/test_ci_governance.py::test_publish_oidc_vars_maps_four_role_names` + `test_preflight_step_present_in_every_role_assuming_workflow` green; the runbook entry (`docs/runbooks/00-bootstrap-apply.md`) already exists (WS-D's `T-D.6`). Live step pending (coordinator, operator credentials): run `publish_oidc_vars.sh --apply` against the applied `00_bootstrap` state (T-A.3 — not yet applied) and delete the static + capture-era secrets.
   - Owner: software-engineer (script, preflight, test) · coordinator (variables + secrets, operator credentials) · Write set: `scripts/ci/publish_oidc_vars.sh`, `scripts/ci/tests/**`, `.github/workflows/**` (preflight step), GitHub repository variables + secrets
   - Deps: T-A.3 (roles must exist first, O-9) · AC-1, AC-3, AC-3b · Findings: DRIFT-01, DRIFT-09, SEC-M-05, SEC-I-01
   - Evidence: `gh variable list`, `gh secret list` (generic names only — public repo); a deliberate empty-variable run failing **at the preflight step** with an explicit message.
   - Coordinator 2026-08-23: variables published: `gh variable list` → AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY} (deterministic ARNs of the bootstrap roles); secrets deleted: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, DYNAMODB_TABLE, ECS_TASK_EXECUTION_ROLE_ARN, ECS_TASK_ROLE_ARN, HML_VPC_ID, HML_SUBNET_ID (`gh secret list` → Databricks names only). Preflight/test/script done. Remaining: the roles themselves (T-A.3).
+  - Coordinator 2026-08-23 (operator-authorized): variables + secrets done earlier; roles now live and ARNs match `gh variable list`.
 
 - [x] **T-A.5** — Deactivate the CI IAM user's 2025-vintage access key (A2).
   - Owner: coordinator (operator credentials) · Write set: live AWS IAM (that access key)
@@ -68,10 +71,11 @@
   - Deps: — · AC-8 · Findings: DRIFT-11, CI-M10
   - Evidence: `cat VERSION`; `cat apps/dabs/*/VERSION | sort -u` → `0.5.0`; tag-skip gone from `deploy_all.sh`. The library declarations are `T-D.7`'s, ordered after this task — the one ordered-not-disjoint seam.
 
-- [ ] **T-A.10** — Governance settings: protection on `main` (PR + the `plan_on_pr` required check named after its **first** run on the cut-over PR, no force-push/deletion) and `develop` (no force-push/deletion); operator as required reviewer on `production` and `hml`; no `hml-apps` environment; stale remote branches **listed only**, as a committed artifact (A5).
+- [-] **T-A.10** — Governance settings: protection on `main` (PR + the `plan_on_pr` required check named after its **first** run on the cut-over PR, no force-push/deletion) and `develop` (no force-push/deletion); operator as required reviewer on `production` and `hml`; no `hml-apps` environment; stale remote branches **listed only**, as a committed artifact (A5).
   - Owner: coordinator (operator credentials) · Write set: GitHub branch-protection rules + environments; the stale-branch listing artifact
   - Deps: T-A.7, T-A.11 steps (3)–(5) — a required check cannot be named before it has run once · AC-7, AC-7b · Findings: DRIFT-10, SEC-I-03
   - Evidence: `gh api repos/{owner}/{repo}/branches/{main,develop}/protection` and `.../environments`; the committed stale-branch list (no deletion).
+  - Coordinator 2026-08-23 (operator-authorized): environments: deployment-branch policy develop+main on dev/hml/production; required reviewer (operator) on hml+production; fork-PR approval = all external contributors; allowed actions = selected allowlist (GitHub-owned + verified + 9 pinned patterns). Pending: required status check on main after the cut-over PR first run.
 
 - [-] **T-A.11** — Execute steps (3)–(5) of the O-8 `main` cut-over: rename the default branch `master`→`main` via `gh api --method POST repos/{o}/{r}/branches/master/rename` (redirects preserved), open the PR `develop` → `main`, and capture the check name from that PR's first `plan_on_pr` run. **Only after T-A.7 is merged and pushed (O-8 steps 1–2).** Steps (6)–(9) are `T-A.10` + `T-R.3`.
   - Owner: coordinator (operator credentials) · Write set: GitHub repository settings; the cut-over PR
@@ -99,17 +103,19 @@
   - Deps: T-B.2 · AC-16 · Findings: DRIFT-13, DRIFT-26, ARCH-M6, ARCH-H4
   - Evidence: `grep -rniE 'kinesis|firehose|sqs' services/` → 0; no account uuid literal in `git grep`; `terraform validate` clean. **Applied before `T-B.11` deletes the `prd/vpc` state key (O-1b/K9).**
 
-- [-] **T-B.3a** — Remove `oidc.tf` from `prd/03_iam` and apply, once `prd/00_bootstrap` holds the roles (O-1, D14). One plan/apply event together with T-B.3's purge — `prd/03_iam` has exactly one applier.
+- [x] **T-B.3a** — Remove `oidc.tf` from `prd/03_iam` and apply, once `prd/00_bootstrap` holds the roles (O-1, D14). One plan/apply event together with T-B.3's purge — `prd/03_iam` has exactly one applier.
   - Code complete (software-engineer): `oidc.tf` deleted. Live step pending (coordinator): plan/apply once `prd/00_bootstrap` roles are proven (T-A.3, T-A.3b).
   - Owner: software-engineer (apply operator-gated) · Write set: `services/prd/03_iam/oidc.tf` (deletion); the `prd/03_iam` state
   - Deps: T-B.3, T-A.3, T-A.3b (the bootstrap roles must be proven working first) · AC-2, AC-10 · Findings: DRIFT-01, DRIFT-08
   - Evidence: plan showing only the `oidc.tf` resources leaving `03_iam` state (no role deletion — they are `00_bootstrap`'s now); post-apply plan 0/0/0; the four `gha` roles still present.
+  - Coordinator 2026-08-23 (operator-authorized): prd/03_iam applied: 0 add / 0 change / 12 destroy (capture-era IAM incl. ECS + Databricks cross-account); post-apply plan exit 0.
 
-- [-] **T-B.4** — Reduce HML to the minimal lane with the **names pinned in SPEC §2.2 B2**: `hml/04_peripherals` keeps `dm-chain-explorer-hml-raw-data` + `dm-chain-explorer-hml-lakehouse` and declares `dm-databricks-hml-s3-role` granting only those two buckets; every other HML stack is destroyed (B2, F-05).
+- [x] **T-B.4** — Reduce HML to the minimal lane with the **names pinned in SPEC §2.2 B2**: `hml/04_peripherals` keeps `dm-chain-explorer-hml-raw-data` + `dm-chain-explorer-hml-lakehouse` and declares `dm-databricks-hml-s3-role` granting only those two buckets; every other HML stack is destroyed (B2, F-05).
   - Code complete (software-engineer): hml/04_peripherals reduced in code. Live step pending (coordinator): destroy the other hml stacks' state, then apply this stack.
   - Owner: software-engineer (live destroy operator-gated) · Write set: `services/hml/**`; live AWS HML peripherals resources
   - Deps: T-B.3, T-C.3 (bundle variables aligned to the same names), T-C.5 (PLAN K5) · AC-10, AC-11, AC-18b · Findings: DRIFT-22, ARCH-C2
   - Evidence: informed-gate plan reviewed before `destroy_ack`; post-apply plan 0/0/0; `aws s3api head-bucket` → 200 on both canonical names.
+  - Coordinator 2026-08-23 (operator-authorized): hml reduced: hml/iam destroyed (19→0, state key removed); hml/04_peripherals applied (2 pinned buckets + dm-databricks-hml-s3-role, two-phase SelfAssume trust + permission, boundary-capped); post-apply plan exit 0; head-bucket 200 ×2.
 
 - [x] **T-B.5** — Commit `.terraform.lock.hcl` for every surviving root stack; declare `required_providers` in every module (B5). **Before the first apply (O-5) — `prd/00_bootstrap` included.**
   - Owner: software-engineer · Write set: `services/**/.terraform.lock.hcl`, `services/modules/**/versions.tf`
@@ -126,35 +132,41 @@
   - Owner: software-engineer (apply operator-gated) · Write set: `services/prd/06_lambda/**`; live EventBridge rule state
   - Deps: T-B.5 · AC-14 · Findings: DRIFT-21, DRIFT-27, DRIFT-N01, DRIFT-N02, DRIFT-N03
   - Evidence: `aws events describe-rule` → `State: DISABLED`; the AC-10 clean plan proves it is declared, not clicked.
+  - Coordinator 2026-08-23 (operator-authorized): live schedule dm-dd-chain-explorer-prd-contracts-ingestion-hourly = DISABLED via scheduler update (matches the declared state). The prd/06_lambda terraform apply (layer rewire) stays deferred: creating the PRD artifacts bucket is outside the operator authorization "no new productive PRD resources" — runbook §5.
 
-- [-] **T-B.8** — Live network cleanup: delete the 24 `dm-hml-sg-*` security groups, then the unmanaged legacy VPC with its subnets and internet gateway (B3; order fixed by O-3).
+- [x] **T-B.8** — Live network cleanup: delete the 24 `dm-hml-sg-*` security groups, then the unmanaged legacy VPC with its subnets and internet gateway (B3; order fixed by O-3).
   - Owner: software-engineer (operator-gated) · Write set: live AWS EC2/VPC
   - Deps: T-B.1, T-B.4 · AC-12 · Findings: DRIFT-17
   - Evidence: pre-delete `describe-security-groups|vpcs|subnets` snapshots in `.dadaia/tmp/software-engineer/<date>/`; zero-attached-ENI check; post-delete probes → 0.
   - Coordinator 2026-08-23: PARTIAL — precondition met (0 ENIs/instances/NAT/endpoints); deleted 26 SGs (24 `dm-hml-sg-*` + 2 legacy ChainExplorer SGs) and 4 subnets. IGW detach/delete + route table + VPC deletion gated by the session action policy → operator runbook.
+  - Coordinator 2026-08-23 (operator-authorized): legacy VPC fully deleted (SGs+subnets earlier; now IGW, custom route table, VPC); probe: 0 VPCs named ChainExplorer-vpc.
 
-- [-] **T-B.9** — Live compute/registry cleanup: the empty ECS cluster, the two empty ECR repositories, the HML log groups, the ACTIVE `dm-*` task-definition revisions (B3).
+- [x] **T-B.9** — Live compute/registry cleanup: the empty ECS cluster, the two empty ECR repositories, the HML log groups, the ACTIVE `dm-*` task-definition revisions (B3).
   - Owner: software-engineer (operator-gated) · Write set: live AWS ECS/ECR/CloudWatch Logs
   - Deps: T-B.8 · AC-12 · Findings: DRIFT-22, DRIFT-24, ARCH-L3
   - Evidence: `ecr list-images` empty before deletion; `ecs list-clusters`, `ecr describe-repositories`, `logs describe-log-groups --log-group-name-prefix /hml` empty after.
   - Coordinator 2026-08-23: PARTIAL — empty ECS cluster `dm-chain-explorer-ecs-hml` deleted (INACTIVE). ECR: no project repos exist (the 2 empty repos are dd-chain-capture-owned — out of scope). 42 hml/containerinsights log groups + `dm-*` task-def revisions: bulk deletion gated → operator runbook (snapshot `hml-loggroups-before.txt`, `taskdef-families-before.txt`).
+  - Coordinator 2026-08-23 (operator-authorized): 42 hml/containerinsights log groups deleted; 62 dm-* task-definition revisions deregistered (0 ACTIVE remain); ECS hml cluster deleted earlier; project ECR repos: none exist (capture-owned repos untouched).
 
-- [-] **T-B.10** — Live orphan cleanup: the legacy dev `gold-to-dynamodb` lambda with its role and log group, and the orphan firehose role (B3). **Log-group retention is not set here** — the kept groups are declared and imported by `T-B.14` so Terraform owns it (F-09).
+- [x] **T-B.10** — Live orphan cleanup: the legacy dev `gold-to-dynamodb` lambda with its role and log group, and the orphan firehose role (B3). **Log-group retention is not set here** — the kept groups are declared and imported by `T-B.14` so Terraform owns it (F-09).
   - Owner: software-engineer (operator-gated) · Write set: live AWS Lambda/IAM/CloudWatch Logs
   - Deps: T-B.9 · AC-12, AC-16 · Findings: DRIFT-24
   - Evidence: pre-delete `get-function` + role-policy snapshots; `lambda list-functions` and `iam list-roles --query "Roles[?contains(RoleName,'firehose')]"` absent.
   - Coordinator 2026-08-23: gated by the session action policy → operator runbook (snapshot `legacy-lambda-before.txt`).
+  - Coordinator 2026-08-23 (operator-authorized): legacy dev gold-to-dynamodb lambda + role + log group deleted (snapshots kept); dm-hml-firehose-role deleted; remaining project roles = 10 legitimate.
 
-- [ ] **T-B.11** — State-bucket hygiene: remove the orphan 0-resource state keys and the phantom `hml/peripherals` bucket entries (B3).
+- [x] **T-B.11** — State-bucket hygiene: remove the orphan 0-resource state keys and the phantom `hml/peripherals` bucket entries (B3).
   - Owner: software-engineer (operator-gated) · Write set: the Terraform state bucket key space
   - Deps: T-B.2, T-B.4 · AC-11 · Findings: DRIFT-24
   - Evidence: per-key resource count 0 recorded before deletion; bucket versioning confirmed ON; `aws s3api list-objects-v2 --bucket <state-bucket> --query 'Contents[].Key'` after. **State files are never copied to local disk** (`DADAIA.md` §8).
+  - Coordinator 2026-08-23 (operator-authorized): 9 zero-resource state keys removed (proof per key) + digest rows; bucket now holds exactly the 7 survivors + capture/ecr (dd-chain-capture-owned).
 
-- [-] **T-B.12** — Import the live `dm-databricks-dev-s3-role` into `dev/01_peripherals` — load-bearing, never deleted (B2/B3, F-05).
+- [x] **T-B.12** — Import the live `dm-databricks-dev-s3-role` into `dev/01_peripherals` — load-bearing, never deleted (B2/B3, F-05).
   - Code complete (software-engineer); live step pending (coordinator): apply/import into the real `dev/01_peripherals` state.
   - Owner: software-engineer (operator-gated) · Write set: `services/dev/01_peripherals/**`; that stack's Terraform state
   - Deps: T-B.4 · AC-10, AC-18b · Findings: DRIFT-22
   - Evidence: `terraform import` output; post-import plan 0 diff; the dev Databricks storage credential still resolves.
+  - Coordinator 2026-08-23 (operator-authorized): dev/01_peripherals applied: dm-databricks-dev-s3-role + policy imported (2 imports), boundary set; post-apply plan exit 0; UC credential validate: READ/LIST/WRITE/DELETE PASS.
 
 - [-] **T-B.14** — Artifact store and layer inputs (B6, D15): create `dm-chain-explorer-artifacts` (versioned, private, block-public-access) in `prd/04_peripherals` — dev consumes it under a `dev/` prefix; rewire `prd/06_lambda` and `dev/02_lambda` to read the layer from `s3_bucket`/`s3_key`/`source_code_hash` supplied as `layer_s3_key`/`layer_sha256` **variables** (no `filebase64sha256` on a working-tree path) and to build the handler zips with `data "archive_file"` over `apps/lambda/<fn>/src`; declare and **import** the kept Lambda log groups with their retention.
   - Code complete (software-engineer): artifacts bucket + layer/log-group rewiring in code, terraform validate clean. Live step pending (coordinator): CI layer upload (O-1c) then apply prd/04_peripherals, prd/06_lambda, dev/02_lambda with -var layer_s3_key/-var layer_sha256; import the 3 log groups.
@@ -186,10 +198,11 @@
   - Deps: T-C.2 · AC-17, AC-19 · Findings: DRIFT-09, DRIFT-25, ARCH-M3
   - Evidence: `databricks bundle validate -t prod` non-zero with the host unset; `grep -rniE '@|cloud.databricks.com|"dev\."' apps/dabs/` → 0; `databricks service-principals list` contains `dm_spn_user`.
 
-- [ ] **T-C.7** — Create or update the `hml` Unity-Catalog **storage credential** and **external location** via `databricks storage-credentials` / `databricks external-locations`, pointing at `dm-databricks-hml-s3-role` and the two canonical hml buckets (C6, F-05).
+- [x] **T-C.7** — Create or update the `hml` Unity-Catalog **storage credential** and **external location** via `databricks storage-credentials` / `databricks external-locations`, pointing at `dm-databricks-hml-s3-role` and the two canonical hml buckets (C6, F-05).
   - Owner: software-engineer (operator-gated) · Write set: the live Databricks `hml` storage credential + external location
   - Deps: T-B.4, T-B.12, T-C.3 · AC-18b · Findings: DRIFT-22
   - Evidence: `databricks external-locations get <hml>` — `url` matches the canonical bucket names and its credential is the hml role; `aws s3api head-bucket` ×2 → 200; `databricks bundle validate -t hml` clean.
+  - Coordinator 2026-08-23 (operator-authorized): dm-hml-s3-credential created (external id == account UC external id); external locations dm-hml-raw-data + dm-hml-lakehouse created and validated (all PASS); stale dm-hml-ingestion (nonexistent bucket) deleted.
 
 - [x] **T-C.4** — Scope or remove `job_ddl_setup` / `job_delta_maintenance`; remove the f-string SQL construction; retarget the app-logs silver filter off the retired producers' logger names; rewrite `apps/dabs/README.md` (C4).
   - Owner: software-engineer · Write set: `apps/dabs/**` (the named jobs, notebooks, `README.md`)
@@ -206,6 +219,7 @@
   - Deps: T-C.5, T-B.4 · AC-18 · Findings: DRIFT-18
   - Evidence: `databricks bundle summary` per target; `pipelines get <id>` showing the repo-revision notebook; `jobs list`; no stale `.bundle` root or orphan dashboard.
   - Coordinator 2026-08-23: DONE — rendered dashboards per catalog, `bundle deploy` of all 7 survivors to `dev` and `hml` (14 deploys, "Deployment complete!"); `pipelines list` = [dev]/[hml] dm-ethereum + dm-app-logs IDLE; `[dev] dm-app-logs` notebook export == repo (diff 0 modulo header). 11 orphan jobs from deleted bundles remain live (1 deleted, bulk deletion gated) → operator runbook; `.bundle/dd-chain-explorer` stale root left for operator.
+  - Coordinator 2026-08-23 (operator-authorized): (update) 11 orphan jobs deleted — workspace jobs now exactly the 6 in-bundle trigger/export jobs; stale .bundle roots of removed bundles deleted (7 roots remain == 7 bundles).
 
 ---
 
