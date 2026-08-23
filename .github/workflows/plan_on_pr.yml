@@ -158,11 +158,15 @@ jobs:
 
       - name: Detect changed modules
         id: detect
+        env:
+          # F-09: env-indirection — never substitute github.base_ref directly
+          # into a `run:` script body.
+          BASE_REF: ${{ github.base_ref }}
         run: |
           set -euo pipefail
           # Fail-loud diff base (CI-H3, T-R6-A8(b)): the PR base ref must be
           # fetchable and share a merge-base with HEAD — no silent HEAD~1 fallback.
-          BASE="origin/${{ github.base_ref }}"
+          BASE="origin/${BASE_REF}"
           if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
             echo "::error::detect-changes: base ref '$BASE' not available — checkout needs fetch-depth: 0." >&2
             exit 1

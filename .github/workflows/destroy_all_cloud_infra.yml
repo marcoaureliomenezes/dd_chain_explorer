@@ -54,9 +54,13 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Verify confirmation phrase
+        env:
+          # F-09: env-indirection — inputs.confirm is free-form text; never
+          # substitute it directly into a `run:` script body.
+          CONFIRM: ${{ inputs.confirm }}
         run: |
-          if [ "${{ inputs.confirm }}" != "DESTROY ALL" ]; then
-            echo "::error::Confirmation phrase must be exactly 'DESTROY ALL'. Got: '${{ inputs.confirm }}'"
+          if [ "${CONFIRM}" != "DESTROY ALL" ]; then
+            echo "::error::Confirmation phrase must be exactly 'DESTROY ALL'. Got: '${CONFIRM}'"
             exit 1
           fi
           echo "Confirmed — proceeding with full destroy."

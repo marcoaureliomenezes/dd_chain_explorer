@@ -64,18 +64,23 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Resolve and validate AWS_DEPLOY_ROLE_* for the target
+        env:
+          # F-09: env-indirection — inputs.target is a `type: choice`, but
+          # zizmor still flags any raw `${{ }}` inside `run:`; never substitute
+          # it directly into a script body.
+          TARGET: ${{ inputs.target }}
         run: |
-          case "${{ inputs.target }}" in
+          case "${TARGET}" in
             dev)  ROLE="${{ vars.AWS_DEPLOY_ROLE_DEV }}" ;;
             hml)  ROLE="${{ vars.AWS_DEPLOY_ROLE_HML }}" ;;
             prod) ROLE="${{ vars.AWS_DEPLOY_ROLE_PRD }}" ;;
-            *)    echo "::error::Unknown target '${{ inputs.target }}'"; exit 1 ;;
+            *)    echo "::error::Unknown target '${TARGET}'"; exit 1 ;;
           esac
           if [ -z "$ROLE" ]; then
-            echo "::error::AWS_DEPLOY_ROLE_* for target '${{ inputs.target }}' is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap (T-A.3/T-A.4) — see docs/runbooks/00-bootstrap-apply.md."
+            echo "::error::AWS_DEPLOY_ROLE_* for target '${TARGET}' is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap (T-A.3/T-A.4) — see docs/runbooks/00-bootstrap-apply.md."
             exit 1
           fi
-          echo "OIDC role variable present for target '${{ inputs.target }}' — OK."
+          echo "OIDC role variable present for target '${TARGET}' — OK."
 
   # ── Check: VERSION sanity ───────────────────────────────────────────────────
   check-version:
@@ -89,6 +94,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       - name: Read VERSION (one version axis, T-A.9)
         id: ver
+        env:
+          TARGET: ${{ inputs.target }}
         run: |
           VERSION=$(cat VERSION | tr -d '[:space:]')
           if [ -z "$VERSION" ]; then
@@ -96,7 +103,7 @@ jobs:
             exit 1
           fi
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
-          echo "Deploying v${VERSION} to target '${{ inputs.target }}'."
+          echo "Deploying v${VERSION} to target '${TARGET}'."
 
   # ── Lambda layer: from-source build + content-addressed S3 upload (T-A.7, T-B.14) ──
   # Only prd/06_lambda consumes the shared dm-chain-utils layer (var.layer_s3_key /
@@ -182,8 +189,10 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
       - name: Resolve Lambda stack path for target
         id: stack
+        env:
+          TARGET: ${{ inputs.target }}
         run: |
-          if [ "${{ inputs.target }}" = "prod" ]; then
+          if [ "${TARGET}" = "prod" ]; then
             echo "path=services/prd/06_lambda" >> "$GITHUB_OUTPUT"
           else
             echo "path=services/dev/02_lambda" >> "$GITHUB_OUTPUT"
@@ -221,9 +230,12 @@ jobs:
           DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          # F-09: env-indirection — never substitute inputs.target directly
+          # into a `run:` script body.
+          TARGET: ${{ inputs.target }}
         run: |
           if [ -z "${DATABRICKS_HOST}" ] || [ -z "${DATABRICKS_CLIENT_ID}" ] || [ -z "${DATABRICKS_CLIENT_SECRET}" ]; then
             echo "::error::DATABRICKS_HOST/DATABRICKS_CLIENT_ID/DATABRICKS_CLIENT_SECRET are not set as environment secrets on this job's environment. dev/hml must carry all three (OAuth M2M service principal); production carries none by design (no prod Databricks workspace) and is expected to fail here."
             exit 1
           fi
-          bash "${{ env.DABS_PATH }}/deploy_all.sh" "${{ inputs.target }}"
+          bash "${{ env.DABS_PATH }}/deploy_all.sh" "${TARGET}"
