@@ -18,6 +18,15 @@ variables:
   dlt_continuous:
     description: "DLT continuous mode"
     default: false
+  streaming_logger_names:
+    description: >-
+      Comma-separated `logger` field values routed to s_logs.logs_streaming.
+      dd-chain-capture (external project) owns the real producer names —
+      override once Fluent-Bit traffic confirms them.
+    default: "MINED_BLOCKS_EVENTS,ORPHAN_BLOCKS_CRAWLER,BLOCK_DATA_CRAWLER,RAW_TXS_CRAWLER,TRANSACTION_INPUT_DECODER"
+  batch_logger_names:
+    description: "Comma-separated `logger` field values routed to s_logs.logs_batch."
+    default: "CONTRACT_TRANSACTIONS_CRAWLER"
 
 targets:
   dev:

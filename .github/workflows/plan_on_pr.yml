@@ -14,7 +14,7 @@ name: Plan on PR
 
 on:
   pull_request:
-    branches: [develop]
+    branches: [develop, main]
     paths:
       - 'services/**'
       - 'scripts/ci/**'
@@ -31,6 +31,7 @@ concurrency:
 env:
   AWS_REGION: sa-east-1
   TF_VERSION: 1.7.0
+  UTILS_DIR:  utils
 
 # ──────────────────────────────────────────────────────────────────────────────
 jobs:
@@ -65,10 +66,43 @@ jobs:
             echo "::endgroup::"
           done < <(find services -type f -name '*.tf' -printf '%h\n' | sort -u)
 
-      - name: actionlint (workflow lint)
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dev tooling (ruff, mypy, pip-audit, test deps)
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff mypy pip-audit pytest
+          pip install -e "${{ env.UTILS_DIR }}[dev]"
+
+      - name: ruff format --check
+        run: ruff format --check . --no-cache
+
+      - name: ruff check
+        run: ruff check . --no-cache
+
+      - name: mypy
+        run: mypy
+
+      - name: pytest — scripts/ci/tests, utils/tests, tests/
+        run: |
+          pytest scripts/ci/tests utils/tests tests -p no:cacheprovider -v
+
+      - name: pip-audit — apps/lambda/requirements.lock
+        run: pip-audit -r apps/lambda/requirements.lock
+
+      - name: actionlint (workflow lint, pinned version + checksum)
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+          ACTIONLINT_SHA256:  "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
         run: |
           set -euo pipefail
-          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
           ./actionlint -color
 
   # ── 1. Detect which modules changed in this PR ────────────────────────────

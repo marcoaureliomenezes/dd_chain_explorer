@@ -80,7 +80,7 @@ jobs:
   dev-deploy-peripherals:
     name: DEV — Deploy Peripherals AWS
     concurrency:
-      group: tf-dev-peripherals
+      group: tf-dev
       cancel-in-progress: false
     needs: dev-detect-changes
     if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
@@ -124,7 +124,7 @@ jobs:
   dev-deploy-lambda:
     name: DEV — Deploy Lambda AWS
     concurrency:
-      group: tf-dev-lambda
+      group: tf-dev
       cancel-in-progress: false
     needs: [dev-detect-changes, dev-deploy-peripherals]
     if: |
@@ -198,7 +198,7 @@ jobs:
   prd-plan:
     name: PRD — Plan (pre-gate)
     concurrency:
-      group: tf-prd-deploy
+      group: tf-prd
       cancel-in-progress: false
     needs: prd-check-version
     runs-on: ubuntu-latest
@@ -255,7 +255,7 @@ jobs:
   prd-apply:
     name: PRD — Apply (gated)
     concurrency:
-      group: tf-prd-deploy
+      group: tf-prd
       cancel-in-progress: false
     needs:
       - prd-check-version
@@ -334,7 +334,7 @@ jobs:
   hml-plan:
     name: HML — Plan (pre-gate)
     concurrency:
-      group: tf-hml-deploy
+      group: tf-hml
       cancel-in-progress: false
     needs: branch-guard
     if: github.event.inputs.environment == 'hml'
@@ -373,7 +373,7 @@ jobs:
   hml-apply:
     name: HML — Apply (gated)
     concurrency:
-      group: tf-hml-deploy
+      group: tf-hml
       cancel-in-progress: false
     needs:
       - branch-guard

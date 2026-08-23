@@ -35,10 +35,24 @@
 
 # COMMAND ----------
 
+import re
+
 import dlt
 from pyspark.sql import functions as F
 from pyspark.sql.types import StringType, StructType, StructField, LongType, ArrayType, IntegerType
 from pyspark.sql.window import Window
+
+
+# Unity Catalog identifiers cannot be bind-parameterized in Spark SQL — validate
+# the name against a strict allow-list pattern before any f-string interpolation
+# (AC-24 / T-C.4: no unvalidated identifier construction).
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+def _validated_identifier(name: str, what: str) -> str:
+    if not _IDENTIFIER_RE.match(name):
+        raise ValueError(f"invalid {what}: {name!r}")
+    return name
 
 
 # ── Configuration ─────────────────────────────────────────────────────────────
@@ -47,7 +61,7 @@ from pyspark.sql.window import Window
 
 INGESTION_BUCKET = spark.conf.get("ingestion.s3.bucket", "dm-chain-explorer-dev-ingestion")
 S3_RAW_BASE      = f"s3://{INGESTION_BUCKET}/raw"
-CATALOG          = spark.conf.get("catalog", "dev")
+CATALOG          = _validated_identifier(spark.conf.get("catalog", "dev"), "catalog")
 
 
 # ════════════════════════════════════════════════════════════════════════════

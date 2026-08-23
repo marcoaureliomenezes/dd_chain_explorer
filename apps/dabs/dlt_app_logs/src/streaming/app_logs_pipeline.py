@@ -29,17 +29,31 @@ from pyspark.sql import functions as F
 INGESTION_BUCKET = spark.conf.get("ingestion.s3.bucket", "dm-chain-explorer-dev-ingestion")
 S3_RAW_BASE      = f"s3://{INGESTION_BUCKET}/raw"
 
+
+def _configured_logger_names(key: str, default_csv: str) -> list[str]:
+    """Comma-separated `logger` field values read from pipeline configuration.
+
+    dd-chain-capture (the S3 producer) is a separate, external project — its
+    logger names are not this repo's source of truth and may drift. Rather
+    than hardcode a fixed producer list here, the split between streaming and
+    batch loggers is configurable per target via the `streaming_logger_names`/
+    `batch_logger_names` bundle variables (see databricks.yml); the defaults
+    below are the pre-retirement producer names, kept only as a documented
+    starting point until real Fluent-Bit traffic confirms the current ones.
+    """
+    raw = spark.conf.get(key, default_csv)
+    return [name.strip() for name in raw.split(",") if name.strip()]
+
+
 # APP_NAME constants — valor do campo `logger` nas mensagens de log
-STREAMING_APP_NAMES = [
-    "MINED_BLOCKS_EVENTS",       # 1_mined_blocks_watcher.py
-    "ORPHAN_BLOCKS_CRAWLER",     # 2_orphan_blocks_watcher.py
-    "BLOCK_DATA_CRAWLER",        # 3_block_data_crawler.py
-    "RAW_TXS_CRAWLER",           # 4_mined_txs_crawler.py
-    "TRANSACTION_INPUT_DECODER", # 5_txs_input_decoder.py
-]
-BATCH_APP_NAMES = [
-    "CONTRACT_TRANSACTIONS_CRAWLER",  # 1_capture_and_ingest_contracts_txs.py
-]
+STREAMING_APP_NAMES = _configured_logger_names(
+    "streaming_logger_names",
+    "MINED_BLOCKS_EVENTS,ORPHAN_BLOCKS_CRAWLER,BLOCK_DATA_CRAWLER,RAW_TXS_CRAWLER,TRANSACTION_INPUT_DECODER",
+)
+BATCH_APP_NAMES = _configured_logger_names(
+    "batch_logger_names",
+    "CONTRACT_TRANSACTIONS_CRAWLER",
+)
 
 # COMMAND ----------
 

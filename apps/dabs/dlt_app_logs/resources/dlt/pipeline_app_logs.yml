@@ -16,6 +16,10 @@ resources:
       configuration:
         # S3 bucket for ingestion (raw data, DLT external tables, checkpoints)
         ingestion.s3.bucket: ${var.ingestion_s3_bucket}
+        # logger-name allow-lists for the silver split (T-C.4) — see the
+        # variable descriptions in databricks.yml.
+        streaming_logger_names: ${var.streaming_logger_names}
+        batch_logger_names: ${var.batch_logger_names}
 
       continuous: ${var.dlt_continuous}
       channel: CURRENT

@@ -51,7 +51,7 @@ jobs:
   dev-destroy:
     name: DEV — Destroy all modules
     concurrency:
-      group: tf-dev-destroy
+      group: tf-dev
       cancel-in-progress: false
     needs: safety-check
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
@@ -82,7 +82,7 @@ jobs:
   hml-destroy:
     name: HML — Destroy modules
     concurrency:
-      group: tf-hml-destroy
+      group: tf-hml
       cancel-in-progress: false
     needs: safety-check
     if: github.event.inputs.environment == 'hml'
@@ -113,7 +113,7 @@ jobs:
   prd-destroy:
     name: PRD — Destroy all modules
     concurrency:
-      group: tf-prd-destroy
+      group: tf-prd
       cancel-in-progress: false
     needs: safety-check
     if: github.event.inputs.environment == 'prd'

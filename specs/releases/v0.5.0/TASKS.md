@@ -179,7 +179,7 @@
   - Deps: T-B.4, T-B.12, T-C.3 · AC-18b · Findings: DRIFT-22
   - Evidence: `databricks external-locations get <hml>` — `url` matches the canonical bucket names and its credential is the hml role; `aws s3api head-bucket` ×2 → 200; `databricks bundle validate -t hml` clean.
 
-- [ ] **T-C.4** — Scope or remove `job_ddl_setup` / `job_delta_maintenance`; remove the f-string SQL construction; retarget the app-logs silver filter off the retired producers' logger names; rewrite `apps/dabs/README.md` (C4).
+- [x] **T-C.4** — Scope or remove `job_ddl_setup` / `job_delta_maintenance`; remove the f-string SQL construction; retarget the app-logs silver filter off the retired producers' logger names; rewrite `apps/dabs/README.md` (C4).
   - Owner: software-engineer · Write set: `apps/dabs/**` (the named jobs, notebooks, `README.md`)
   - Deps: T-C.3 · AC-18, AC-24 · Findings: DRIFT-25, DRIFT-26, DRIFT-27
   - Evidence: job definitions scoped to non-DLT objects; no f-string SQL in the diff; `validate -t dev` clean.
