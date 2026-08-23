@@ -94,8 +94,8 @@
   change: Each dashboard carries a freshness KPI tile, a date-range filter where applicable, and alert-threshold reference lines.
 - subject:
     kind: code
-    ref: apps/dabs/job_ddl_setup/src/dd_chain_explorer/ddl/setup_ddl.py#main
-  change: DDL adds analyst GRANTs on every Gold schema and COMMENT ON COLUMN for every Gold MV column.
+    ref: apps/dabs/dlt_ethereum/src/streaming/ethereum_pipeline.py#gold_block_production_health
+  change: Gold MVs declare table/column COMMENTs in the DLT definitions; analyst GRANTs are applied via Unity Catalog (the standalone DDL job was retired in v0.5.0 — objects are DLT-owned).
 ```
 
 ### encryption-at-rest-posture-decision
