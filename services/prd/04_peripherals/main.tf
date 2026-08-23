@@ -1,9 +1,10 @@
 ###############################################################################
 # prd/04_peripherals/main.tf
 #
-# S3 buckets + Kinesis Data Streams + Firehose + SQS + CloudWatch + DynamoDB
-# para o ambiente PRD — recursos "periféricos" consumidos por ECS, Lambda e
-# Databricks.
+# S3 buckets + CloudWatch + DynamoDB
+# para o ambiente PRD — recursos "periféricos" consumidos por Lambda e
+# Databricks. The capture-era streaming resources (retired v0.4.0) are not
+# re-declared here.
 ###############################################################################
 
 terraform {

@@ -6,18 +6,6 @@ output "ecs_task_role_arn" {
   value = aws_iam_role.ecs_task.arn
 }
 
-output "databricks_cross_account_role_arn" {
-  value = aws_iam_role.databricks_cross_account.arn
-}
-
-output "databricks_cluster_instance_profile_arn" {
-  value = aws_iam_instance_profile.databricks_cluster.arn
-}
-
-output "databricks_cluster_role_arn" {
-  value = aws_iam_role.databricks_cluster.arn
-}
-
 # -----------------------------------------------------------------------
 # GitHub Actions OIDC role ARNs (ADR-R6-3/R6-7) — consumed by the workflow
 # `role-to-assume` cutover in T-R6-B3.

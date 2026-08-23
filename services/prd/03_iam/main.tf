@@ -1,14 +1,10 @@
 terraform {
-  required_version = ">= 1.3.0"
+  required_version = "~> 1.9"
 
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = ">= 4.60.0"
-    }
-    null = {
-      source  = "hashicorp/null"
-      version = ">= 3.0"
     }
   }
 
@@ -26,16 +22,6 @@ provider "aws" {
 
   default_tags {
     tags = local.common_tags
-  }
-}
-
-# Remote state — VPC outputs (for Databricks cross-account role)
-data "terraform_remote_state" "vpc" {
-  backend = "s3"
-  config = {
-    bucket = "dm-chain-explorer-terraform-state"
-    key    = "prd/vpc/terraform.tfstate"
-    region = "sa-east-1"
   }
 }
 

@@ -1,7 +1,8 @@
 ###############################################################################
 # prd/04_peripherals/peripherals.tf
 #
-# Consolida 3_kinesis_sqs + 4_s3 + 9_dynamodb em um único módulo Terraform.
+# Consolida os módulos de peripherals (S3 + DynamoDB + CloudWatch) em um único
+# módulo Terraform. The capture-era streaming stack was retired in v0.4.0.
 ###############################################################################
 
 # ---------------------------------------------------------------------------
@@ -80,18 +81,16 @@ module "s3_databricks" {
 }
 
 # ---------------------------------------------------------------------------
-# CloudWatch Log Group (capture-layer firehose retired — v0.4.0)
+# CloudWatch Log Group (the capture-layer log-delivery branch was retired — v0.4.0)
 # ---------------------------------------------------------------------------
 
 module "cloudwatch_logs" {
   source = "../../modules/cloudwatch_logs"
 
   environment       = var.environment
-  region            = var.region
   common_tags       = local.common_tags
   log_group_name    = "/apps/dm-chain-explorer"
   retention_in_days = 30
-  firehose_enabled  = false
 }
 
 # ---------------------------------------------------------------------------

@@ -44,13 +44,4 @@ data "terraform_remote_state" "dynamodb" {
   }
 }
 
-data "terraform_remote_state" "kinesis_sqs" {
-  backend = "s3"
-  config = {
-    bucket = "dm-chain-explorer-terraform-state"
-    key    = "prd/peripherals/terraform.tfstate"
-    region = "sa-east-1"
-  }
-}
-
 data "aws_caller_identity" "current" {}

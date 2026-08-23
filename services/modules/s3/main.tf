@@ -2,6 +2,11 @@ resource "aws_s3_bucket" "this" {
   bucket = var.bucket_name
   tags   = merge(var.common_tags, { Name = var.bucket_name })
 
+  # prevent_destroy is hard-coded, not variable-driven: Terraform's `lifecycle`
+  # block only accepts literal booleans, never a variable or expression — a
+  # `var.prevent_destroy` here would be silently ignored (DRIFT-13/B1). Every
+  # bucket this module creates is a durable data store, so prevent_destroy
+  # stays unconditionally true.
   lifecycle {
     prevent_destroy = true
   }
