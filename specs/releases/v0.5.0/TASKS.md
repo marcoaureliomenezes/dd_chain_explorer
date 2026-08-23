@@ -72,10 +72,11 @@
   - Deps: T-A.7, T-A.11 steps (3)–(5) — a required check cannot be named before it has run once · AC-7, AC-7b · Findings: DRIFT-10, SEC-I-03
   - Evidence: `gh api repos/{owner}/{repo}/branches/{main,develop}/protection` and `.../environments`; the committed stale-branch list (no deletion).
 
-- [ ] **T-A.11** — Execute steps (3)–(5) of the O-8 `main` cut-over: rename the default branch `master`→`main` via `gh api --method POST repos/{o}/{r}/branches/master/rename` (redirects preserved), open the PR `develop` → `main`, and capture the check name from that PR's first `plan_on_pr` run. **Only after T-A.7 is merged and pushed (O-8 steps 1–2).** Steps (6)–(9) are `T-A.10` + `T-R.3`.
+- [-] **T-A.11** — Execute steps (3)–(5) of the O-8 `main` cut-over: rename the default branch `master`→`main` via `gh api --method POST repos/{o}/{r}/branches/master/rename` (redirects preserved), open the PR `develop` → `main`, and capture the check name from that PR's first `plan_on_pr` run. **Only after T-A.7 is merged and pushed (O-8 steps 1–2).** Steps (6)–(9) are `T-A.10` + `T-R.3`.
   - Owner: coordinator (operator credentials) · Write set: GitHub repository settings; the cut-over PR
   - Deps: T-A.7 merged to `develop` and pushed · AC-7 · Findings: DRIFT-10, CI-M10
   - Evidence: `gh repo view --json defaultBranchRef` → `main`; the PR URL; the `plan_on_pr` run and its check name (feeds AC-4 and T-A.10).
+  - Coordinator 2026-08-23: step (3) DONE — default branch renamed `master`→`main` (`gh repo view` → main; origin/HEAD → main); develop @ 803238c pushed (security push verdict APPROVED 2026-08-23T182631Z). Step (4) PR develop→main deliberately NOT opened by the session: its OIDC plan jobs cannot be green until the operator applies `prd/00_bootstrap` (runbook §1) — opening it would leave CI red. Operator: runbook §10.
 
 ---
 
