@@ -3,7 +3,7 @@ slug: medallion-pipelines
 title: Medallion Pipelines
 category: product
 tldr: Two serverless Databricks DLT pipelines (dm-ethereum 24 tables, dm-app-logs 5) build the bronze/silver/gold medallion over S3 raw JSON.
-summary: dm-ethereum ingests three raw Ethereum prefixes via Auto Loader and produces 3 bronze streaming tables, 6 silver objects and 15 gold materialized views, guarded by 11 silver expectations. dm-app-logs ingests Fluent-Bit application logs into 1 bronze, 2 silver and 2 gold objects with 4 expectations. Both run serverless in a single Free Edition workspace, have no DLT-level schedule, and are currently idle because raw ingestion is empty. Several deployed artifacts drift from repo code and several companion jobs are broken or conflict with Unity Catalog DLT ownership.
+summary: dm-ethereum ingests three raw Ethereum prefixes via Auto Loader and produces 3 bronze streaming tables, 6 silver objects and 15 gold materialized views, guarded by 11 silver expectations. dm-app-logs ingests Fluent-Bit application logs into 1 bronze, 2 silver and 2 gold objects with 4 expectations. Both run serverless in a single Free Edition workspace, carry no DLT-level schedule (each bundle owns its own trigger job), and are deployed to dev and hml with live state equal to the repository. They are idle because raw ingestion is empty.
 tags:
   - databricks
   - dlt
@@ -12,7 +12,7 @@ tags:
   - silver
   - gold
 last_updated: "2026-08-23"
-release_origin: v0.4.0
+release_origin: v0.5.0
 ---
 
 ## Propósito
@@ -54,19 +54,29 @@ Only `mainnet-transactions-decoded` declares schema hints; blocks and transactio
 
 ### Scheduling and companion jobs
 
-Scheduling is **job-based**, never pipeline-based: the `schedule:` block written in both pipeline bundles is a field the Databricks CLI in use does not recognise, so it is silently dropped and no deployed pipeline carries a schedule or trigger. The trigger jobs (`dm-trigger-ethereum`, `dm-trigger-app-logs`, `dm-trigger-all-dlts`) are all deployed **paused**.
+Scheduling is **job-based, never pipeline-based**. No pipeline bundle declares a
+`schedule:` block — the Databricks CLI in use silently drops that field, so declaring one
+would document a schedule that does not exist. Each DLT bundle instead owns its own
+trigger job in-bundle (`workflow_trigger_ethereum.yml`, `workflow_trigger_app_logs.yml`),
+referencing its own pipeline by native id. Both trigger jobs are deployed **paused**,
+matching the parked posture.
 
-Known gaps, all recorded in audit `20260823T145726Z-4db47555`:
+Per ADR-004's corollary, no bundle reaches into another bundle's resources: cross-bundle
+orchestration jobs do not exist. A full refresh is run by CLI against a pipeline id
+(`databricks pipelines start-update --full-refresh <id>`), documented in
+`apps/dabs/README.md`.
 
-- The deployed `dm-app-logs` notebook (both targets) is the **older binary-envelope log reader**, not the Fluent-Bit NDJSON reader that lives in the repo — it cannot parse the log format the capture project now emits (gap — audit DRIFT-18).
-- The deployed `hml` `dm-ethereum` notebook is **pre-remediation code**: no bounded canonical window, `from_address` only advisory (gap — audit DRIFT-18).
-- `dm-trigger-all-dlts` is deployed with **empty pipeline ids** in both targets, so it triggers nothing (gap).
-- `dm-reconcile-orphan-blocks` references a notebook that **no longer exists** in the repo or the workspace (gap).
-- `job_ddl_setup` pre-creates the same object names the pipelines own, and `job_delta_maintenance` runs `OPTIMIZE`/`VACUUM` on streaming tables and MVs — both **conflict with Unity Catalog DLT ownership** and would fail or corrupt pipeline ownership if run (gap).
+**Deployed state equals the repository.** Every surviving bundle validates clean and is
+deployed to both `dev` and `hml`: the app-logs pipeline runs the Fluent-Bit NDJSON reader
+and the hml ethereum pipeline runs current code (bounded canonical window included). The
+workspace holds exactly the seven bundles' resources — the orphan jobs and stale bundle
+roots of earlier deploys were removed, and the jobs that conflicted with Unity Catalog DLT
+ownership (`job_ddl_setup`, `job_delta_maintenance`) and the reconcile job with a deleted
+notebook no longer exist.
 
 ## Trigger típico
 
-Started by a trigger job or a manual pipeline update whenever new raw data has landed. In practice, nothing has triggered since the platform went idle: raw ingestion is empty, every trigger job is paused, and all objects were last written 2026-04-28.
+Started by a trigger job or a manual pipeline update whenever new raw data has landed. In practice nothing triggers while the platform is parked: raw ingestion is empty and both trigger jobs are paused. Un-pausing them is the restart action once dd-chain-capture delivers (ADR-007).
 
 ## Diferencial
 
@@ -78,7 +88,7 @@ Without the DLT medallion, every analytics question would full-scan raw JSON in 
 - Databricks catalogs `dev` (materialized) and `hml` (deployed pipelines, no schemas ever created)
 - S3 raw prefixes read by Auto Loader and the per-stream schema/checkpoint locations (see [[aws-resources]])
 - Databricks-managed Delta storage for every streaming table and MV
-- Companion Databricks jobs: triggers, gold export, DDL setup, delta maintenance, full refresh, orphan reconciliation
+- Companion Databricks jobs: the two in-bundle trigger jobs and the gold export job
 
 ## Dependências
 

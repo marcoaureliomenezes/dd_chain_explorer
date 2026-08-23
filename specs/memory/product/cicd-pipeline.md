@@ -2,8 +2,8 @@
 slug: cicd-pipeline
 title: CI/CD Pipeline
 category: ops
-tldr: Seven GitHub Actions workflows with an informed environment gate, saved-plan apply and OIDC role-assumption — fully written but inert since April 2026.
-summary: "Describes the CI/CD control plane — the seven workflows, the dependency-aware informed gate (pre-gate plan artifacts, saved-plan apply, fail-closed divergence), the OIDC role-assumption model, the scripts/ci toolbox driven by stack_map.json, and the GitHub environments. Records the gaps that make it non-operational today: the OIDC role variables do not exist and the roles were never applied, the applications workflow still provisions the retired capture lane, the CI-script tests never run, no provider lock files are committed, and neither long-lived branch is protected."
+tldr: Seven GitHub Actions workflows deploying Terraform, Lambdas and DABs under OIDC-only auth — operational end to end.
+summary: "Describes the CI/CD control plane: the seven workflows, the dependency-aware informed gate (pre-gate plan artifacts, re-plan at apply, fail-closed divergence), the OIDC-only authentication model built on the operator-applied prd/00_bootstrap stack and its four short-lived roles with a permissions boundary, the fail-fast role-variable preflight, the quality gate (ruff, mypy, three pytest suites, pip-audit, actionlint, terraform fmt/validate), the runner-hardening posture, the scripts/ci toolbox driven by stack_map.json, and the repository governance — main as default and protected branch, protected develop, environment reviewers and deployment-branch policies."
 tags:
   - cicd
   - github-actions
@@ -11,70 +11,123 @@ tags:
   - oidc
   - deploy-gate
 last_updated: "2026-08-23"
-release_origin: v0.4.0
+release_origin: v0.5.0
 ---
 
 ## Propósito
 
-The CI/CD pipeline is the intended control plane for every infrastructure and application change. Seven GitHub Actions workflow files live on the development branch:
+The CI/CD pipeline is the control plane for every infrastructure and application change.
+Infrastructure reaches AWS through it and through no other path. Seven workflow files
+live on `main`:
 
 | Workflow | Purpose |
 |---|---|
-| `plan_on_pr.yml` | read-only `fmt`/`validate`/`actionlint` + per-stack Terraform plan on pull requests |
+| `plan_on_pr.yml` | quality gate + read-only `fmt`/`validate`/`actionlint` + per-stack Terraform plan on pull requests into either long-lived branch |
 | `deploy_cloud_infra.yml` | the informed, gated, per-stack Terraform apply path |
 | `destroy_cloud_infra.yml` | targeted destroy of one environment or stack |
-| `destroy_all_cloud_infra.yml` | full teardown, ordered across environments |
-| `deploy_all_dm_applications.yml` | application lane — Databricks Asset Bundles and Lambda deploys |
+| `destroy_all_cloud_infra.yml` | full teardown, ordered across environments, covering every live stack |
+| `deploy_all_dm_applications.yml` | application lane — Lambda deploys and Databricks Asset Bundles |
 | `drift_detection.yml` | scheduled read-only plan across every stack |
-| `auto-bump-version.yml` | version bump on merge into the development branch |
+| `scorecard.yml` | OpenSSF Scorecard supply-chain scoring of the repository |
 
-The apply model is **informed and gated**: every plannable stack uploads its plan binary plus full plan text as an artifact and writes an add/change/destroy summary to the run summary *before* the environment gate; the post-gate apply consumes the saved, approved plan. A stack downstream of an in-run apply is re-planned and the run **fails closed** on any divergence from the approved summary, publishing the diff. Destroy-containing plans require an explicit acknowledgment input. Stacks that cannot be planned pre-gate are listed as deferred, never silently skipped.
+The apply model is **informed and gated**: every plannable stack uploads its plan text as
+a short-retention artifact and writes an add/change/destroy summary to the run summary
+*before* the environment gate. After the gate, every stack is **re-planned** and the run
+fails closed on any divergence from the approved summary, publishing the diff — the plan
+that applies is always the plan a human approved. Destroy-containing plans require an
+explicit acknowledgment input. Stacks that cannot be planned pre-gate are listed as
+deferred, never silently skipped.
 
-Authentication is designed to be **OIDC-only**: each AWS-touching job assumes one of four roles (dev deploy, hml deploy, prd deploy, read-only plan) via `id-token: write` and a `role-to-assume` value read from a repository variable. Every action reference is pinned to a 40-character commit SHA.
+Authentication is **OIDC-only**. Each AWS-touching job requests `id-token: write` at job
+scope and assumes one of four roles — dev deploy, hml deploy, prd deploy, read-only plan
+— whose ARNs are published as repository variables. The roles live in the
+operator-applied `prd/00_bootstrap` stack that CI never applies: they are prefix-scoped
+to project resources, capped by a permissions boundary, and carry an explicit `Deny` on
+self-mutation (`iam:*` against `dm-chain-explorer-gha-*`) and on the user-credential verbs.
+No static AWS access key exists anywhere in the repository or its secret store.
 
 ## Fluxo de uso
 
-1. A push or dispatch triggers the deploy workflow; the change detector plus `changed_stacks.py` resolve affected stacks from `scripts/ci/stack_map.json` — the intended single source for the stack list, module map and upstream ordering. A missing merge base fails loudly rather than falling back.
-2. Pre-gate plan phase: each plannable stack uploads its plan binary and text; a consolidated summary is written before the gate.
-3. The approver reviews that summary at the `hml` or `production` environment gate.
-4. Post-gate apply runs in dependency order: an untouched-upstream stack applies its approved plan; a downstream stack is re-planned and the run fails closed on divergence.
-5. `dev` keeps an automatic per-stack flow; plan-on-PR and drift detection run read-only under the plan role.
+1. A pull request into `develop` or `main` runs the quality gate — `ruff format --check`,
+   `ruff check`, `mypy`, the repo-level `tests/` suite, the `scripts/ci/tests` suite and
+   `pip-audit` over the pinned lock — plus `actionlint`, `terraform fmt -check` and
+   `validate`.
+2. The role-variable **preflight** runs first in every role-assuming job: an empty
+   `vars.AWS_DEPLOY_ROLE_*` fails the job immediately with an explicit message, instead of
+   failing opaquely inside `configure-aws-credentials`.
+3. The change detector plus `changed_stacks.py` resolve affected stacks from
+   `scripts/ci/stack_map.json` — the single source for the stack list, module map and
+   upstream ordering. A missing merge base fails loudly rather than falling back.
+4. Plan runs under the read-only role with `-lock=false`, so the plan path needs no
+   lock-table write; each plannable stack publishes its plan text and summary.
+5. The approver reviews that summary at the `hml` or `production` environment gate.
+6. Post-gate apply runs in dependency order, re-planning each stack and failing closed on
+   divergence. `dev` keeps an automatic per-stack flow.
+7. The application lane builds the Lambda layer from source, uploads it to the artifact
+   bucket at a content-addressed key, passes `layer_s3_key`/`layer_sha256` into the Lambda
+   stacks, then deploys the Databricks bundles.
 
 ## Trigger típico
 
-Intended to fire on every pull request, every infrastructure deploy or destroy, every application release, weekly drift detection and every merge-driven version bump. In practice none of this currently happens — see below.
+Fires on every pull request into a long-lived branch, on every infrastructure deploy or
+destroy dispatch, on every application release, and on the drift-detection schedule.
 
 ## Diferencial
 
-Before the gate redesign, a single blind approval unleashed a loop of auto-approved applies with masked failures. The informed gate makes the approver see exactly what will change per stack, guarantees the applied plan is the approved plan or fails closed, and the OIDC design removes the standing static-key secret while giving each environment its own blast radius. Job timeouts, per-environment concurrency groups and full SHA pinning keep the surface deterministic.
+Before the rebuild, the pipeline was written but could not authenticate: no OIDC role
+existed and no role variable was published, so every AWS job was decorative. Now the
+bootstrap paradox is designed away — the roles live in a stack CI never applies, published
+by a checked-in script, and a preflight makes a missing variable a loud, one-line failure.
+The informed gate shows the approver exactly what will change per stack and guarantees the
+applied plan is the approved plan; protected branches mean the pull request that ships
+cannot bypass the gate; and least-privilege roles give each environment its own blast
+radius with self-escalation explicitly denied.
 
 ## Estado runtime tocado
 
-- `.github/workflows/` — the seven workflow files
-- `scripts/ci/` — 18 Bash helpers, `changed_stacks.py`, `stack_map.json`, and a `tests/` suite
-- GitHub environments `dev`, `hml`, `production`
-- GitHub repository variables for the four OIDC role ARNs, and the repository secret store
+- `.github/workflows/` — the seven workflow files; `.github/dependabot.yml`
+- `scripts/ci/` — the Bash helpers, `changed_stacks.py`, `stack_map.json`,
+  `publish_oidc_vars.sh` and the `tests/` suite
+- GitHub environments `dev`, `hml`, `production` — reviewer and deployment-branch policies
+- GitHub repository variables `AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}`; the secret store
+  holds Databricks credentials only
+- Branch protection on `main` and `develop`
 - Remote Terraform state bucket and its lock table
-- Run artifacts: per-stack plan binaries, plan text and divergence diffs
+- Run artifacts: per-stack plan text and divergence diffs, 1-day retention
 
-### Estado real e lacunas
+### Postura de segurança da esteira
 
-The control plane described above is **written but not operational**. The last GitHub Actions run of any kind was 2026-04-11; every infrastructure apply since then was performed locally by the operator. All gaps below are recorded in audit `20260823T145726Z-4db47555`.
+- Every action reference is pinned to a 40-character commit SHA; the allowed-actions
+  policy is an allowlist of GitHub-owned, verified and explicitly pinned patterns.
+- Every job runs under a runner-hardening step in audit mode, and checks out with
+  `persist-credentials: false`.
+- `id-token` is granted per job, never workflow-wide; `zizmor` reports no high-severity
+  finding on the workflow set.
+- Plan artifacts carry plan **text** only, never the binary plan, with 1-day retention.
+- Every workflow declares a per-environment `concurrency` group, and deploy and destroy of
+  the same environment share it, so two dispatches cannot race the same remote state.
+- The Terraform version is single-sourced and matched by an exact `required_version`; the
+  `actionlint` installer is pinned by version and checksum.
 
-- **CI cannot authenticate to AWS** (gap — DRIFT-01). Every OIDC step resolves a repository variable for its role ARN, but none of the four variables exists, and the IAM stack that defines those roles was never applied. `configure-aws-credentials` receives an empty `role-to-assume`, so every AWS-touching workflow is non-functional as written.
-- **Static AWS keys survive unused** (gap). Long-lived access-key secrets remain in the repository secret store while no workflow references them — a standing credential with no consumer. They must be deleted and the underlying keys rotated.
-- **The applications workflow still deploys the retired capture lane** (gap — DRIFT-02). It provisions ephemeral capture queues and stream resources, launches the retired producer services, and destroys a Terraform module that this release deleted. Because the Databricks bundle and Lambda deploys are chained *behind* those steps, the entire application deploy path is broken end-to-end — the retirement was applied to the teardown half only.
-- **Environments are unprotected** (gap). `hml` has zero protection rules, so its gate approves itself; only `production` requires a reviewer. A reviewer-less `hml-apps` environment is referenced by nine jobs but does not exist and would be auto-created unprotected on first run. No environment has a deployment-branch policy.
-- **No branch protection** on either long-lived branch (gap). Combined with plan-on-PR triggering only for PRs into the development branch, the pull request that actually ships passes through no plan, no format check and no lint.
-- **Scheduled drift detection has never fired** (gap). GitHub schedules cron only from the default branch, and the drift-detection workflow does not exist there. The same mechanism leaves plan-on-PR and the version bump unregistered.
-- **The CI-script tests never run** (gap). The 45 tests that guard the deploy gate, the destroy acknowledgment and the stack map are executed by no workflow — every guard described above is currently decorative. See [[quality-assurance]].
-- **The single-source stack map is not single-source** (gap). The dev stacks declare an empty module list although they do consume shared modules, so a shared-module edit triggers no dev plan; several production entries declare module edges that do not exist; and four other files carry their own hard-coded stack lists.
-- **No provider lock files are committed** (gap). With a floating provider constraint, every run resolves the newest provider — a gated apply can execute against a version it was never planned against.
-- **The applications workflow declares no concurrency group** (gap), so two dispatches can race the same shared environment and remote state. Deploy and destroy of the same environment also use different groups and can run simultaneously.
+### Governança do repositório
+
+`main` is the default branch. It requires a pull request and nine passing status checks
+(quality gate, preflight, change detection and the six per-stack plans), is strict, and
+allows neither force-push nor deletion. `develop` allows neither force-push nor deletion.
+The `hml` and `production` environments require the operator as reviewer; all three
+environments carry a deployment-branch policy limited to `develop` and `main`. Pull
+requests from forks require approval before any workflow runs. No `hml-apps` environment
+exists or is referenced.
+
+Drift detection is enabled on the default branch; its first scheduled run is pending.
 
 ## Dependências
 
-- **AWS OIDC identity provider and the four deploy roles** in the account-level IAM stack ([[aws-resources]]) — the roles must be applied and their ARNs published as repository variables before any workflow can authenticate
+- **`prd/00_bootstrap`** ([[aws-resources]]) — the operator-applied stack holding the four
+  OIDC roles and the CI permissions boundary; `publish_oidc_vars.sh` reads its outputs to
+  publish the repository variables
 - **Terraform stacks** under `services/` — the subjects of plan and apply
-- **Downstream**: [[medallion-pipelines]] and [[serving-layer]] — Databricks Asset Bundles and dashboards ship through the applications workflow
-- **Verified by**: [[quality-assurance]] — the CI-script test suite is the only automated proof that the gate logic behaves
+- **Downstream**: [[medallion-pipelines]] and [[serving-layer]] — Databricks Asset Bundles
+  and dashboards ship through the applications workflow
+- **Verified by**: [[quality-assurance]] — the CI-script suite is the automated proof that
+  the gate logic behaves, and it runs on every pull request

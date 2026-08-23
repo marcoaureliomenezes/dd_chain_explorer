@@ -3,7 +3,7 @@ slug: architecture
 title: Architecture
 category: core
 tldr: Infrastructure, CI and Databricks artifacts; data capture is external (dd-chain-capture on a VPS) and the S3 raw bucket is the integration boundary.
-summary: System design reference for the three things this repository owns — Terraform infrastructure (services/dev|hml|prd|modules), the GitHub Actions CI pipeline, and the Databricks artifacts (DLT pipelines, jobs, Lakeview dashboards) plus two AWS Lambdas. Covers the S3 integration boundary with the external dd-chain-capture project, the medallion data flow, the single Free-Edition Databricks workspace, environment topology, Terraform deploy order, and the architectural decisions in force.
+summary: System design reference for the three things this repository owns — Terraform infrastructure (8 root stacks under services/dev|hml|prd plus 4 shared modules), the GitHub Actions CI pipeline that authenticates by OIDC and deploys them, and the Databricks artifacts (7 bundles — 2 DLT pipelines, 4 dashboards, the gold export job) plus two AWS Lambdas. Covers the S3 integration boundary with the external dd-chain-capture project, the medallion data flow, the single Free-Edition Databricks workspace, environment topology, Terraform deploy order, and the architectural decisions in force, including the capture-deprecation ADR.
 tags:
   - architecture
   - terraform
@@ -12,7 +12,7 @@ tags:
   - s3-boundary
   - adr
 last_updated: "2026-08-23"
-release_origin: v0.4.0
+release_origin: v0.5.0
 ---
 
 ## Visão geral
@@ -25,15 +25,18 @@ no stream, no shared code, no network path between the two projects.
 
 What this repository owns is exactly three things:
 
-1. **Infrastructure** — Terraform under `services/{dev,hml,prd,modules}`.
-2. **The CI pipeline** — GitHub Actions workflows that deploy infrastructure and apps.
+1. **Infrastructure** — Terraform under `services/{dev,hml,prd,modules}`: 8 root stacks
+   and 4 shared modules.
+2. **The CI pipeline** — GitHub Actions workflows that deploy infrastructure and apps,
+   authenticating to AWS by GitHub OIDC only.
 3. **The artifacts deployed to Databricks** for data processing — DLT pipelines,
-   workflows/jobs and Lakeview dashboards under `apps/dabs/` — plus the two AWS Lambdas
-   under `apps/lambda` (contracts ingestion, gold → DynamoDB export).
+   workflows/jobs and Lakeview dashboards under `apps/dabs/` (7 bundles) — plus the two
+   AWS Lambdas under `apps/lambda` (contracts ingestion, gold → DynamoDB export).
 
-The platform is currently **idle**: the raw bucket has held no data since 2026-05-23, DLT
-triggers are paused, and no job has run in 60 days. It is waiting on the first delivery
-from dd-chain-capture.
+The platform is **parked**, by design: the raw bucket has held no data since 2026-05-23,
+DLT trigger jobs are paused, and the hourly contracts-ingestion schedule is disabled. It
+is deployed, validated and waiting on the first delivery from dd-chain-capture — see
+ADR-007 for the posture and its sunset criteria.
 
 ## Camadas
 
@@ -43,7 +46,7 @@ from dd-chain-capture.
 | S3 Raw Layer | `dm-chain-explorer-raw-data` — landing zone, `raw/mainnet-*/year=/month=/day=/…` partitions, Kafka-Connect JSON; app logs as Fluent-Bit NDJSON |
 | Databricks DLT | Two pipelines (`dm-ethereum`, `dm-app-logs`) reading S3 with Auto Loader; bronze → silver → gold in one Free-Edition workspace |
 | Serving | 4 Lakeview dashboards, gold exports to S3, `gold-to-dynamodb` Lambda writing CONSUMPTION entities |
-| Control plane | Terraform stacks per environment + GitHub Actions workflows that plan/apply them and deploy the DABs bundles |
+| Control plane | 8 Terraform root stacks across `dev`/`hml`/`prd` + GitHub Actions workflows that plan/apply them under OIDC and deploy the DABs bundles |
 
 ## Fluxo de dados — pipeline asset chain
 
@@ -72,11 +75,11 @@ flowchart TD
   end
 
   subgraph CTRL ["CONTROL PLANE"]
-    TF["Terraform stacks<br/>services/dev · hml · prd<br/>+ services/modules"]
-    CI["GitHub Actions<br/>7 workflows — plan/apply infra,<br/>deploy DABs + Lambdas"]
+    TF["Terraform stacks<br/>8 roots · dev · hml · prd<br/>+ 4 shared modules"]
+    CI["GitHub Actions (OIDC)<br/>plan-on-PR · deploy/destroy infra<br/>deploy DABs + Lambdas · drift"]
   end
 
-  LAMBDA["contracts-ingestion Lambda<br/>Etherscan (SSM key) · hourly"]
+  LAMBDA["contracts-ingestion Lambda<br/>Etherscan (SSM key)<br/>schedule DISABLED"]
 
   CAP -->|"S3 PutObject (JSON)"| S3
   FB -->|"NDJSON"| S3
@@ -104,11 +107,11 @@ flowchart TD
 | dd-chain-capture → S3 | `dm-chain-explorer-raw-data` | Object delivery | Kafka-Connect JSON under `raw/mainnet-{blocks-data,transactions-data,transactions-decoded}/`, `year=/month=/day=/…` partitions. **The only contract between the two projects.** |
 | dd-chain-capture (Fluent-Bit) → S3 | `raw/app_logs/` | Object delivery | NDJSON application logs |
 | S3 → DLT | Auto Loader (`cloudFiles`) | File-based | JSON format, `partitionColumns=""` — the path contract is compatible with the Kafka-Connect layout; **field-name compatibility with the DLT schemas is not yet validated** |
-| contracts-ingestion Lambda → S3 | `raw/batch/` | Object delivery | Batch contract JSON from the Etherscan API |
+| contracts-ingestion Lambda → S3 | `raw/batch/` | Object delivery | Batch contract JSON from the Etherscan API — **dormant**: the hourly schedule is disabled in Terraform (ADR-005) |
 | DLT gold → S3 | `exports/` | Object delivery | `job_export_gold` writes gold JSON |
 | S3 `exports/` → Lambda | S3 PutObject event | Event trigger | Fires `gold-to-dynamodb` |
 | Lambda → DynamoDB | `PutItem` | SDK call | CONSUMPTION entities on the single table |
-| CI → Terraform / Databricks / Lambda | GitHub Actions | Deploy | OIDC role-assumption *(gap — see audit `20260823T145726Z-4db47555`)* |
+| CI → Terraform / Databricks / Lambda | GitHub Actions | Deploy | OIDC role-assumption only — four short-lived roles held by `prd/00_bootstrap`, published as repository variables; no static key exists |
 
 ## Regras de dependência
 
@@ -133,52 +136,68 @@ contracts ingestion, S3 PutObject for the gold export).
 
 | Aspecto | dev | hml | prd |
 |---------|-----|-----|-----|
-| Databricks | `[dev]`-prefixed assets → `dev` target/catalog | unprefixed assets → `hml` target/catalog | **no workspace exists**; the `prod` DABs target is not deployable and is guarded |
+| Databricks | `[dev]`-prefixed assets → `dev` target/catalog | unprefixed assets → `hml` target/catalog | **no workspace exists**; the `prod` DABs target has no default host variable, so `validate -t prod` fails closed |
 | Workspace | one Free Edition workspace, serverless compute only — `dev` and `hml` are catalogs inside it | ← same workspace | — |
-| S3 | `dm-chain-explorer-dev-ingestion` | buckets declared in state but not live | `dm-chain-explorer-raw-data`, `-lakehouse`, `-databricks` |
+| Terraform stacks | `01_peripherals`, `02_lambda` | `04_peripherals` only (minimal lane) | `00_bootstrap`, `01_tf_state`, `03_iam`, `04_peripherals`, `06_lambda` |
+| S3 | `dm-chain-explorer-dev-ingestion` | `dm-chain-explorer-hml-raw-data`, `-hml-lakehouse` (live, pinned, Unity-Catalog-attached) | `dm-chain-explorer-raw-data`, `-lakehouse`, `-databricks`, `-artifacts` |
 | DynamoDB | `dm-chain-explorer-dev` | — | `dm-chain-explorer` |
 | Lambdas | `dm-chain-explorer-gold-to-dynamodb-dev` | — | `dm-dd-chain-explorer-prd-{contracts-ingestion,gold-to-dynamodb}` |
-| Compute for capture | none | empty ECS cluster shell | ECS shell in code only |
+| Unity Catalog credential | `dm-databricks-dev-s3-role` (Terraform-managed) | `dm-databricks-hml-s3-role` (Terraform-managed) | — |
+| Compute for capture | none — capture is external (ADR-007) | none | none |
 
-### Ordem de deploy Terraform (prd)
+### Ordem de deploy Terraform
+
+`prd/00_bootstrap` is outside the CI graph entirely: it holds the four OIDC deploy roles
+and the CI permissions boundary, is applied by the operator with their own credentials,
+and is the one stack CI may never apply — otherwise CI's ability to authenticate would
+depend on the credentials it is trying to obtain.
 
 ```mermaid
 flowchart TD
-  P1A["Phase 1a: 02_vpc"] & P1B["Phase 1b: 04_peripherals"] --> P2
-  P2["Phase 2: 03_iam"] --> P3A & P3B
-  P3A["Phase 3a: 05a_databricks_account"]
-  P3B["Phase 3b: 06_lambda"]
-  P3A & P3B --> P4["Phase 4: 05b_databricks_workspace"]
+  BOOT["prd/00_bootstrap<br/>operator-applied · never by CI"] --> STATE["prd/01_tf_state<br/>bucket + lock table · local state"]
+  STATE --> P1["prd/04_peripherals<br/>S3 · DynamoDB · logs · artifacts"]
+  STATE --> DEV1["dev/01_peripherals"] & HML["hml/04_peripherals"]
+  P1 --> P2["prd/03_iam"] --> P3["prd/06_lambda"]
+  DEV1 --> DEV2["dev/02_lambda"]
 ```
 
-Destroy order is the reverse; `01_tf_state` is never destroyed.
+Destroy order is the reverse; `00_bootstrap` and `01_tf_state` are never destroyed. Every
+other stack is planned and applied through the informed CI gate — the plan a reviewer
+approves is the plan that applies, or the run fails closed.
 
 ## Estado runtime
 
-- `services/{dev,hml,prd}/**` — Terraform stacks; remote state in
-  `s3://dm-chain-explorer-terraform-state/`
-- `services/modules/**` — shared modules (`s3`, `dynamodb`, `iam`, `lambda`,
-  `cloudwatch_logs`, `ecs`, `vpc`); the `kinesis` and `sqs` modules were deleted
-- `apps/dabs/**` — Databricks Asset Bundles (DLT pipelines, jobs, dashboards)
+- `services/{dev,hml,prd}/**` — 8 Terraform root stacks, each with a committed
+  `.terraform.lock.hcl`; remote state in `s3://dm-chain-explorer-terraform-state/`
+- `services/modules/**` — 4 shared modules (`s3`, `dynamodb`, `lambda`,
+  `cloudwatch_logs`), each declaring `required_providers`
+- `apps/dabs/**` — 7 Databricks Asset Bundles (2 DLT pipelines, 4 dashboards, the gold
+  export job)
 - `apps/lambda/**` — contracts ingestion and gold → DynamoDB export
 - `.github/workflows/**` + `scripts/ci/**` — the CI control plane
-- S3 `dm-chain-explorer-raw-data` / `-lakehouse` / `-databricks`, DynamoDB
+- `tests/**` + `scripts/ci/tests/**` — the live-surface pyramid and the CI-script suite
+- S3 `dm-chain-explorer-raw-data` / `-lakehouse` / `-databricks` / `-artifacts`, DynamoDB
   `dm-chain-explorer`, SSM `/etherscan-api-keys` and `/web3-api-keys/*`
 
 ## Limites conhecidos
 
-- No capture code and no capture infrastructure in this repository. Kinesis, Kinesis
-  Firehose, SQS, the five ECS Fargate producer services and the PRD Databricks workspace
-  were destroyed in AWS (2026-06-22 and 2026-04-11) and the `kinesis`/`sqs` Terraform
-  modules were deleted.
-- **Residue, not capability:** ECS clusters survive as empty shells in `prd/07_ecs` and
-  `hml/07_ecs`, and Kinesis/Firehose/SQS IAM grants remain in `prd/03_iam/iam.tf` and
-  `hml/03_iam/main.tf`. They grant access to resources that no longer exist and are
-  slated for removal *(audit `20260823T145726Z-4db47555`, DRIFT-13)*.
+- No capture code and no capture infrastructure in this repository, and none may be
+  reintroduced (ADR-007). Kinesis, Kinesis Firehose, SQS, the five ECS Fargate producer
+  services and the PRD Databricks workspace were destroyed in AWS, their Terraform stacks
+  and modules deleted, and the residual IAM grants, ECS/VPC shells and leaked security
+  groups removed from both code and the account.
 - The end-to-end data path has never run against a dd-chain-capture delivery; field-name
-  compatibility between the delivered JSON and the DLT Auto Loader schemas is unverified.
+  compatibility between the delivered JSON and the DLT Auto Loader schemas is unverified
+  (ADR-007, sunset criterion 2).
+- The Lambda layer is content-addressed in `s3://dm-chain-explorer-artifacts/`; the
+  artifact bucket is declared in `prd/04_peripherals` but **not yet applied**, so the
+  PRD/dev Lambda-layer rewire plans skip with a warning until the store exists.
 - One Databricks workspace only — there is no production workspace, and Free Edition
-  offers serverless compute only.
+  offers serverless compute only. Alerts and Genie spaces are not expressible in the
+  deployed CLI, so no bundle declares them.
+- Terraform is the sole infrastructure authority: infrastructure changes reach AWS
+  through the CI pipeline applying Terraform, never through a console click or an ad-hoc
+  CLI mutation.
 
 ## Referência
 
@@ -208,12 +227,60 @@ Each Databricks component (DLT pipeline, batch job, dashboard) is an autonomous
 Databricks Asset Bundle with its own `databricks.yml` and per-target config, so each
 deploys and versions independently.
 
-### ADR-005: Lambda architecture for transactions
+**Corollary — no bundle references another bundle's resource.** A cross-bundle
+`${resources.*.id}` reference does not resolve, and a display-name `lookup` would couple
+bundles through the `[dev]`-prefixed names that ADR-002 relies on. Capability that spans
+pipelines is expressed in-bundle (each DLT bundle owns its own trigger job) or by CLI
+against a pipeline id (`databricks pipelines start-update --full-refresh <id>`), never by
+a fan-out bundle. Orchestration bundles that existed only to reach across this boundary
+do not exist.
 
-The `transactions_lambda` gold view unions streaming transactions with batch contract
-transactions produced by the contracts-ingestion Lambda, deduplicating by `tx_hash` with
-priority by decode quality (full=1, full_4byte=2, partial=3, batch_sem_decode=4,
-unknown=5).
+### ADR-005: Transactions gold view is streaming-only
+
+The `transactions_lambda` gold view is fed by the streaming decoded-transaction silver
+tables alone. Its `tx_hash` deduplication ranks by decode quality (full=1, full_4byte=2,
+partial=3, batch_sem_decode=4, unknown=5), but the `batch_sem_decode` rank has no
+producer: the contracts-ingestion Lambda's hourly schedule is disabled, and the DynamoDB
+`CONTRACT` entities that would seed a batch run are empty. The Lambda and its
+`raw/batch/` write path are retained as a dormant capability, not an active branch of the
+architecture. Re-enabling the batch union is a deliberate change — seed `CONTRACT`
+entities, re-enable the EventBridge schedule in Terraform — never an implicit assumption
+when reading the view.
+
+### ADR-007: Capture is deprecated here and superseded by dd-chain-capture
+
+**Decision.** In-repository capture is deprecated permanently. Ethereum ingestion is
+owned by the external `dd-chain-capture` project, and this repository is a pure consumer
+of what that project delivers.
+
+**Boundary.** The S3 raw bucket is the **sole** boundary (ADR-001). No queue, stream,
+shared library, shared database, network path or IAM trust links the two projects in
+either direction. The only cross-project artifacts that remain in this account are the
+`capture/ecr` Terraform state key and its KMS alias, which are `dd-chain-capture`'s
+property held in this repository's state bucket — documented, never written here, and
+pending an ownership transfer.
+
+**Posture: parked until delivery.** The consuming half stays deployed, validated and
+idle. DLT pipelines are deployed and IDLE, their trigger jobs paused; the raw bucket has
+been empty since 2026-05-23. Idle is the intended steady state, not a defect. The
+platform costs a few dollars a month while it waits, and the restart is a trigger-job
+un-pause, not a rebuild.
+
+**What is forbidden.** Reintroducing capture technology here — Kinesis, Kinesis Firehose,
+SQS, ECS producer services, Web3 polling clients — is out of scope by design. Every
+resource and module of that era was destroyed and deleted; a request to "restore" one is
+a request to re-cross the boundary and is refused.
+
+**Sunset criteria.** The deprecation stops being a *pending* state and becomes settled
+history when all of the following hold:
+
+1. `dd-chain-capture` has delivered raw objects that a DLT update processed end to end;
+2. field-name compatibility between the delivered JSON and the bronze Auto Loader schemas
+   is validated (the open verification in [[capture-layer]]);
+3. the `capture/ecr` state key and KMS alias are transferred to `dd-chain-capture`'s own
+   state, leaving no cross-project resource in this repository's boundary.
+
+Until then, every atom that touches the raw layer states the parked posture explicitly.
 
 ### ADR-006: SSM as the shared secret plane
 
