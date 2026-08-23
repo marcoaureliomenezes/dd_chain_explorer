@@ -86,4 +86,8 @@ if [ -n "${SHA256_FROM_METADATA}" ] && [ "${SHA256_FROM_METADATA}" != "None" ] \
   exit 1
 fi
 
-echo "LAYER_S3_KEY=${LATEST_KEY} LAYER_SHA256=${SHA256_FROM_KEY}"
+# aws_lambda_layer_version.source_code_hash needs base64 of the RAW sha256
+# digest bytes, not the hex string embedded in the S3 key (T-R.2 F-02).
+SHA256_B64="$(echo -n "${SHA256_FROM_KEY}" | xxd -r -p | base64)"
+
+echo "LAYER_S3_KEY=${LATEST_KEY} LAYER_SHA256=${SHA256_FROM_KEY} LAYER_SHA256_B64=${SHA256_B64}"

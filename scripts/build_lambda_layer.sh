@@ -94,6 +94,10 @@ echo "== zipping ${LAYER_PYTHON_DIR} -> ${ZIP_PATH} (reproducible) ==" >&2
 )
 
 LAYER_SHA256="$(sha256sum "${ZIP_PATH}" | awk '{print $1}')"
+# source_code_hash on aws_lambda_layer_version must be base64 of the RAW
+# sha256 digest bytes (what AWS returns as Content.CodeSha256) -- the hex
+# digest above is only for the content-addressed S3 key (T-R.2 F-02).
+LAYER_SHA256_B64="$(echo -n "${LAYER_SHA256}" | xxd -r -p | base64)"
 
 echo "== done ==" >&2
-echo "LAYER_ZIP=${ZIP_PATH} LAYER_SHA256=${LAYER_SHA256}"
+echo "LAYER_ZIP=${ZIP_PATH} LAYER_SHA256=${LAYER_SHA256} LAYER_SHA256_B64=${LAYER_SHA256_B64}"

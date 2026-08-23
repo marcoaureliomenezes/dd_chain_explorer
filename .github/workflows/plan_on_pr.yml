@@ -17,13 +17,16 @@ name: Plan on PR
 # lock table (SEC-I-01) — every plan below passes TF_PLAN_ARGS=-lock=false (T-A.8, F-04).
 
 on:
+  # T-R.2 F-04 — no workflow-level `paths:` filter: this workflow's first-run
+  # check name becomes a REQUIRED status check on `main` (T-A.10/T-A.11). A
+  # path filter here would leave that check permanently "Expected" on any PR
+  # that never touches the listed globs (tests/**, apps/dabs/**, Makefile,
+  # docs/**, …), deadlocking every such PR. The workflow always triggers and
+  # always reports; path-scoping instead lives at the job level below — the
+  # `quality` gate always runs (WS-C/WS-D stay covered), and the Terraform
+  # plan jobs still gate on `detect-changes` (scripts/ci/stack_map.json).
   pull_request:
     branches: [develop, main]
-    paths:
-      - 'services/**'
-      - 'scripts/ci/**'
-      - 'apps/lambda/**'
-      - 'utils/**'
 
 permissions:
   contents: read
@@ -76,10 +79,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dev tooling (ruff, mypy, pip-audit, test deps — pinned)
+      - name: Install dev tooling (ruff, mypy, pip-audit, pytest, moto — one
+          hash-locked source: apps/lambda/requirements-dev.lock, T-R.2 F-01)
         run: |
           python -m pip install --upgrade pip
-          pip install 'ruff==0.16.4' 'mypy==2.3.1' 'pip-audit==2.10.1' 'pytest==9.1.1'
+          pip install --require-hashes -r apps/lambda/requirements-dev.lock
           pip install -e "${{ env.UTILS_DIR }}[dev]"
 
       - name: ruff format --check
@@ -381,6 +385,7 @@ jobs:
           echo "${OUT}"
           echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
           echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
+          echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
@@ -394,4 +399,4 @@ jobs:
           # a layer-shaped plan diff.
           TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
           TF_VAR_layer_s3_key:    ${{ steps.resolve-layer.outputs.layer_s3_key }}
-          TF_VAR_layer_sha256:    ${{ steps.resolve-layer.outputs.layer_sha256 }}
+          TF_VAR_layer_sha256_b64: ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}

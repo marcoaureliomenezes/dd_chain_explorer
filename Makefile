@@ -25,7 +25,7 @@ help:
 	@echo "dd-chain-explorer — available targets:"
 	@echo ""
 	@echo "  Quality gates"
-	@echo "    make test              - pytest: tests/, utils/tests/unit, scripts/ci/tests"
+	@echo "    make test              - pytest: tests/, scripts/ci/tests"
 	@echo "    make lint              - ruff format --check + ruff check (repo-wide)"
 	@echo "    make typecheck         - mypy --config-file pyproject.toml (strict scope)"
 	@echo "    make check             - lint + typecheck + test"
@@ -58,7 +58,7 @@ help:
 ################################################################################
 
 test:
-	pytest tests utils/tests/unit scripts/ci/tests -p no:cacheprovider
+	pytest tests scripts/ci/tests -p no:cacheprovider
 
 lint:
 	ruff format --check . --no-cache

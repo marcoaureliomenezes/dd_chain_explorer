@@ -45,7 +45,9 @@ z_OLD_README.md
 **/.terraform/
 **/terraform.tfstate
 **/terraform.tfstate.backup
-**/.terraform.lock.hcl
+# .terraform.lock.hcl is DELIBERATELY NOT ignored — every surviving root stack
+# commits its provider lock file (SPEC B5/AC-15, T-R.2 F-06). A blanket ignore
+# here would silently untrack the next stack's lock file with no signal.
 **/secrets.tfvars
 **/*.tfvars.local
 

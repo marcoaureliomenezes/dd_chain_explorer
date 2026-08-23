@@ -260,6 +260,7 @@ jobs:
           echo "${OUT}"
           echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
           echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
+          echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
       - name: Terraform Plan (Drift Check)
         id: plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -274,7 +275,7 @@ jobs:
           # Resolved to the newest real artifact instead — a real drift check again.
           TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
           TF_VAR_layer_s3_key:    ${{ steps.resolve-layer.outputs.layer_s3_key }}
-          TF_VAR_layer_sha256:    ${{ steps.resolve-layer.outputs.layer_sha256 }}
+          TF_VAR_layer_sha256_b64: ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: |

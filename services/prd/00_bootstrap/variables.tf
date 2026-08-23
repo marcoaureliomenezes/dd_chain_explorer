@@ -67,9 +67,11 @@ variable "tf_state_lock_table" {
 }
 
 # -----------------------------------------------------------------------
-# Lambda layer artifact store (D15, T-B.14) — the read-only plan role
-# writes the content-addressed layer object during plan_on_pr (K6); the
-# deploy roles read it when applying the Lambda stacks.
+# Lambda layer artifact store (D15, T-B.14) — plan_on_pr's layer-build step is
+# build-only (no upload from a PR context); the read-only plan role only ever
+# reads the content-addressed layer object (scripts/ci/resolve_layer.sh). The
+# only uploader is deploy_all_dm_applications.yml's build-layer job, under the
+# PRD deploy role's ProjectS3Buckets (s3:*) grant (T-R.2 F-05).
 # -----------------------------------------------------------------------
 variable "artifacts_bucket" {
   description = "S3 bucket holding build artifacts (the Lambda layer zip), content-addressed by sha256"

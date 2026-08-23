@@ -11,6 +11,7 @@ Run via the repo's pytest runner:
 
 from __future__ import annotations
 
+import base64
 import os
 import stat
 import subprocess
@@ -81,7 +82,8 @@ def test_resolves_newest_key_and_derives_sha256_from_basename(stub_path: Path) -
         "lambda-layers/dm-chain-utils/",
     )
     assert res.returncode == 0, res.stderr
-    assert res.stdout.strip() == f"LAYER_S3_KEY={key} LAYER_SHA256={sha}"
+    expected_b64 = base64.b64encode(bytes.fromhex(sha)).decode()
+    assert res.stdout.strip() == (f"LAYER_S3_KEY={key} LAYER_SHA256={sha} LAYER_SHA256_B64={expected_b64}")
 
 
 def test_matching_metadata_sha256_passes(stub_path: Path) -> None:
@@ -94,7 +96,8 @@ def test_matching_metadata_sha256_passes(stub_path: Path) -> None:
         "lambda-layers/dm-chain-utils/",
     )
     assert res.returncode == 0, res.stderr
-    assert res.stdout.strip() == f"LAYER_S3_KEY={key} LAYER_SHA256={sha}"
+    expected_b64 = base64.b64encode(bytes.fromhex(sha)).decode()
+    assert res.stdout.strip() == (f"LAYER_S3_KEY={key} LAYER_SHA256={sha} LAYER_SHA256_B64={expected_b64}")
 
 
 def test_no_object_under_prefix_fails_loudly(stub_path: Path) -> None:
@@ -133,3 +136,25 @@ def test_key_not_shaped_like_content_addressed_zip_fails(stub_path: Path) -> Non
     )
     assert res.returncode != 0
     assert "does not match the expected" in res.stderr
+
+
+def test_sha256_b64_is_base64_of_raw_digest_not_hex_reencoded(stub_path: Path) -> None:
+    """T-R.2 F-02 — aws_lambda_layer_version.source_code_hash needs base64 of the
+    RAW sha256 digest bytes (what AWS returns as Content.CodeSha256), never the hex
+    string itself base64-encoded as text. Pin against an independently computed
+    value (Python's own hashlib/base64), not against resolve_layer.sh's own xxd
+    pipeline, so a regression to text-encoding the hex string is caught."""
+    sha = "0123456789abcdef" * 4
+    key = f"lambda-layers/dm-chain-utils/{sha}.zip"
+    res = _run(
+        stub_path,
+        {"STUB_LATEST_KEY": key, "STUB_METADATA_SHA256": "None"},
+        "dm-chain-explorer-artifacts",
+        "lambda-layers/dm-chain-utils/",
+    )
+    assert res.returncode == 0, res.stderr
+    out = dict(pair.split("=", 1) for pair in res.stdout.strip().split(" "))
+    correct_b64 = base64.b64encode(bytes.fromhex(sha)).decode()
+    wrong_b64_of_hex_text = base64.b64encode(sha.encode()).decode()
+    assert out["LAYER_SHA256_B64"] == correct_b64
+    assert out["LAYER_SHA256_B64"] != wrong_b64_of_hex_text

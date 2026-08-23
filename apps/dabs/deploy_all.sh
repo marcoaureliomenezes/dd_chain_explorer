@@ -41,6 +41,25 @@ NC='\033[0m'
 echo -e "${BOLD}${CYAN}DABs Deploy — target: ${TARGET}${NC}"
 echo ""
 
+# ── Render dashboard templates BEFORE any bundle deploy (T-R.2, F-03) ────────
+# Dashboard bundles reference a generated, gitignored *.lvdash.json that only
+# exists after render_dashboard_templates.sh runs. A fresh CI checkout has none
+# of these files — render them here, once, before the per-component deploy loop
+# below ever calls `databricks bundle deploy`. Target->catalog: dev->dev,
+# hml->hml, prod->prd (Unity Catalog naming, apps/dabs/*/databricks.yml).
+case "$TARGET" in
+  dev)  DASHBOARD_CATALOG="dev" ;;
+  hml)  DASHBOARD_CATALOG="hml" ;;
+  prod) DASHBOARD_CATALOG="prd" ;;
+  *)
+    echo -e "${RED}ERROR: Unknown target '${TARGET}' — expected dev|hml|prod${NC}"
+    exit 1
+    ;;
+esac
+echo -e "${CYAN}[RENDER]${NC} dashboard templates -> catalog=${DASHBOARD_CATALOG}"
+"${SCRIPT_DIR}/render_dashboard_templates.sh" --catalog "${DASHBOARD_CATALOG}"
+echo ""
+
 DEPLOYED=()
 FAILED=()
 

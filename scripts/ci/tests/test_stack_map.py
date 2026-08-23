@@ -151,13 +151,24 @@ def test_unrelated_edit_triggers_no_stack() -> None:
         assert cs.stack_is_changed(stack, changed) is False
 
 
-def test_dev_stacks_have_no_module_edges() -> None:
-    """DEV stacks consume no shared services/modules — a module edit must not
-    trigger any DEV stack (only an own-path edit does)."""
+def test_dev_lambda_module_edit_triggers_only_dev_lambda() -> None:
+    """DEV stacks DO declare real module edges (stack_map.json: peripherals ->
+    s3/dynamodb/cloudwatch_logs, lambda -> lambda, T-R.2 F-11) — a module edit
+    must trigger exactly its declared consumer(s), not every DEV stack, and
+    must not trigger an unrelated DEV stack."""
     cs = _load_changed_stacks()
-    changed = ["services/modules/vpc/main.tf"]
-    for stack in cs.stacks_for_env("dev"):
-        assert cs.stack_is_changed(stack, changed) is False
+    stacks = {s["id"]: s for s in cs.stacks_for_env("dev")}
+    changed = ["services/modules/lambda/main.tf"]
+    assert cs.stack_is_changed(stacks["lambda"], changed) is True
+    assert cs.stack_is_changed(stacks["peripherals"], changed) is False
+
+
+def test_dev_peripherals_module_edit_triggers_only_dev_peripherals() -> None:
+    cs = _load_changed_stacks()
+    stacks = {s["id"]: s for s in cs.stacks_for_env("dev")}
+    changed = ["services/modules/dynamodb/main.tf"]
+    assert cs.stack_is_changed(stacks["peripherals"], changed) is True
+    assert cs.stack_is_changed(stacks["lambda"], changed) is False
 
 
 # ── single-source drift guard (F-QA-A1-3 / F-ARCH-4) ──────────────────────────

@@ -21,7 +21,7 @@
 #   bash scripts/dev_dlt_integration_test.sh
 #
 # Environment variables (all have defaults for DEV):
-#   DATABRICKS_HOST   — workspace URL (default: https://dbc-409f1007-5779.cloud.databricks.com)
+#   DATABRICKS_HOST   — workspace URL (required, no default — public repo, T-R.2 F-10)
 #   DATABRICKS_TOKEN  — PAT token (required)
 #   CATALOG           — Unity Catalog name (default: dev)
 #   WAREHOUSE_ID      — SQL Warehouse ID (default: a2a66f2adb0faf18)
@@ -37,7 +37,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 # ── Configuration ─────────────────────────────────────────────────────────────
-DATABRICKS_HOST="${DATABRICKS_HOST:-https://dbc-409f1007-5779.cloud.databricks.com}"
+DATABRICKS_HOST="${DATABRICKS_HOST:?DATABRICKS_HOST is required}"
 DATABRICKS_TOKEN="${DATABRICKS_TOKEN:?DATABRICKS_TOKEN is required}"
 CATALOG="${CATALOG:-dev}"
 WAREHOUSE_ID="${WAREHOUSE_ID:-a2a66f2adb0faf18}"

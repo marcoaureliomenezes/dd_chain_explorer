@@ -30,6 +30,11 @@ variables:
 
 targets:
   dev:
+    # T-R.2 F-09 (AC-19): every target runs as the service principal, never
+    # a personal identity — dev/hml previously deployed as whoever held the
+    # PAT, the exact coupling C3 set out to remove.
+    run_as:
+      service_principal_name: "02d610ae-7682-4f91-9053-4f7ed6880d96"
     presets:
       name_prefix: "[dev] "
     workspace:
@@ -57,6 +62,11 @@ targets:
             pause_status: PAUSED
 
   hml:
+    # T-R.2 F-09 (AC-19): every target runs as the service principal, never
+    # a personal identity — dev/hml previously deployed as whoever held the
+    # PAT, the exact coupling C3 set out to remove.
+    run_as:
+      service_principal_name: "02d610ae-7682-4f91-9053-4f7ed6880d96"
     presets:
       name_prefix: "[hml] "
     workspace:

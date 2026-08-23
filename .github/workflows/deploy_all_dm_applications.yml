@@ -112,7 +112,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       layer_s3_key: ${{ steps.build.outputs.layer_s3_key }}
-      layer_sha256: ${{ steps.build.outputs.layer_sha256 }}
+      layer_sha256_b64: ${{ steps.build.outputs.layer_sha256_b64 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
@@ -130,16 +130,21 @@ jobs:
           echo "${OUT}"
           LAYER_ZIP="$(echo "${OUT}" | grep -oP 'LAYER_ZIP=\K\S+')"
           LAYER_SHA256="$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')"
+          LAYER_SHA256_B64="$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')"
           S3_KEY="lambda-layers/dm-chain-utils/${LAYER_SHA256}.zip"
-          echo "layer_zip=${LAYER_ZIP}"       >> "$GITHUB_OUTPUT"
-          echo "layer_sha256=${LAYER_SHA256}" >> "$GITHUB_OUTPUT"
-          echo "layer_s3_key=${S3_KEY}"       >> "$GITHUB_OUTPUT"
+          echo "layer_zip=${LAYER_ZIP}"               >> "$GITHUB_OUTPUT"
+          echo "layer_sha256_hex=${LAYER_SHA256}"     >> "$GITHUB_OUTPUT"
+          echo "layer_sha256_b64=${LAYER_SHA256_B64}" >> "$GITHUB_OUTPUT"
+          echo "layer_s3_key=${S3_KEY}"               >> "$GITHUB_OUTPUT"
       - name: Upload layer to artifacts bucket (skip if the content-addressed key already exists)
         run: |
           set -euo pipefail
           BUCKET="dm-chain-explorer-artifacts"
           KEY="${{ steps.build.outputs.layer_s3_key }}"
-          SHA256="${{ steps.build.outputs.layer_sha256 }}"
+          # The S3 object metadata tag stays HEX (resolve_layer.sh cross-checks
+          # it against the key-derived hex, T-R.2 F-02) -- distinct from the
+          # base64 value this job exposes for source_code_hash.
+          SHA256="${{ steps.build.outputs.layer_sha256_hex }}"
           if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
             echo "Object s3://${BUCKET}/${KEY} already exists — skipping upload (content-addressed, T-B.14)."
           else
@@ -189,7 +194,7 @@ jobs:
           # (empty on dev/hml, where the stack declares no layer_* variable to consume).
           TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
           TF_VAR_layer_s3_key:    ${{ needs.build-layer.outputs.layer_s3_key }}
-          TF_VAR_layer_sha256:    ${{ needs.build-layer.outputs.layer_sha256 }}
+          TF_VAR_layer_sha256_b64: ${{ needs.build-layer.outputs.layer_sha256_b64 }}
 
   # ── DABs: bundle deploy ─────────────────────────────────────────────────────
   deploy-dabs:

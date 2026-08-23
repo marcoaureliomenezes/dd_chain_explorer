@@ -16,7 +16,7 @@ on:
         required: true
         type: string
       full_destroy:
-        description: 'HML only: destroy ALL modules (VPC, IAM, Peripherals, ECS, Databricks). Default false = Databricks-only (~$11/month idle preserved).'
+        description: 'Unused — hml has a single surviving stack (04_peripherals, post-B2 purge); destroy_env.sh ignores this flag (T-R.2 F-07).'
         required: false
         default: false
         type: boolean
@@ -94,10 +94,9 @@ jobs:
   # ══════════════════════════════════════════════════════════════
   #  HML
   # ══════════════════════════════════════════════════════════════
-  # - full_destroy=false (default): only Databricks is destroyed.
-  #   VPC, IAM, Peripherals and ECS are preserved (~$11/month idle).
-  # - full_destroy=true: full teardown — all modules destroyed, S3 preserved.
-  #   Use to test full destroy/redeploy cycle or before extended pauses.
+  # Post-B2 purge, hml's only surviving stack is 04_peripherals — destroy_env.sh
+  # destroys every stack_map.json-declared hml stack unconditionally; the
+  # `full_destroy` input is accepted but not consumed (T-R.2 F-07).
 
   hml-destroy:
     name: HML — Destroy modules
@@ -153,10 +152,4 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
       - name: Destroy PRD
         run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" prd
-        env:
-          DATABRICKS_ACCOUNT_ID:           ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:            ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET:        ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
 

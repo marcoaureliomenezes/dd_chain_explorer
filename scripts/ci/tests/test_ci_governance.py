@@ -135,3 +135,30 @@ def test_publish_oidc_vars_maps_four_role_names() -> None:
         assert name in src, f"publish_oidc_vars.sh does not reference {name}"
     assert "gh variable set" in src
     assert "--dry-run" in src and "--apply" in src
+
+
+def test_gitignore_does_not_blanket_ignore_terraform_lock_files() -> None:
+    """T-R.2 F-06 — SPEC B5/AC-15 requires every surviving root stack's
+    `.terraform.lock.hcl` to be committed. A blanket `**/.terraform.lock.hcl` ignore
+    rule would silently untrack the next new stack's lock file with no signal."""
+    gitignore_text = (REPO_ROOT / ".gitignore").read_text()
+    for line in gitignore_text.splitlines():
+        stripped = line.strip()
+        assert stripped != "**/.terraform.lock.hcl", (
+            "a blanket .terraform.lock.hcl ignore rule regressed into .gitignore "
+            "(T-R.2 F-06) -- lock files must stay committed"
+        )
+
+
+def test_every_on_disk_stack_lock_file_is_not_gitignored() -> None:
+    """Every surviving stack directory's .terraform.lock.hcl must be trackable by
+    git (not matched by any .gitignore rule) -- the AC-15 count-of-8 guard."""
+    lock_files = sorted(REPO_ROOT / d / ".terraform.lock.hcl" for d in _on_disk_stack_dirs())
+    assert lock_files, "expected at least one on-disk stack with a lock file"
+    for lock_file in lock_files:
+        result = subprocess.run(
+            ["git", "check-ignore", "--quiet", str(lock_file)],
+            cwd=REPO_ROOT,
+            check=False,
+        )
+        assert result.returncode == 1, f"{lock_file} is unexpectedly gitignored"

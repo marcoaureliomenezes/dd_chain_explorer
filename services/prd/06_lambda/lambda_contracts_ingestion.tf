@@ -11,7 +11,7 @@
 # ---- Lambda Layer: dm_chain_utils + requests ----
 
 # Layer artifact resolved from the artifacts bucket (T-B.14, D15) — never a
-# working-tree path. layer_s3_key/layer_sha256 have no default: CI passes
+# working-tree path. layer_s3_key/layer_sha256_b64 have no default: CI passes
 # them as -var, built by scripts/build_lambda_layer.sh's content-addressed
 # output (LAYER_SHA256=<hex>, uploaded to
 # s3://<layer_s3_bucket>/lambda-layers/dm-chain-utils/<sha256>.zip). A plan
@@ -21,7 +21,7 @@ resource "aws_lambda_layer_version" "dm_chain_utils" {
   layer_name          = "${local.name_prefix}-dm-chain-utils"
   s3_bucket           = var.layer_s3_bucket
   s3_key              = var.layer_s3_key
-  source_code_hash    = var.layer_sha256
+  source_code_hash    = var.layer_sha256_b64
   compatible_runtimes = ["python3.12"]
   description         = "dm_chain_utils library + requests for Lambda functions"
 }

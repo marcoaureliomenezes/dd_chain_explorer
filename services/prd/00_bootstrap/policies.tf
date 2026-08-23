@@ -346,12 +346,15 @@ data "aws_iam_policy_document" "gha_readonly_plan_permissions" {
     resources = [local.artifacts_bucket_arn]
   }
 
+  # T-R.2 F-05 — read-only, deliberately no s3:PutObject: the read-only plan
+  # role never uploads. Only the deploy roles' policies (gha_deploy_permissions)
+  # write layer artifacts, from deploy_all_dm_applications.yml's build-layer
+  # job — the sole legitimate uploader, resolve_layer.sh only ever reads.
   statement {
-    sid    = "ArtifactsBucketLayerUploadObjects"
+    sid    = "ArtifactsBucketLayerReadObjects"
     effect = "Allow"
     actions = [
       "s3:GetObject",
-      "s3:PutObject",
     ]
     resources = [local.artifacts_layer_prefix_rw]
   }

@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 
 pyspark = pytest.importorskip(
-    "pyspark", reason="pyspark not installed — see tests/conftest.py note on DLT tier"
+    "pyspark", reason="pyspark not installed — deliberately excluded from CI, see tests/README.md"
 )
 
 import sys  # noqa: E402

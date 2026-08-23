@@ -14,7 +14,7 @@
 #   • DATABRICKS_HOST and DATABRICKS_TOKEN env vars set
 #
 # Usage (DEV — local validation):
-#   DATABRICKS_HOST=https://dbc-409f1007-5779.cloud.databricks.com \
+#   DATABRICKS_HOST=${DATABRICKS_HOST:?} \
 #   DATABRICKS_TOKEN=<pat> \
 #   CATALOG=dev \
 #   WAREHOUSE_ID=a2a66f2adb0faf18 \

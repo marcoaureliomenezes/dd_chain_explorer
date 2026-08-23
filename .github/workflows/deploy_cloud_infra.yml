@@ -227,7 +227,7 @@ jobs:
     timeout-minutes: 15
     outputs:
       layer_s3_key: ${{ steps.resolve-layer.outputs.layer_s3_key }}
-      layer_sha256: ${{ steps.resolve-layer.outputs.layer_sha256 }}
+      layer_sha256_b64: ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -252,14 +252,10 @@ jobs:
           echo "${OUT}"
           echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
           echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
+          echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
       - name: Plan PRD (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" prd
         env:
-          DATABRICKS_ACCOUNT_ID:           ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:            ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET:        ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
           DESTROY_ACK:                     ${{ github.event.inputs.destroy_ack }}
           PLAN_ARTIFACT_DIR:               ${{ github.workspace }}/.plan-artifacts
@@ -273,7 +269,7 @@ jobs:
           # which layer object they mean.
           TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
           TF_VAR_layer_s3_key:             ${{ steps.resolve-layer.outputs.layer_s3_key }}
-          TF_VAR_layer_sha256:             ${{ steps.resolve-layer.outputs.layer_sha256 }}
+          TF_VAR_layer_sha256_b64:         ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
       - name: Upload saved plans
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
         with:
@@ -329,11 +325,6 @@ jobs:
       - name: Deploy PRD
         run: bash "$GITHUB_WORKSPACE/scripts/ci/deploy_env.sh" prd
         env:
-          DATABRICKS_ACCOUNT_ID:           ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:            ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET:        ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
           SKIP_DATABRICKS:                 ${{ github.event.inputs.skip_databricks }}
           FAST_MODE:                       ${{ github.event.inputs.fast_mode }}
@@ -343,7 +334,7 @@ jobs:
           # re-plan consistent with what the gate approver reviewed.
           TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
           TF_VAR_layer_s3_key:             ${{ needs.prd-plan.outputs.layer_s3_key }}
-          TF_VAR_layer_sha256:             ${{ needs.prd-plan.outputs.layer_sha256 }}
+          TF_VAR_layer_sha256_b64:         ${{ needs.prd-plan.outputs.layer_sha256_b64 }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 

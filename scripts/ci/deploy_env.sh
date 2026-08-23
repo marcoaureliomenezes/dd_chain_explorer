@@ -313,47 +313,6 @@ deploy_prd() {
   summary "> PRD deploy complete."
 }
 
-# Derive the Databricks workspace URL from 05a's post-apply output (used by 05b) and
-# export it. 05b is bootstrap_plannable:false precisely because this value only exists
-# post-apply — so 05b always takes the re-plan + divergence-gate branch.
-prd_read_workspace_url() {
-  local account_dir="$1"
-  cd "${account_dir}"
-  WORKSPACE_URL=$("${TF_BIN}" output -raw databricks_workspace_url 2>/dev/null || true)  # capture-then-check: emptiness handled loudly below
-  if [[ -z "$WORKSPACE_URL" ]]; then
-    echo "::warning::Could not read workspace_url from 05a output — attempting API fallback"
-    TOKEN=$(curl -sf -X POST \
-      "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
-      -H "Content-Type: application/x-www-form-urlencoded" \
-      --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
-      --data-urlencode "scope=all-apis" \
-      | jq -r '.access_token' 2>/dev/null || true)  # capture-then-check: empty/null token handled below
-    if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
-      WORKSPACE_URL=$(curl -sf \
-        -H "Authorization: Bearer $TOKEN" \
-        "https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}/workspaces" \
-        2>/dev/null \
-        | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_url // empty' \
-        2>/dev/null || true)  # capture-then-check: empty result handled by the loud guard below
-    fi
-  fi
-  cd "${REPO_ROOT}"
-
-  if [[ -z "$WORKSPACE_URL" ]]; then
-    summary "| ❌ | PRD/DatabricksWorkspace | workspace URL could not be determined |"
-    echo "::error::Cannot deploy PRD/05b_databricks_workspace: workspace URL is empty"
-    exit 1
-  fi
-
-  echo "workspace_url=${WORKSPACE_URL}" >> "${GITHUB_OUTPUT:-/dev/null}"
-  export TF_VAR_workspace_host="${WORKSPACE_URL}"
-  export TF_VAR_create_cluster="${TF_VAR_create_cluster:-true}"
-  if [[ "$FAST_MODE" == "true" ]]; then
-    export TF_VAR_create_cluster="false"
-  fi
-}
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 # Guard: when sourced (DEPLOY_ENV_SOURCE_ONLY=1) expose the helper functions for
