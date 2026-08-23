@@ -210,7 +210,7 @@
   - Deps: T-D.1 · AC-20, AC-23 · Findings: DRIFT-20
   - Evidence: APPROVED handoff listing every test to delete/demote with its replacement — copied into CLOSURE `## Test dispositions`.
 
-- [-] **T-D.3** — Delete the capture-era code and tests and the `img/` slop (D1).
+- [x] **T-D.3** — Delete the capture-era code and tests and the `img/` slop (D1).
   - Owner: software-engineer · Write set: `apps/docker/**` (deletion), the 6 dead `dm_chain_utils` modules + re-exports under `utils/**`, `scripts/prod_ecs_logs.py`, the unreferenced operator scripts, `scripts/hml_integration_test_optimized.sh`, `img/`, the tests named in T-D.2
   - Deps: T-D.2 · AC-20 · Findings: DRIFT-12, DRIFT-20, ARCH-M6, ARCH-L1, ARCH-L2, ARCH-L4
   - Evidence: `ls apps/docker`; `grep -rn 'dm_kinesis|dm_sqs|dm_firehose|dm_web3_client|dm_cloudwatch_logger|api_keys_manager' --include='*.py' .` → 0; the verdict handoff path.

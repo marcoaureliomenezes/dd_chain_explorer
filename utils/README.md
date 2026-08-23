@@ -19,16 +19,16 @@ Every public method of these three modules is covered by
 `tests/utils/test_dm_dynamodb.py`, `tests/utils/test_dm_etherscan.py`, and
 `tests/utils/test_dm_parameter_store.py` (moto-mocked AWS, no live credentials).
 
-## Legacy capture-era modules
+## Legacy capture-era modules — removed
 
-`dm_kinesis`, `dm_sqs`, `dm_firehose`, `dm_cloudwatch_logger`, `dm_web3_client`,
-and `api_keys_manager` have zero live callers since capture retirement — the
-Kinesis/SQS/Firehose ingestion they supported is now owned entirely by the
-separate `dd-chain-capture` repository, which writes to S3 directly. Their
-removal (and the corresponding trim of `utils/pyproject.toml`'s `web3`/
-`hexbytes` dependencies) is this release's T-D.3, gated on a `qa-engineer`
-deletion verdict per `dadaia-test-stewardship` — not yet executed as of this
-document.
+The 6 capture-era helper modules (Kinesis stream handler, SQS queue handler,
+Firehose Direct-Put handler, the CloudWatch logging handler, the on-chain RPC
+client, and the API-key rotation manager) had zero live callers since capture
+retirement — the ingestion they supported is now owned entirely by the
+separate `dd-chain-capture` repository, which writes to S3 directly. They were
+deleted, along with `utils/pyproject.toml`'s corresponding third-party
+dependencies, in release v0.5.0's T-D.3, per the `qa-engineer` deletion
+verdict required by `dadaia-test-stewardship`.
 
 ## Version
 
