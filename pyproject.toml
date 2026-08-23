@@ -1,0 +1,58 @@
+# Root tooling configuration for dd-chain-explorer (post-capture-retirement scope).
+#
+# This is a tooling-config-only pyproject.toml (no [project] table, no build
+# backend) — it configures pytest, ruff and mypy for the whole repo tree. Each
+# deployable unit (utils/, apps/dabs/job_*/src/**) keeps its own packaging
+# pyproject.toml unchanged.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+python_classes = ["Test*"]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+# DLT notebooks (apps/dabs/**) reference `spark`/`dlt`/`dbutils`/`display` as
+# Databricks-injected implicit globals — never imported, always present at
+# runtime. Declaring them as ruff builtins lets those files pass F821 via
+# config, without WS-D editing apps/dabs/** (WS-C's write set).
+builtins = ["spark", "dlt", "dbutils", "display"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = [
+    "E501",  # line-length is enforced by `ruff format`, not `ruff check`, repo-wide
+]
+
+[tool.ruff.lint.per-file-ignores]
+# DLT source is Databricks-notebook-shaped (magic `# COMMAND ----------` cell
+# markers, %md cells) — top-of-file imports interleaved with cell markers trip
+# E402 by construction, not by mistake.
+"apps/dabs/**" = ["E402"]
+
+[tool.mypy]
+python_version = "3.12"
+incremental = false
+cache_dir = "/dev/null"
+mypy_path = "utils/src"
+strict = true
+warn_unused_configs = true
+
+# Scope: the kept, live dm_chain_utils modules + both Lambda handlers only.
+# `utils/src/dm_chain_utils/__init__.py` and the 6 dead modules it re-exports
+# are deliberately excluded — they are T-D.3's deletion target, not this
+# task's to bring to strict-clean.
+files = [
+    "utils/src/dm_chain_utils/dm_dynamodb.py",
+    "utils/src/dm_chain_utils/dm_etherscan.py",
+    "utils/src/dm_chain_utils/dm_parameter_store.py",
+    "apps/lambda",
+]
+
+[[tool.mypy.overrides]]
+module = ["boto3.*", "botocore.*", "requests.*"]
+ignore_missing_imports = true

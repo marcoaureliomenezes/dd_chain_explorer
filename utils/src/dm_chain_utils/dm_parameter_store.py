@@ -48,32 +48,6 @@ class ParameterStoreClient:
             logger.error(f"[ParameterStore] No AWS credentials available: {e}")
             return None
 
-    def list_parameters(self) -> dict[str, str]:
-        """
-        Lista todos os parâmetros do Parameter Store e retorna seus valores descriptografados.
-
-        Returns
-        -------
-        dict[str, str]
-            Mapeamento { nome_do_parâmetro: valor }.
-        """
-        params: dict[str, str] = {}
-        paginator = self._client.get_paginator("describe_parameters")
-        try:
-            for page in paginator.paginate():
-                names = [p["Name"] for p in page.get("Parameters", [])]
-                if not names:
-                    continue
-                for i in range(0, len(names), 10):
-                    chunk = names[i:i + 10]
-                    resp = self._client.get_parameters(Names=chunk, WithDecryption=True)
-                    for param in resp.get("Parameters", []):
-                        params[param["Name"]] = param["Value"]
-        except (ClientError, NoCredentialsError) as e:
-            logger.error(f"[ParameterStore] Error listing parameters: {e}")
-        logger.info(f"[ParameterStore] Listed {len(params)} parameters.")
-        return params
-
     def put_parameter(
         self,
         name: str,
