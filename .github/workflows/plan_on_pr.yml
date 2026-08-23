@@ -27,8 +27,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: write
-  id-token: write
 
 concurrency:
   group: plan-pr-${{ github.event.pull_request.number }}
@@ -50,6 +48,8 @@ jobs:
     name: Quality gate (fmt / validate / actionlint / lint / tests)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -76,10 +76,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dev tooling (ruff, mypy, pip-audit, test deps)
+      - name: Install dev tooling (ruff, mypy, pip-audit, test deps — pinned)
         run: |
           python -m pip install --upgrade pip
-          pip install ruff mypy pip-audit pytest
+          pip install 'ruff==0.16.4' 'mypy==2.3.1' 'pip-audit==2.10.1' 'pytest==9.1.1'
           pip install -e "${{ env.UTILS_DIR }}[dev]"
 
       - name: ruff format --check
@@ -189,6 +189,9 @@ jobs:
     if: needs.detect-changes.outputs.dev_peripherals == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: services/dev/01_peripherals
@@ -213,6 +216,7 @@ jobs:
           TAIL_LINES: "30"
           TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
   plan-dev-lambda:
     name: Plan — DEV/Lambda
@@ -220,6 +224,9 @@ jobs:
     if: needs.detect-changes.outputs.dev_lambda == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: services/dev/02_lambda
@@ -251,6 +258,9 @@ jobs:
     if: needs.detect-changes.outputs.hml_peripherals == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: services/hml/04_peripherals
@@ -272,6 +282,7 @@ jobs:
           TAIL_LINES: "30"
           TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
   # ── PRD ──────────────────────────────────────────────────────────────────
 
@@ -281,6 +292,9 @@ jobs:
     if: needs.detect-changes.outputs.prd_iam == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: services/prd/03_iam
@@ -309,6 +323,9 @@ jobs:
     if: needs.detect-changes.outputs.prd_peripherals == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: services/prd/04_peripherals
@@ -337,6 +354,9 @@ jobs:
     if: needs.detect-changes.outputs.prd_lambda == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
     defaults:
       run:
         working-directory: services/prd/06_lambda

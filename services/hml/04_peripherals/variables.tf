@@ -27,8 +27,7 @@ variable "databricks_uc_principal_arn" {
 }
 
 variable "databricks_hml_uc_external_id" {
-  description = "ExternalId condition on the hml storage-credential trust policy. Defaults to the same value already used by dm-databricks-dev-s3-role, matching this project's single Databricks Free Edition account; T-C.7 confirms/overrides once the hml storage credential exists (databricks storage-credentials get)."
+  description = "Databricks UC storage-credential ExternalId — supplied via TF_VAR_<name> from the repository secret DATABRICKS_UC_EXTERNAL_ID; never a literal in this public repo."
   type        = string
   sensitive   = true
-  default     = "REDACTED-UC-EXTERNAL-ID"
 }

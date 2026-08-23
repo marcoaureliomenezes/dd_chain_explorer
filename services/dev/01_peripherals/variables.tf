@@ -31,8 +31,7 @@ variable "databricks_uc_principal_arn" {
 }
 
 variable "databricks_dev_uc_external_id" {
-  description = "ExternalId condition on the dev storage-credential trust policy — mirrors the live dm-databricks-dev-s3-role trust policy exactly (T-B.12, 0-diff import)."
+  description = "Databricks UC storage-credential ExternalId — supplied via TF_VAR_<name> from the repository secret DATABRICKS_UC_EXTERNAL_ID; never a literal in this public repo."
   type        = string
   sensitive   = true
-  default     = "REDACTED-UC-EXTERNAL-ID"
 }

@@ -135,11 +135,13 @@ jobs:
           MODULE_NAME: DEV/Peripherals
           TAIL_LINES: "20"
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
   dev-deploy-lambda:
     name: DEV — Deploy Lambda AWS
@@ -411,6 +413,7 @@ jobs:
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
           DESTROY_ACK:              ${{ github.event.inputs.destroy_ack }}
           PLAN_ARTIFACT_DIR:        ${{ github.workspace }}/.plan-artifacts
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
       - name: Upload saved plans
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
         with:
@@ -456,3 +459,4 @@ jobs:
           DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
           DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
           DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}

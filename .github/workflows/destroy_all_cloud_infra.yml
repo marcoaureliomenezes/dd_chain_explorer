@@ -126,6 +126,8 @@ jobs:
         run: |
           terraform -chdir="${{ env.DEV_ROOT }}/01_peripherals" init -input=false -reconfigure
           terraform -chdir="${{ env.DEV_ROOT }}/01_peripherals" destroy -input=false -auto-approve
+        env:
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
   # ══════════════════════════════════════════════════════════════════════════
   #  HML — 04_peripherals only (the minimal lane, B2)
@@ -153,6 +155,8 @@ jobs:
         run: |
           terraform -chdir="${{ env.HML_ROOT }}/04_peripherals" init -input=false -reconfigure
           terraform -chdir="${{ env.HML_ROOT }}/04_peripherals" destroy -input=false -auto-approve
+        env:
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
   # ══════════════════════════════════════════════════════════════════════════
   #  PRD — 06_lambda, 04_peripherals (S3 emptied first), then 03_iam
