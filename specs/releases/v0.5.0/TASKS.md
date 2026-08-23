@@ -48,7 +48,7 @@
   - Deps: — · AC-5 · Findings: DRIFT-02, CI-M1
   - Evidence: job graph = Lambda + DABs only; `grep -rniE 'kinesis|firehose|sqs|ecs|onchain-stream' .github/workflows/ scripts/ci/` → 0; `actionlint` + `bash -n` clean.
 
-- [ ] **T-A.7** — CI safety batch: per-environment `concurrency`, PR trigger on both long-lived branches, the three test suites + `pip-audit` + the from-source layer build wired into `plan_on_pr`, `destroy_all` covering every live stack, Terraform and actionlint installer pinned (version + checksum), `auto-bump-version.yml` deleted, every `hml-apps` reference removed (A4, A5).
+- [-] **T-A.7** — CI safety batch: per-environment `concurrency`, PR trigger on both long-lived branches, the three test suites + `pip-audit` + the from-source layer build wired into `plan_on_pr`, `destroy_all` covering every live stack, Terraform and actionlint installer pinned (version + checksum), `auto-bump-version.yml` deleted, every `hml-apps` reference removed (A4, A5).
   - Owner: software-engineer · Write set: `.github/workflows/**`
   - Deps: T-A.6; T-D.4 (layer-build inputs, PLAN K6) · AC-4, AC-6, AC-21 · Findings: DRIFT-07, DRIFT-14, DRIFT-15, DRIFT-26, CI-M9, ARCH-H6
   - Evidence: `gh workflow list`; per-workflow `concurrency:` grep; `actionlint` clean; a green `plan_on_pr` run URL from a fresh clone.
