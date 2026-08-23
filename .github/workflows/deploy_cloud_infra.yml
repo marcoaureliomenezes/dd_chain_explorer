@@ -127,9 +127,16 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-dev-deploy-peripherals
+          mask-aws-account-id: true
       # F-QA-3 cutover-safety: non-mutating role-assumption evidence (dev deploy role).
       - name: Verify assumed role (sts get-caller-identity)
-        run: aws sts get-caller-identity
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
       - run: terraform init -input=false
       - run: terraform validate
       - name: Read VERSION
@@ -181,6 +188,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-dev-deploy-lambda
+          mask-aws-account-id: true
       - name: Read VERSION
         id: ver
         run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
@@ -263,6 +272,8 @@ jobs:
           # (F-QA-A1-2). Plan-only = read-only, matching drift_detection.yml.
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-prd-plan
+          mask-aws-account-id: true
       - name: Resolve lambda layer artifact (T-A.7, WS-A)
         id: resolve-layer
         run: |
@@ -340,9 +351,16 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-prd-apply
+          mask-aws-account-id: true
       # F-QA-3 cutover-safety: non-mutating role-assumption evidence (prd deploy role).
       - name: Verify assumed role (sts get-caller-identity)
-        run: aws sts get-caller-identity
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
       - name: Download saved plan summaries (text only — F-01)
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
@@ -430,6 +448,8 @@ jobs:
           # fails role assumption and escalates privilege (F-QA-A1-2).
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-hml-plan
+          mask-aws-account-id: true
       - name: Plan HML (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" hml
         env:
@@ -475,9 +495,16 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-hml-apply
+          mask-aws-account-id: true
       # F-QA-3 cutover-safety: non-mutating role-assumption evidence (hml deploy role).
       - name: Verify assumed role (sts get-caller-identity)
-        run: aws sts get-caller-identity
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
       - name: Download saved plan summaries (text only — F-01)
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:

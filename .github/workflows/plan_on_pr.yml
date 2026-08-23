@@ -217,9 +217,16 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-dev-peripherals
+          mask-aws-account-id: true
       # F-QA-3 cutover-safety: non-mutating role-assumption evidence (read-only role).
       - name: Verify assumed role (sts get-caller-identity)
-        run: aws sts get-caller-identity
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -254,6 +261,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-dev-lambda
+          mask-aws-account-id: true
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - name: Terraform Plan
@@ -290,6 +299,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-hml-peripherals
+          mask-aws-account-id: true
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -326,6 +337,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-prd-iam
+          mask-aws-account-id: true
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -359,6 +372,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-prd-peripherals
+          mask-aws-account-id: true
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -392,6 +407,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-prd-lambda
+          mask-aws-account-id: true
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - name: Resolve lambda layer artifact (T-A.7, WS-A) — skip if not yet provisioned

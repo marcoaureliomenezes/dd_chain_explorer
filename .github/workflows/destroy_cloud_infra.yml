@@ -92,6 +92,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-cloud-infra-dev-destroy
+          mask-aws-account-id: true
       - name: Destroy DEV
         run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" dev
         env:
@@ -129,6 +131,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-cloud-infra-hml-destroy
+          mask-aws-account-id: true
       - name: Destroy HML
         env:
           # F-07: DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET removed — no
@@ -169,6 +173,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-cloud-infra-prd-destroy
+          mask-aws-account-id: true
       - name: Destroy PRD
         run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" prd
 

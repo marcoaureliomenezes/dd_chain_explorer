@@ -107,6 +107,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-all-cloud-infra-dev-destroy-lambda
+          mask-aws-account-id: true
       - name: terraform destroy
         run: |
           terraform -chdir="${{ env.DEV_ROOT }}/02_lambda" init -input=false -reconfigure
@@ -132,6 +134,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-all-cloud-infra-dev-destroy-peripherals
+          mask-aws-account-id: true
       - name: Empty dev S3 buckets (all object versions)
         run: bash scripts/ci/empty_s3_and_ecr.sh dev
         continue-on-error: true
@@ -166,6 +170,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-all-cloud-infra-hml-destroy-peripherals
+          mask-aws-account-id: true
       - name: Empty hml S3 buckets (all object versions)
         run: bash scripts/ci/empty_s3_and_ecr.sh hml
         continue-on-error: true
@@ -201,6 +207,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-all-cloud-infra-prd-destroy-lambda
+          mask-aws-account-id: true
       - name: terraform destroy
         run: |
           terraform -chdir="${{ env.PRD_ROOT }}/06_lambda" init -input=false -reconfigure
@@ -226,6 +234,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-all-cloud-infra-prd-destroy-peripherals
+          mask-aws-account-id: true
       - name: Empty prd S3 buckets (all object versions, incl. the artifacts bucket)
         run: bash scripts/ci/empty_s3_and_ecr.sh prd
         continue-on-error: true
@@ -254,6 +264,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-all-cloud-infra-prd-destroy-iam
+          mask-aws-account-id: true
       - name: terraform destroy
         run: |
           terraform -chdir="${{ env.PRD_ROOT }}/03_iam" init -input=false -reconfigure

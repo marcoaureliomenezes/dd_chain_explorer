@@ -135,6 +135,8 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-all-dm-applications-build-layer
+          mask-aws-account-id: true
       - name: Build layer (from source, reproducible)
         id: build
         run: |
@@ -193,6 +195,8 @@ jobs:
         with:
           role-to-assume: ${{ inputs.target == 'prod' && vars.AWS_DEPLOY_ROLE_PRD || vars.AWS_DEPLOY_ROLE_DEV }}
           aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-all-dm-applications-deploy-lambda
+          mask-aws-account-id: true
       - name: Resolve Lambda stack path for target
         id: stack
         env:
