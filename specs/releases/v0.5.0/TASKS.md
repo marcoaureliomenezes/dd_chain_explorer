@@ -18,10 +18,11 @@
   - Evidence: explicit statement list, no managed-policy attachment, no `iam:*` on `"*"`; `terraform validate`/`fmt -check` clean on the new stack.
   - **Note (T-A.2 rev2 remaining HIGH, closed):** the boundary only bound at `iam:CreateRole` time, and none of the 8 pre-existing project `aws_iam_role` resources outside this stack carried it, leaving the CreateRole→PutRolePolicy→PassRole chain fully open against any one of them. Fix, one commit: `DenyRolePermissionsBoundaryTampering` narrowed to `iam:DeleteRolePermissionsBoundary` only; a new boundary-conditioned `ProjectIamRoleSetBoundary` Allow added for the retrofit path (`iam:PutRolePermissionsBoundary` StringEquals `iam:PermissionsBoundary` = `ci_boundary_policy_arn`); `permissions_boundary` set on all 8 roles (`services/prd/03_iam/iam.tf` ×2, `services/prd/06_lambda/lambda.tf` ×1, `services/prd/06_lambda/lambda_contracts_ingestion.tf` ×2, `services/dev/01_peripherals/main.tf` ×1, `services/hml/04_peripherals/main.tf` ×1, `services/dev/02_lambda/main.tf` ×1), each read via a `data.terraform_remote_state.bootstrap` block on the `prd/bootstrap` state key (literal backend config, mirroring the existing `dev/02_lambda`/`prd/06_lambda` remote-state pattern — no new CI `-var`). LOW residuals (`s3:DeleteBucketPolicy`, `s3:PutBucketLogging`, `s3:PutBucketOwnershipControls` on the state-backend Deny; `s3:PutObjectAcl` + `s3:DeleteBucketPolicy` on the public-exposure Deny) closed the same commit. `scripts/ci/tests/test_bootstrap_iam_policy.py` gained 2 cases (12 total, was 10): a locked-count static scan asserting every project `aws_iam_role` under `services/` sets `permissions_boundary`, and a case on the new `ProjectIamRoleSetBoundary` condition. `terraform fmt -check`/`validate` clean on `00_bootstrap` + the 5 touched stacks.
 
-- [ ] **T-A.2** — Security verdict on the bootstrap IAM policy delta before any apply.
+- [x] **T-A.2** — Security verdict on the bootstrap IAM policy delta before any apply.
   - Owner: security-reviewer · Write set: `.dadaia/handoff/dd-chain-explorer/` (handoff only)
   - Deps: T-A.1 · AC-2, AC-2b · Findings: DRIFT-08
   - Evidence: APPROVED handoff naming the `00_bootstrap` commit sha and confirming the self-mutation `Deny` and the trust `sub` pinning.
+  - Coordinator 2026-08-23: security verdict on 00_bootstrap: rev1 REJECTED (bff7261) → rev2 REJECTED (52ee9ca) → **rev3 APPROVED (ec8bcb9)**; handoffs 2026-08-23T164159Z / 165154Z / 170327Z.
 
 - [-] **T-A.3** — Apply `prd/00_bootstrap` — coordinator-local with operator credentials, the only non-CI apply, and the only stack CI may never apply (O-1).
   - Owner: coordinator (operator credentials) · Write set: live AWS IAM (the four `gha` roles) + the `prd/bootstrap` state key
@@ -210,40 +211,46 @@
 
 ## WS-D — Dead code, supply chain, quality gates, tests, docs
 
-- [-] **T-D.1** — Write the live-surface pyramid **before** any deletion (O-7): both Lambda handlers, the DABs job scripts, the DLT expectation functions (local PySpark), and the CI-script cases the suite lacks; intent and size declared on every test (D4).
+- [x] **T-D.1** — Write the live-surface pyramid **before** any deletion (O-7): both Lambda handlers, the DABs job scripts, the DLT expectation functions (local PySpark), and the CI-script cases the suite lacks; intent and size declared on every test (D4).
   - Owner: software-engineer · Write set: `tests/**` (new)
   - Deps: T-A.9 (O-4) · AC-23 · Findings: DRIFT-20, DRIFT-N08
   - Evidence: `pytest -p no:cacheprovider` green; per-test intent/size declarations.
+  - Coordinator 2026-08-23: code complete; review boundary cleared (qa rc-2 APPROVED, code rc-2 APPROVE).
 
-- [ ] **T-D.2** — `qa-engineer` verdict on the deletion/demotion map for the capture-era tests — no deletion without it (test-stewardship).
+- [x] **T-D.2** — `qa-engineer` verdict on the deletion/demotion map for the capture-era tests — no deletion without it (test-stewardship).
   - Owner: qa-engineer · Write set: `.dadaia/handoff/dd-chain-explorer/` (handoff only)
   - Deps: T-D.1 · AC-20, AC-23 · Findings: DRIFT-20
   - Evidence: APPROVED handoff listing every test to delete/demote with its replacement — copied into CLOSURE `## Test dispositions`.
+  - Coordinator 2026-08-23: qa-engineer verdict APPROVED-CONDITIONAL (2026-08-23T162658Z); condition ruled satisfied by substance at rc-2 (175530Z).
 
 - [x] **T-D.3** — Delete the capture-era code and tests and the `img/` slop (D1).
   - Owner: software-engineer · Write set: `apps/docker/**` (deletion), the 6 dead `dm_chain_utils` modules + re-exports under `utils/**`, `scripts/prod_ecs_logs.py`, the unreferenced operator scripts, `scripts/hml_integration_test_optimized.sh`, `img/`, the tests named in T-D.2
   - Deps: T-D.2 · AC-20 · Findings: DRIFT-12, DRIFT-20, ARCH-M6, ARCH-L1, ARCH-L2, ARCH-L4
   - Evidence: `ls apps/docker`; `grep -rn 'dm_kinesis|dm_sqs|dm_firehose|dm_web3_client|dm_cloudwatch_logger|api_keys_manager' --include='*.py' .` → 0; the verdict handoff path.
 
-- [-] **T-D.4** — Close the supply chain (D2, D15): write `scripts/build_lambda_layer.sh` — `pip install --require-hashes -r apps/lambda/requirements.lock -t build/` for the third-party deps **plus** `pip install ./utils -t build/ --no-deps` for the library as a **path** requirement (the path install closes dependency confusion; `--no-index` is **wrong** here, the transitive deps do come from the index, hash-pinned) — and the `requirements.lock` it consumes; zip to `.lambda_zip/` (untracked + gitignored). Drop the public `==0.2.9` pin, untrack the tracked binaries, pin every lambda/utils requirement with `==`. CI upload + `-var` pass-through is `T-A.7`; the bucket and Terraform variables are `T-B.14` (PLAN K6).
+- [x] **T-D.4** — Close the supply chain (D2, D15): write `scripts/build_lambda_layer.sh` — `pip install --require-hashes -r apps/lambda/requirements.lock -t build/` for the third-party deps **plus** `pip install ./utils -t build/ --no-deps` for the library as a **path** requirement (the path install closes dependency confusion; `--no-index` is **wrong** here, the transitive deps do come from the index, hash-pinned) — and the `requirements.lock` it consumes; zip to `.lambda_zip/` (untracked + gitignored). Drop the public `==0.2.9` pin, untrack the tracked binaries, pin every lambda/utils requirement with `==`. CI upload + `-var` pass-through is `T-A.7`; the bucket and Terraform variables are `T-B.14` (PLAN K6).
   - Owner: software-engineer · Write set: `scripts/build_lambda_layer.sh`, `apps/lambda/**` (incl. `requirements.lock`), `utils/**` (version declarations only in T-D.7), `scripts/**` except `scripts/ci/**`, `.gitignore`
   - Deps: T-D.3 · AC-21 · Findings: DRIFT-06, DRIFT-07, CI-M6, DRIFT-N07, DRIFT-N09
   - Evidence: `grep -rn 'dm-chain-utils==' .` → 0; `git ls-files '*.zip' '*.whl'` → 0; `git check-ignore .lambda_zip/`; `pip-audit -r apps/lambda/requirements.lock` clean or every finding covered by an ignore recorded in AC-21.
+  - Coordinator 2026-08-23: code complete; review boundary cleared (qa rc-2 APPROVED, code rc-2 APPROVE).
 
-- [-] **T-D.7** — Set the library version declarations to `0.5.0` (`utils/pyproject.toml`, `utils/src/dm_chain_utils/__init__.py`) — **the one ordered-not-disjoint seam: runs after `T-A.9`** (O-4, K3).
+- [x] **T-D.7** — Set the library version declarations to `0.5.0` (`utils/pyproject.toml`, `utils/src/dm_chain_utils/__init__.py`) — **the one ordered-not-disjoint seam: runs after `T-A.9`** (O-4, K3).
   - Owner: software-engineer · Write set: `utils/pyproject.toml`, `utils/src/dm_chain_utils/__init__.py`
   - Deps: T-A.9, T-D.4 · AC-8 · Findings: DRIFT-11, CI-M6
   - Evidence: `grep -n version utils/pyproject.toml utils/src/dm_chain_utils/__init__.py` → `0.5.0`; `grep -rn '0\.2\.9' -- . ':!specs'` → 0.
+  - Coordinator 2026-08-23: code complete; review boundary cleared (qa rc-2 APPROVED, code rc-2 APPROVE).
 
-- [-] **T-D.5** — Quality gates and a clean worktree: `ruff` + `mypy` configured and passing; state directories gitignored; duplicate test tree removed; residual key-tail logging and the bulk parameter-listing helper removed; the scanner-ignore blind spot closed (D3).
+- [x] **T-D.5** — Quality gates and a clean worktree: `ruff` + `mypy` configured and passing; state directories gitignored; duplicate test tree removed; residual key-tail logging and the bulk parameter-listing helper removed; the scanner-ignore blind spot closed (D3).
   - Owner: software-engineer · Write set: root `pyproject.toml`/ruff/mypy config, `.gitignore`, `.gitguardian.yml`, the kept modules under `apps/lambda/**` and `utils/**`
   - Deps: T-D.4 · AC-22 · Findings: DRIFT-26, DRIFT-29, ARCH-M7, CI-L6, SEC-H-01 (residual), SEC-L-05
   - Evidence: `ruff format --check . --no-cache`, `ruff check . --no-cache`, `mypy`, `git status --porcelain` — all clean.
+  - Coordinator 2026-08-23: code complete; review boundary cleared (qa rc-2 APPROVED, code rc-2 APPROVE).
 
-- [-] **T-D.6** — Docs to the post-capture truth: the Makefile reduced to thin wrappers over the scripts CI runs (the 16 broken targets fixed); `README.md`, `docs/**`, app READMEs, DLT notebook headers, DDL comments and integration-test prerequisites rewritten (D5).
+- [x] **T-D.6** — Docs to the post-capture truth: the Makefile reduced to thin wrappers over the scripts CI runs (the 16 broken targets fixed); `README.md`, `docs/**`, app READMEs, DLT notebook headers, DDL comments and integration-test prerequisites rewritten (D5).
   - Owner: software-engineer · Write set: `Makefile`, `README*`, `docs/**`, repo-local `AGENTS.md`, app READMEs and notebook/DDL headers outside `apps/dabs/**`
   - Deps: T-D.5 · AC-24 · Findings: DRIFT-28, ARCH-H2, CI-L1, CI-L2, CI-L3, CI-L4, CI-L5, DRIFT-N10
   - Evidence: `make -n <target>` for every documented target; `grep -rniE 'kinesis|firehose|ECS producer' README* docs/ apps/**/README*` → 0.
+  - Coordinator 2026-08-23: code complete; review boundary cleared (qa rc-2 APPROVED, code rc-2 APPROVE).
 
 ---
 
@@ -312,15 +319,17 @@
   - Evidence: three APPROVED handoffs naming one commit sha. Unlocks memory → CLOSURE → archive (T-E.4..T-E.8), then ship.
   - Coordinator 2026-08-23: rc-1: qa APPROVED (rc-2), code-reviewer APPROVE (2026-08-23T182018Z-code-reviewer-v050-rc2-review; residual R-1 LOW: Databricks creds still injected into 3 HML jobs — record-only/next touch); security: rc-1 REJECTED (UC ExternalId default) → fixed cfb60c3 + local history rewritten (0 commits/trees carry the value); security re-verdict rides the push verdict on develop.
 
-- [ ] **T-R.3** — **ship + the O-8 `main` cut-over**, in this exact order: (1) merge `feature/0.5.0` → local `develop` (milestone b), security push verdict on `origin/develop..develop`, push `develop` — every workstream now on `develop`; (2) confirm `plan_on_pr` already triggers on `main` (landed by T-A.7); (3) the `master`→`main` rename and (4) the PR `develop` → `main` are `T-A.11`'s; (5) that PR's **first** `plan_on_pr` run names the required check; (6) `T-A.10` sets `main` + `develop` protection; (7) merge the PR with a **merge commit — never squash** — so `master`'s 4 unique commits are reconciled rather than orphaned; (8) merge `main` back into `develop` locally and push `develop`; (9) verify `drift_detection.yml` on the default branch and the workflow **enabled** — its next cron is the first real run, recorded as **pending**, not as evidence. Tag `v0.5.0`.
+- [-] **T-R.3** — **ship + the O-8 `main` cut-over**, in this exact order: (1) merge `feature/0.5.0` → local `develop` (milestone b), security push verdict on `origin/develop..develop`, push `develop` — every workstream now on `develop`; (2) confirm `plan_on_pr` already triggers on `main` (landed by T-A.7); (3) the `master`→`main` rename and (4) the PR `develop` → `main` are `T-A.11`'s; (5) that PR's **first** `plan_on_pr` run names the required check; (6) `T-A.10` sets `main` + `develop` protection; (7) merge the PR with a **merge commit — never squash** — so `master`'s 4 unique commits are reconciled rather than orphaned; (8) merge `main` back into `develop` locally and push `develop`; (9) verify `drift_detection.yml` on the default branch and the workflow **enabled** — its next cron is the first real run, recorded as **pending**, not as evidence. Tag `v0.5.0`.
   - Owner: software-engineer (merge/push/CI) · security-reviewer (push verdict) · coordinator (rename, PR, protection, merge)
   - Write set: `develop`, `main` via the PR, GitHub settings, the `v0.5.0` tag · Deps: T-E.8 (order is review → closure → archive → ship), T-A.10, T-A.11 · AC-4, AC-7, AC-8
   - Evidence: APPROVED security handoff covering the pushed delta; the merge-commit sha with two parents; `gh api …/contents/.github/workflows/drift_detection.yml?ref=main` → 200; `gh workflow view drift_detection` enabled; green CI run URLs; `git tag --list 'v0.5.0'`.
+  - Coordinator 2026-08-23: merge to develop + security push verdicts APPROVED (803238c, 4d476ac) + push DONE; default branch renamed to main; PR develop→main + protections + merge deferred to operator (runbook §10) — CI cannot be green before the bootstrap apply.
 
-- [ ] **T-R.4** — **re-audit**: `project-auditor` re-scores against the ship gate. **Score ≥ 7 with no dimension < 5** — any dimension below 5 blocks the release.
+- [-] **T-R.4** — **re-audit**: `project-auditor` re-scores against the ship gate. **Score ≥ 7 with no dimension < 5** — any dimension below 5 blocks the release.
   - Owner: project-auditor · Write set: `specs/audits/<new-audit-id>/**`
   - Deps: T-R.3 · SPEC §4 ship gate
   - Evidence: the audit report with its dimension table; residuals routed to the PM's intake report, never silently dropped.
+  - Coordinator 2026-08-23: re-audit executed → `specs/audits/20260823T182948Z-4db47555/`: **6.1 live / 7.4 projected** (baseline 3.6); ship gate (≥7, no dim <5) NOT met on live state — blocked on the operator runbook live steps; re-run after runbook §1–§9.
 
 ---
 
