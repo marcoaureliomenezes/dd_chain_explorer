@@ -1,66 +1,94 @@
 ---
 slug: capture-layer
-title: Capture Layer
+title: Capture Integration
 category: product
-tldr: Five ECS Fargate jobs continuously ingesting Ethereum blocks, transactions, and decoded calldata to S3 via Kinesis/Firehose/SQS.
-summary: The streaming capture layer consists of 5 Docker/ECS jobs forming a processing DAG. Job 1 polls Ethereum RPC for new blocks, Job 2 detects chain reorgs, Job 3 fetches full block data, Job 4 (6 replicas) fetches transaction details via API key rotation, and Job 5 (3 replicas) decodes contract calldata. Output is delivered to S3 via Kinesis and Firehose.
+tldr: Capture lives in the external dd-chain-capture project on a VPS; this repository only consumes the raw JSON it delivers to the S3 raw bucket.
+summary: Describes how Ethereum data enters the platform after capture retirement. Ingestion of blocks, transactions and calldata is owned by the external dd-chain-capture project running on a VPS, which writes Kafka-Connect JSON into the S3 raw bucket under mainnet prefixes with year/month/day partitions, plus Fluent-Bit NDJSON application logs. The bucket is the only contract — no queue, stream, shared library or network path. Field-name compatibility with the DLT Auto Loader schemas is not yet validated, and the bucket has held no data since 2026-05-23.
 tags:
   - capture
-  - ecs
-  - streaming
+  - integration
+  - s3
   - ethereum
-  - kinesis
-last_updated: "2026-06-11"
-release_origin: v0.3.0
+  - boundary
+last_updated: "2026-08-23"
+release_origin: v0.4.0
 ---
 
 ## Propósito
 
-The capture layer continuously ingests raw Ethereum mainnet data and delivers it to S3. Five Python Docker jobs run as ECS Fargate services in production and as Docker Compose services in development. They form a sequential processing DAG where each job consumes from its predecessor's output.
+Data capture is **not** a feature of this repository. Ethereum block, transaction and
+calldata ingestion is owned by a separate project, **dd-chain-capture**, which runs on a
+VPS outside this account's compute. This atom documents the seam between the two
+projects, because everything downstream depends on it.
 
-The layer handles three types of Ethereum data: block headers (Job 3 via Firehose Direct Put), raw transactions (Job 4 via Kinesis), and decoded transaction calldata (Job 5 via Firehose Direct Put). A distributed DynamoDB semaphore coordinates API key rotation across 6 parallel transaction-fetching replicas.
+The seam is a single S3 bucket. dd-chain-capture writes raw JSON objects into
+`dm-chain-explorer-raw-data`; this platform's Databricks Auto Loader reads them. There is
+no queue, no stream, no shared database, no shared library and no network path between
+the two projects. Either side can be redeployed, rewritten or stopped without touching
+the other, as long as the object contract holds.
 
-The ABI decoding pipeline (Job 5) uses a 4-stage fallback: DynamoDB ABI cache → Etherscan API → 4byte.directory → raw selector. This maximizes decode coverage while minimizing external API calls.
-
-Each job class logs exclusively through an injected `self.logger` set in `__init__`
-(module-level logging is confined to the `__main__` entry-point block), and all 5 classes
-are covered by 71 unit tests under `apps/docker/onchain-stream-txs/tests/unit/`
-(constructor/logger injection, mocked happy path, and error paths per job).
-
-Job 4 never logs raw API key material: every log statement references a key only through
-the non-reversible identifier `_key_ref()` (`sha256(key)[:8]`, `4_mined_txs_crawler.py`),
-and a unit test asserts no raw key value appears in captured log output (CWE-532 posture).
+Nothing in this repository captures, polls or decodes chain data. The five ECS Fargate
+producer jobs, the Kinesis stream, the Firehose delivery streams and the SQS queues that
+used to fill this role were destroyed in AWS on 2026-06-22 and their Terraform modules
+deleted. They are gone, and reintroducing them here is out of scope by design.
 
 ## Fluxo de uso
 
-1. Job 1 (`MinedBlocksWatcher`) polls `eth_getBlock("latest")` every second and emits block events to SQS `mainnet-mined-blocks-events`.
-2. Job 2 (`OrphanBlocksWatcher`) consumes the SQS queue, checks DynamoDB BLOCK_CACHE (TTL 1h) to detect chain reorgs, and re-emits valid block events.
-3. Job 3 (`BlockDataCrawler`) fetches full block data from Ethereum RPC (18+ fields), delivers to Firehose `mainnet-blocks-data`, and fans out transaction hashes to SQS `mainnet-block-txs-hash-id`.
-4. Job 4 (`MinedTxsCrawler`, 6 replicas) consumes transaction hashes from SQS, fetches transaction details via Infura API keys coordinated by DynamoDB SEMAPHORE, and publishes to Kinesis `mainnet-transactions-data`.
-5. Job 5 (`TxsInputDecoder`, 3 replicas) consumes Kinesis, decodes contract calldata through the 4-stage ABI resolution pipeline, and delivers decoded records to Firehose `mainnet-transactions-decoded`.
+1. dd-chain-capture ingests Ethereum mainnet data on its VPS and serialises it as
+   Kafka-Connect-style JSON.
+2. It writes objects to `s3://dm-chain-explorer-raw-data/raw/mainnet-blocks-data/`,
+   `raw/mainnet-transactions-data/` and `raw/mainnet-transactions-decoded/`, partitioned
+   `year=YYYY/month=MM/day=DD/…`.
+3. Its application logs are shipped by Fluent-Bit as NDJSON to `raw/app_logs/`.
+4. The Databricks Auto Loader in [[medallion-pipelines]] discovers new objects
+   incrementally under those prefixes (JSON format, `partitionColumns=""`) and lands them
+   in the bronze layer.
+5. Downstream silver and gold transformations, dashboards and exports proceed as
+   [[serving-layer]] describes.
 
 ## Trigger típico
 
-Used continuously in production — the capture layer runs 24/7 processing every Ethereum block (~300,000 transactions/day) with target latency < 2 minutes from block mining to S3 delivery.
+Consulted whenever a change touches the raw prefixes, the Auto Loader path configuration,
+the bucket's policy or lifecycle rules, or whenever someone asks where blockchain data
+comes from.
 
 ## Diferencial
 
-Without the capture layer, Ethereum transaction data would only be available via on-demand RPC queries against a node — which can't handle the volume of 300K transactions/day at analytics query latency. The capture layer transforms the raw event stream into a queryable S3 lake with Hive-partitioned NDJSON files that Databricks Auto Loader can efficiently ingest incrementally.
+Separating capture from processing removes the platform's largest operational and cost
+liability: the always-on streaming fleet. It also decouples release cycles — the capture
+project can change its runtime, its provider or its language without a single change
+here, and this platform can be idle at near-zero cost while still being ready to process
+whatever arrives. The price of that decoupling is that the contract is implicit in the
+object layout, so it must be documented and verified rather than enforced by a schema
+registry.
 
 ## Estado runtime tocado
 
-- DynamoDB `dm-chain-explorer[-dev|-hml]` — entities: BLOCK_CACHE (TTL 1h), SEMAPHORE (TTL 60s), ABI, ABI_NEG
-- SQS `mainnet-mined-blocks-events[-dev|-hml]` — blocks coordination queue
-- SQS `mainnet-block-txs-hash-id[-dev|-hml]` — transaction hash fan-out queue
-- Kinesis `mainnet-transactions-data[-dev|-hml]` — raw transaction stream
-- Firehose `firehose-mainnet-blocks-data[-dev]` → S3 `raw/mainnet-blocks-data/`
-- Firehose `firehose-mainnet-transactions-decoded[-dev]` → S3 `raw/mainnet-transactions-decoded/`
-- S3 `dm-chain-explorer-raw-data` (PRD) / `dm-chain-explorer-dev-ingestion` (DEV)
-- SSM `/dm-chain-explorer/infura-api-keys`, `/dm-chain-explorer/etherscan-api-keys`
+- S3 `dm-chain-explorer-raw-data` — `raw/mainnet-blocks-data/`,
+  `raw/mainnet-transactions-data/`, `raw/mainnet-transactions-decoded/`, `raw/app_logs/`
+  (written by dd-chain-capture; read by Databricks)
+- Databricks Auto Loader checkpoints under `s3://dm-chain-explorer-lakehouse/checkpoints/`
+- SSM `/web3-api-keys/infura/*` and `/web3-api-keys/alchemy/*` — the shared secret plane
+  dd-chain-capture reads; this repository does not consume these parameters
+- Terraform state key `capture/ecr` in this repository's state bucket holds
+  dd-chain-capture's ECR repositories, IAM Roles Anywhere trust anchor and KMS key —
+  cross-project state with no source code here
 
 ## Dependências
 
-- **Ethereum RPC** (Infura/Alchemy) — required for all block and transaction fetching
-- **AWS infrastructure** (`capture-layer` → `aws-infrastructure`) — ECS cluster, ECR, DynamoDB, Kinesis, Firehose, SQS, SSM must exist
-- **dm-chain-utils** (`>= 0.2.9`) — shared library providing KinesisHandler, FirehoseHandler, SQSHandler, DMDynamoDB, Web3Handler, APIKeysManager
-- **Triggers** → `medallion-pipelines` (downstream consumer via S3 Auto Loader)
+- **dd-chain-capture** (external project, VPS) — the sole producer of raw chain data
+- **[[aws-resources]]** — the raw bucket, its lifecycle rules and the IAM the producer
+  assumes
+- **Triggers → [[medallion-pipelines]]** — the downstream consumer via Auto Loader
+
+**Open verification.** Field-name compatibility between the JSON dd-chain-capture
+delivers and the schemas the DLT bronze tables expect has **not** been validated. The
+path and format contract is compatible; the field-level contract is unproven. The bucket
+has been empty since 2026-05-23 and no delivery has yet been processed end to end, so
+this remains an open risk on the first ingestion.
+
+**Residue, not capability.** Kinesis, Firehose and SQS IAM grants survive in
+`services/prd/03_iam/iam.tf` and `services/hml/03_iam/main.tf`, and empty ECS clusters
+survive in `prd/07_ecs` and `hml/07_ecs`. They point at destroyed resources and are
+slated for removal *(gap — see audit `20260823T145726Z-4db47555`)*. No code path uses
+them.

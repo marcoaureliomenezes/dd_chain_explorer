@@ -2,57 +2,74 @@
 slug: index
 title: Product Catalog — DD Chain Explorer
 category: product
-tldr: DD Chain Explorer is a real-time Ethereum blockchain data platform capturing, processing, and serving on-chain data via ECS Fargate streaming jobs, Databricks DLT medallion, and Lakeview dashboards.
-summary: Entry point for the DD Chain Explorer product memory catalog. Documents the product vision, user types, ordered feature catalog, capability map, and explicit non-goals.
+tldr: The processing and serving half of an Ethereum data platform — Terraform infrastructure, GitHub Actions CI, and Databricks medallion artifacts.
+summary: Entry point for the DD Chain Explorer product memory catalog. Documents the product vision, its users, the ordered feature catalog, the capability map, and the explicit limits of the platform after capture retirement.
 tags:
   - catalog
   - product
   - index
-last_updated: "2026-06-08"
-release_origin: memory-compliance-migration
+last_updated: "2026-08-23"
+release_origin: v0.4.0
 ---
 
 ## Visão atômica
 
-DD Chain Explorer is a real-time Ethereum blockchain data platform that captures, processes, and serves on-chain transaction data. It transforms raw Ethereum RPC data into queryable Gold-layer analytics using a Medallion architecture on Databricks, providing operational visibility into API key consumption and system health.
+DD Chain Explorer is an Ethereum data platform that **processes and serves** on-chain
+data it does not capture. Raw block, transaction and calldata JSON is delivered into its
+S3 raw bucket by a separate project, dd-chain-capture, running on a VPS; from there a
+Databricks medallion pipeline transforms it into queryable gold tables, Lakeview
+dashboards and DynamoDB exports.
+
+The repository owns exactly three things: the Terraform infrastructure, the GitHub
+Actions CI pipeline that deploys it, and the artifacts deployed to Databricks (DLT
+pipelines, jobs, dashboards) plus two AWS Lambdas.
 
 ## Usuários
 
 | Usuário | Descrição |
 |---------|-----------|
-| Platform engineers | Monitor streaming jobs, API key health, and data pipeline freshness via dashboards and alerts |
-| Data analysts | Query Gold tables via Databricks SQL dashboards (Network Overview, Gas Analytics, Hot Contracts, API Health) |
-| System operators | Use Genie AI/BI space for ad-hoc natural language questions over Ethereum data |
-| Cost analysts | Track Etherscan/Infura API key consumption and rotation efficiency via Gold API key tables |
+| Platform engineers | Apply Terraform stacks, run the CI workflows, deploy DABs bundles, and keep the S3 → DLT path healthy |
+| Data analysts | Query gold tables through the four Lakeview dashboards |
+| Cost analysts | Track Etherscan and Web3 API key consumption through the gold API-key tables and their DynamoDB export |
+| Agents | Self-pull this catalog before touching infrastructure, CI or Databricks code |
 
 ## Catálogo de features
 
 | Slug | Título | TL;DR |
 |------|--------|-------|
-| [capture-layer](capture-layer.md) | Capture Layer | Five ECS Fargate jobs continuously ingesting Ethereum blocks, transactions, and decoded calldata to S3 |
-| [medallion-pipelines](medallion-pipelines.md) | Medallion Pipelines | Two Databricks DLT pipelines (dm-ethereum + dm-app-logs) transforming S3 raw data through bronze/silver/gold — 30 tables/MVs |
-| [serving-layer](serving-layer.md) | Serving Layer | Four Lakeview dashboards, Genie AI/BI space, DynamoDB Lambda export, and S3 gold exports |
-| [aws-resources](aws-resources.md) | AWS Resources | Canonical inventory of AWS infrastructure resources (S3, Kinesis, Firehose, SQS, DynamoDB, Lambda, ECS/ECR, CloudWatch, IAM) across DEV/HML/PRD |
-| [data-catalog](data-catalog.md) | Data Catalog | Databricks Unity Catalog inventory — 30 tables/MVs across 7 schemas validated post pipeline-restart-r1 |
+| [medallion-pipelines](medallion-pipelines.md) | Medallion Pipelines | Two Databricks DLT pipelines — `dm-ethereum` (24 tables, 11 expectations) and `dm-app-logs` (5 tables) — transforming S3 raw JSON through bronze, silver and gold |
+| [aws-resources](aws-resources.md) | AWS Resources | Canonical AWS inventory after capture retirement — S3, DynamoDB, Lambda, SSM, IAM, CloudWatch, Terraform state — with managed, orphan and residue status per resource |
+| [cicd-pipeline](cicd-pipeline.md) | CI/CD Pipeline | The GitHub Actions control plane — 7 workflows, the informed environment gate, the `scripts/ci` toolbox and the stack map — currently unable to authenticate to AWS |
+| [data-catalog](data-catalog.md) | Data Catalog | Databricks Unity Catalog inventory — 29 objects in the `dev` catalog (12 streaming tables + 17 materialized views) |
+| [serving-layer](serving-layer.md) | Serving Layer | Four ACTIVE Lakeview dashboards, S3 gold exports, and the `gold-to-dynamodb` Lambda writing CONSUMPTION entities |
+| [capture-layer](capture-layer.md) | Capture Integration | The S3 boundary with the external dd-chain-capture project — the sole contract by which raw chain data enters the platform |
 
 ## Mapa de capacidades
 
 ```mermaid
 flowchart LR
-  ETH["Ethereum Mainnet"] --> CL["Capture Layer\n5 ECS Jobs"]
-  CL --> S3["S3 Raw Layer\nNDJSON Hourly"]
-  S3 --> DLT["Medallion Pipelines\ndm-ethereum + dm-app-logs"]
-  DLT --> SERVE["Serving Layer\nDashboards + Genie + Lambda"]
-  LAMBDA["Lambda Batch\ncontracts_ingestion"] --> S3
-  SERVE --> DYNAMO["DynamoDB\nCONSUMPTION lookup"]
-  CL --> DYNAMO
+  CAP["dd-chain-capture<br/>(external, VPS)"] --> S3["S3 raw bucket<br/>integration boundary"]
+  LMB1["contracts-ingestion<br/>Lambda"] --> S3
+  S3 --> DLT["Databricks DLT<br/>dm-ethereum + dm-app-logs"]
+  DLT --> DASH["4 Lakeview dashboards"]
+  DLT --> EXP["S3 gold exports"]
+  EXP --> LMB2["gold-to-dynamodb Lambda"]
+  LMB2 --> DDB["DynamoDB"]
+  CI["GitHub Actions"] --> TF["Terraform stacks<br/>dev · hml · prd"]
+  CI --> DLT
+  TF --> S3
+  TF --> DDB
 ```
 
 ## Limites conhecidos
 
-- Ethereum mainnet only — no multi-chain support
-- No historical backfill for arbitrary date ranges (full refresh covers pipeline data only)
-- No public REST API endpoint (future roadmap)
-- No user authentication or access control for dashboard viewers
-- No real-time alerts for on-chain events (only operational infrastructure alerts)
-- DEV DLT trigger is PAUSED by design — activated manually for end-to-end testing
+- Ethereum mainnet only — no multi-chain support.
+- No capture capability in this repository; if dd-chain-capture stops delivering, the
+  platform has no data.
+- No public REST API and no authentication or access control for dashboard viewers.
+- One Databricks workspace, Free Edition, serverless compute only; the `prod` deployment
+  target has no workspace behind it.
+- The platform is currently **idle**: the raw bucket has held no object since
+  2026-05-23, DLT triggers are paused, and no job has run in 60 days.
+- CI cannot authenticate to AWS today *(gap — see audit
+  `20260823T145726Z-4db47555`)*, so deploys are manual until the OIDC roles are applied.

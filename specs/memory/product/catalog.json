@@ -1,58 +1,74 @@
 {
-  "generated_at": "2026-06-11T00:00:00Z",
+  "generated_at": "2026-08-23T00:00:00Z",
   "context": "dd-chain-explorer",
   "features": [
     {
       "rank": 1,
+      "slug": "medallion-pipelines",
+      "title": "Medallion Pipelines",
+      "category": "product",
+      "tldr": "Two serverless Databricks DLT pipelines (dm-ethereum 24 tables, dm-app-logs 5) build the bronze/silver/gold medallion over S3 raw JSON.",
+      "summary": "The DLT processing core of the platform. dm-ethereum reads Ethereum blocks, transactions and decoded calldata delivered to the S3 raw bucket by the external dd-chain-capture project; dm-app-logs reads Fluent-Bit NDJSON application logs. Both use Auto Loader for incremental S3 ingestion and run in the single Free-Edition Databricks workspace, with dev and hml as targets/catalogs. Triggers are currently paused and no update has run since the platform went idle.",
+      "path": "specs/memory/product/medallion-pipelines.md",
+      "tags": [
+        "databricks",
+        "dlt",
+        "medallion",
+        "bronze",
+        "silver",
+        "gold"
+      ],
+      "depends_on": [
+        "capture-layer",
+        "aws-resources"
+      ]
+    },
+    {
+      "rank": 2,
       "slug": "aws-resources",
       "title": "AWS Resources",
       "category": "product",
-      "tldr": "AWS resource inventory (S3, Kinesis, Firehose, SQS, DynamoDB, Lambda, ECS/ECR, CloudWatch, IAM) for DD Chain Explorer across DEV/HML/PRD.",
-      "summary": "Documents every named AWS resource used by DD Chain Explorer — account 016098071081, region sa-east-1 — including S3 path conventions, Kinesis/Firehose stream topology, SQS queue parameters, DynamoDB single-table schema, Lambda function configuration, ECS/ECR resources, CloudWatch log groups, IAM roles, and Terraform state paths. State reflects post pipeline-restart-r1 (validated 2026-05-23).",
+      "tldr": "AWS inventory after capture retirement — S3, DynamoDB, Lambda, SSM, IAM, CloudWatch and Terraform state, each marked managed, orphan or residue.",
+      "summary": "Single reference for every AWS resource this project provisions or depends on in sa-east-1: S3 buckets and path conventions, the DynamoDB single table and lock table (with two stale Terraform locks), the two Python 3.12 Lambdas and their triggers, the 27 shared SSM API-key parameters, IAM roles including the never-applied GitHub OIDC deploy roles, CloudWatch log groups, ECS/ECR and network residue, and the Terraform state key layout including the cross-project capture/ecr key.",
       "path": "specs/memory/product/aws-resources.md",
       "tags": [
         "aws",
         "infrastructure",
         "s3",
-        "kinesis",
-        "firehose",
-        "sqs",
         "dynamodb",
         "lambda",
-        "ecs",
         "iam",
+        "ssm",
         "terraform"
       ],
-      "token_estimate": 1860,
-      "agent_tier": "self-pull",
-      "depends_on": []
-    },
-    {
-      "rank": 2,
-      "slug": "capture-layer",
-      "title": "Capture Layer",
-      "category": "product",
-      "tldr": "Five ECS Fargate jobs continuously ingesting Ethereum blocks, transactions, and decoded calldata to S3 via Kinesis/Firehose/SQS.",
-      "summary": "The streaming capture layer consists of 5 Docker/ECS jobs forming a processing DAG. Job 1 polls Ethereum RPC for new blocks, Job 2 detects chain reorgs, Job 3 fetches full block data, Job 4 (6 replicas) fetches transaction details via API key rotation, and Job 5 (3 replicas) decodes contract calldata. Output is delivered to S3 via Kinesis and Firehose.",
-      "path": "specs/memory/product/capture-layer.md",
-      "tags": [
-        "capture",
-        "ecs",
-        "streaming",
-        "ethereum",
-        "kinesis"
-      ],
-      "token_estimate": 740,
-      "agent_tier": "self-pull",
       "depends_on": []
     },
     {
       "rank": 3,
+      "slug": "cicd-pipeline",
+      "title": "CI/CD Pipeline",
+      "category": "ops",
+      "tldr": "Seven GitHub Actions workflows with an informed environment gate, saved-plan apply and OIDC role-assumption — fully written but inert since April 2026.",
+      "summary": "Describes the CI/CD control plane that deploys Terraform infrastructure, the Databricks bundles and the Lambdas: the 7 workflows present on develop and feature branches, the dependency-chain-aware environment gate with pre-gate plan artifacts and saved-plan apply, the intended four-role OIDC trust matrix, and the scripts/ci helper toolbox driven by stack_map.json. The OIDC roles were never applied and the AWS_DEPLOY_ROLE_* variables do not exist, so CI cannot authenticate today.",
+      "path": "specs/memory/product/cicd-pipeline.md",
+      "tags": [
+        "cicd",
+        "github-actions",
+        "terraform",
+        "oidc",
+        "deploy-gate"
+      ],
+      "depends_on": [
+        "aws-resources"
+      ]
+    },
+    {
+      "rank": 4,
       "slug": "data-catalog",
       "title": "Data Catalog",
       "category": "product",
-      "tldr": "Databricks Unity Catalog inventory — 30 tables/MVs across 7 schemas (bronze/silver/gold) for DD Chain Explorer, validated post pipeline-restart-r1.",
-      "summary": "Canonical catalog of every Databricks table and materialized view in DD Chain Explorer. Documents 4 bronze streaming tables, 8 silver tables/MVs, 17 gold MVs, and 1 alert across 7 schemas. Includes schema descriptions, source lineage, column notes, and a key-relationship flowchart. State validated 2026-05-23 (post pipeline-restart-r1 corrections).",
+      "tldr": "Unity Catalog inventory — 29 objects (12 streaming tables + 17 materialized views) across 7 schemas in the dev catalog of the Free Edition workspace.",
+      "summary": "Canonical catalog of every Databricks table and materialized view produced by the DLT pipelines: schema descriptions, source lineage, column notes and key relationships. Reflects the live Free-Edition workspace, where the dev catalog holds 29 objects and popular_contracts_txs no longer exists.",
       "path": "specs/memory/product/data-catalog.md",
       "tags": [
         "databricks",
@@ -63,67 +79,48 @@
         "dlt",
         "unity-catalog"
       ],
-      "token_estimate": 1830,
-      "agent_tier": "self-pull",
-      "depends_on": []
-    },
-    {
-      "rank": 4,
-      "slug": "medallion-pipelines",
-      "title": "Medallion Pipelines",
-      "category": "product",
-      "tldr": "Two Databricks DLT pipelines (dm-ethereum, dm-app-logs) implementing bronze/silver/gold medallion architecture over S3 raw data — 30 total tables/MVs.",
-      "summary": "Two Delta Live Tables pipelines process raw S3 NDJSON data through three layers. dm-ethereum handles Ethereum blockchain data (4 bronze, 6 silver, 15 gold). dm-app-logs handles CloudWatch application logs (1 bronze, 2 silver, 2 gold). Both use Auto Loader for incremental S3 ingestion and are triggered every 5 minutes by dm-trigger-all-dlts.",
-      "path": "specs/memory/product/medallion-pipelines.md",
-      "tags": [
-        "databricks",
-        "dlt",
-        "medallion",
-        "bronze",
-        "silver",
-        "gold"
-      ],
-      "token_estimate": 580,
-      "agent_tier": "self-pull",
-      "depends_on": []
+      "depends_on": [
+        "medallion-pipelines"
+      ]
     },
     {
       "rank": 5,
       "slug": "serving-layer",
       "title": "Serving Layer",
       "category": "product",
-      "tldr": "Four Lakeview dashboards, one Genie AI/BI space, DynamoDB export Lambda, and S3 gold exports serving analytics over Ethereum blockchain data.",
-      "summary": "The serving layer exposes Gold-layer Databricks tables to users via 4 Lakeview dashboards (Network Overview, Gas Analytics, Hot Contracts, API Health), 1 Genie AI/BI natural language space, a DynamoDB CONSUMPTION export Lambda triggered by S3 PutObject, and S3 gold exports for external consumers.",
+      "tldr": "Four Lakeview dashboards over gold, plus a gold-export → S3 → Lambda → DynamoDB chain; alerts and the Genie space are declared but never deployed.",
+      "summary": "The serving surface over the gold layer: four Lakeview dashboards (Network Overview, Gas Analytics, Hot Contracts, API Health) on the serverless SQL warehouse, the job_export_gold export to S3, and the S3-triggered Lambda that writes CONSUMPTION entities to the DynamoDB single table.",
       "path": "specs/memory/product/serving-layer.md",
       "tags": [
         "serving",
         "dashboards",
-        "genie",
         "lambda",
-        "analytics"
+        "analytics",
+        "gold"
       ],
-      "token_estimate": 435,
-      "agent_tier": "self-pull",
-      "depends_on": []
+      "depends_on": [
+        "medallion-pipelines",
+        "aws-resources"
+      ]
     },
     {
       "rank": 6,
-      "slug": "cicd-pipeline",
-      "title": "CI/CD Pipeline",
-      "category": "ops",
-      "tldr": "GitHub Actions control plane — 7 workflows, informed environment gate with saved-plan apply, OIDC role-assumption, scripts/ci toolbox, single-source stack map.",
-      "summary": "Describes the CI/CD control plane after the v0.3.0 gate redesign — the 7 GitHub Actions workflows, the dependency-chain-aware informed environment gate (pre-gate plan artifacts, saved-plan apply, fail-closed re-plan divergence), the 4-role OIDC trust matrix, and the scripts/ci helper toolbox driven by stack_map.json.",
-      "path": "product/cicd-pipeline.md",
+      "slug": "capture-layer",
+      "title": "Capture Integration",
+      "category": "product",
+      "tldr": "Capture lives in the external dd-chain-capture project on a VPS; this repository only consumes the raw JSON it delivers to the S3 raw bucket.",
+      "summary": "Data capture moved out of this repository to dd-chain-capture, which runs on a VPS and writes Kafka-Connect JSON to the S3 raw bucket under raw/mainnet-{blocks-data,transactions-data,transactions-decoded}/ with year/month/day partitions, plus Fluent-Bit NDJSON application logs. The bucket is the entire integration boundary: no queue, stream, shared library or network path. Field-name compatibility with the DLT Auto Loader schemas is not yet validated and the bucket has held no data since 2026-05-23.",
+      "path": "specs/memory/product/capture-layer.md",
       "tags": [
-        "cicd",
-        "github-actions",
-        "terraform",
-        "oidc",
-        "deploy-gate"
+        "capture",
+        "integration",
+        "s3",
+        "ethereum",
+        "boundary"
       ],
-      "token_estimate": 700,
-      "agent_tier": "on-demand",
-      "depends_on": []
+      "depends_on": [
+        "aws-resources"
+      ]
     }
   ]
 }
