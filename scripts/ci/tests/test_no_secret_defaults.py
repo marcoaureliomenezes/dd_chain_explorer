@@ -20,9 +20,7 @@ SERVICES_DIR = REPO_ROOT / "services"
 
 # RFC 4122 UUID shape (any version) — case-insensitive, matches the ExternalId
 # format Databricks issues.
-UUID_RE = re.compile(
-    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
-)
+UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 # A Terraform `default = "..."` assignment, tolerant of surrounding whitespace.
 DEFAULT_STRING_RE = re.compile(r'default\s*=\s*"([^"]*)"')
@@ -68,9 +66,7 @@ def test_uc_external_id_variables_carry_no_default() -> None:
     for path, var_name in targets.items():
         assert path.is_file(), f"expected stack file missing: {path}"
         text = path.read_text()
-        block_match = re.search(
-            r'variable\s+"' + re.escape(var_name) + r'"\s*\{([^}]*)\}', text, re.DOTALL
-        )
+        block_match = re.search(r'variable\s+"' + re.escape(var_name) + r'"\s*\{([^}]*)\}', text, re.DOTALL)
         assert block_match, f"variable {var_name!r} not found in {path}"
         block = block_match.group(1)
         assert "default" not in block, f"{path}: {var_name!r} must not declare a default"

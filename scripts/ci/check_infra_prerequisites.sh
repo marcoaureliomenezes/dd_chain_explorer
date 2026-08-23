@@ -3,11 +3,9 @@
 # Branches on APP_TYPE to run the appropriate set of checks.
 #
 # Required env vars (must be set in workflow step env:):
-#   APP_TYPE — 'streaming-apps' | 'databricks-dabs' | 'lambda-functions'
+#   APP_TYPE — 'databricks-dabs' | 'lambda-functions'
 #
 # Workflow-level env vars used directly (auto-available on runner):
-#   ECS_CLUSTER     — PRD ECS cluster name       (streaming only)
-#   ECR_REPO        — ECR repository name        (streaming only)
 #   AWS_REGION      — AWS region
 #   TF_STATE_BUCKET — Terraform state S3 bucket  (dabs + lambda)
 #   PRD_LAMBDA_ROLE — Lambda IAM role name        (lambda only)
@@ -17,32 +15,6 @@
 set -euo pipefail
 
 case "${APP_TYPE}" in
-
-  # ── streaming-apps: ECS cluster + ECR repo ─────────────────────────────────
-  streaming-apps)
-    echo "==> Checking streaming-apps PRD prerequisites..."
-
-    CLUSTER_STATUS=$(aws ecs describe-clusters \
-      --clusters "${ECS_CLUSTER}" \
-      --query 'clusters[0].status' \
-      --output text 2>/dev/null) || CLUSTER_STATUS=""
-    if [ "${CLUSTER_STATUS}" != "ACTIVE" ]; then
-      echo "::error::ECS cluster '${ECS_CLUSTER}' is not ACTIVE (status: ${CLUSTER_STATUS:-not found})."
-      echo "::error::Run 'Deploy Infra Cloud' (prd) before deploying streaming apps."
-      exit 1
-    fi
-    echo "ECS cluster ${ECS_CLUSTER} is ACTIVE."
-
-    REPO_URI=$(aws ecr describe-repositories \
-      --repository-names "${ECR_REPO}" \
-      --query 'repositories[0].repositoryUri' \
-      --output text 2>/dev/null) || REPO_URI=""
-    if [ -z "${REPO_URI}" ]; then
-      echo "::error::ECR repository '${ECR_REPO}' not found."
-      exit 1
-    fi
-    echo "ECR repository found: ${REPO_URI}"
-    ;;
 
   # ── databricks-dabs: workspace reachability ────────────────────────────────
   databricks-dabs)
@@ -88,7 +60,7 @@ case "${APP_TYPE}" in
     ;;
 
   *)
-    echo "::error::Unknown APP_TYPE '${APP_TYPE}'. Expected: streaming-apps | databricks-dabs | lambda-functions"
+    echo "::error::Unknown APP_TYPE '${APP_TYPE}'. Expected: databricks-dabs | lambda-functions"
     exit 1
     ;;
 esac

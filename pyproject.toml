@@ -16,6 +16,11 @@ addopts = "-ra"
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+# specs/_archive/** is FROZEN (git-mv-only, never edited in place — DADAIA.md §3);
+# specs/audits/** and .dadaia/ are workspace-governance trees this repo's tooling
+# does not own. Excluding them keeps `ruff format --check .` from tripping on
+# fenced code blocks inside historical markdown that this repo never formats.
+extend-exclude = ["specs/_archive", "specs/audits", ".dadaia"]
 # DLT notebooks (apps/dabs/**) reference `spark`/`dlt`/`dbutils`/`display` as
 # Databricks-injected implicit globals — never imported, always present at
 # runtime. Declaring them as ruff builtins lets those files pass F821 via
