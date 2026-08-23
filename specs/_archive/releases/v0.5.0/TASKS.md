@@ -321,7 +321,8 @@
   - Evidence: each residual listed under "To be adjudicated" or "Pre-approved intake" (SPEC §3 deferrals are operator-ratified → pre-approved).
   - Done 2026-08-23: CLOSURE `## Intake candidates` — **Pre-approved intake (7):** `terraform-single-stack-tree-per-env-tfvars`, `capture-ecr-state-and-kms-ownership-transfer`, `rest-api-public-endpoint`, `encryption-at-rest-posture-decision`, alert/Genie reinstatement, the `T-B.14` residual apply (artifacts bucket + layer rewire + log-group imports, carrying `T-B.7`'s Terraform-path schedule disable), and the **3-repo segregation v0.6.0 demand** (operator-approved by grill 2026-08-23, incl. the new law "infra resources only via the CI pipeline + Terraform, never CLI"). **To be adjudicated (12):** the 7 security LOW residuals (boundary `sts:` regression guard, `zizmor --offline` impostor-commit gap, harden-runner audit-not-block, raw interpolation in the writable-token deploy job, unmasked preflight role ARN, `DescribeLogGroups` path-prefix probe, pinning `log_groups_describe_arn`), retiring the now-empty `prd/03_iam` stack, deleting/rotating the unreferenced repo-scoped Databricks secrets, rotate-or-accept on the public Databricks account UUID, the owed size accounting, and verifying the first drift-detection cron. **No backlog entry authored.**
 
-- [ ] **T-E.8** — **(CLOSURE, O-10 last)** Archive both audit directories with a `DISPOSITION.md` naming v0.5.0; then archive the release and repoint `ACTIVE.md`.
+- [x] **T-E.8** — **(CLOSURE, O-10 last)** Archive both audit directories with a `DISPOSITION.md` naming v0.5.0; then archive the release and repoint `ACTIVE.md`.
+  - Evidence: 3 audit dirs archived with DISPOSITION.md naming v0.5.0; release archived to specs/_archive/releases/v0.5.0; ACTIVE repointed to v0.6.0/DEFINITION. GC sweep: 0 deletions (artifacts cited by CLOSURE/audits). Size accounting: 301 files, +14,029/-17,737 (net -3,708).
   - Owner: product-engineer · Write set: `specs/audits/**` and `specs/releases/v0.5.0/` via `git mv`; `specs/releases/ACTIVE.md`
   - Deps: T-E.6, T-E.7 · AC-27 · Findings: DRIFT-05
   - Evidence: `ls specs/audits/_archive/`; `git mv specs/releases/v0.5.0 specs/_archive/releases/v0.5.0`; `ACTIVE.md` → `release: none` or the next release.
@@ -350,7 +351,8 @@
   - Evidence: APPROVED security handoff covering the pushed delta; the merge-commit sha with two parents; `gh api …/contents/.github/workflows/drift_detection.yml?ref=main` → 200; `gh workflow view drift_detection` enabled; green CI run URLs; `git tag --list 'v0.5.0'`.
   - Coordinator 2026-08-23: merge to develop + security push verdicts APPROVED (803238c, 4d476ac) + push DONE; default branch renamed to main; PR develop→main + protections + merge deferred to operator (runbook §10) — CI cannot be green before the bootstrap apply.
 
-- [-] **T-R.4** — **re-audit**: `project-auditor` re-scores against the ship gate. **Score ≥ 7 with no dimension < 5** — any dimension below 5 blocks the release.
+- [x] **T-R.4** — **re-audit**: `project-auditor` re-scores against the ship gate. **Score ≥ 7 with no dimension < 5** — any dimension below 5 blocks the release.
+  - Evidence: Gate re-score 2026-08-23T22:17Z: live 7.6/10 (A8 B7 C8 D7 E8 F8, min 7) — PASS (>=7, no dim <5). Scorecard re-audit-t-r4-scorecard.md; handoff 2026-08-23T221721Z-project-auditor-t-r4-gate VALID/APPROVED.
   - Owner: project-auditor · Write set: `specs/audits/<new-audit-id>/**`
   - Deps: T-R.3 · SPEC §4 ship gate
   - Evidence: the audit report with its dimension table; residuals routed to the PM's intake report, never silently dropped.
