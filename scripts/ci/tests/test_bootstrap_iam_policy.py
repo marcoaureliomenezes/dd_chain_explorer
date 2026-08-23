@@ -34,6 +34,7 @@ ALLOWED_RESOURCE_LOCALS = {
     "events_rule_arns",
     "iam_role_arns",
     "iam_instance_profile_arns",
+    "iam_policy_arns",
     "ssm_parameter_arns",
     "artifacts_bucket_arn",
     "artifacts_layer_prefix_rw",
@@ -98,9 +99,10 @@ def _effect(statement_text: str) -> str:
 
 
 def test_every_allow_statement_resource_is_project_scoped() -> None:
-    text = _read("policies.tf")
-    documents = _policy_document_blocks(text)
-    assert documents, "expected at least one aws_iam_policy_document in policies.tf"
+    documents: dict[str, str] = {}
+    for filename in ("policies.tf", "boundary.tf"):
+        documents.update(_policy_document_blocks(_read(filename)))
+    assert documents, "expected at least one aws_iam_policy_document"
 
     violations: list[str] = []
     for doc_name, doc_text in documents.items():
@@ -140,7 +142,11 @@ def test_self_mutation_deny_covers_iam_star_and_user_credential_verbs() -> None:
     deny_doc = documents["gha_self_mutation_deny"]
     statements = _statement_blocks(deny_doc)
     deny_statements = [s for s in statements if _effect(s) == "Deny"]
-    assert len(deny_statements) == 2, "expected exactly 2 Deny statements"
+    # T-A.2 hardening (2026-08-23T164159Z REJECTED verdict) added 3 Deny
+    # statements to the original 2: state-backend destructive actions,
+    # lock-table destructive actions, project-bucket public-exposure
+    # actions, plus a 6th closing the permissions-boundary tamper path.
+    assert len(deny_statements) == 6, "expected exactly 6 Deny statements"
 
     iam_star_deny = next(s for s in deny_statements if '"iam:*"' in s)
     assert "dm-chain-explorer-gha-*" in iam_star_deny
@@ -148,6 +154,87 @@ def test_self_mutation_deny_covers_iam_star_and_user_credential_verbs() -> None:
     cred_deny = next(s for s in deny_statements if "CreateAccessKey" in s)
     for action in ("iam:CreateAccessKey", "iam:AttachUserPolicy", "iam:PutUserPolicy"):
         assert action in cred_deny
+
+    state_backend_deny = next(s for s in deny_statements if "DenyStateBackendDestructiveActions" in s)
+    for action in ("s3:DeleteBucket", "s3:PutBucketVersioning", "s3:DeleteObjectVersion", "s3:PutBucketPolicy"):
+        assert action in state_backend_deny
+    for local_name in ("tf_state_bucket_arn", "tf_state_objects_arn", "artifacts_bucket_arn"):
+        assert f"local.{local_name}" in state_backend_deny
+
+    lock_table_deny = next(s for s in deny_statements if "DenyStateLockTableDestructiveActions" in s)
+    assert "dynamodb:DeleteTable" in lock_table_deny
+    assert "dynamodb:UpdateTable" in lock_table_deny
+    assert "local.tf_lock_table_arn" in lock_table_deny
+
+    public_exposure_deny = next(s for s in deny_statements if "DenyProjectBucketPublicExposure" in s)
+    for action in ("s3:PutBucketAcl", "s3:PutBucketPublicAccessBlock", "s3:PutBucketPolicy"):
+        assert action in public_exposure_deny
+    assert "local.s3_bucket_arns" in public_exposure_deny
+
+    boundary_tamper_deny = next(
+        s for s in deny_statements if "DenyRolePermissionsBoundaryTampering" in s
+    )
+    assert "iam:PutRolePermissionsBoundary" in boundary_tamper_deny
+    assert "iam:DeleteRolePermissionsBoundary" in boundary_tamper_deny
+
+
+def test_no_catch_all_dm_prefix() -> None:
+    """T-A.2 HIGH #1 — the 2-character 'dm-' prefix subsumed the other 3
+    project prefixes and widened every Allow to the whole shared account's
+    dm-* namespace. Only the 3 full project-name prefixes may remain."""
+    text = _read("variables.tf")
+    m = re.search(r'variable "project_name_prefixes" \{.*?default\s*=\s*(\[[^\]]*\])', text, re.S)
+    assert m, "project_name_prefixes default not found"
+    default_value = m.group(1)
+    assert '"dm-"' not in default_value, f"catch-all 'dm-' prefix still present: {default_value}"
+    for prefix in ('"dm-chain-explorer-"', '"dm-dd-chain-explorer-"', '"dm-databricks-"'):
+        assert prefix in default_value
+
+
+def test_create_role_requires_permissions_boundary() -> None:
+    """T-A.2 HIGH #3 — iam:CreateRole must be its own statement, conditioned
+    on the ci_boundary permissions boundary, and absent from the broader
+    role-management statement (which has no such condition)."""
+    text = _read("policies.tf")
+    documents = _policy_document_blocks(text)
+    deploy_doc = documents["gha_deploy_permissions"]
+    statements = _statement_blocks(deploy_doc)
+
+    create_stmt = next(s for s in statements if "ProjectIamRoleCreate" in s)
+    assert '"iam:CreateRole"' in create_stmt
+    assert "iam:PermissionsBoundary" in create_stmt
+    assert "aws_iam_policy.ci_boundary.arn" in create_stmt
+
+    mgmt_stmt = next(s for s in statements if "ProjectIamRoleManagement" in s)
+    assert '"iam:CreateRole"' not in mgmt_stmt
+    assert "iam:UpdateAssumeRolePolicy" in mgmt_stmt
+
+
+def test_pass_role_requires_passed_to_service_condition() -> None:
+    """T-A.2 HIGH #3 — iam:PassRole must be conditioned on iam:PassedToService
+    naming only the AWS services this project actually passes a role to."""
+    text = _read("policies.tf")
+    documents = _policy_document_blocks(text)
+    deploy_doc = documents["gha_deploy_permissions"]
+    pass_role_stmt = next(
+        s for s in _statement_blocks(deploy_doc) if "ProjectIamPassRole" in s
+    )
+    assert "iam:PassedToService" in pass_role_stmt
+    assert "lambda.amazonaws.com" in pass_role_stmt
+    assert "events.amazonaws.com" in pass_role_stmt
+
+
+def test_ci_boundary_grants_no_iam_action() -> None:
+    """T-A.2 HIGH #3 — the boundary itself must grant zero iam:* actions, so a
+    role created under it can never manage IAM regardless of its own inline
+    policy."""
+    text = _read("boundary.tf")
+    documents = _policy_document_blocks(text)
+    boundary_doc = documents["ci_boundary"]
+    for stmt in _statement_blocks(boundary_doc):
+        if _effect(stmt) != "Allow":
+            continue
+        assert '"iam:' not in stmt, f"boundary Allow statement grants an iam: action: {stmt}"
 
 
 def test_all_four_gha_roles_attach_the_self_mutation_deny() -> None:

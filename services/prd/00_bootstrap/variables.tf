@@ -85,7 +85,7 @@ variable "artifacts_bucket" {
 variable "project_name_prefixes" {
   description = "AWS resource-name prefixes that belong to this project — the scoping boundary for every Allow statement below"
   type        = list(string)
-  default     = ["dm-chain-explorer-", "dm-dd-chain-explorer-", "dm-databricks-", "dm-"]
+  default     = ["dm-chain-explorer-", "dm-dd-chain-explorer-", "dm-databricks-"]
 }
 
 variable "project_ssm_path_prefixes" {

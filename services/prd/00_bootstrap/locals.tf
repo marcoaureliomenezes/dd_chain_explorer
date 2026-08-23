@@ -63,6 +63,14 @@ locals {
     "arn:aws:iam::${local.account_id}:instance-profile/${p}*"
   ]
 
+  # Customer-managed IAM policies this project declares (e.g.
+  # dm-databricks-dev-s3-policy, dm-databricks-hml-s3-policy) — a distinct
+  # ARN namespace (arn:aws:iam::<acct>:policy/...) from roles.
+  iam_policy_arns = [
+    for p in var.project_name_prefixes :
+    "arn:aws:iam::${local.account_id}:policy/${p}*"
+  ]
+
   ssm_parameter_arns = [
     for p in var.project_ssm_path_prefixes :
     "arn:aws:ssm:${var.region}:${local.account_id}:parameter${p}*"
