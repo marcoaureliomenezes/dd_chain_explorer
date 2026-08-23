@@ -106,7 +106,7 @@
   - Deps: T-B.2, T-A.1 (the `00_bootstrap` directory must exist) · AC-15 · Findings: DRIFT-15, ARCH-H6, CI-H2, CI-M7
   - Evidence: `git ls-files 'services/**/.terraform.lock.hcl' | wc -l` = the surviving root-stack count (**8**, `00_bootstrap` included).
 
-- [ ] **T-B.6** — Services hardening: stop persisting the Databricks bootstrap token in state; drop the ECR `MUTABLE`/`force_delete` and VPC-CIDR all-protocol ingress declarations with their stacks; encode or drop the manual post-apply `.keep` step (B5).
+- [-] **T-B.6** — Services hardening: stop persisting the Databricks bootstrap token in state; drop the ECR `MUTABLE`/`force_delete` and VPC-CIDR all-protocol ingress declarations with their stacks; encode or drop the manual post-apply `.keep` step (B5).
   - Owner: software-engineer · Write set: `services/prd/**`, `services/dev/**` (the named declarations)
   - Deps: T-B.3 · AC-10 · Findings: DRIFT-26, SEC-M-03, SEC-L-02, ARCH-L7
   - Evidence: no state-persisted token in the diff; plan clean.
