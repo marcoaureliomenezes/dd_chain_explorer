@@ -276,7 +276,9 @@ def gold_etherscan_consumption():
 # MAGIC ## Gold 2 — Web3 API Key Consumption → `g_api_keys.web3_keys_consumption`
 # MAGIC
 # MAGIC Agrega chamadas a provedores Web3 (Infura/Alchemy) por chave, janelas de 1h / 12h / 24h / 48h.
-# MAGIC Fonte: mensagens com padrão `API_request;{api_key_name}` (emitidas por `dm_web3_client.py`).
+# MAGIC Fonte: mensagens com padrão `API_request;{api_key_name}`, shippadas via Fluent-Bit
+# MAGIC NDJSON pelo projeto externo dd-chain-capture (ver `[[capture-layer]]`) para
+# MAGIC `raw/app_logs/` no bucket S3 de raw data.
 
 # COMMAND ----------
 
@@ -293,7 +295,9 @@ def gold_web3_keys_consumption():
     Lê dos silver logs_streaming + logs_batch, filtra mensagens de chamada
     Web3 e agrega por api_key_name + vendor com contadores por janela de tempo.
 
-    Padrões de log emitidos por dm_web3_client.py:
+    Padrões de log shippados via Fluent-Bit NDJSON pelo projeto externo
+    dd-chain-capture (o cliente Web3 que os emite roda naquele repositório,
+    fora do escopo deste código — ver `[[capture-layer]]`):
         OK:        API_request;{api_key_name}
         Error:     API_request;{api_key_name};Error:{msg}      (nível ERROR)
         HTTPError: API_request;{api_key_name};HTTPError:{msg}  (nível ERROR)
