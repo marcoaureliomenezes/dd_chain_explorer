@@ -2,15 +2,15 @@
 slug: quality-assurance
 title: Quality Assurance
 category: core
-tldr: 158 green pytest tests in three suites, only one wired into CI; the intended pyramid for Lambdas, DABs, DLT and Terraform is largely unbuilt.
-summary: Documents the current test inventory (35 utils unit, 78 streaming-job unit, 45 CI-script tests — all green, sub-3s), the wiring gap that leaves two of three suites out of CI, the layers with zero coverage (Lambdas, DABs/DLT, Terraform policy), the shell integration scripts including one tombstoned no-op, the review-gate cadence, and the QA contract this platform is committed to going forward.
+tldr: 143 green tests across Lambda handlers, DABs scripts, DLT expectations and CI scripts — every suite runs in CI behind ruff/mypy gates.
+summary: Documents the test inventory after the pyramid rebuild (repo-level tests/ covering both Lambda handlers, the DABs job scripts, the DLT expectation contracts and the shared library, plus the scripts/ci hermetic suite), the quality gates now enforced on every pull request (ruff format, ruff check, mypy, pytest, pip-audit, actionlint, terraform fmt/validate), the test-stewardship declarations, the review-gate cadence, and the intended pyramid this platform commits to.
 tags:
   - quality-assurance
   - testing
   - test-pyramid
   - anti-slop
 last_updated: "2026-08-23"
-release_origin: v0.4.0
+release_origin: v0.5.0
 ---
 
 ## Padrões de qualidade
@@ -33,22 +33,30 @@ release_origin: v0.4.0
 
 ### Inventário atual
 
-| Suite | Location | Tests | Kind | Runs in CI? |
-|---|---|---|---|---|
-| Shared library | `utils/tests/unit/` | 35 | unit | **yes — the only suite CI runs** |
-| Streaming producer jobs | `apps/docker/onchain-stream-txs/tests/unit/` | 78 | unit | no (gap) |
-| CI/CD script logic | `scripts/ci/tests/` | 45 | hermetic integration (stub-binary subprocess) | no (gap) |
+| Suite | Location | Kind | Runs in CI? |
+|---|---|---|---|
+| Lambda handlers | `tests/lambda/` | unit | yes |
+| DABs job scripts + DLT expectations | `tests/dabs/` | unit + contract (stubbed DLT harness) | yes |
+| Shared library `dm_chain_utils` | `tests/utils/` | unit | yes |
+| CI/CD script logic | `scripts/ci/tests/` | hermetic integration (stub-binary subprocess) | yes |
 
-**158 tests, 158 green**, total runtime under 5 seconds, no skips, no xfail, no quarantine markers, no sleep-based flake patterns.
+**143 tests, 143 green**, seconds of runtime, no skips, no xfail, no quarantine markers,
+no sleep-based flake patterns. Every suite is executed by the pull-request quality gate —
+there is no unwired suite.
 
-The suite that exists is small, hermetic and honest. The problem is breadth and wiring, not quality:
+Every test declares its intent and size at birth, per the workspace test-stewardship
+protocol; the capture-era suites were deleted under a `qa-engineer` verdict, after the
+live-surface tests existed, so coverage never dipped to zero in between.
 
-- **CI runs one suite of three** (gap — see audit `20260823T145726Z-4db47555`). The 45 CI-script tests are the guards for the deploy gate, the plan-divergence check and the stack map — the very mechanisms that protect production applies — and no workflow executes them.
-- **113 of the 158 tests exercise the retired capture lane** — the producer job classes and the shared Kinesis/SQS handlers. Their source is deliberately retained, so the tests remain valid coverage of live library surface; they will be revisited when the handler-cleanup backlog item is picked.
-- **Zero tests** on `apps/lambda` (two handlers), on `apps/dabs` (both DLT pipelines and every batch job), and on the DLT expectations themselves (gap).
-- **No Terraform policy tooling** anywhere — only `terraform fmt -check` and `terraform validate`, which check syntax, not policy or security posture (gap).
-- **Five Bash integration scripts** exist for live-environment validation. Two are DLT-oriented and require a live workspace plus cloud credentials; the HML streaming one was reduced to an unconditional `exit 0` when its capability was retired and is a tombstone to be deleted, not a passing test.
-- **Test intent/size is not declared.** No test carries the `Intent: <KIND> — <AC id>` line prescribed by the workspace test-stewardship protocol; by the letter of that rule they are undeclared SCAFFOLD, though in substance they read as durable unit/contract tests. The retrofit is owed (gap).
+Remaining coverage limits, stated honestly:
+
+- **No Terraform policy tooling** — `terraform fmt -check` and `terraform validate` check
+  syntax, not policy or security posture. Least-privilege claims about the CI roles are
+  instead asserted by static tests over the bootstrap policy documents.
+- **No live e2e**: the raw-to-gold run needs flowing data and a started warehouse, so it
+  stays an on-demand operator script rather than a gated tier.
+- **Bash integration scripts** for live-environment validation remain in `scripts/`; the
+  tombstoned always-succeeding one was deleted rather than kept green.
 
 ### Contrato de testes (a pirâmide pretendida)
 
@@ -64,13 +72,19 @@ This is the coverage the post-retirement platform commits to. Each tier names wh
 | static | Terraform | `fmt -check` and `validate` on every stack; a policy/security scanner is the intended addition | seconds, always in CI |
 | e2e | live pipeline | one scripted run per release candidate proving raw data reaches a gold table, executed only against a real workspace by an operator | expensive, on demand |
 
-Two rules bind that table. First, **every suite that exists must run in CI** — an unwired test is worth nothing, and the current single-suite wiring is the highest-value gap to close. Second, **an e2e script that can no longer validate anything is deleted, not stubbed** — a script that unconditionally succeeds is worse than no script, because it makes a gate look green.
+Two rules bind that table. First, **every suite that exists must run in CI** — an unwired test is worth nothing. Second, **an e2e script that can no longer validate anything is deleted, not stubbed** — a script that unconditionally succeeds is worse than no script, because it makes a gate look green.
+
+### Gates enforced on every pull request
+
+`ruff format --check`, `ruff check`, `mypy`, the full pytest set, `pip-audit` over the
+pinned lock, `actionlint`, and `terraform fmt -check` + `validate`. A red gate blocks the
+merge: `main` requires these checks by branch protection, not by convention.
 
 ### Estado runtime tocado
 
-- `utils/tests/unit/`, `apps/docker/onchain-stream-txs/tests/unit/`, `scripts/ci/tests/` — the three pytest suites
+- `tests/` (lambda, dabs, utils) and `scripts/ci/tests/` — the pytest suites
 - Shell integration scripts under `scripts/` — the live-environment e2e layer
-- The CI workflow that invokes pytest (see [[cicd-pipeline]])
+- The CI quality-gate job that invokes them (see [[cicd-pipeline]])
 - Coverage and cache output, which must be redirected outside the repo tree
 
 ### Dependências

@@ -26,5 +26,5 @@ running it locally.
 
 To run this tier locally: `pip install -e "utils[test-dlt]"` (declares `pyspark` as an
 optional extra in `utils/pyproject.toml`, deliberately kept out of the CI-installed
-`apps/lambda/requirements-dev.lock` — see that file's header comment), then
+`apps/lambda/requirements-dev.txt` — see that file's header comment), then
 `pytest tests/dabs/test_export_gold_location.py`.

@@ -5,5 +5,5 @@
 # modules' own third-party imports belong here (boto3/botocore are provided
 # natively by the Lambda runtime and are deliberately excluded).
 #
-# Compile with: pip-compile --generate-hashes --output-file=requirements.lock requirements.in
+# Compile with: pip-compile --generate-hashes --output-file=requirements.txt requirements.in
 requests==2.34.2

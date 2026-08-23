@@ -11,7 +11,7 @@ tags:
   - ethereum
   - boundary
 last_updated: "2026-08-23"
-release_origin: v0.4.0
+release_origin: v0.5.0
 ---
 
 ## Propósito
@@ -29,8 +29,9 @@ the other, as long as the object contract holds.
 
 Nothing in this repository captures, polls or decodes chain data. The five ECS Fargate
 producer jobs, the Kinesis stream, the Firehose delivery streams and the SQS queues that
-used to fill this role were destroyed in AWS on 2026-06-22 and their Terraform modules
-deleted. They are gone, and reintroducing them here is out of scope by design.
+used to fill this role were destroyed in AWS, and their Terraform stacks, modules,
+container images and Python code were deleted — git history is their only archive.
+Reintroducing them here is forbidden by ADR-007, not merely out of scope.
 
 ## Fluxo de uso
 
@@ -81,14 +82,19 @@ registry.
   assumes
 - **Triggers → [[medallion-pipelines]]** — the downstream consumer via Auto Loader
 
+**Parked until delivery.** The consuming half is deployed, validated and deliberately
+idle: DLT pipelines deployed and IDLE, trigger jobs paused, the contracts-ingestion
+schedule disabled, the raw bucket empty since 2026-05-23. This is the intended steady
+state while dd-chain-capture builds up to its first delivery, not a degraded one — the
+restart is un-pausing the trigger jobs. The posture, what it forbids, and the criteria
+that end it are ADR-007 in [[architecture]].
+
 **Open verification.** Field-name compatibility between the JSON dd-chain-capture
 delivers and the schemas the DLT bronze tables expect has **not** been validated. The
-path and format contract is compatible; the field-level contract is unproven. The bucket
-has been empty since 2026-05-23 and no delivery has yet been processed end to end, so
-this remains an open risk on the first ingestion.
+path and format contract is compatible; the field-level contract is unproven. No delivery
+has been processed end to end, so this is the first-ingestion risk, and validating it is
+a sunset criterion of ADR-007.
 
-**Residue, not capability.** Kinesis, Firehose and SQS IAM grants survive in
-`services/prd/03_iam/iam.tf` and `services/hml/03_iam/main.tf`, and empty ECS clusters
-survive in `prd/07_ecs` and `hml/07_ecs`. They point at destroyed resources and are
-slated for removal *(gap — see audit `20260823T145726Z-4db47555`)*. No code path uses
-them.
+**No residue.** Every capture-era resource of this account is gone — the IAM grants, the
+ECS shells, the unmanaged VPC and its leaked security groups were destroyed and their
+Terraform deleted. Nothing here points back across the boundary.

@@ -15,8 +15,8 @@
 #
 # Compile with:
 #   pip-compile --allow-unsafe --generate-hashes \
-#     --output-file=requirements-dev.lock requirements-dev.in
--c requirements.lock
+#     --output-file=requirements-dev.txt requirements-dev.in
+-c requirements.txt
 
 ruff==0.16.4
 mypy==2.3.1

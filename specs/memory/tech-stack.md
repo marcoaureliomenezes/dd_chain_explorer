@@ -3,7 +3,7 @@ slug: tech-stack
 title: Tech Stack
 category: core
 tldr: Python 3.12 Lambdas, Databricks Free Edition (DLT, Auto Loader, Lakeview), Terraform on S3 state, GitHub Actions CI, S3/DynamoDB/SSM on AWS.
-summary: Technology reference for the three surfaces this repository owns — Terraform infrastructure, the GitHub Actions CI pipeline, and the Databricks artifacts plus two Python 3.12 Lambdas. Covers the shared dm-chain-utils library, the live AWS service surface after capture retirement, the single Free-Edition Databricks workspace, IaC and provider versions, the CI toolchain and its OIDC authentication gap, the two version axes, and the external APIs consumed.
+summary: Technology reference for the three surfaces this repository owns — Terraform infrastructure, the GitHub Actions CI pipeline, and the Databricks artifacts plus two Python 3.12 Lambdas. Covers the shared dm-chain-utils library and how it is path-installed into the Lambda layer, the live AWS service surface, the single Free-Edition Databricks workspace, pinned IaC and provider versions, the CI toolchain under OIDC with its ruff/mypy/pytest/pip-audit gates, the single version axis, and the external APIs consumed.
 tags:
   - tech-stack
   - python
@@ -12,7 +12,7 @@ tags:
   - terraform
   - github-actions
 last_updated: "2026-08-23"
-release_origin: v0.4.0
+release_origin: v0.5.0
 ---
 
 ## Visão geral
@@ -40,26 +40,30 @@ dd-chain-capture project, which meets this one at the S3 raw bucket.
 
 | Package | Version | Usage |
 |---------|---------|-------|
-| `boto3` | >= 1.26.0 | S3, DynamoDB, SSM |
-| `requests` | >= 2.28.0 | Etherscan API |
-| `dm-chain-utils` | >= 0.2.9 | Lambda layer (`dm_dynamodb`, `dm_etherscan`, `dm_parameter_store`) |
+| `boto3` | `==` pinned in the compiled lock | S3, DynamoDB, SSM |
+| `requests` | `==` pinned in the compiled lock | Etherscan API |
+| `dm-chain-utils` | local path `./utils` | Lambda layer (`dm_dynamodb`, `dm_etherscan`, `dm_parameter_store`) |
+
+Every third-party requirement is `==`-pinned in a compiled, hash-checked lock file
+(`pip install --require-hashes`). There is **no public-index pin of the library**: the
+layer installs it from the repository path (`pip install ./utils --no-deps`), which is
+what closes dependency confusion — no attacker-controlled name on a public index can
+shadow it.
 
 ### Shared library: dm-chain-utils
 
-Source at `utils/`, version synced with the root `VERSION` file, shipped as a Lambda
-layer.
+Source at `utils/`, version equal to the release id, shipped as a Lambda layer built in
+CI and stored content-addressed in S3.
 
-| Module | Class | Purpose | Live caller here |
-|--------|-------|---------|------------------|
-| `dm_dynamodb` | `DMDynamoDB` | Single-table DynamoDB CRUD + conditional put + query | yes |
-| `dm_etherscan` | `EtherscanClient` | Etherscan API v2 — ABI retrieval, 4-byte signatures, block lookups | yes |
-| `dm_parameter_store` | `ParameterStoreClient` | SSM Parameter Store wrapper | yes |
-| `dm_kinesis` | `KinesisHandler` | Kinesis producer/consumer | no — capture-era export, retained in the library |
-| `dm_sqs` | `SQSHandler` | SQS producer/consumer | no — capture-era export, retained in the library |
-| `dm_firehose` | `FirehoseHandler` | Firehose Direct Put delivery | no — capture-era export, retained in the library |
-| `dm_cloudwatch_logger` | `CloudWatchLoggingHandler` | Buffered structured JSON logging | no |
-| `dm_web3_client` | `Web3Handler` | Web3.py block/transaction extraction | no |
-| `api_keys_manager` | `APIKeysManager` | DynamoDB semaphore for API-key rotation | no |
+| Module | Class | Purpose |
+|--------|-------|---------|
+| `dm_dynamodb` | `DMDynamoDB` | Single-table DynamoDB CRUD + conditional put + query |
+| `dm_etherscan` | `EtherscanClient` | Etherscan API v2 — ABI retrieval, 4-byte signatures, block lookups |
+| `dm_parameter_store` | `ParameterStoreClient` | SSM Parameter Store wrapper |
+
+The library is exactly these three modules. The capture-era handlers (Kinesis, SQS,
+Firehose, the Web3 client, the buffered CloudWatch logger, the API-key semaphore) were
+deleted with the capture layer and must not be reintroduced.
 
 ### External APIs
 
@@ -80,8 +84,10 @@ layer.
 | **EventBridge Scheduler** | `rate(1 hour)` | Triggers contracts ingestion |
 | **CloudWatch Logs** | Log groups per app/function | Lambda and application logs |
 | **SSM Parameter Store** | 27 SecureString parameters | Web3 and Etherscan API keys |
-| **IAM** | Roles for Lambda, Databricks cross-account and cluster access | Least-privilege data-plane access |
-| **VPC (prd)** | 10.0.0.0/16, 1 public + 2 private subnets | Declared for Databricks; no compute currently attached |
+| **IAM** | Lambda execution roles, the two Unity-Catalog storage-credential roles, and the four GitHub OIDC deploy roles under a permissions boundary | Least-privilege data-plane and CI access |
+
+There is **no VPC and no container compute** in this project: nothing it runs needs a
+network of its own.
 
 Region: **sa-east-1** (São Paulo). Naming convention: `dm-{env}-` or
 `dm-dd-chain-explorer-{env}-`; `dev` = development, `hml` = homologation, no suffix or
@@ -98,47 +104,40 @@ Region: **sa-east-1** (São Paulo). Naming convention: `dm-{env}-` or
 | Auto Loader | `cloudFiles`, JSON | Reads `raw/mainnet-*/` from the S3 raw bucket |
 | Lakeview dashboards | 4 ACTIVE | Network Overview, Gas Analytics, Hot Contracts, API Health |
 | SQL Warehouse | Serverless | Dashboard queries |
-| Authentication | PAT profile for `dev`/`hml` work; PAT in GitHub Secrets for CI | No OAuth M2M service principal is in use |
+| Authentication | PAT profile for `dev`/`hml` work; Databricks credentials in GitHub Secrets for CI | bundles `run_as` the workspace service principal; the host is a variable on every target |
 
 ### Infrastructure as Code
 
 | Component | Version |
 |-----------|---------|
-| Terraform | >= 1.5 (CI pins 1.7.0; local applies used 1.13–1.15 — version drift across states) |
-| AWS provider | `hashicorp/aws >= 5.0` (no `.terraform.lock.hcl` committed) |
-| Databricks provider | `databricks/databricks` (latest compatible) |
+| Terraform | single-sourced pin, matched by an exact `required_version` in every stack |
+| AWS provider | pinned; a `.terraform.lock.hcl` is committed for every root stack |
+| Databricks provider | pinned via `required_providers` |
 | State backend | S3 `dm-chain-explorer-terraform-state` + DynamoDB lock table |
 
 | Module | Path | Purpose |
 |--------|------|---------|
-| `cloudwatch_logs` | `services/modules/cloudwatch_logs/` | Log groups (the Firehose branch is disabled everywhere) |
+| `cloudwatch_logs` | `services/modules/cloudwatch_logs/` | Log groups |
 | `dynamodb` | `services/modules/dynamodb/` | Single-table DynamoDB with TTL + PITR |
-| `ecs` | `services/modules/ecs/` | Cluster + ECR — an empty shell since capture retirement |
-| `iam` | `services/modules/iam/` | Roles and policies for Lambda, Databricks, ECS |
 | `lambda` | `services/modules/lambda/` | Functions, layers, S3 event triggers |
 | `s3` | `services/modules/s3/` | Buckets with encryption, versioning, lifecycle |
-| `vpc` | `services/modules/vpc/` | VPC, subnets, IGW, SG, S3 VPC endpoint |
 
-The `kinesis` and `sqs` modules were deleted with the capture layer.
+Four modules, each declaring `required_providers`. The capture-era `kinesis`, `sqs`,
+`ecs`, `vpc` and `iam` modules were deleted.
 
 ### CI/CD
 
 | Component | Technology |
 |-----------|-----------|
-| Platform | GitHub Actions — 7 workflows (deploy apps, deploy infra, destroy infra, destroy all, auto-bump version, drift detection, plan on PR) present on `develop` and feature branches |
-| Default branch | `master`; last CI run 2026-04-11 |
-| CI scripts | 18 Bash helpers + `changed_stacks.py` + `stack_map.json` under `scripts/ci/` |
-| Integration tests | 5 Bash scripts under `scripts/` |
-| Terraform in CI | `terraform_wrapper: false` to preserve exit codes |
-| Workflow lint gate | `actionlint` must exit 0 on every workflow |
+| Platform | GitHub Actions — 7 workflows (deploy apps, deploy infra, destroy infra, destroy all, drift detection, plan on PR, OpenSSF Scorecard) |
+| Default branch | `main`, protected, with 9 required status checks |
+| CI scripts | Bash helpers + `changed_stacks.py` + `stack_map.json` + `publish_oidc_vars.sh` under `scripts/ci/` |
+| Terraform in CI | `terraform_wrapper: false` to preserve exit codes; the read-only plan path runs `-lock=false` |
+| Quality gate | `ruff format --check`, `ruff check`, `mypy`, `pytest`, `pip-audit` |
+| Workflow lint gate | `actionlint` (pinned installer + checksum) and `zizmor` must be clean |
 | Terraform hygiene gate | `terraform fmt -check -recursive` + `terraform validate` in `plan_on_pr.yml` |
-| AWS auth in CI (intended) | GitHub OIDC `role-to-assume` via `vars.AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}` with `permissions: id-token: write`; no static keys referenced by any workflow |
-
-**Gap — CI cannot authenticate to AWS today.** The OIDC roles declared in
-`services/prd/03_iam/oidc.tf` were never applied and the `vars.AWS_DEPLOY_ROLE_*`
-repository variables do not exist, so every `configure-aws-credentials` step fails
-*(gap — see audit `20260823T145726Z-4db47555`)*. The design above describes the intent,
-not the running state.
+| AWS auth in CI | GitHub OIDC only — `role-to-assume` from `vars.AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}`, job-scoped `id-token: write`, a fail-fast preflight on an empty variable, and no static key anywhere |
+| Supply chain | every action SHA-pinned under an allowlist, runner hardening on every job, `persist-credentials: false`, Dependabot enabled |
 
 `scripts/ci/stack_map.json` is the declared single source for stack names, stack→module
 mappings, upstream dependencies and `bootstrap_plannable` flags, consumed by both
@@ -148,7 +147,10 @@ mappings, upstream dependencies and `bootstrap_plannable` flags, consumed by bot
 
 | Tool | Purpose |
 |------|---------|
-| `make` | Developer shortcuts |
+| `ruff` | Format check + lint, enforced in CI |
+| `mypy` | Static typing, enforced in CI |
+| `pytest` | All four suites, `-p no:cacheprovider` |
+| `make` | Thin wrappers over the scripts CI runs — no target exists that CI does not |
 | `databricks bundle` | DABs validate / deploy / run |
 | `aws` CLI | Read-only inspection of live infrastructure and Terraform state |
 
@@ -159,18 +161,19 @@ mappings, upstream dependencies and `bootstrap_plannable` flags, consumed by bot
 - Databricks Free Edition has serverless compute only: no job clusters, no instance
   pools, no `prod` deployment target.
 - API keys are read from SSM at runtime and never committed, printed or logged.
-- Terraform state is remote and shared — never apply with `-lock=false`.
+- Terraform state is remote and shared — never *apply* with `-lock=false` (the read-only
+  plan path is the sole, deliberate exception).
+- Infrastructure changes reach AWS only through the CI pipeline applying Terraform, never
+  through a console click or an ad-hoc CLI mutation.
+- No binary artifact is tracked in git; the Lambda layer is built in CI and stored in S3.
 
 ## Referência
 
-### Version axes
+### Version axis
 
-Two independent version axes coexist and must not be conflated:
-
-| Axis | Where | Current |
-|------|-------|---------|
-| Artifact version | root `VERSION`, `dm-chain-utils` distribution, CI artifact tags `v0.2.9-*` | `0.2.9` |
-| SDD release id | `specs/releases/` | `v0.3.0` shipped; `v0.4.0` closing |
+**One axis, the SDD release id.** The root `VERSION`, every `apps/dabs/*/VERSION`, the
+`dm-chain-utils` distribution version, the git tag and the release directory all carry the
+same `major.minor.patch`. A second axis is never introduced.
 
 ### Cross-project facts
 
