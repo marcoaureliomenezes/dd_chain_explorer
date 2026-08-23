@@ -1,2 +1,2 @@
-release: none
-phase: none
+release: v0.6.0
+phase: DEFINITION
