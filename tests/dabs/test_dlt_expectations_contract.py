@@ -86,14 +86,10 @@ class TestEthereumPipelineExtraction:
         assert block_number.matches({"block_number": 1}) is True
         assert block_number.matches({"block_number": None}) is False
 
-    def test_from_address_is_expect_or_drop_not_downgraded_to_warn_only(
-        self, ethereum_expectations
-    ):
+    def test_from_address_is_expect_or_drop_not_downgraded_to_warn_only(self, ethereum_expectations):
         # ISSUE-030 / DE-P-003: from_address was deliberately promoted expect ->
         # expect_or_drop. A regression back to `expect` (warn-only) must fail this test.
-        from_address = find(
-            ethereum_expectations, "silver_eth_transactions_staging", "valid_from_address"
-        )
+        from_address = find(ethereum_expectations, "silver_eth_transactions_staging", "valid_from_address")
 
         assert from_address.kind == "expect_or_drop"
         valid = "0x" + "d" * 40
@@ -101,14 +97,10 @@ class TestEthereumPipelineExtraction:
         assert from_address.matches({"from_address": None}) is False
         assert from_address.matches({"from_address": "not-hex"}) is False
 
-    def test_to_address_stays_expect_and_allows_null_for_contract_creation(
-        self, ethereum_expectations
-    ):
+    def test_to_address_stays_expect_and_allows_null_for_contract_creation(self, ethereum_expectations):
         # EIP-155 contract-creation transactions legitimately have to_address = NULL.
         # Downgrading this to expect_or_drop would silently drop every contract deploy.
-        to_address = find(
-            ethereum_expectations, "silver_eth_transactions_staging", "valid_to_address"
-        )
+        to_address = find(ethereum_expectations, "silver_eth_transactions_staging", "valid_to_address")
 
         assert to_address.kind == "expect"
         valid = "0x" + "e" * 40

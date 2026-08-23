@@ -21,21 +21,19 @@ Usage:
 """
 
 import json
-import logging
 import os
-
-import requests
 from functools import lru_cache
 from logging import Logger
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
+import requests
 
 _ETHERSCAN_V2_BASE = "https://api.etherscan.io/v2/api"
 
 _ETHERSCAN_CHAIN_IDS = {
     "mainnet": 1,
-    "goerli":  5,
+    "goerli": 5,
     "sepolia": 11155111,
 }
 
@@ -48,13 +46,19 @@ _ABI_CACHE_DIR = Path(os.getenv("ABI_CACHE_DIR", "/tmp/abi_cache"))
 class EtherscanClient:
     """Thin Etherscan API v2 wrapper with disk-backed ABI cache."""
 
-    def __init__(self, logger: Logger, api_key: str, network: str = "mainnet", api_key_name: str = None):
-        self.logger   = logger
+    def __init__(
+        self,
+        logger: Logger,
+        api_key: str,
+        network: str = "mainnet",
+        api_key_name: str | None = None,
+    ):
+        self.logger = logger
         self._api_key = api_key
         self._api_key_id = api_key_name or "UNKNOWN_KEY"  # parameter store key name for logging
         self._chain_id = _ETHERSCAN_CHAIN_IDS.get(network, 1)
         self._base_url = _ETHERSCAN_V2_BASE
-        self._call_count = 0   # tracks total API calls for consumption monitoring
+        self._call_count = 0  # tracks total API calls for consumption monitoring
         _ABI_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
     @property
@@ -62,7 +66,7 @@ class EtherscanClient:
         """Total number of Etherscan API calls made since instantiation."""
         return self._call_count
 
-    def _track_call(self, action: str, status: str = "ok"):
+    def _track_call(self, action: str, status: str = "ok") -> None:
         """Increment call counter and log structured API consumption info."""
         self._call_count += 1
         self.logger.info(
@@ -74,7 +78,7 @@ class EtherscanClient:
     # Public
     # ------------------------------------------------------------------
 
-    def get_contract_abi(self, address: str) -> Optional[list]:
+    def get_contract_abi(self, address: str) -> list[Any] | None:
         """
         Return the ABI list for *address*, or None if not verified.
         Results are cached to disk so Etherscan is only called once per address.
@@ -89,7 +93,7 @@ class EtherscanClient:
             self._save_to_disk(address, abi)
         return abi
 
-    def get_4byte_signature(self, selector: str) -> Optional[str]:
+    def get_4byte_signature(self, selector: str) -> str | None:
         """
         Query 4byte.directory for a human-readable function signature
         matching *selector* (e.g. '0x38ed1739').
@@ -102,14 +106,15 @@ class EtherscanClient:
                 timeout=5,
             )
             resp.raise_for_status()
-            results = resp.json().get("results", [])
+            results: list[dict[str, Any]] = resp.json().get("results", [])
             if results:
-                return results[0]["text_signature"]
+                text_signature: str = results[0]["text_signature"]
+                return text_signature
         except Exception as exc:
             self.logger.debug(f"[4byte] lookup failed for {selector}: {exc}")
         return None
 
-    def get_block_by_timestamp(self, timestamp: int, closest: str = "before") -> dict:
+    def get_block_by_timestamp(self, timestamp: int, closest: str = "before") -> dict[str, Any]:
         """
         Return the block number closest to *timestamp* (Unix epoch).
 
@@ -127,18 +132,18 @@ class EtherscanClient:
             (result = block number as string).  Returns {"message": "ERROR", "result": None}
             on network/parse failures.
         """
-        params = {
-            "chainid":   self._chain_id,
-            "module":    "block",
-            "action":    "getblocknobytime",
+        params: dict[str, str | int] = {
+            "chainid": self._chain_id,
+            "module": "block",
+            "action": "getblocknobytime",
             "timestamp": timestamp,
-            "closest":   closest,
-            "apikey":    self._api_key,
+            "closest": closest,
+            "apikey": self._api_key,
         }
         try:
             resp = requests.get(self._base_url, params=params, timeout=10)
             resp.raise_for_status()
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
             self._track_call("getblocknobytime", data.get("message", "UNKNOWN"))
             return data
         except Exception as exc:
@@ -154,26 +159,26 @@ class EtherscanClient:
         page: int = 1,
         offset: int = 1000,
         sort: str = "asc",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """
         Return normal transactions for *address* between *startblock* and *endblock*.
         """
-        params = {
-            "chainid":    self._chain_id,
-            "module":     "account",
-            "action":     "txlist",
-            "address":    address,
+        params: dict[str, str | int] = {
+            "chainid": self._chain_id,
+            "module": "account",
+            "action": "txlist",
+            "address": address,
             "startblock": startblock,
-            "endblock":   endblock,
-            "page":       page,
-            "offset":     offset,
-            "sort":       sort,
-            "apikey":     self._api_key,
+            "endblock": endblock,
+            "page": page,
+            "offset": offset,
+            "sort": sort,
+            "apikey": self._api_key,
         }
         try:
             resp = requests.get(self._base_url, params=params, timeout=15)
             resp.raise_for_status()
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
             self._track_call("txlist", data.get("message", "UNKNOWN"))
             return data
         except Exception as exc:
@@ -189,24 +194,24 @@ class EtherscanClient:
         page: int = 1,
         offset: int = 1000,
         sort: str = "asc",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Return internal transactions for *address* in a block range."""
-        params = {
-            "chainid":    self._chain_id,
-            "module":     "account",
-            "action":     "txlistinternal",
-            "address":    address,
+        params: dict[str, str | int] = {
+            "chainid": self._chain_id,
+            "module": "account",
+            "action": "txlistinternal",
+            "address": address,
             "startblock": startblock,
-            "endblock":   endblock,
-            "page":       page,
-            "offset":     offset,
-            "sort":       sort,
-            "apikey":     self._api_key,
+            "endblock": endblock,
+            "page": page,
+            "offset": offset,
+            "sort": sort,
+            "apikey": self._api_key,
         }
         try:
             resp = requests.get(self._base_url, params=params, timeout=15)
             resp.raise_for_status()
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
             self._track_call("txlistinternal", data.get("message", "UNKNOWN"))
             return data
         except Exception as exc:
@@ -218,18 +223,18 @@ class EtherscanClient:
     # Internal
     # ------------------------------------------------------------------
 
-    def _fetch_abi_from_etherscan(self, address: str) -> Optional[list]:
-        params = {
-            "chainid": self._chain_id,
-            "module":  "contract",
-            "action":  "getabi",
+    def _fetch_abi_from_etherscan(self, address: str) -> list[Any] | None:
+        params: dict[str, str] = {
+            "chainid": str(self._chain_id),
+            "module": "contract",
+            "action": "getabi",
             "address": address,
-            "apikey":  self._api_key,
+            "apikey": self._api_key,
         }
         try:
             resp = requests.get(self._base_url, params=params, timeout=10)
             resp.raise_for_status()
-            data = resp.json()
+            data: dict[str, Any] = resp.json()
             self._track_call("getabi", data.get("message", "UNKNOWN"))
         except Exception as exc:
             self._track_call("getabi", "ERROR")
@@ -241,24 +246,30 @@ class EtherscanClient:
             return None
 
         try:
-            abi = json.loads(data["result"])
+            abi: list[Any] = json.loads(data["result"])
             self.logger.debug(f"[Etherscan] ABI fetched for {address}")
             return abi
         except (json.JSONDecodeError, KeyError) as exc:
             self.logger.warning(f"[Etherscan] ABI parse error for {address}: {exc}")
             return None
 
-    @lru_cache(maxsize=4096)
-    def _load_from_disk(self, address: str) -> Optional[list]:
+    # B019: lru_cache on a bound method keeps every EtherscanClient instance
+    # alive for the process lifetime — acceptable here because one client is
+    # constructed per Lambda invocation and the whole process is short-lived;
+    # flagged, not fixed, in this task's scope (T-D.5 is lint-config, not a
+    # caching-strategy redesign).
+    @lru_cache(maxsize=4096)  # noqa: B019
+    def _load_from_disk(self, address: str) -> list[Any] | None:
         path = _ABI_CACHE_DIR / f"{address}.json"
         if path.exists():
             try:
-                return json.loads(path.read_text())
+                cached: list[Any] = json.loads(path.read_text())
+                return cached
             except Exception:
                 pass
         return None
 
-    def _save_to_disk(self, address: str, abi: list) -> None:
+    def _save_to_disk(self, address: str, abi: list[Any]) -> None:
         path = _ABI_CACHE_DIR / f"{address}.json"
         try:
             path.write_text(json.dumps(abi))

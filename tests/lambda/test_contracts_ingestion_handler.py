@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 
 import boto3
 import pytest
@@ -110,9 +109,7 @@ class TestDryRunValidation:
         )
         aws["table"].put_item(Item={"pk": "CONTRACT", "sk": "0xabc", "tx_count": 5})
 
-        result = handler_module._dry_run_validation(
-            "/etherscan-api-keys", "dm-chain-explorer-test"
-        )
+        result = handler_module._dry_run_validation("/etherscan-api-keys", "dm-chain-explorer-test")
 
         assert result["status"] == "ok"
         assert result["etherscan_keys"] == 1
@@ -127,9 +124,7 @@ class TestDryRunValidation:
         )
         # No CONTRACT items written — DynamoDB table is empty.
 
-        result = handler_module._dry_run_validation(
-            "/etherscan-api-keys", "dm-chain-explorer-test"
-        )
+        result = handler_module._dry_run_validation("/etherscan-api-keys", "dm-chain-explorer-test")
 
         assert result["status"] == "warning"
         assert result["contracts_found"] == 0
@@ -138,17 +133,47 @@ class TestDryRunValidation:
     def test_raises_when_no_ssm_keys_found(self, handler_module, aws):
         # No SSM parameters at all under the path — this is a hard failure, not a warning.
         with pytest.raises(RuntimeError, match="No Etherscan keys found"):
-            handler_module._dry_run_validation(
-                "/etherscan-api-keys", "dm-chain-explorer-test"
-            )
+            handler_module._dry_run_validation("/etherscan-api-keys", "dm-chain-explorer-test")
+
+
+class TestGetBlockInterval:
+    """``_get_block_interval`` — E731 lambda-to-def refactor (T-D.5); this test
+    pins the observable behavior across that refactor."""
+
+    def test_returns_before_and_after_block_numbers_on_ok(self, handler_module):
+        crawler = handler_module.ContractTransactionsCrawler(logging.getLogger("test"))
+        crawler.timestamp_interval = (1000, 2000)
+        calls = []
+
+        class _FakeEtherscan:
+            def get_block_by_timestamp(self, ts, closest):
+                calls.append((ts, closest))
+                return {"message": "OK", "result": str(ts)}
+
+        crawler.etherscan_client = _FakeEtherscan()
+
+        result = crawler._get_block_interval()
+
+        assert result == ("1000", "2000")
+        assert calls == [(1000, "after"), (2000, "before")]
+
+    def test_returns_none_when_either_side_is_not_ok(self, handler_module):
+        crawler = handler_module.ContractTransactionsCrawler(logging.getLogger("test"))
+        crawler.timestamp_interval = (1000, 2000)
+
+        class _FakeEtherscan:
+            def get_block_by_timestamp(self, ts, closest):
+                return {"message": "NOTOK", "result": None}
+
+        crawler.etherscan_client = _FakeEtherscan()
+
+        assert crawler._get_block_interval() is None
 
 
 class TestHandlerDryRunEvent:
     """The handler's ``dry_run`` branch, exercised end-to-end (no Etherscan network calls)."""
 
-    def test_handler_returns_200_body_with_dry_run_result(
-        self, handler_module, aws, monkeypatch
-    ):
+    def test_handler_returns_200_body_with_dry_run_result(self, handler_module, aws, monkeypatch):
         aws["ssm"].put_parameter(
             Name="/etherscan-api-keys/api-key-1",
             Value="fake-key-value",

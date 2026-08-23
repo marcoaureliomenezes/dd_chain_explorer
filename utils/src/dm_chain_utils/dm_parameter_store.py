@@ -9,6 +9,7 @@ Uso:
 """
 
 import logging
+
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 
@@ -16,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 
 class ParameterStoreClient:
-
     def __init__(self, region_name: str = "sa-east-1"):
         """
         Parameters
@@ -38,7 +38,7 @@ class ParameterStoreClient:
         """
         try:
             response = self._client.get_parameter(Name=name, WithDecryption=True)
-            value = response.get("Parameter", {}).get("Value")
+            value: str | None = response.get("Parameter", {}).get("Value")
             logger.info(f"[ParameterStore] Retrieved: {name}")
             return value
         except ClientError as e:

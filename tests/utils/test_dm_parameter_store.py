@@ -10,11 +10,9 @@ exists today") was removed from this module by T-D.5, not merely left untested.
 
 from __future__ import annotations
 
-import boto3
 import pytest
-from moto import mock_aws
-
 from dm_chain_utils.dm_parameter_store import ParameterStoreClient
+from moto import mock_aws
 
 REGION = "sa-east-1"
 

@@ -27,7 +27,7 @@ import logging
 import os
 import time
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -44,9 +44,9 @@ class DMDynamoDB:
 
     def __init__(
         self,
-        table_name: Optional[str] = None,
-        region: Optional[str] = None,
-        logger: Optional[logging.Logger] = None,
+        table_name: str | None = None,
+        region: str | None = None,
+        logger: logging.Logger | None = None,
     ):
         self.logger = logger or logging.getLogger(__name__)
         self.table_name = table_name or os.getenv("DYNAMODB_TABLE", "dm-chain-explorer")
@@ -65,8 +65,8 @@ class DMDynamoDB:
         self,
         pk: str,
         sk: str,
-        attrs: Optional[Dict[str, Any]] = None,
-        ttl_seconds: Optional[int] = None,
+        attrs: dict[str, Any] | None = None,
+        ttl_seconds: int | None = None,
     ) -> None:
         """
         Insere ou substitui um item.
@@ -78,14 +78,14 @@ class DMDynamoDB:
         attrs       : atributos adicionais (ex: {"process": "job-abc"})
         ttl_seconds : se fornecido, define atributo ``ttl`` com epoch + ttl_seconds
         """
-        item: Dict[str, Any] = {"pk": pk, "sk": sk}
+        item: dict[str, Any] = {"pk": pk, "sk": sk}
         if attrs:
             item.update(self._convert_floats(attrs))
         if ttl_seconds is not None:
             item["ttl"] = int(time.time()) + ttl_seconds
         self._table.put_item(Item=item)
 
-    def get_item(self, pk: str, sk: str) -> Optional[Dict[str, Any]]:
+    def get_item(self, pk: str, sk: str) -> dict[str, Any] | None:
         """Retorna o item ou ``None`` se não existir."""
         resp = self._table.get_item(Key={"pk": pk, "sk": sk})
         item = resp.get("Item")
@@ -101,9 +101,9 @@ class DMDynamoDB:
         self,
         pk: str,
         sk: str,
-        updates: Dict[str, Any],
-        ttl_seconds: Optional[int] = None,
-    ) -> Dict[str, Any]:
+        updates: dict[str, Any],
+        ttl_seconds: int | None = None,
+    ) -> dict[str, Any]:
         """
         Atualiza atributos de um item existente (ou cria se não existir).
 
@@ -140,22 +140,22 @@ class DMDynamoDB:
         self,
         pk: str,
         sk: str,
-        attrs: Optional[Dict[str, Any]] = None,
-        ttl_seconds: Optional[int] = None,
-        condition_expression: Optional[str] = None,
+        attrs: dict[str, Any] | None = None,
+        ttl_seconds: int | None = None,
+        condition_expression: str | None = None,
     ) -> bool:
         """
         PutItem condicional — retorna True se bem-sucedido, False se a condição falhou.
 
         Usado para implementar locks otimistas (ex: semáforo de API keys).
         """
-        item: Dict[str, Any] = {"pk": pk, "sk": sk}
+        item: dict[str, Any] = {"pk": pk, "sk": sk}
         if attrs:
             item.update(self._convert_floats(attrs))
         if ttl_seconds is not None:
             item["ttl"] = int(time.time()) + ttl_seconds
 
-        kwargs: Dict[str, Any] = {"Item": item}
+        kwargs: dict[str, Any] = {"Item": item}
         if condition_expression:
             kwargs["ConditionExpression"] = condition_expression
 
@@ -174,9 +174,9 @@ class DMDynamoDB:
     def query(
         self,
         pk: str,
-        sk_prefix: Optional[str] = None,
-        limit: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
+        sk_prefix: str | None = None,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
         """
         Query por partition key, opcionalmente filtrando por prefixo de sort key.
 
@@ -186,7 +186,7 @@ class DMDynamoDB:
         if sk_prefix:
             key_condition = key_condition & Key("sk").begins_with(sk_prefix)
 
-        kwargs: Dict[str, Any] = {"KeyConditionExpression": key_condition}
+        kwargs: dict[str, Any] = {"KeyConditionExpression": key_condition}
         if limit:
             kwargs["Limit"] = limit
 
@@ -201,7 +201,7 @@ class DMDynamoDB:
 
         return [self._convert_decimals(item) for item in items]
 
-    def query_all_keys(self, pk: str) -> List[str]:
+    def query_all_keys(self, pk: str) -> list[str]:
         """Retorna apenas os sort keys para uma dada partition key."""
         items = self.query(pk)
         return [item["sk"] for item in items]
@@ -210,7 +210,7 @@ class DMDynamoDB:
     # Batch operations
     # ------------------------------------------------------------------
 
-    def batch_write(self, items: List[Dict[str, Any]]) -> None:
+    def batch_write(self, items: list[dict[str, Any]]) -> None:
         """
         Batch write de múltiplos itens (máx 25 por batch, auto-paginado).
 
@@ -220,7 +220,7 @@ class DMDynamoDB:
             for item in items:
                 batch.put_item(Item=self._convert_floats(item))
 
-    def batch_delete(self, keys: List[Dict[str, str]]) -> None:
+    def batch_delete(self, keys: list[dict[str, str]]) -> None:
         """
         Batch delete de múltiplos itens.
 
@@ -253,7 +253,7 @@ class DMDynamoDB:
     def ping(self) -> bool:
         """Healthcheck — verifica se a tabela existe e está acessível."""
         try:
-            self._table.table_status
+            _ = self._table.table_status
             return True
         except ClientError:
             return False
@@ -263,7 +263,7 @@ class DMDynamoDB:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _convert_floats(data: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_floats(data: dict[str, Any]) -> dict[str, Any]:
         """Converte float → Decimal (DynamoDB não aceita float)."""
         result = {}
         for k, v in data.items():
@@ -282,9 +282,9 @@ class DMDynamoDB:
         return value
 
     @staticmethod
-    def _convert_decimals(data: Dict[str, Any]) -> Dict[str, Any]:
+    def _convert_decimals(data: dict[str, Any]) -> dict[str, Any]:
         """Converte Decimal → int/float em respostas do DynamoDB."""
-        result = {}
+        result: dict[str, Any] = {}
         for k, v in data.items():
             if isinstance(v, Decimal):
                 result[k] = int(v) if v == int(v) else float(v)
@@ -292,8 +292,15 @@ class DMDynamoDB:
                 result[k] = DMDynamoDB._convert_decimals(v)
             elif isinstance(v, list):
                 result[k] = [
-                    DMDynamoDB._convert_decimals(i) if isinstance(i, dict)
-                    else (int(i) if isinstance(i, Decimal) and i == int(i) else float(i) if isinstance(i, Decimal) else i)
+                    DMDynamoDB._convert_decimals(i)
+                    if isinstance(i, dict)
+                    else (
+                        int(i)
+                        if isinstance(i, Decimal) and i == int(i)
+                        else float(i)
+                        if isinstance(i, Decimal)
+                        else i
+                    )
                     for i in v
                 ]
             else:

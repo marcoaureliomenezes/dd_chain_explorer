@@ -50,9 +50,7 @@ def handler_module(monkeypatch):
         table.meta.client.get_waiter("table_exists").wait(TableName=TABLE_NAME)
 
         s3 = boto3.client("s3", region_name=REGION)
-        s3.create_bucket(
-            Bucket=BUCKET_NAME, CreateBucketConfiguration={"LocationConstraint": REGION}
-        )
+        s3.create_bucket(Bucket=BUCKET_NAME, CreateBucketConfiguration={"LocationConstraint": REGION})
 
         module = load_module_from_path("gold_to_dynamodb_handler", HANDLER_PATH)
         yield module, table, s3

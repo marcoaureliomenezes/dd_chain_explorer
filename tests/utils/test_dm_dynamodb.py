@@ -11,9 +11,8 @@ import logging
 
 import boto3
 import pytest
-from moto import mock_aws
-
 from dm_chain_utils.dm_dynamodb import DMDynamoDB
+from moto import mock_aws
 
 REGION = "sa-east-1"
 TABLE_NAME = "dm-chain-explorer-test"
@@ -112,18 +111,14 @@ class TestQuery:
 
 class TestConditionalPutItem:
     def test_returns_true_when_condition_passes(self, db):
-        ok = db.conditional_put_item(
-            "SEMAPHORE", "key-1", condition_expression="attribute_not_exists(pk)"
-        )
+        ok = db.conditional_put_item("SEMAPHORE", "key-1", condition_expression="attribute_not_exists(pk)")
 
         assert ok is True
 
     def test_returns_false_when_condition_fails(self, db):
         db.put_item("SEMAPHORE", "key-1")
 
-        ok = db.conditional_put_item(
-            "SEMAPHORE", "key-1", condition_expression="attribute_not_exists(pk)"
-        )
+        ok = db.conditional_put_item("SEMAPHORE", "key-1", condition_expression="attribute_not_exists(pk)")
 
         assert ok is False
 

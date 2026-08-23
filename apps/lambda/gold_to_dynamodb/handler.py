@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import urllib.parse
+from typing import Any
 
 import boto3
 
@@ -24,7 +25,7 @@ dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(DYNAMODB_TABLE)
 
 
-def handler(event, context):
+def handler(event: dict[str, Any], context: Any) -> dict[str, Any]:
     """Process S3 event — each record is a PutObject on the exports prefix."""
     records_processed = 0
 
@@ -68,10 +69,17 @@ def handler(event, context):
 
                 # Copy all metric fields
                 for field in [
-                    "calls_total", "calls_ok_total", "calls_error_total",
-                    "calls_1h", "calls_2h", "calls_12h", "calls_24h", "calls_48h",
+                    "calls_total",
+                    "calls_ok_total",
+                    "calls_error_total",
+                    "calls_1h",
+                    "calls_2h",
+                    "calls_12h",
+                    "calls_24h",
+                    "calls_48h",
                     "vendor",
-                    "last_call_at", "computed_at",
+                    "last_call_at",
+                    "computed_at",
                 ]:
                     if field in row and row[field] is not None:
                         item[field] = str(row[field])

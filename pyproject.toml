@@ -41,6 +41,8 @@ cache_dir = "/dev/null"
 mypy_path = "utils/src"
 strict = true
 warn_unused_configs = true
+explicit_package_bases = true
+namespace_packages = true
 
 # Scope: the kept, live dm_chain_utils modules + both Lambda handlers only.
 # `utils/src/dm_chain_utils/__init__.py` and the 6 dead modules it re-exports
@@ -56,3 +58,16 @@ files = [
 [[tool.mypy.overrides]]
 module = ["boto3.*", "botocore.*", "requests.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# The 6 dead dm_chain_utils modules (dm_kinesis, dm_sqs, dm_firehose,
+# dm_web3_client, dm_cloudwatch_logger, api_keys_manager) are T-D.3's
+# deletion target, not this task's to bring to strict-clean. Because
+# dm_chain_utils/__init__.py re-exports all 9 submodules, mypy would
+# otherwise transitively pull them into every check that touches the
+# package (e.g. the Lambda handlers -> dm_dynamodb -> package __init__).
+# follow_imports = "skip" only affects modules reached as *secondary*
+# import targets — the 3 live modules stay fully strict-checked because
+# they are also primary targets in `files` above.
+module = "dm_chain_utils.*"
+follow_imports = "skip"

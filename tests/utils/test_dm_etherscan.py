@@ -12,7 +12,6 @@ import json
 import logging
 
 import pytest
-
 from dm_chain_utils.dm_etherscan import EtherscanClient
 
 
@@ -154,9 +153,7 @@ class TestGetContractAbi:
 
         assert client.get_contract_abi("0xunverified") is None
 
-    def test_second_call_reads_from_disk_cache_without_new_request(
-        self, client, monkeypatch, tmp_path
-    ):
+    def test_second_call_reads_from_disk_cache_without_new_request(self, client, monkeypatch, tmp_path):
         abi = [{"type": "function", "name": "approve"}]
         (tmp_path / "0xcached.json").write_text(json.dumps(abi))
 

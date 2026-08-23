@@ -20,9 +20,9 @@ pyspark = pytest.importorskip(
     "pyspark", reason="pyspark not installed — see tests/conftest.py note on DLT tier"
 )
 
-from tests.conftest import DABS_EXPORT_GOLD_SRC  # noqa: E402  (after importorskip)
-
 import sys  # noqa: E402
+
+from tests.conftest import DABS_EXPORT_GOLD_SRC  # noqa: E402  (after importorskip)
 
 if str(DABS_EXPORT_GOLD_SRC) not in sys.path:
     sys.path.insert(0, str(DABS_EXPORT_GOLD_SRC))
@@ -45,10 +45,7 @@ class TestLocation:
             lakehouse_bucket="dm-chain-explorer-lakehouse",
         )
 
-        assert (
-            job._location("gold_api_keys")
-            == "LOCATION 's3://dm-chain-explorer-lakehouse/gold_api_keys'"
-        )
+        assert job._location("gold_api_keys") == "LOCATION 's3://dm-chain-explorer-lakehouse/gold_api_keys'"
 
     def test_external_mode_without_bucket_returns_empty_string(self):
         # storage_mode="external" alone is not enough — an empty bucket must not
