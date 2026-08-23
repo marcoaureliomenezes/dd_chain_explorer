@@ -12,7 +12,7 @@
 
 ## WS-A — CI authentication, workflow purge, governance, version axis
 
-- [ ] **T-A.1** — Author the operator-applied bootstrap stack `services/prd/00_bootstrap/` (A1, D14): backend key `prd/bootstrap`; the OIDC provider reference; the four roles `dm-chain-explorer-gha-deploy-{dev,hml,prd}` + `dm-chain-explorer-gha-readonly-plan`, each with prefix-scoped allow statements (project prefixes, state bucket + lock table, SSM path prefixes, Lambda/S3/DynamoDB/Logs/Events/`iam:PassRole` on project roles only), an explicit `Deny` on `iam:*` against `arn:aws:iam::*:role/dm-chain-explorer-gha-*` and on `iam:CreateAccessKey`/`AttachUserPolicy`/`PutUserPolicy`, and `token.actions.githubusercontent.com:sub` trust conditions — `repo:<owner>/<repo>:environment:<env>` per deploy role, `pull_request` + `refs/heads/develop` + `refs/heads/main` for the read-only role (which gets **no** lock-table write, T-A.7's `-lock=false`).
+- [-] **T-A.1** — Author the operator-applied bootstrap stack `services/prd/00_bootstrap/` (A1, D14): backend key `prd/bootstrap`; the OIDC provider reference; the four roles `dm-chain-explorer-gha-deploy-{dev,hml,prd}` + `dm-chain-explorer-gha-readonly-plan`, each with prefix-scoped allow statements (project prefixes, state bucket + lock table, SSM path prefixes, Lambda/S3/DynamoDB/Logs/Events/`iam:PassRole` on project roles only), an explicit `Deny` on `iam:*` against `arn:aws:iam::*:role/dm-chain-explorer-gha-*` and on `iam:CreateAccessKey`/`AttachUserPolicy`/`PutUserPolicy`, and `token.actions.githubusercontent.com:sub` trust conditions — `repo:<owner>/<repo>:environment:<env>` per deploy role, `pull_request` + `refs/heads/develop` + `refs/heads/main` for the read-only role (which gets **no** lock-table write, T-A.7's `-lock=false`).
   - Owner: software-engineer · Write set: `services/prd/00_bootstrap/**`
   - Deps: — · AC-2, AC-2b · Findings: DRIFT-01, DRIFT-08, SEC-H-02, SEC-I-01
   - Evidence: explicit statement list, no managed-policy attachment, no `iam:*` on `"*"`; `terraform validate`/`fmt -check` clean on the new stack.
@@ -155,7 +155,7 @@
 
 ## WS-C — Databricks artifacts
 
-- [-] **T-C.1** — Drop the no-op `alert_*` and `genie_ethereum` bundles and `job_reconcile_orphans` (C1).
+- [x] **T-C.1** — Drop the no-op `alert_*` and `genie_ethereum` bundles and `job_reconcile_orphans` (C1).
   - Owner: software-engineer · Write set: `apps/dabs/**` (the named bundles/jobs)
   - Deps: T-A.9 (O-4) · AC-17, AC-18 · Findings: DRIFT-19, ARCH-M3, ARCH-M5
   - Evidence: `databricks bundle validate -t dev` per survivor; alert/Genie reinstatement recorded as a deferred intake candidate (T-E.7).
