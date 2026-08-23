@@ -213,6 +213,17 @@ jobs:
       - uses: databricks/setup-cli@6bb7075f85b326f8b9ce160933dfe9bcd63c8121  # v1.13.0
       - name: Deploy all DABs components to ${{ inputs.target }}
         env:
-          DATABRICKS_HOST:  ${{ inputs.target == 'prod' && secrets.DATABRICKS_PROD_HOST || (inputs.target == 'hml' && secrets.DATABRICKS_HML_HOST || secrets.DATABRICKS_DEV_HOST) }}
-          DATABRICKS_TOKEN: ${{ inputs.target == 'prod' && secrets.DATABRICKS_PROD_TOKEN || (inputs.target == 'hml' && secrets.DATABRICKS_HML_TOKEN || secrets.DATABRICKS_DEV_TOKEN) }}
-        run: bash "${{ env.DABS_PATH }}/deploy_all.sh" "${{ inputs.target }}"
+          # F-07: environment-scoped secrets ONLY — dev/hml carry these three
+          # (OAuth M2M service-principal); production carries none (no prod
+          # Databricks workspace exists yet), so target=prod fails closed at
+          # the non-empty assertion below instead of silently falling through
+          # to another environment's credential.
+          DATABRICKS_HOST:          ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
+          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+        run: |
+          if [ -z "${DATABRICKS_HOST}" ] || [ -z "${DATABRICKS_CLIENT_ID}" ] || [ -z "${DATABRICKS_CLIENT_SECRET}" ]; then
+            echo "::error::DATABRICKS_HOST/DATABRICKS_CLIENT_ID/DATABRICKS_CLIENT_SECRET are not set as environment secrets on this job's environment. dev/hml must carry all three (OAuth M2M service principal); production carries none by design (no prod Databricks workspace) and is expected to fail here."
+            exit 1
+          fi
+          bash "${{ env.DABS_PATH }}/deploy_all.sh" "${{ inputs.target }}"

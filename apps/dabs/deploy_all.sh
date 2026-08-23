@@ -17,9 +17,15 @@
 #   0 = all deployments (if any) succeeded
 #   1 = missing VERSION file or at least one deploy failed
 #
-# Environment variables (for CI/CD):
-#   DATABRICKS_HOST   — Databricks workspace URL
-#   DATABRICKS_TOKEN  — PAT token (DEV/HML) or set via OAuth (PROD)
+# Environment variables (for CI/CD, F-07 — public-repo CI security audit, 2026-08-23):
+#   DATABRICKS_HOST          — Databricks workspace URL
+#   DATABRICKS_CLIENT_ID     — OAuth M2M service-principal client id
+#   DATABRICKS_CLIENT_SECRET — OAuth M2M service-principal client secret
+#
+# The Databricks CLI (>=0.218) authenticates natively from these three env vars —
+# no `databricks configure`/profile step or PAT is used here. All three are
+# GitHub-environment-scoped secrets (dev/hml); production carries none (no prod
+# Databricks workspace exists yet).
 
 set -euo pipefail
 

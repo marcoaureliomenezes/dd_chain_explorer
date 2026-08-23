@@ -33,14 +33,12 @@
 # Arguments:
 #   environment — hml | prd
 #
-# Required env vars (hml):
-#   DATABRICKS_ACCOUNT_ID, DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET
-#   AWS credentials must already be configured on the runner.
-#
-# Required env vars (prd):
-#   DATABRICKS_ACCOUNT_ID, DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET
-#   TF_VAR_databricks_client_id, TF_VAR_databricks_client_secret
-#   Optional: SKIP_DATABRICKS=true, FAST_MODE=true
+# Required env vars (hml, prd):
+#   AWS credentials must already be configured on the runner (OIDC). This script
+#   never reads DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET — no `databricks`
+#   Terraform provider block or CLI call exists on this path (F-07, public-repo
+#   CI security audit, 2026-08-23 — the prior claim here was stale drift).
+#   Optional: SKIP_DATABRICKS=true, FAST_MODE=true (prd only)
 #
 # Optional env vars:
 #   PLAN_ARTIFACT_DIR — where the apply job downloaded the saved pre-gate plans

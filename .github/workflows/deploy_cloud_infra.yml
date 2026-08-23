@@ -416,9 +416,9 @@ jobs:
       - name: Plan HML (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" hml
         env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          # F-07: DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET removed — no
+          # `databricks` Terraform provider block or CLI call consumes them on
+          # this path (grep-verified); they were dead repo-scoped-secret reads.
           DESTROY_ACK:              ${{ github.event.inputs.destroy_ack }}
           PLAN_ARTIFACT_DIR:        ${{ github.workspace }}/.plan-artifacts
           TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
@@ -467,7 +467,7 @@ jobs:
       - name: Deploy HML
         run: bash "$GITHUB_WORKSPACE/scripts/ci/deploy_env.sh" hml
         env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          # F-07: DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET removed — no
+          # `databricks` Terraform provider block or CLI call consumes them on
+          # this path (grep-verified); they were dead repo-scoped-secret reads.
           TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
