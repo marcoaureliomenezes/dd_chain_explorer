@@ -42,7 +42,7 @@ concurrency:
 
 env:
   AWS_REGION:      sa-east-1
-  TF_VERSION:      1.7.0
+  TF_VERSION:      1.9.8
   DEV_ROOT:        services/dev
   PRD_ROOT:        services/prd
   HML_ROOT:        services/hml
@@ -75,7 +75,7 @@ jobs:
           [ -z "${{ vars.AWS_DEPLOY_ROLE_HML }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_HML"
           [ -z "${{ vars.AWS_DEPLOY_ROLE_PRD }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_PRD"
           if [ -n "$MISSING" ]; then
-            echo "::error::Missing repository variable(s):${MISSING}. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap."
+            echo "::error::Missing repository variable(s):${MISSING}. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
             exit 1
           fi
           echo "All required OIDC role variables present."

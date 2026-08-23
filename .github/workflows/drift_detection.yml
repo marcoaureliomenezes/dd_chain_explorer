@@ -1,11 +1,18 @@
 name: Drift Detection
 
 # ── IS-12 — Weekly drift scan for persistent environments ────────
-# Runs `terraform plan` (no apply) on DEV and PRD modules every Monday.
-# Any pending change = drift detected → job fails with ::error:: annotation.
+# Runs `terraform plan` (no apply) on every CI-managed stack every Monday.
+# Any pending change = drift detected -> job fails with ::error:: annotation.
 #
-# Databricks modules (05a/05b) excluded — they need provider auth and
-# account import that can't be done safely in a scheduled context.
+# Coverage (T-A.8 — single source of truth is scripts/ci/stack_map.json):
+#   DEV — 01_peripherals, 02_lambda
+#   HML — 04_peripherals
+#   PRD — 03_iam, 04_peripherals, 06_lambda
+#
+# prd/00_bootstrap is operator_only (never planned by CI, D14/O-1); prd/01_tf_state is
+# the remote-state backend and is not drift-scanned here. Every job assumes
+# AWS_DEPLOY_ROLE_READONLY, which carries no dynamodb:PutItem/DeleteItem on the state
+# lock table (SEC-I-01) — every plan below passes TF_PLAN_ARGS=-lock=false (T-A.8, F-04).
 #
 # Can also be triggered manually via workflow_dispatch for on-demand checks.
 
@@ -28,15 +35,30 @@ concurrency:
 
 env:
   AWS_REGION: sa-east-1
-  TF_VERSION: 1.7.0
+  TF_VERSION: 1.9.8
 
 # ──────────────────────────────────────────────────────────────────────────────
 jobs:
+
+  # ── Preflight: OIDC role variable must exist before any drift job ─────────
+  preflight-oidc:
+    name: Preflight — OIDC role variable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate AWS_DEPLOY_ROLE_READONLY is set
+        run: |
+          if [ -z "${{ vars.AWS_DEPLOY_ROLE_READONLY }}" ]; then
+            echo "::error::AWS_DEPLOY_ROLE_READONLY is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "AWS_DEPLOY_ROLE_READONLY present — OK."
 
   # ── DEV ──────────────────────────────────────────────────────────────────
 
   drift-dev-peripherals:
     name: Drift — DEV/Peripherals
+    needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -62,6 +84,7 @@ jobs:
         env:
           MODULE_NAME: DEV/Peripherals
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
@@ -71,6 +94,7 @@ jobs:
 
   drift-dev-lambda:
     name: Drift — DEV/Lambda
+    needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -86,6 +110,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -93,6 +118,7 @@ jobs:
         env:
           MODULE_NAME: DEV/Lambda
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
@@ -100,15 +126,16 @@ jobs:
           echo "::error::DRIFT DETECTED in DEV/Lambda — unexpected pending changes found."
           exit 1
 
-  # ── PRD ──────────────────────────────────────────────────────────────────
+  # ── HML ──────────────────────────────────────────────────────────────────
 
-  drift-prd-vpc:
-    name: Drift — PRD/VPC
+  drift-hml-peripherals:
+    name: Drift — HML/Peripherals
+    needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: services/prd/02_vpc
+        working-directory: services/hml/04_peripherals
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -124,17 +151,21 @@ jobs:
         id: plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
-          MODULE_NAME: PRD/VPC
+          MODULE_NAME: HML/Peripherals
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: |
-          echo "::error::DRIFT DETECTED in PRD/VPC — unexpected pending changes found."
+          echo "::error::DRIFT DETECTED in HML/Peripherals — unexpected pending changes found."
           exit 1
+
+  # ── PRD ──────────────────────────────────────────────────────────────────
 
   drift-prd-iam:
     name: Drift — PRD/IAM
+    needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -157,6 +188,7 @@ jobs:
         env:
           MODULE_NAME: PRD/IAM
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
@@ -166,6 +198,7 @@ jobs:
 
   drift-prd-peripherals:
     name: Drift — PRD/Peripherals
+    needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -188,6 +221,7 @@ jobs:
         env:
           MODULE_NAME: PRD/Peripherals
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
@@ -197,6 +231,7 @@ jobs:
 
   drift-prd-lambda:
     name: Drift — PRD/Lambda
+    needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:
@@ -212,6 +247,7 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - name: Terraform Plan (Drift Check)
         id: plan
@@ -219,42 +255,18 @@ jobs:
         env:
           MODULE_NAME: PRD/Lambda
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
+          # No new build in a scheduled drift scan — plan against whatever the live
+          # state already references; the layer variables have no default (T-B.14),
+          # so a stable placeholder keeps this a real drift check on everything else.
+          TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:    "lambda-layers/dm-chain-utils/drift-check-placeholder.zip"
+          TF_VAR_layer_sha256:    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: |
           echo "::error::DRIFT DETECTED in PRD/Lambda — unexpected pending changes found."
-          exit 1
-
-  drift-prd-ecs:
-    name: Drift — PRD/ECS
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    defaults:
-      run:
-        working-directory: services/prd/07_ecs
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
-          aws-region:     ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Terraform Plan (Drift Check)
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/ECS
-          TAIL_LINES: "30"
-          TF_VAR_project_version: "drift-check"
-      - name: Alert on drift
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: |
-          echo "::error::DRIFT DETECTED in PRD/ECS — unexpected pending changes found."
           exit 1
 
   # ── Summary ──────────────────────────────────────────────────────────────
@@ -264,11 +276,10 @@ jobs:
     needs:
       - drift-dev-peripherals
       - drift-dev-lambda
-      - drift-prd-vpc
+      - drift-hml-peripherals
       - drift-prd-iam
       - drift-prd-peripherals
       - drift-prd-lambda
-      - drift-prd-ecs
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -281,8 +292,7 @@ jobs:
           echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
           echo "| DEV/Peripherals | ${{ needs.drift-dev-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| DEV/Lambda      | ${{ needs.drift-dev-lambda.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PRD/VPC         | ${{ needs.drift-prd-vpc.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| HML/Peripherals | ${{ needs.drift-hml-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| PRD/IAM         | ${{ needs.drift-prd-iam.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| PRD/Peripherals | ${{ needs.drift-prd-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
           echo "| PRD/Lambda      | ${{ needs.drift-prd-lambda.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PRD/ECS         | ${{ needs.drift-prd-ecs.result }} |" >> "$GITHUB_STEP_SUMMARY"

@@ -34,7 +34,7 @@ concurrency:
 
 env:
   AWS_REGION:      sa-east-1
-  TF_VERSION:      1.7.0
+  TF_VERSION:      1.9.8
   DABS_PATH:       apps/dabs
   LAMBDA_DIR:      apps/lambda
   UTILS_DIR:       utils
@@ -73,7 +73,7 @@ jobs:
             *)    echo "::error::Unknown target '${{ inputs.target }}'"; exit 1 ;;
           esac
           if [ -z "$ROLE" ]; then
-            echo "::error::AWS_DEPLOY_ROLE_* for target '${{ inputs.target }}' is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap (T-A.3/T-A.4)."
+            echo "::error::AWS_DEPLOY_ROLE_* for target '${{ inputs.target }}' is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap (T-A.3/T-A.4) — see docs/runbooks/00-bootstrap-apply.md."
             exit 1
           fi
           echo "OIDC role variable present for target '${{ inputs.target }}' — OK."
@@ -99,11 +99,59 @@ jobs:
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
           echo "Deploying v${VERSION} to target '${{ inputs.target }}'."
 
+  # ── Lambda layer: from-source build + content-addressed S3 upload (T-A.7, T-B.14) ──
+  # Only prd/06_lambda consumes the shared dm-chain-utils layer (var.layer_s3_key /
+  # var.layer_sha256, services/prd/06_lambda/variables.tf — no default, CI-supplied).
+  # dev/02_lambda does not (its own module has no layer_* variable) — skip for dev/hml.
+  build-layer:
+    name: Lambda layer — build + upload
+    needs: preflight-oidc
+    if: inputs.target == 'prod'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 30
+    outputs:
+      layer_s3_key: ${{ steps.build.outputs.layer_s3_key }}
+      layer_sha256: ${{ steps.build.outputs.layer_sha256 }}
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065  # v5
+        with:
+          python-version: "3.12"
+      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
+      - name: Build layer (from source, reproducible)
+        id: build
+        run: |
+          set -euo pipefail
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/build_lambda_layer.sh" | tail -1)"
+          echo "${OUT}"
+          LAYER_ZIP="$(echo "${OUT}" | grep -oP 'LAYER_ZIP=\K\S+')"
+          LAYER_SHA256="$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')"
+          S3_KEY="lambda-layers/dm-chain-utils/${LAYER_SHA256}.zip"
+          echo "layer_zip=${LAYER_ZIP}"       >> "$GITHUB_OUTPUT"
+          echo "layer_sha256=${LAYER_SHA256}" >> "$GITHUB_OUTPUT"
+          echo "layer_s3_key=${S3_KEY}"       >> "$GITHUB_OUTPUT"
+      - name: Upload layer to artifacts bucket (skip if the content-addressed key already exists)
+        run: |
+          set -euo pipefail
+          BUCKET="dm-chain-explorer-artifacts"
+          KEY="${{ steps.build.outputs.layer_s3_key }}"
+          if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
+            echo "Object s3://${BUCKET}/${KEY} already exists — skipping upload (content-addressed, T-B.14)."
+          else
+            aws s3 cp "${{ steps.build.outputs.layer_zip }}" "s3://${BUCKET}/${KEY}"
+          fi
+
   # ── Lambda: terraform apply (dev/prd only — hml has no Lambda stack, B2) ──
   deploy-lambda:
     name: Lambda — Terraform apply (${{ inputs.target }})
-    needs: check-version
-    if: inputs.target != 'hml'
+    needs: [check-version, build-layer]
+    if: |
+      always() && inputs.target != 'hml' &&
+      (needs.build-layer.result == 'success' || needs.build-layer.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.target == 'prod' && 'production' || inputs.target }}
     timeout-minutes: 45
@@ -131,6 +179,12 @@ jobs:
             init -input=false -reconfigure
           terraform -chdir="$GITHUB_WORKSPACE/${{ steps.stack.outputs.path }}" \
             apply -input=false -auto-approve
+        env:
+          # T-B.14: prd/06_lambda has NO default for these — build-layer supplies them
+          # (empty on dev/hml, where the stack declares no layer_* variable to consume).
+          TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:    ${{ needs.build-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256:    ${{ needs.build-layer.outputs.layer_sha256 }}
 
   # ── DABs: bundle deploy ─────────────────────────────────────────────────────
   deploy-dabs:

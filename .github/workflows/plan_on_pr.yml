@@ -4,13 +4,17 @@ name: Plan on PR
 # Runs `terraform plan` (no apply) for each changed module.
 # Results are posted to the GitHub Step Summary visible on the PR.
 #
-# Coverage:
+# Coverage (T-A.8 — the single source of truth is scripts/ci/stack_map.json;
+# this list is a drift-checked subset, never a second source — see
+# scripts/ci/tests/test_stack_map.py::test_plan_on_pr_working_dirs_match_stack_map):
 #   DEV  — 01_peripherals, 02_lambda
-#   HML  — 02_vpc, 03_iam, 04_peripherals
-#   PRD  — 02_vpc, 03_iam, 04_peripherals, 06_lambda, 07_ecs
+#   HML  — 04_peripherals
+#   PRD  — 03_iam, 04_peripherals, 06_lambda
 #
-# Databricks modules (05a/05b) are excluded — they need provider
-# auth that cannot be safely materialised from a PR context.
+# prd/00_bootstrap is operator_only (never planned by CI, D14/O-1); prd/01_tf_state is
+# the remote-state backend and is not planned speculatively here. All plan jobs assume
+# AWS_DEPLOY_ROLE_READONLY, which carries no dynamodb:PutItem/DeleteItem on the state
+# lock table (SEC-I-01) — every plan below passes TF_PLAN_ARGS=-lock=false (T-A.8, F-04).
 
 on:
   pull_request:
@@ -18,6 +22,8 @@ on:
     paths:
       - 'services/**'
       - 'scripts/ci/**'
+      - 'apps/lambda/**'
+      - 'utils/**'
 
 permissions:
   contents: read
@@ -30,7 +36,7 @@ concurrency:
 
 env:
   AWS_REGION: sa-east-1
-  TF_VERSION: 1.7.0
+  TF_VERSION: 1.9.8
   UTILS_DIR:  utils
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -41,7 +47,7 @@ jobs:
   # or scripts/ci/. Runs before the speculative plans so format/syntax drift is
   # rejected without spending plan time.
   quality:
-    name: Quality gate (fmt / validate / actionlint)
+    name: Quality gate (fmt / validate / actionlint / lint / tests)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -85,9 +91,14 @@ jobs:
       - name: mypy
         run: mypy
 
-      - name: pytest — scripts/ci/tests, utils/tests, tests/
+      - name: pytest — scripts/ci/tests, tests/, utils/tests (if present)
         run: |
-          pytest scripts/ci/tests utils/tests tests -p no:cacheprovider -v
+          set -euo pipefail
+          # utils/tests may be emptied/absent (WS-D) — only pass directories that exist,
+          # so an empty/removed suite never fails collection.
+          TARGETS=(scripts/ci/tests tests)
+          [ -d utils/tests ] && TARGETS+=(utils/tests)
+          pytest "${TARGETS[@]}" -p no:cacheprovider -v
 
       - name: pip-audit — apps/lambda/requirements.lock
         run: pip-audit -r apps/lambda/requirements.lock
@@ -105,23 +116,38 @@ jobs:
           chmod +x actionlint
           ./actionlint -color
 
+      - name: Lambda layer build (build-only — proves the from-source build stays
+          reproducible; no upload from a PR context, T-A.7)
+        if: hashFiles('scripts/build_lambda_layer.sh') != ''
+        run: bash scripts/build_lambda_layer.sh
+
+  # ── Preflight: OIDC role variable must exist before any plan job ──────────
+  preflight-oidc:
+    name: Preflight — OIDC role variable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate AWS_DEPLOY_ROLE_READONLY is set
+        run: |
+          if [ -z "${{ vars.AWS_DEPLOY_ROLE_READONLY }}" ]; then
+            echo "::error::AWS_DEPLOY_ROLE_READONLY is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "AWS_DEPLOY_ROLE_READONLY present — OK."
+
   # ── 1. Detect which modules changed in this PR ────────────────────────────
   detect-changes:
     name: Detect changed modules
-    needs: quality
+    needs: [quality, preflight-oidc]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       dev_peripherals: ${{ steps.detect.outputs.dev_peripherals }}
       dev_lambda:      ${{ steps.detect.outputs.dev_lambda }}
-      hml_vpc:         ${{ steps.detect.outputs.hml_vpc }}
-      hml_iam:         ${{ steps.detect.outputs.hml_iam }}
       hml_peripherals: ${{ steps.detect.outputs.hml_peripherals }}
-      prd_vpc:         ${{ steps.detect.outputs.prd_vpc }}
       prd_iam:         ${{ steps.detect.outputs.prd_iam }}
       prd_peripherals: ${{ steps.detect.outputs.prd_peripherals }}
       prd_lambda:      ${{ steps.detect.outputs.prd_lambda }}
-      prd_ecs:         ${{ steps.detect.outputs.prd_ecs }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
         with:
@@ -146,7 +172,7 @@ jobs:
           echo "Changed files:"
           echo "$DIFF"
 
-          # Single-source stack/module resolution (F-ARCH-4): stack→module edges
+          # Single-source stack/module resolution (F-ARCH-4): stack->module edges
           # live in scripts/ci/stack_map.json; a module edit triggers ONLY the
           # consuming stacks (blanket ^services/modules/ clause removed, CI-H3).
           # Emit keys without the _changed suffix to match this job's outputs.
@@ -185,6 +211,7 @@ jobs:
         env:
           MODULE_NAME: DEV/Peripherals
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   plan-dev-lambda:
@@ -206,69 +233,17 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
           MODULE_NAME: DEV/Lambda
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   # ── HML ──────────────────────────────────────────────────────────────────
-
-  plan-hml-vpc:
-    name: Plan — HML/VPC
-    needs: detect-changes
-    if: needs.detect-changes.outputs.hml_vpc == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/hml/02_vpc
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
-          aws-region:     ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Terraform Plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: HML/VPC
-          TAIL_LINES: "30"
-          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
-
-  plan-hml-iam:
-    name: Plan — HML/IAM
-    needs: detect-changes
-    if: needs.detect-changes.outputs.hml_iam == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/hml/03_iam
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
-          aws-region:     ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Terraform Plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: HML/IAM
-          TAIL_LINES: "30"
-          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   plan-hml-peripherals:
     name: Plan — HML/Peripherals
@@ -295,36 +270,10 @@ jobs:
         env:
           MODULE_NAME: HML/Peripherals
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   # ── PRD ──────────────────────────────────────────────────────────────────
-
-  plan-prd-vpc:
-    name: Plan — PRD/VPC
-    needs: detect-changes
-    if: needs.detect-changes.outputs.prd_vpc == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/prd/02_vpc
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
-          aws-region:     ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Terraform Plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/VPC
-          TAIL_LINES: "30"
-          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   plan-prd-iam:
     name: Plan — PRD/IAM
@@ -351,6 +300,7 @@ jobs:
         env:
           MODULE_NAME: PRD/IAM
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   plan-prd-peripherals:
@@ -378,6 +328,7 @@ jobs:
         env:
           MODULE_NAME: PRD/Peripherals
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
 
   plan-prd-lambda:
@@ -399,37 +350,19 @@ jobs:
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+      - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
           MODULE_NAME: PRD/Lambda
           TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
-
-  plan-prd-ecs:
-    name: Plan — PRD/ECS
-    needs: detect-changes
-    if: needs.detect-changes.outputs.prd_ecs == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    defaults:
-      run:
-        working-directory: services/prd/07_ecs
-    steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@ff717079ee2060e4bcee96c4779b553acc87447c  # v4
-        with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
-          aws-region:     ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Terraform Plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/ECS
-          TAIL_LINES: "30"
-          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+          # No real artifact exists to plan against from a PR context — a stable
+          # placeholder value keeps the speculative plan reproducible (T-A.7). The
+          # real sha256/key are supplied by the layer build+upload job on deploy
+          # (deploy_all_dm_applications.yml, T-A.7).
+          TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:    "lambda-layers/dm-chain-utils/pr-plan-placeholder.zip"
+          TF_VAR_layer_sha256:    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="

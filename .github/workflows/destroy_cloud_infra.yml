@@ -27,7 +27,7 @@ permissions:
 
 env:
   AWS_REGION: sa-east-1
-  TF_VERSION: 1.7.0
+  TF_VERSION:      1.9.8
 
 jobs:
 
@@ -44,6 +44,24 @@ jobs:
         env:
           CONFIRM: ${{ github.event.inputs.confirm }}
 
+  preflight-oidc:
+    name: Preflight — OIDC role variables
+    needs: safety-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate AWS_DEPLOY_ROLE_{DEV,HML,PRD} are set
+        run: |
+          MISSING=""
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_DEV }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_DEV"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_HML }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_HML"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_PRD }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_PRD"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing repository variable(s):${MISSING}. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "All required OIDC role variables present."
+
   # ══════════════════════════════════════════════════════════════
   #  DEV
   # ══════════════════════════════════════════════════════════════
@@ -53,7 +71,7 @@ jobs:
     concurrency:
       group: tf-dev
       cancel-in-progress: false
-    needs: safety-check
+    needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -84,7 +102,7 @@ jobs:
     concurrency:
       group: tf-hml
       cancel-in-progress: false
-    needs: safety-check
+    needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -115,7 +133,7 @@ jobs:
     concurrency:
       group: tf-prd
       cancel-in-progress: false
-    needs: safety-check
+    needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'prd'
     runs-on: ubuntu-latest
     timeout-minutes: 45

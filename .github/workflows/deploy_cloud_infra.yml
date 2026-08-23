@@ -38,7 +38,7 @@ permissions:
 
 env:
   AWS_REGION:      sa-east-1
-  TF_VERSION:      1.7.0
+  TF_VERSION:      1.9.8
   DEV_PERIPHERALS: services/dev/01_peripherals
   DEV_LAMBDA:      services/dev/02_lambda
 
@@ -54,13 +54,33 @@ jobs:
       - name: Enforce develop branch
         run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
 
+  # ── Preflight: OIDC role variables must exist before any AWS-touching job ──
+  preflight-oidc:
+    name: Preflight — OIDC role variables
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Validate AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY} are set
+        run: |
+          MISSING=""
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_DEV }}" ]      && MISSING="$MISSING AWS_DEPLOY_ROLE_DEV"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_HML }}" ]      && MISSING="$MISSING AWS_DEPLOY_ROLE_HML"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_PRD }}" ]      && MISSING="$MISSING AWS_DEPLOY_ROLE_PRD"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_READONLY }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_READONLY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing repository variable(s):${MISSING}. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "All required OIDC role variables present."
+
   # ══════════════════════════════════════════════════════════════
   #  DEV (Cloud AWS)
   # ══════════════════════════════════════════════════════════════
 
   dev-detect-changes:
     name: DEV — Detect changes
-    needs: branch-guard
+    needs: preflight-oidc
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -172,7 +192,7 @@ jobs:
 
   prd-check-version:
     name: PRD — Check version
-    needs: branch-guard
+    needs: preflight-oidc
     if: github.event.inputs.environment == 'prd'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -229,6 +249,16 @@ jobs:
           TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
           DESTROY_ACK:                     ${{ github.event.inputs.destroy_ack }}
           PLAN_ARTIFACT_DIR:               ${{ github.workspace }}/.plan-artifacts
+          # READONLY role carries no dynamodb:PutItem/DeleteItem on the lock table
+          # (SEC-I-01) — tf_plan.sh (called via plan_env.sh) must not try to lock (T-A.8).
+          TF_PLAN_ARGS:                    "-lock=false"
+          # prd/06_lambda's layer_* variables have no default (T-B.14) — the pre-gate
+          # plan is read-only and never applied, so a stable placeholder is sufficient
+          # here; deploy_all_dm_applications.yml's build-layer job supplies the real
+          # values for the app-code apply path (T-A.7).
+          TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:             "lambda-layers/dm-chain-utils/pre-gate-plan-placeholder.zip"
+          TF_VAR_layer_sha256:             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
       - name: Upload saved plans
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
         with:
