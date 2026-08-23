@@ -157,7 +157,7 @@ jobs:
       - run: terraform validate
       - name: Read VERSION
         id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        run: echo "version=$(tr -d '[:space:]' < "${{ github.workspace }}/VERSION")" >> "$GITHUB_OUTPUT"
       - name: Terraform Plan
         id: plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -212,7 +212,7 @@ jobs:
           mask-aws-account-id: true
       - name: Read VERSION
         id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        run: echo "version=$(tr -d '[:space:]' < "${{ github.workspace }}/VERSION")" >> "$GITHUB_OUTPUT"
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform validate
@@ -309,9 +309,11 @@ jobs:
           OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer.sh" \
             dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
           echo "${OUT}"
-          echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
-          echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
-          echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
+          {
+            echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')"
+            echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')"
+            echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')"
+          } >> "$GITHUB_OUTPUT"
       - name: Plan PRD (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" prd
         env:
@@ -445,11 +447,11 @@ jobs:
           git fetch origin main
           git checkout main
           if git tag --list | grep -qx "$TAG"; then
-            echo "Tag $TAG already exists — skipping." >> $GITHUB_STEP_SUMMARY
+            echo "Tag $TAG already exists — skipping." >> "$GITHUB_STEP_SUMMARY"
           else
             git tag -a "$TAG" -m "PRD infra v${VERSION}"
             git push origin "$TAG"
-            echo "## Tag created: \`$TAG\` on main" >> $GITHUB_STEP_SUMMARY
+            echo "## Tag created: \`$TAG\` on main" >> "$GITHUB_STEP_SUMMARY"
           fi
 
   # ══════════════════════════════════════════════════════════════

@@ -111,7 +111,7 @@ jobs:
         env:
           TARGET: ${{ inputs.target }}
         run: |
-          VERSION=$(cat VERSION | tr -d '[:space:]')
+          VERSION=$(tr -d '[:space:]' < VERSION)
           if [ -z "$VERSION" ]; then
             echo "::error::VERSION file is empty."
             exit 1
@@ -163,10 +163,12 @@ jobs:
           LAYER_SHA256="$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')"
           LAYER_SHA256_B64="$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')"
           S3_KEY="lambda-layers/dm-chain-utils/${LAYER_SHA256}.zip"
-          echo "layer_zip=${LAYER_ZIP}"               >> "$GITHUB_OUTPUT"
-          echo "layer_sha256_hex=${LAYER_SHA256}"     >> "$GITHUB_OUTPUT"
-          echo "layer_sha256_b64=${LAYER_SHA256_B64}" >> "$GITHUB_OUTPUT"
-          echo "layer_s3_key=${S3_KEY}"               >> "$GITHUB_OUTPUT"
+          {
+            echo "layer_zip=${LAYER_ZIP}"
+            echo "layer_sha256_hex=${LAYER_SHA256}"
+            echo "layer_sha256_b64=${LAYER_SHA256_B64}"
+            echo "layer_s3_key=${S3_KEY}"
+          } >> "$GITHUB_OUTPUT"
       - name: Upload layer to artifacts bucket (skip if the content-addressed key already exists)
         run: |
           set -euo pipefail

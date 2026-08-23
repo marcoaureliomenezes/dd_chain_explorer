@@ -386,13 +386,15 @@ jobs:
           egress-policy: audit
       - name: Report drift results
         run: |
-          echo "## Drift Detection Results" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Module | Result |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|--------|--------|" >> "$GITHUB_STEP_SUMMARY"
-          echo "| DEV/Peripherals | ${{ needs.drift-dev-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| DEV/Lambda      | ${{ needs.drift-dev-lambda.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| HML/Peripherals | ${{ needs.drift-hml-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PRD/IAM         | ${{ needs.drift-prd-iam.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PRD/Peripherals | ${{ needs.drift-prd-peripherals.result }} |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| PRD/Lambda      | ${{ needs.drift-prd-lambda.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "## Drift Detection Results"
+            echo ""
+            echo "| Module | Result |"
+            echo "|--------|--------|"
+            echo "| DEV/Peripherals | ${{ needs.drift-dev-peripherals.result }} |"
+            echo "| DEV/Lambda      | ${{ needs.drift-dev-lambda.result }} |"
+            echo "| HML/Peripherals | ${{ needs.drift-hml-peripherals.result }} |"
+            echo "| PRD/IAM         | ${{ needs.drift-prd-iam.result }} |"
+            echo "| PRD/Peripherals | ${{ needs.drift-prd-peripherals.result }} |"
+            echo "| PRD/Lambda      | ${{ needs.drift-prd-lambda.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

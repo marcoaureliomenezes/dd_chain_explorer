@@ -321,10 +321,12 @@ jobs:
           egress-policy: audit
       - name: Write summary
         run: |
-          echo "## Destroy ALL — summary" >> $GITHUB_STEP_SUMMARY
-          echo "| Stack | Result |" >> $GITHUB_STEP_SUMMARY
-          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
-          echo "| dev/01_peripherals, dev/02_lambda | ${{ needs.dev-destroy-peripherals.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| hml/04_peripherals | ${{ needs.hml-destroy-peripherals.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| prd/03_iam, prd/04_peripherals, prd/06_lambda | ${{ needs.prd-destroy-iam.result }} |" >> $GITHUB_STEP_SUMMARY
-          echo "prd/00_bootstrap and prd/01_tf_state are never destroyed by this workflow." >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Destroy ALL — summary"
+            echo "| Stack | Result |"
+            echo "|---|---|"
+            echo "| dev/01_peripherals, dev/02_lambda | ${{ needs.dev-destroy-peripherals.result }} |"
+            echo "| hml/04_peripherals | ${{ needs.hml-destroy-peripherals.result }} |"
+            echo "| prd/03_iam, prd/04_peripherals, prd/06_lambda | ${{ needs.prd-destroy-iam.result }} |"
+            echo "prd/00_bootstrap and prd/01_tf_state are never destroyed by this workflow."
+          } >> "$GITHUB_STEP_SUMMARY"
