@@ -103,7 +103,7 @@
   - Deps: T-B.3, T-C.3 (bundle variables aligned to the same names), T-C.5 (PLAN K5) · AC-10, AC-11, AC-18b · Findings: DRIFT-22, ARCH-C2
   - Evidence: informed-gate plan reviewed before `destroy_ack`; post-apply plan 0/0/0; `aws s3api head-bucket` → 200 on both canonical names.
 
-- [ ] **T-B.5** — Commit `.terraform.lock.hcl` for every surviving root stack; declare `required_providers` in every module (B5). **Before the first apply (O-5) — `prd/00_bootstrap` included.**
+- [-] **T-B.5** — Commit `.terraform.lock.hcl` for every surviving root stack; declare `required_providers` in every module (B5). **Before the first apply (O-5) — `prd/00_bootstrap` included.**
   - Owner: software-engineer · Write set: `services/**/.terraform.lock.hcl`, `services/modules/**/versions.tf`
   - Deps: T-B.2, T-A.1 (the `00_bootstrap` directory must exist) · AC-15 · Findings: DRIFT-15, ARCH-H6, CI-H2, CI-M7
   - Evidence: `git ls-files 'services/**/.terraform.lock.hcl' | wc -l` = the surviving root-stack count (**8**, `00_bootstrap` included).
