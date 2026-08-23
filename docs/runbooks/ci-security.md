@@ -52,10 +52,29 @@ on the jobs that call `aws-actions/configure-aws-credentials` (matching the patt
 
 ## F-06 — commit-SHA pins + Dependabot
 
-Every third-party `uses:` is pinned to a verified commit SHA (not a floating tag, and
-not an annotated-tag object SHA) with a `# vX.Y.Z` comment. `.github/dependabot.yml`
-tracks `github-actions` (all workflow dirs) and `pip` (`apps/lambda/`) weekly so pins
-stay current automatically.
+`aws-actions/configure-aws-credentials` was pinned to `ff717079…`, the SHA of the
+**annotated tag object** for the floating `v4` tag — not a commit SHA. It is now pinned
+to `7474bc4690e29a8392af63c5b98e7449536d5c3a` (`v4.3.1`'s actual commit, verified via
+`gh api repos/aws-actions/configure-aws-credentials/git/ref/tags/v4.3.1` →
+`git/tags/<sha>`). The other 6 third-party actions were refreshed the same way, to each
+action's current stable release, always resolving through `git/ref/tags/<tag>` and, when
+the ref is an annotated tag object, dereferencing to the underlying commit:
+
+| Action | Was | Now |
+|---|---|---|
+| `actions/checkout` | v4.3.1 | v7.0.1 |
+| `actions/setup-python` | v5.6.0 | v7.0.0 |
+| `hashicorp/setup-terraform` | v3.1.2 | v4.0.1 |
+| `databricks/setup-cli` | v0.218.0 | v1.13.0 |
+| `actions/upload-artifact` | v4.6.0 | v7.0.1 |
+| `actions/download-artifact` | v4.1.8 | v8.0.1 |
+
+Every input each workflow actually sets (`fetch-depth`, `persist-credentials`,
+`python-version`, `terraform_version`, `terraform_wrapper`, `name`, `path`,
+`retention-days`, `if-no-files-found`) was confirmed present and unchanged in the new
+release's `action.yml` before pinning. `.github/dependabot.yml` now tracks
+`github-actions` (repo root) and `pip` (`apps/lambda/`) weekly so pins stay current
+automatically going forward.
 
 ## F-07 — environment-scoped Databricks secrets, no ternary fallback
 
