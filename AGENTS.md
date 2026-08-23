@@ -1,130 +1,116 @@
 # dd-chain-explorer — Repo Context
 
-> This file is loaded by Claude Code, OpenCode, and Codex when working in this repo.
-> It complements the workspace-root `AGENTS.md` with repo-domain knowledge.
-> Edit this file directly — it is NOT lib-originated and will not be overwritten by `dadaia public install`.
+> Loaded by every harness (Claude Code, Codex, Kimi Code) working in this repo.
+> Complements the workspace-root `AGENTS.md`/`DADAIA.md` with repo-domain
+> knowledge. Edit this file directly — it is not lib-originated.
 
 ---
 
-## Repo Purpose
+## Repo purpose
 
-DD Chain Explorer is a real-time Ethereum blockchain data platform that captures all mainnet
-transactions and blocks, processes them through a Medallion architecture on Databricks Delta Live
-Tables, and serves analytics via Lakeview dashboards, a Genie AI/BI space, and S3 exports.
-It is built for platform engineers and data analysts monitoring API key consumption, gas usage,
-and contract activity on the Ethereum mainnet (AWS sa-east-1, Python 3.12, Databricks DBR 15.x).
+`dd-chain-explorer` is the downstream half of an Ethereum data platform: a
+separate repository, `dd-chain-capture` (running on a VPS), writes raw
+blockchain JSON to this project's S3 raw bucket — the **sole** integration
+boundary between the two. Everything in this repo starts from that S3
+prefix: Databricks Delta Live Tables (Bronze → Silver → Gold on Unity
+Catalog), Lakeview dashboards, two AWS Lambda functions, the Terraform that
+provisions all of it (dev/hml/prd), and the GitHub Actions CI/CD pipeline.
 
----
+**No capture technology lives here** — no Kinesis, no Firehose, no SQS, no
+ECS producer service. Do not reintroduce them; the S3 bucket is the boundary
+(see `specs/memory/tech-stack.md`).
 
-## Spec Structure
-
-Specs live under `specs/`. Load them in this order before making any change:
-
-1. `specs/memory/constitution.md` — absolute laws of the project (immutable constraints)
-2. `specs/releases/ACTIVE.md` — which release is active and in which phase
-3. `specs/releases/<release-id>/SPEC.md` — what this release changes
-4. `specs/releases/<release-id>/PLAN.md` — how to implement it
-5. `specs/releases/<release-id>/TASKS.md` — task checklist with owners and evidence
-
-Legacy reference (read-only until archived in R1 CLOSURE):
-- `specs/SPEC.md` — original product spec (do NOT use to authorize implementation)
-- `specs/domains/*/SPEC.md` — domain specs (do NOT use to authorize implementation)
-- `specs/memory/*.md` — Markdown memory atoms (being migrated to HTML across R1–R4)
-
-Approval marker: `**Status:** Aprovado` in the spec header is required before implementation.
-`specs/releases/ACTIVE.md` is the SDD gate. Only tasks in the active release's TASKS.md
-with a `[-]` IN_PROGRESS marker authorize edits to production files.
+Databricks runs on the **Free Edition**: serverless compute only, no job
+clusters, no instance pools, and no `prod` deployment target exists there
+(only `dev` and `hml`).
 
 ---
 
-## Repo-Specific Stop Conditions
+## Spec structure — read before any change
 
-- **Do NOT edit any production file** (apps/, services/, utils/) without an active `[-]` task
-  marker in `specs/releases/<active-release-id>/TASKS.md`.
-- **Do NOT create or edit `specs/memory/*.html`** outside the CLOSURE phase of a release.
-  The workspace-protocol gate enforces this. Only `product-engineer` may write memory atoms.
-- **Do NOT edit `specs/releases/ACTIVE.md`** unless you are `product-engineer`.
-- **Do NOT apply Terraform to PRD** without the CI/CD `production` approval gate.
-- **Do NOT hardcode** API keys, catalog names, or bucket names in any file — use Terraform
-  variables (`${var.catalog}`) and SSM Parameter Store for runtime secrets.
-- **Do NOT use `path=` in `@dlt.table`** — Unity Catalog forbids explicit paths.
-- **Stop and surface to operator** if you encounter two `[-]` tasks simultaneously in TASKS.md.
+1. `specs/constitution.md` — durable, repo-scoped laws.
+2. `specs/releases/ACTIVE.md` — which release is active and in which phase.
+3. `specs/releases/<release-id>/SPEC.md` / `PLAN.md` / `TASKS.md` — what/how/
+   task-checklist for the active release. Every one must carry
+   `**Status:** Aprovado` before it authorizes implementation.
+4. `specs/memory/*.md` and `specs/memory/product/*.md` — current product/
+   architecture/tech-stack truth (Markdown atoms, `catalog.json` indexes
+   `product/`).
+
+Legacy/history: `specs/_archive/**` — read-only, never a source of approval.
 
 ---
 
-## Key Paths
+## Repo-specific stop conditions
+
+- Do not edit any production path (`apps/`, `services/`, `utils/`, `scripts/`,
+  `tests/`) without an active `[-]` task marker in the active release's
+  `TASKS.md` naming that write set.
+- Do not write `specs/memory/**` outside the DEFINITION/CLOSURE phase of a
+  release — only `product-engineer` writes memory, and only then.
+- Do not apply Terraform to `prd` without going through the CI/CD gate
+  (`scripts/ci/plan_env.sh` → the informed environment gate →
+  `scripts/ci/deploy_env.sh`) — the one exception is `services/prd/00_bootstrap`,
+  which CI can **never** apply (see `docs/runbooks/00-bootstrap-apply.md`).
+- Do not hardcode API keys, catalog names, or bucket names — use Terraform
+  variables and SSM Parameter Store for runtime secrets. Log the SSM
+  *parameter name*, never the value.
+- Do not use `path=` in `@dlt.table` — Unity Catalog forbids explicit paths.
+- Do not pin `dm-chain-utils` against a public package index — it is a path
+  requirement only (`pip install ./utils --no-deps`); the name was never
+  published anywhere.
+- Stop and surface to the operator if you find two `[-]` tasks simultaneously
+  in `TASKS.md` — that is an invariant violation, not something to silently
+  resolve.
+
+---
+
+## Key paths
 
 | Path | Purpose |
 |------|---------|
 | `specs/releases/ACTIVE.md` | Active release pointer — read this first |
-| `specs/releases/<id>/TASKS.md` | Task checklist — the SDD gate reads this |
-| `specs/memory/` | Atomic product memory (Markdown until R1 CLOSURE; then HTML) |
-| `specs/backlog/candidates.md` | Formal backlog including all 7 open operator questions |
-| `apps/dabs/` | Databricks Asset Bundles (DLT pipelines, dashboards, alerts, Genie) |
-| `apps/docker/onchain-stream-txs/` | Streaming Docker apps (5 jobs) |
-| `apps/lambda/` | Lambda functions (contracts_ingestion, gold_to_dynamodb) |
+| `specs/releases/<id>/TASKS.md` | Task checklist — the human-auditable reservation trace |
+| `specs/memory/` | Current product/architecture/tech-stack truth |
+| `specs/backlog/BACKLOG.md` | Single-source backlog (ACTIVE + LEDGER) |
+| `apps/dabs/` | Databricks Asset Bundles (DLT pipelines, batch jobs, dashboards) |
+| `apps/lambda/` | Lambda functions (`contracts_ingestion`, `gold_to_dynamodb`) + `requirements.lock` |
+| `utils/` | `dm_chain_utils` shared library (path-installed only) |
+| `services/dev/`, `services/hml/`, `services/prd/` | Terraform, one root stack per numbered directory |
 | `services/modules/` | Shared Terraform modules |
-| `services/dev/` | DEV infrastructure (Terraform, local state) |
-| `services/prd/` | PRD infrastructure (Terraform, remote state, S3 + DynamoDB lock) |
-| `utils/` | dm-chain-utils shared library (PyPI: `dm-chain-utils==0.2.9`) |
-| `scripts/ci/` | 16 CI bash scripts |
+| `scripts/ci/` | Scripts GitHub Actions runs; `stack_map.json` is the single source for stack names/order |
+| `scripts/build_lambda_layer.sh` | The only supported way to build the Lambda layer |
+| `tests/` | Repo-level pytest tree — Lambda handlers, kept `dm_chain_utils` modules, DABs pure functions, DLT expectation contracts |
+| `docs/runbooks/` | Operator-only, one-time procedures |
 
 ---
 
-## Key Commands
+## Key commands
 
 ```bash
-# DEV streaming
-make deploy_dev_stream       # docker compose up --build (5 streaming jobs)
-make stop_dev_stream         # docker compose down
-
-# DEV Databricks (DABs)
-make dabs_deploy_dev         # databricks bundle deploy --target dev
-make dabs_run_trigger_all    # trigger dm-ethereum + dm-app-logs pipelines
-
-# DEV infrastructure (Terraform)
-make tf_apply_dev_peripherals  # Terraform apply DEV/01_peripherals
-make tf_apply_dev_lambda       # Terraform apply DEV/02_lambda
-
-# Validation
-make dabs_validate_all       # validate all 16 bundles (dry-run)
-
-# PRD observability
-make prod_standby            # scale down ECS + pause Databricks
-make prod_resume             # scale up ECS + resume Databricks
-make prod_ecs_logs           # tail live ECS task logs
-
-# Lint / check
-make help                    # list all 60+ make targets
+make check              # ruff format --check + ruff check + mypy + pytest
+make test                # pytest tests/ utils/tests/unit scripts/ci/tests
+make build_lambda_layer   # scripts/build_lambda_layer.sh
+make dabs_validate_all     # validate every apps/dabs bundle, target=dev
+make dev_tf_apply           # DEV Terraform, no CI gate
+make tf_plan ENV=hml          # HML/PRD Terraform, same script CI runs
+make help                       # every target
 ```
 
 ---
 
-## Release Lifecycle
+## Release lifecycle
 
-This repo follows dadaia-workspace SDD (Spec-Driven Development):
+This repo follows the dadaia-workspace SDD flow (see the workspace-root
+`DADAIA.md` §1/§5): `specs/releases/<id>/{SPEC,PLAN,TASKS}.md`, reserved with
+`[ ]` → `[-]` → `[x]` markers, reviewed at `alpha-N`/`rc-N` boundaries, closed
+with `CLOSURE.md` + a memory update + archive to `specs/_archive/`. Live
+implementation and its reviews happen on `feature/{M.m.p}`; `develop` is the
+only pushable branch.
 
-```
-specs/releases/
-  ACTIVE.md                        <- pointer to active release
-  pipeline-restart-r1/             <- ACTIVE -- restore pipeline + security (~22 tasks)
-  cost-and-availability-r2/        <- Draft -- cost + availability (~8 tasks)
-  data-quality-r3/                 <- Draft -- correctness (~14 tasks)
-  analytics-enrichment-r4/         <- Draft -- analytics UX + PRD readiness (~10 tasks)
-```
-
-Releases are sequential: R1 must be ARCHIVED before R2 begins. Implementers pick tasks
-from TASKS.md using `[ ]` -> `[-]` -> `[x]` markers per `dadaia-task-manager` protocol.
-
----
-
-## Domain Agent Assignments (from PM mediation)
-
-| Domain | Primary Agent | Write-set |
-|--------|-------------|-----------|
-| AWS IAM, ECS, Terraform | devops-engineer | `services/` |
-| DLT pipelines, schema, DLT tests | data-engineer | `apps/dabs/dlt_ethereum/` |
-| Dashboards, Genie, alerts | data-analyst | `apps/dabs/dashboard_*/`, `apps/dabs/genie_*`, `apps/dabs/alert_*` |
-| dm-chain-utils library | software-engineer-python | `utils/` |
-| Repository hygiene (.gitignore, bundle cleanup) | software-engineer-python | root, `apps/dabs/` |
-| Spec / memory atoms | product-engineer | `specs/releases/`, `specs/memory/` |
+Five workstreams share this release's write sets: WS-A (CI auth, workflow
+purge, governance, the version axis), WS-B (Terraform, live AWS cleanup),
+WS-C (Databricks artifacts), WS-D (dead code, supply chain, quality gates,
+tests, docs — this file's own domain), WS-E (governance documents, audit
+dispositions, memory). See the active release's `TASKS.md` write-set law for
+the exact boundaries.
