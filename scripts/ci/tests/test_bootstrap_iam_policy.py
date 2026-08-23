@@ -37,6 +37,7 @@ ALLOWED_RESOURCE_LOCALS = {
     "iam_instance_profile_arns",
     "iam_policy_arns",
     "uc_storage_role_arns",
+    "log_groups_describe_arn",
     "ssm_parameter_arns",
     "artifacts_bucket_arn",
     "artifacts_layer_prefix_rw",

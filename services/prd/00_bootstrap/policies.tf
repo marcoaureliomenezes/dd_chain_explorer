@@ -316,6 +316,13 @@ data "aws_iam_policy_document" "gha_deploy_permissions" {
     ]
     resources = local.ssm_parameter_arns
   }
+
+  statement {
+    sid       = "LogGroupsDescribe"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = [local.log_groups_describe_arn]
+  }
 }
 
 # -----------------------------------------------------------------------
@@ -369,9 +376,22 @@ data "aws_iam_policy_document" "gha_readonly_plan_permissions" {
     actions = [
       "s3:GetBucket*",
       "s3:ListBucket",
+      # Bucket sub-resource reads whose action names lack the "Bucket" infix —
+      # terraform refresh reads them all on every aws_s3_bucket (read-only).
+      "s3:GetAccelerateConfiguration",
+      "s3:GetEncryptionConfiguration",
+      "s3:GetLifecycleConfiguration",
+      "s3:GetReplicationConfiguration",
+      "s3:GetIntelligentTieringConfiguration",
+      "s3:GetInventoryConfiguration",
+      "s3:GetMetricsConfiguration",
+      "s3:GetAnalyticsConfiguration",
       "dynamodb:DescribeTable",
+      "dynamodb:DescribeContinuousBackups",
+      "dynamodb:DescribeTimeToLive",
       "dynamodb:ListTagsOfResource",
       "lambda:GetFunction",
+      "lambda:GetFunctionCodeSigningConfig",
       "lambda:GetFunctionConfiguration",
       "lambda:ListVersionsByFunction",
       "lambda:GetLayerVersion",
@@ -379,7 +399,6 @@ data "aws_iam_policy_document" "gha_readonly_plan_permissions" {
       "lambda:GetPolicy",
       "lambda:ListEventSourceMappings",
       "lambda:ListTags",
-      "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
       "logs:ListTagsForResource",
       "events:DescribeRule",
@@ -406,5 +425,12 @@ data "aws_iam_policy_document" "gha_readonly_plan_permissions" {
       local.iam_instance_profile_arns,
       local.ssm_parameter_arns,
     )
+  }
+
+  statement {
+    sid       = "LogGroupsDescribe"
+    effect    = "Allow"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = [local.log_groups_describe_arn]
   }
 }

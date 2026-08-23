@@ -21,10 +21,17 @@ locals {
     ]
   ])
 
-  dynamodb_table_arns = [
-    for p in var.project_name_prefixes :
-    "arn:aws:dynamodb:${var.region}:${local.account_id}:table/${p}*"
-  ]
+  # The PRD legacy eponymous resources are named exactly the project name with
+  # no env suffix (predating the prefix convention): exact ARNs appended, never
+  # a widened prefix — T-A.2 HIGH #1 keeps the hyphenated prefixes. Renaming
+  # these productive resources is deferred to the infra-repo migration.
+  dynamodb_table_arns = concat(
+    [
+      for p in var.project_name_prefixes :
+      "arn:aws:dynamodb:${var.region}:${local.account_id}:table/${p}*"
+    ],
+    ["arn:aws:dynamodb:${var.region}:${local.account_id}:table/dm-chain-explorer"],
+  )
 
   lambda_function_arns = [
     for p in var.project_name_prefixes :
@@ -36,14 +43,24 @@ locals {
     "arn:aws:lambda:${var.region}:${local.account_id}:layer:${p}*"
   ]
 
-  log_group_arns = flatten([
-    for p in var.project_name_prefixes : [
-      "arn:aws:logs:${var.region}:${local.account_id}:log-group:/aws/lambda/${p}*",
-      "arn:aws:logs:${var.region}:${local.account_id}:log-group:/aws/lambda/${p}*:*",
-      "arn:aws:logs:${var.region}:${local.account_id}:log-group:/apps/${p}*",
-      "arn:aws:logs:${var.region}:${local.account_id}:log-group:/apps/${p}*:*",
-    ]
-  ])
+  log_group_arns = concat(
+    flatten([
+      for p in var.project_name_prefixes : [
+        "arn:aws:logs:${var.region}:${local.account_id}:log-group:/aws/lambda/${p}*",
+        "arn:aws:logs:${var.region}:${local.account_id}:log-group:/aws/lambda/${p}*:*",
+        "arn:aws:logs:${var.region}:${local.account_id}:log-group:/apps/${p}*",
+        "arn:aws:logs:${var.region}:${local.account_id}:log-group:/apps/${p}*:*",
+      ]
+    ]),
+    [
+      "arn:aws:logs:${var.region}:${local.account_id}:log-group:/apps/dm-chain-explorer",
+      "arn:aws:logs:${var.region}:${local.account_id}:log-group:/apps/dm-chain-explorer:*",
+    ],
+  )
+
+  # logs:DescribeLogGroups is a list API: IAM evaluates it against
+  # log-group:* in the account/region, so specific log-group ARNs never match.
+  log_groups_describe_arn = "arn:aws:logs:${var.region}:${local.account_id}:log-group:*"
 
   events_rule_arns = [
     for p in var.project_name_prefixes :
