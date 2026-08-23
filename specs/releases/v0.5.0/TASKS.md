@@ -27,7 +27,7 @@
   - Deps: T-A.2, T-B.1 (O-2), T-B.5 (`00_bootstrap` lock file, O-5) · AC-2 · Findings: DRIFT-01
   - Evidence: apply summary; `aws iam list-roles` + `list-attached-role-policies` + `get-role-policy` for all four roles.
 
-- [-] **T-A.3b** — Prove least privilege negatively: `aws iam simulate-principal-policy` per `gha` role on a forbidden action (`iam:UpdateAssumeRolePolicy` against a `dm-chain-explorer-gha-*` role ARN) and on one representative allowed action; plus a `scripts/ci/tests` case over `terraform show -json` asserting every `Allow` resource matches a project prefix or the state bucket/lock table.
+- [ ] **T-A.3b** — Prove least privilege negatively: `aws iam simulate-principal-policy` per `gha` role on a forbidden action (`iam:UpdateAssumeRolePolicy` against a `dm-chain-explorer-gha-*` role ARN) and on one representative allowed action; plus a `scripts/ci/tests` case over `terraform show -json` asserting every `Allow` resource matches a project prefix or the state bucket/lock table.
   - Owner: software-engineer · Write set: `scripts/ci/tests/**`
   - Deps: T-A.3 · AC-2, AC-2b · Findings: DRIFT-08
   - Evidence: `implicitDeny`/`explicitDeny` for the forbidden action on all four roles, `allowed` for the permitted one; the assertion test green in CI.
@@ -81,7 +81,7 @@
   - Deps: — · AC-13 · Findings: DRIFT-16
   - Evidence: `gh run list --status in_progress` empty beforehand; `terraform force-unlock` output; `aws dynamodb scan --table-name <lock-table> --select COUNT` → 0.
 
-- [-] **T-B.2** — Delete the capture-era and never-applied stacks and modules (B1).
+- [x] **T-B.2** — Delete the capture-era and never-applied stacks and modules (B1).
   - Owner: software-engineer · Write set: `services/prd/{02_vpc,05_databricks,05a_databricks_account,05b_databricks_workspace,07_ecs}`, `services/hml/{02_vpc,03_iam,05_databricks,05b_databricks_workspace,07_ecs}`, `services/modules/{ecs,vpc}` (deletion)
   - Deps: T-B.1 · AC-11 · Findings: DRIFT-13, ARCH-C1, CI-M11
   - Evidence: `ls services/prd services/hml services/modules`; `terraform validate` clean on every survivor.
@@ -194,7 +194,7 @@
 
 ## WS-D — Dead code, supply chain, quality gates, tests, docs
 
-- [ ] **T-D.1** — Write the live-surface pyramid **before** any deletion (O-7): both Lambda handlers, the DABs job scripts, the DLT expectation functions (local PySpark), and the CI-script cases the suite lacks; intent and size declared on every test (D4).
+- [-] **T-D.1** — Write the live-surface pyramid **before** any deletion (O-7): both Lambda handlers, the DABs job scripts, the DLT expectation functions (local PySpark), and the CI-script cases the suite lacks; intent and size declared on every test (D4).
   - Owner: software-engineer · Write set: `tests/**` (new)
   - Deps: T-A.9 (O-4) · AC-23 · Findings: DRIFT-20, DRIFT-N08
   - Evidence: `pytest -p no:cacheprovider` green; per-test intent/size declarations.
