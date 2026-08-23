@@ -31,3 +31,9 @@ variable "databricks_hml_uc_external_id" {
   type        = string
   sensitive   = true
 }
+
+variable "uc_role_self_assume" {
+  description = "Include the SelfAssume trust statement on dm-databricks-hml-s3-role. Set to false ONLY on the very first apply (the role must exist before it can be named as a principal); the default second apply adds it."
+  type        = bool
+  default     = true
+}

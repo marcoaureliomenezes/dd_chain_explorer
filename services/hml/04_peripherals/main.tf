@@ -135,17 +135,23 @@ data "aws_iam_policy_document" "databricks_hml_s3_role_assume" {
       values   = [var.databricks_hml_uc_external_id]
     }
   }
-  statement {
-    sid     = "SelfAssume"
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "AWS"
-      identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-databricks-hml-s3-role"]
-    }
-    condition {
-      test     = "StringEquals"
-      variable = "sts:ExternalId"
-      values   = [var.databricks_hml_uc_external_id]
+  # Unity Catalog requires the role to trust itself. AWS rejects a trust policy
+  # naming a role that does not exist yet, so the first apply runs with
+  # -var uc_role_self_assume=false and the second (default) adds this statement.
+  dynamic "statement" {
+    for_each = var.uc_role_self_assume ? [1] : []
+    content {
+      sid     = "SelfAssume"
+      actions = ["sts:AssumeRole"]
+      principals {
+        type        = "AWS"
+        identifiers = ["arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/dm-databricks-hml-s3-role"]
+      }
+      condition {
+        test     = "StringEquals"
+        variable = "sts:ExternalId"
+        values   = [var.databricks_hml_uc_external_id]
+      }
     }
   }
 }
