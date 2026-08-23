@@ -12,7 +12,7 @@ from dm_chain_utils.dm_parameter_store import ParameterStoreClient
 from dm_chain_utils.dm_sqs import SQSHandler
 from dm_chain_utils.dm_web3_client import Web3Handler
 
-__version__ = "0.1.0"
+__version__ = "0.5.0"
 __all__ = [
     "APIKeysManager",
     "CloudWatchLoggingHandler",

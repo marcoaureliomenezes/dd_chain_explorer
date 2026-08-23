@@ -44,6 +44,10 @@ resource "aws_iam_role" "contracts_ingestion_lambda" {
     ]
   })
 
+  # T-A.2 rev2 HIGH — permissions-boundary retrofit (data source declared
+  # in lambda.tf, same root module).
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
+
   tags = local.common_tags
 }
 
@@ -148,6 +152,10 @@ resource "aws_iam_role" "eventbridge_contracts_ingestion" {
       }
     ]
   })
+
+  # T-A.2 rev2 HIGH — permissions-boundary retrofit (data source declared
+  # in lambda.tf, same root module).
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
 
   tags = local.common_tags
 }

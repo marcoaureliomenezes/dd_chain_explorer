@@ -38,6 +38,22 @@ data "terraform_remote_state" "peripherals" {
   }
 }
 
+# -----------------------------------------------------------------------
+# T-A.2 rev2 HIGH — permissions-boundary retrofit. Every project
+# `aws_iam_role` in this account carries the boundary `prd/00_bootstrap`
+# exports, capping its effective permissions regardless of what its own
+# inline policy grants. Literal backend config, not a variable — keeps
+# the CI `-var` surface unchanged.
+# -----------------------------------------------------------------------
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "prd/bootstrap/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
 locals {
   common_tags = {
     "owner"           = "marco-menezes"
@@ -63,6 +79,8 @@ resource "aws_iam_role" "gold_to_dynamodb_lambda" {
       Principal = { Service = "lambda.amazonaws.com" }
     }]
   })
+
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
 
   tags = local.common_tags
 }

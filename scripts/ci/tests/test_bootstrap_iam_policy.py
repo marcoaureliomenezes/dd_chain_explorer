@@ -19,6 +19,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 BOOTSTRAP_DIR = REPO_ROOT / "services" / "prd" / "00_bootstrap"
+SERVICES_DIR = REPO_ROOT / "services"
 
 # Every local.tf identifier that is provably scoped to a project resource
 # prefix, the terraform state bucket, the state lock table, or the artifacts
@@ -156,7 +157,16 @@ def test_self_mutation_deny_covers_iam_star_and_user_credential_verbs() -> None:
         assert action in cred_deny
 
     state_backend_deny = next(s for s in deny_statements if "DenyStateBackendDestructiveActions" in s)
-    for action in ("s3:DeleteBucket", "s3:PutBucketVersioning", "s3:DeleteObjectVersion", "s3:PutBucketPolicy"):
+    for action in (
+        "s3:DeleteBucket",
+        "s3:PutBucketVersioning",
+        "s3:DeleteObjectVersion",
+        "s3:PutBucketPolicy",
+        # T-A.2 rev2 LOW residuals.
+        "s3:DeleteBucketPolicy",
+        "s3:PutBucketLogging",
+        "s3:PutBucketOwnershipControls",
+    ):
         assert action in state_backend_deny
     for local_name in ("tf_state_bucket_arn", "tf_state_objects_arn", "artifacts_bucket_arn"):
         assert f"local.{local_name}" in state_backend_deny
@@ -167,15 +177,27 @@ def test_self_mutation_deny_covers_iam_star_and_user_credential_verbs() -> None:
     assert "local.tf_lock_table_arn" in lock_table_deny
 
     public_exposure_deny = next(s for s in deny_statements if "DenyProjectBucketPublicExposure" in s)
-    for action in ("s3:PutBucketAcl", "s3:PutBucketPublicAccessBlock", "s3:PutBucketPolicy"):
+    for action in (
+        "s3:PutBucketAcl",
+        "s3:PutBucketPublicAccessBlock",
+        "s3:PutBucketPolicy",
+        # T-A.2 rev2 LOW residuals.
+        "s3:DeleteBucketPolicy",
+        "s3:PutObjectAcl",
+    ):
         assert action in public_exposure_deny
     assert "local.s3_bucket_arns" in public_exposure_deny
 
+    # T-A.2 rev2 HIGH (remaining blocker) — the Deny now covers ONLY
+    # DeleteRolePermissionsBoundary. iam:PutRolePermissionsBoundary is
+    # deliberately NOT denied here: it is the sole retrofit path onto the 8
+    # pre-existing project roles, permitted only conditionally by the
+    # ProjectIamRoleSetBoundary Allow (asserted separately below).
     boundary_tamper_deny = next(
         s for s in deny_statements if "DenyRolePermissionsBoundaryTampering" in s
     )
-    assert "iam:PutRolePermissionsBoundary" in boundary_tamper_deny
     assert "iam:DeleteRolePermissionsBoundary" in boundary_tamper_deny
+    assert "iam:PutRolePermissionsBoundary" not in boundary_tamper_deny
 
 
 def test_no_catch_all_dm_prefix() -> None:
@@ -208,6 +230,23 @@ def test_create_role_requires_permissions_boundary() -> None:
     mgmt_stmt = next(s for s in statements if "ProjectIamRoleManagement" in s)
     assert '"iam:CreateRole"' not in mgmt_stmt
     assert "iam:UpdateAssumeRolePolicy" in mgmt_stmt
+
+
+def test_set_permissions_boundary_is_conditioned_on_ci_boundary() -> None:
+    """T-A.2 rev2 HIGH (remaining blocker) — the retrofit-onto-existing-role
+    path: iam:PutRolePermissionsBoundary must be its own statement,
+    conditioned on the same ci_boundary ARN as CreateRole, so a deploy role
+    can only ever SET ci_boundary and never a weaker/attacker-chosen one."""
+    text = _read("policies.tf")
+    documents = _policy_document_blocks(text)
+    deploy_doc = documents["gha_deploy_permissions"]
+    statements = _statement_blocks(deploy_doc)
+
+    set_boundary_stmt = next(s for s in statements if "ProjectIamRoleSetBoundary" in s)
+    assert '"iam:PutRolePermissionsBoundary"' in set_boundary_stmt
+    assert "iam:PermissionsBoundary" in set_boundary_stmt
+    assert "aws_iam_policy.ci_boundary.arn" in set_boundary_stmt
+    assert "local.iam_role_arns" in set_boundary_stmt
 
 
 def test_pass_role_requires_passed_to_service_condition() -> None:
@@ -270,6 +309,57 @@ def test_deploy_permissions_grant_lock_table_read_and_write() -> None:
     assert "local.tf_lock_table_arn" in deploy_doc
     assert "dynamodb:PutItem" in deploy_doc
     assert "dynamodb:DeleteItem" in deploy_doc
+
+
+def _iam_role_blocks_outside_bootstrap() -> list[tuple[Path, str, str]]:
+    """(file, role_label, block_text) for every `aws_iam_role` resource under
+    services/ that is NOT one of the 4 `gha_*` roles 00_bootstrap itself
+    creates — those are the boundary's creators, not project roles bound by
+    it. Returns every project role the T-A.2 rev2 HIGH retrofit covers."""
+    results: list[tuple[Path, str, str]] = []
+    for tf_file in sorted(SERVICES_DIR.rglob("*.tf")):
+        if BOOTSTRAP_DIR in tf_file.parents:
+            continue
+        text = tf_file.read_text()
+        for m in re.finditer(r'resource\s+"aws_iam_role"\s+"(\w+)"\s*\{', text):
+            depth = 1
+            i = m.end()
+            while depth and i < len(text):
+                if text[i] == "{":
+                    depth += 1
+                elif text[i] == "}":
+                    depth -= 1
+                i += 1
+            block = text[m.start() : i]
+            results.append((tf_file, m.group(1), block))
+    return results
+
+
+def test_every_project_iam_role_sets_permissions_boundary() -> None:
+    """T-A.2 rev2 HIGH (remaining blocker) — the permissions boundary must
+    be retrofitted onto every project `aws_iam_role`, not only the ones the
+    bootstrap stack creates going forward. A role missing
+    `permissions_boundary` reopens the CreateRole/PassRole escalation chain
+    the boundary exists to close."""
+    role_blocks = _iam_role_blocks_outside_bootstrap()
+    assert role_blocks, "expected at least one project aws_iam_role under services/"
+    # Locks the exact count from the T-A.2 rev2 verdict's file:line list so a
+    # newly-added project role cannot silently reopen the gap unnoticed.
+    assert len(role_blocks) == 8, (
+        f"expected exactly 8 project aws_iam_role resources outside "
+        f"00_bootstrap, found {len(role_blocks)}: "
+        f"{[(str(f.relative_to(REPO_ROOT)), name) for f, name, _ in role_blocks]}"
+    )
+
+    violations = [
+        f"{tf_file.relative_to(REPO_ROOT)}:{role_name}"
+        for tf_file, role_name, block in role_blocks
+        if "permissions_boundary" not in block
+    ]
+    assert not violations, (
+        "project aws_iam_role resource(s) with no permissions_boundary:\n"
+        + "\n".join(violations)
+    )
 
 
 def test_no_managed_policy_attachment_in_bootstrap_stack() -> None:

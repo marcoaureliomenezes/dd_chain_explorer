@@ -1,4 +1,21 @@
 # -----------------------------------------------------------------------
+# T-A.2 rev2 HIGH — permissions-boundary retrofit. Every project
+# `aws_iam_role` in this account carries the boundary `prd/00_bootstrap`
+# exports, capping its effective permissions regardless of what its own
+# inline policy grants. Read via `terraform_remote_state` (literal backend
+# config, mirroring dev/02_lambda and prd/06_lambda's existing remote-state
+# data sources), not a variable — keeps the CI `-var` surface unchanged.
+# -----------------------------------------------------------------------
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "prd/bootstrap/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
+# -----------------------------------------------------------------------
 # ECS Task Execution Role
 # Used by ECS agent to pull images and send logs to CloudWatch
 # -----------------------------------------------------------------------
@@ -13,9 +30,10 @@ data "aws_iam_policy_document" "ecs_task_execution_assume" {
 }
 
 resource "aws_iam_role" "ecs_task_execution" {
-  name               = "dm-chain-explorer-ecs-task-execution-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_assume.json
-  tags               = local.common_tags
+  name                 = "dm-chain-explorer-ecs-task-execution-role"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_task_execution_assume.json
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
+  tags                 = local.common_tags
 }
 
 resource "aws_iam_role_policy_attachment" "ecs_task_execution_managed" {
@@ -50,9 +68,10 @@ resource "aws_iam_role_policy" "ecs_task_execution_extras" {
 # stream/queue access.
 # -----------------------------------------------------------------------
 resource "aws_iam_role" "ecs_task" {
-  name               = "dm-chain-explorer-ecs-task-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_task_execution_assume.json
-  tags               = local.common_tags
+  name                 = "dm-chain-explorer-ecs-task-role"
+  assume_role_policy   = data.aws_iam_policy_document.ecs_task_execution_assume.json
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
+  tags                 = local.common_tags
 }
 
 data "aws_iam_policy_document" "ecs_task_permissions" {

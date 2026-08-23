@@ -57,10 +57,13 @@ data "aws_iam_policy_document" "gha_self_mutation_deny" {
       "s3:PutBucketVersioning",
       "s3:DeleteObjectVersion",
       "s3:PutBucketPolicy",
+      "s3:DeleteBucketPolicy",
       "s3:PutBucketAcl",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutEncryptionConfiguration",
       "s3:PutLifecycleConfiguration",
+      "s3:PutBucketLogging",
+      "s3:PutBucketOwnershipControls",
     ]
     resources = [
       local.tf_state_bucket_arn,
@@ -89,23 +92,25 @@ data "aws_iam_policy_document" "gha_self_mutation_deny" {
       "s3:PutBucketAcl",
       "s3:PutBucketPublicAccessBlock",
       "s3:PutBucketPolicy",
+      "s3:DeleteBucketPolicy",
+      "s3:PutObjectAcl",
     ]
     resources = local.s3_bucket_arns
   }
 
-  # T-A.2 HIGH #3 — a permissions boundary (below) is enforced at
-  # iam:CreateRole time via the iam:PermissionsBoundary condition; this
-  # Deny keeps that boundary from being stripped from an existing role
-  # afterwards (iam:PutRolePermissionsBoundary/DeleteRolePermissionsBoundary
-  # are separate actions from CreateRole and are never needed by this
-  # project's Terraform).
+  # T-A.2 rev2 HIGH — a permissions boundary (below) is enforced at
+  # iam:CreateRole time via the iam:PermissionsBoundary condition. This Deny
+  # keeps the boundary from ever being STRIPPED from a role
+  # (iam:DeleteRolePermissionsBoundary). It deliberately does NOT deny
+  # iam:PutRolePermissionsBoundary: the boundary-conditioned Allow below
+  # (ProjectIamRoleSetBoundary, gha_deploy_permissions) is the only way to
+  # SET it, and is the sole retrofit path onto the 8 project roles that
+  # predate this stack — a wider Deny here would make that retrofit apply
+  # fail with AccessDenied.
   statement {
-    sid    = "DenyRolePermissionsBoundaryTampering"
-    effect = "Deny"
-    actions = [
-      "iam:PutRolePermissionsBoundary",
-      "iam:DeleteRolePermissionsBoundary",
-    ]
+    sid       = "DenyRolePermissionsBoundaryTampering"
+    effect    = "Deny"
+    actions   = ["iam:DeleteRolePermissionsBoundary"]
     resources = local.iam_role_arns
   }
 }
@@ -205,6 +210,24 @@ data "aws_iam_policy_document" "gha_deploy_permissions" {
     sid       = "ProjectIamRoleCreate"
     effect    = "Allow"
     actions   = ["iam:CreateRole"]
+    resources = local.iam_role_arns
+    condition {
+      test     = "StringEquals"
+      variable = "iam:PermissionsBoundary"
+      values   = [aws_iam_policy.ci_boundary.arn]
+    }
+  }
+
+  # T-A.2 rev2 HIGH — the retrofit path: iam:PermissionsBoundary IS a
+  # supported condition key for PutRolePermissionsBoundary (unlike
+  # PutRolePolicy/AttachRolePolicy, where it never matches). This lets a
+  # deploy role SET only ci_boundary on any of the 8 pre-existing project
+  # roles (below); iam:DeleteRolePermissionsBoundary stays denied above, so
+  # stripping the boundary once set remains impossible.
+  statement {
+    sid       = "ProjectIamRoleSetBoundary"
+    effect    = "Allow"
+    actions   = ["iam:PutRolePermissionsBoundary"]
     resources = local.iam_role_arns
     condition {
       test     = "StringEquals"

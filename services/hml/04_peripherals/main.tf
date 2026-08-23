@@ -35,6 +35,23 @@ provider "aws" {
   }
 }
 
+# -----------------------------------------------------------------------
+# T-A.2 rev2 HIGH — permissions-boundary retrofit. Every project
+# `aws_iam_role` in this account carries the boundary `prd/00_bootstrap`
+# exports, capping its effective permissions regardless of what its own
+# inline policy grants. Read via `terraform_remote_state` (literal backend
+# config, mirroring the peripherals remote-state pattern used elsewhere in
+# this project), not a variable — keeps the CI `-var` surface unchanged.
+# -----------------------------------------------------------------------
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "prd/bootstrap/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
 locals {
   common_tags = {
     "owner"       = "marco-menezes"
@@ -134,10 +151,11 @@ data "aws_iam_policy_document" "databricks_hml_s3_role_assume" {
 }
 
 resource "aws_iam_role" "databricks_hml_s3_role" {
-  name               = "dm-databricks-hml-s3-role"
-  description        = "Role for Databricks (Free Edition) to access the HML S3 buckets via a Unity Catalog external location"
-  assume_role_policy = data.aws_iam_policy_document.databricks_hml_s3_role_assume.json
-  tags               = local.common_tags
+  name                 = "dm-databricks-hml-s3-role"
+  description          = "Role for Databricks (Free Edition) to access the HML S3 buckets via a Unity Catalog external location"
+  assume_role_policy   = data.aws_iam_policy_document.databricks_hml_s3_role_assume.json
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
+  tags                 = local.common_tags
 }
 
 data "aws_iam_policy_document" "databricks_hml_s3_policy" {

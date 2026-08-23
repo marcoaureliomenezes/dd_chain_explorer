@@ -44,6 +44,23 @@ locals {
 
 data "aws_caller_identity" "current" {}
 
+# -----------------------------------------------------------------------
+# T-A.2 rev2 HIGH — permissions-boundary retrofit. Every project
+# `aws_iam_role` in this account carries the boundary `prd/00_bootstrap`
+# exports, capping its effective permissions regardless of what its own
+# inline policy grants. Read via `terraform_remote_state` (literal backend
+# config, mirroring the peripherals remote-state pattern used elsewhere in
+# this project), not a variable — keeps the CI `-var` surface unchanged.
+# -----------------------------------------------------------------------
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "prd/bootstrap/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
 module "s3_ingestion" {
   source = "../../modules/s3"
 
@@ -128,10 +145,11 @@ data "aws_iam_policy_document" "databricks_dev_s3_role_assume" {
 }
 
 resource "aws_iam_role" "databricks_dev_s3_role" {
-  name               = "dm-databricks-dev-s3-role"
-  description        = "Role para o Databricks Free Edition acessar o S3 DEV (Unity Catalog external location)"
-  assume_role_policy = data.aws_iam_policy_document.databricks_dev_s3_role_assume.json
-  tags               = local.common_tags
+  name                 = "dm-databricks-dev-s3-role"
+  description          = "Role para o Databricks Free Edition acessar o S3 DEV (Unity Catalog external location)"
+  assume_role_policy   = data.aws_iam_policy_document.databricks_dev_s3_role_assume.json
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
+  tags                 = local.common_tags
 
   lifecycle {
     ignore_changes = [tags, tags_all]
