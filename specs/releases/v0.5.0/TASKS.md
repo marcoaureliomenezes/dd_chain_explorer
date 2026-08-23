@@ -27,7 +27,7 @@
   - Deps: T-A.2, T-B.1 (O-2), T-B.5 (`00_bootstrap` lock file, O-5) · AC-2 · Findings: DRIFT-01
   - Evidence: apply summary; `aws iam list-roles` + `list-attached-role-policies` + `get-role-policy` for all four roles.
 
-- [ ] **T-A.3b** — Prove least privilege negatively: `aws iam simulate-principal-policy` per `gha` role on a forbidden action (`iam:UpdateAssumeRolePolicy` against a `dm-chain-explorer-gha-*` role ARN) and on one representative allowed action; plus a `scripts/ci/tests` case over `terraform show -json` asserting every `Allow` resource matches a project prefix or the state bucket/lock table.
+- [-] **T-A.3b** — Prove least privilege negatively: `aws iam simulate-principal-policy` per `gha` role on a forbidden action (`iam:UpdateAssumeRolePolicy` against a `dm-chain-explorer-gha-*` role ARN) and on one representative allowed action; plus a `scripts/ci/tests` case over `terraform show -json` asserting every `Allow` resource matches a project prefix or the state bucket/lock table.
   - Owner: software-engineer · Write set: `scripts/ci/tests/**`
   - Deps: T-A.3 · AC-2, AC-2b · Findings: DRIFT-08
   - Evidence: `implicitDeny`/`explicitDeny` for the forbidden action on all four roles, `allowed` for the permitted one; the assertion test green in CI.
