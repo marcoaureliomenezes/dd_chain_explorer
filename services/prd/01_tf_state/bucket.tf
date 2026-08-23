@@ -48,4 +48,8 @@ resource "aws_dynamodb_table" "terraform_state_lock" {
   tags = {
     Name = "dm-chain-explorer-terraform-lock"
   }
+
+  lifecycle {
+    prevent_destroy = true
+  }
 }

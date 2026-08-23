@@ -1,8 +1,0 @@
-resources:
-  dashboards:
-    api_health:
-      display_name: "API Health"
-      file_path: ./04_api_health.lvdash.json
-      warehouse_id: ${var.warehouse_id}
-      embed_credentials: true
-      parent_path: /Shared/dd-chain-explorer/dashboards

@@ -1,44 +1,37 @@
 # dm-chain-utils
 
-Shared Python utility library for `dd_chain_explorer` Docker applications (`onchain-stream-txs` and `onchain-batch-txs`).
+Shared Python library for `dd-chain-explorer`'s AWS Lambda functions
+(`apps/lambda/`). **Never published to a public package index** — it is
+installed as a local **path** requirement (`pip install ./utils --no-deps`),
+which is also what closes the dependency-confusion risk a public `==` pin on
+an unclaimed package name would otherwise create. `scripts/build_lambda_layer.sh`
+is the only supported way to build a deployable layer from this source.
 
-## Modules
+## Live modules (imported by a Lambda handler today)
 
-| Module | Description |
-|---|---|
-| `api_keys_manager` | DynamoDB-based API key rotation semaphore |
-| `dm_etherscan` | Etherscan API v2 client (ABI cache + 4byte fallback) |
-| `dm_kafka_admin` | Kafka topic admin operations |
-| `dm_kafka_client` | Confluent Kafka AVRO producer/consumer |
-| `dm_logger` | Kafka AVRO logging handler + console handler |
-| `dm_parameter_store` | AWS SSM Parameter Store client |
-| `dm_dynamodb` | DynamoDB single-table wrapper (PK/SK, TTL, batch ops) |
-| `dm_schema_reg_client` | Schema Registry abstraction (DEV: Confluent SR, PROD: AWS Glue) |
-| `dm_web3_client` | Web3 Ethereum node handler via SSM API keys |
+| Module | Class | Used by |
+|--------|-------|---------|
+| `dm_dynamodb` | `DMDynamoDB` | both Lambda handlers — single-table DynamoDB CRUD/query |
+| `dm_etherscan` | `EtherscanClient` | `contracts_ingestion` — Etherscan API v2 client |
+| `dm_parameter_store` | `ParameterStoreClient` | both handlers — SSM Parameter Store reads |
 
-## Usage
+Every public method of these three modules is covered by
+`tests/utils/test_dm_dynamodb.py`, `tests/utils/test_dm_etherscan.py`, and
+`tests/utils/test_dm_parameter_store.py` (moto-mocked AWS, no live credentials).
 
-### PROD (installed as package)
-```bash
-pip install dm-chain-utils
-from dm_chain_utils.dm_dynamodb import DMDynamoDB
-```
+## Legacy capture-era modules — removed
 
-### DEV (volume mount via Docker Compose)
-The library is mounted at `/app/dm_chain_utils` via docker-compose volume.
-No `pip install` needed in DEV — Python resolves the package from `/app`.
+The 6 capture-era helper modules (Kinesis stream handler, SQS queue handler,
+Firehose Direct-Put handler, the CloudWatch logging handler, the on-chain RPC
+client, and the API-key rotation manager) had zero live callers since capture
+retirement — the ingestion they supported is now owned entirely by the
+separate `dd-chain-capture` repository, which writes to S3 directly. They were
+deleted, along with `utils/pyproject.toml`'s corresponding third-party
+dependencies, in release v0.5.0's T-D.3, per the `qa-engineer` deletion
+verdict required by `dadaia-test-stewardship`.
 
-### Building a wheel locally
-```bash
-cd dd_chain_explorer/utils
-pip install build
-python -m build --wheel
-pip install dist/dm_chain_utils-*.whl
-```
+## Version
 
-## Running tests
-```bash
-cd dd_chain_explorer/utils
-pip install -e ".[dev]"
-pytest tests/
-```
+`utils/pyproject.toml`'s `version` and `dm_chain_utils.__version__` track the
+SDD release id — see `specs/memory/tech-stack.md` for the single-version-axis
+rule (no more `0.2.9`-style artifact version separate from the release).

@@ -1,0 +1,114 @@
+{
+  "$comment": [
+    "SINGLE-SOURCE stack dependency map (F-ARCH-4, ADR-R6-5, T-A.8).",
+    "This is the ONE data-driven file that declares, per environment:",
+    "  - the ordered list of Terraform stacks CI may plan/apply/destroy,",
+    "  - each stack's module path under services/,",
+    "  - each stack's upstream stacks WITHIN THE SAME ENVIRONMENT (the dependency",
+    "    chain — derived from the literal `data.terraform_remote_state` references in",
+    "    the .tf sources, verified 2026-08-23 against the post-T-B.2/T-B.3 survivor",
+    "    tree). Every dev/hml/prd stack also reads services/prd/00_bootstrap's",
+    "    permissions_boundary output via remote state — that cross-environment edge is",
+    "    NOT modelled in `upstreams` (the graph + deploy_env.sh 'did an upstream apply",
+    "    in this run' logic is scoped per-environment, and bootstrap is never CI-applied",
+    "    in any run — see operator_only below) — it is documented here instead.",
+    "  - modules: the shared services/modules/* the stack's .tf sources literally",
+    "    `source = \"../../modules/<m>\"` (T-R6-A8 uses this for module-edit -> ",
+    "    dependent-stack change detection; no stack name is hardcoded in",
+    "    plan_on_pr.yml/drift_detection.yml/destroy_all_cloud_infra.yml or any deploy",
+    "    helper — they all read THIS file, via scripts/ci/stack_list.sh),",
+    "  - operator_only: true marks a stack CI must NEVER plan/apply/destroy — it is",
+    "    applied exclusively by a human operator with their own credentials (D14, O-1).",
+    "    scripts/ci/stack_list.sh always excludes operator_only stacks.",
+    "  - never_destroy: true marks a stack CI's destroy paths must never target, even",
+    "    though CI may plan/apply it normally (it is the remote-state backend every",
+    "    other stack's apply/destroy depends on). scripts/ci/stack_list.sh excludes it",
+    "    only when called with --destroyable.",
+    "  - bootstrap_plannable: kept true on every survivor (no deferred-plan stack",
+    "    survives T-B.2's deletion of 05b_databricks_workspace) — retained for schema",
+    "    stability; deploy_env.sh/plan_env.sh treat any non-'false' value as plannable.",
+    "No stack name may be hardcoded in more than one place — every consumer reads",
+    "this file, directly or via scripts/ci/stack_list.sh."
+  ],
+  "version": 2,
+  "environments": {
+    "dev": {
+      "stacks": [
+        {
+          "id": "peripherals",
+          "label": "DEV/Peripherals",
+          "path": "services/dev/01_peripherals",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["s3", "dynamodb", "cloudwatch_logs"]
+        },
+        {
+          "id": "lambda",
+          "label": "DEV/Lambda",
+          "path": "services/dev/02_lambda",
+          "upstreams": ["peripherals"],
+          "bootstrap_plannable": true,
+          "modules": ["lambda"]
+        }
+      ]
+    },
+    "hml": {
+      "stacks": [
+        {
+          "id": "peripherals",
+          "label": "HML/Peripherals",
+          "path": "services/hml/04_peripherals",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["s3"]
+        }
+      ]
+    },
+    "prd": {
+      "stacks": [
+        {
+          "id": "bootstrap",
+          "label": "PRD/Bootstrap",
+          "path": "services/prd/00_bootstrap",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": [],
+          "operator_only": true
+        },
+        {
+          "id": "tf_state",
+          "label": "PRD/TFState",
+          "path": "services/prd/01_tf_state",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": [],
+          "never_destroy": true
+        },
+        {
+          "id": "iam",
+          "label": "PRD/IAM",
+          "path": "services/prd/03_iam",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": []
+        },
+        {
+          "id": "peripherals",
+          "label": "PRD/Peripherals",
+          "path": "services/prd/04_peripherals",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": ["s3", "cloudwatch_logs", "dynamodb"]
+        },
+        {
+          "id": "lambda",
+          "label": "PRD/Lambda",
+          "path": "services/prd/06_lambda",
+          "upstreams": ["peripherals"],
+          "bootstrap_plannable": true,
+          "modules": []
+        }
+      ]
+    }
+  }
+}

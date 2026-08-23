@@ -1,12 +1,15 @@
 version: 2
 
-secret:
-  # SSM Parameter Store paths in compose files are NOT secrets.
-  # They are pointers (e.g. /web3-api-keys/alchemy/api-key-1) that
-  # the application uses to fetch the actual key at runtime from AWS SSM.
-  # Actual secret values never appear in any committed file.
-  ignored-paths:
-    - "services/dev/compose/app_services.yml"
-    - "services/prd/compose/app_services.yml"
-    - "services/dev/compose/airflow_services.yml"
-    - "services/prd/compose/airflow_services.yml"
+# T-D.5 (security-lane L-05): the previous ignored-paths block named 4
+# compose files under services/{dev,prd}/compose/ that no longer exist —
+# those Docker Compose service definitions were removed with the capture
+# layer (services/dev/00_compose/ is now empty). A gitguardian ignore-path
+# pointing at nothing suppresses no real scan and creates a false sense of
+# an intentional exception on file paths that were never re-verified. No
+# replacement exception is added: every currently-tracked reference to an
+# SSM parameter path (e.g. /etherscan-api-keys/api-key-1) is a *pointer*
+# name, not a secret value — GitGuardian's own entropy/pattern detectors do
+# not flag those, so no blanket ignore-path is needed for them. Add a
+# scoped ignored-paths entry here only if a future false positive is
+# confirmed against a real, currently-tracked file.
+secret: {}

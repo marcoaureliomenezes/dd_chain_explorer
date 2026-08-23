@@ -3,7 +3,7 @@
 ###############################################################################
 
 terraform {
-  required_version = ">= 1.5"
+  required_version = "~> 1.9"
 
   required_providers {
     aws = {
@@ -38,13 +38,29 @@ data "terraform_remote_state" "peripherals" {
   }
 }
 
+# -----------------------------------------------------------------------
+# T-A.2 rev2 HIGH — permissions-boundary retrofit. Every project
+# `aws_iam_role` in this account carries the boundary `prd/00_bootstrap`
+# exports, capping its effective permissions regardless of what its own
+# inline policy grants. Literal backend config, not a variable — keeps
+# the CI `-var` surface unchanged.
+# -----------------------------------------------------------------------
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "prd/bootstrap/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
 locals {
   common_tags = {
-    "owner"       = "marco-menezes"
-    "managed-by"  = "terraform"
-    "cost-center" = "dd-chain-explorer"
-    "environment" = var.environment
-    "project"     = "dd-chain-explorer"
+    "owner"           = "marco-menezes"
+    "managed-by"      = "terraform"
+    "cost-center"     = "dd-chain-explorer"
+    "environment"     = var.environment
+    "project"         = "dd-chain-explorer"
     "project_version" = var.project_version
   }
 
@@ -63,6 +79,8 @@ resource "aws_iam_role" "gold_to_dynamodb_lambda" {
       Principal = { Service = "lambda.amazonaws.com" }
     }]
   })
+
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
 
   tags = local.common_tags
 }
@@ -96,17 +114,17 @@ resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
 module "lambda_gold_to_dynamodb" {
   source = "../../modules/lambda"
 
-  environment    = var.environment
-  common_tags    = local.common_tags
-  name_prefix    = local.name_prefix
-  function_name  = "gold-to-dynamodb"
-  description    = "Syncs Gold API key consumption data from S3 to DynamoDB"
-  handler        = "handler.handler"
-  runtime        = "python3.12"
-  timeout        = 60
-  memory_size    = 128
-  role_arn       = aws_iam_role.gold_to_dynamodb_lambda.arn
-  source_file    = "${path.module}/../../../apps/lambda/gold_to_dynamodb/handler.py"
+  environment     = var.environment
+  common_tags     = local.common_tags
+  name_prefix     = local.name_prefix
+  function_name   = "gold-to-dynamodb"
+  description     = "Syncs Gold API key consumption data from S3 to DynamoDB"
+  handler         = "handler.handler"
+  runtime         = "python3.12"
+  timeout         = 60
+  memory_size     = 128
+  role_arn        = aws_iam_role.gold_to_dynamodb_lambda.arn
+  source_file     = "${path.module}/../../../apps/lambda/gold_to_dynamodb/handler.py"
   output_zip_path = "${path.module}/.lambda_zip/gold_to_dynamodb.zip"
 
   environment_variables = {
@@ -117,4 +135,24 @@ module "lambda_gold_to_dynamodb" {
   s3_trigger_bucket_name = data.terraform_remote_state.peripherals.outputs.ingestion_bucket_name
   s3_trigger_prefix      = "exports/gold_api_keys/"
   s3_trigger_suffix      = ".json"
+}
+
+# ---------------------------------------------------------------------------
+# CloudWatch Log Group for the kept dev Lambda (T-B.14, F-09/DRIFT-24) —
+# already live (Lambda-created), outside any state. Declared + imported so
+# Terraform owns retention (AC-10's clean plan is the proof).
+# ---------------------------------------------------------------------------
+
+resource "aws_cloudwatch_log_group" "gold_to_dynamodb_dev" {
+  name              = "/aws/lambda/${module.lambda_gold_to_dynamodb.function_name}"
+  retention_in_days = 30
+  tags              = local.common_tags
+}
+
+# Declarative import (Terraform >= 1.5, this stack pins ~> 1.9). Documented
+# fallback for the coordinator:
+#   terraform import 'aws_cloudwatch_log_group.gold_to_dynamodb_dev' /aws/lambda/dm-chain-explorer-gold-to-dynamodb-dev
+import {
+  to = aws_cloudwatch_log_group.gold_to_dynamodb_dev
+  id = "/aws/lambda/${local.name_prefix}-gold-to-dynamodb-${var.environment}"
 }

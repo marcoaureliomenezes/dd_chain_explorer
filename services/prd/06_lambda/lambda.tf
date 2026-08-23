@@ -5,6 +5,24 @@
 # Reads JSON rows and batch-writes them to DynamoDB (CONSUMPTION entity).
 ###############################################################################
 
+# -----------------------------------------------------------------------
+# T-A.2 rev2 HIGH — permissions-boundary retrofit. Every project
+# `aws_iam_role` in this account carries the boundary `prd/00_bootstrap`
+# exports, capping its effective permissions regardless of what its own
+# inline policy grants. Read via `terraform_remote_state` (literal backend
+# config, mirroring the `s3`/`dynamodb` remote-state data sources in
+# main.tf), not a variable — keeps the CI `-var` surface unchanged. Also
+# consumed by lambda_contracts_ingestion.tf (same root module).
+# -----------------------------------------------------------------------
+data "terraform_remote_state" "bootstrap" {
+  backend = "s3"
+  config = {
+    bucket = "dm-chain-explorer-terraform-state"
+    key    = "prd/bootstrap/terraform.tfstate"
+    region = "sa-east-1"
+  }
+}
+
 # ---- IAM Role for Lambda ----
 resource "aws_iam_role" "gold_to_dynamodb_lambda" {
   name = "${local.name_prefix}-gold-to-dynamodb-lambda"
@@ -21,6 +39,8 @@ resource "aws_iam_role" "gold_to_dynamodb_lambda" {
       }
     ]
   })
+
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
 
   tags = local.common_tags
 }
@@ -54,7 +74,7 @@ resource "aws_iam_role_policy" "gold_to_dynamodb_lambda" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "arn:aws:logs:*:*:*"
+        Resource = "arn:aws:logs:${var.aws_region}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${local.name_prefix}-*"
       }
     ]
   })

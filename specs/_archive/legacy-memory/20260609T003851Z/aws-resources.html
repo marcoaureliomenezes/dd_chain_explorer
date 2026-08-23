@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AWS Resources — DD Chain Explorer</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a1a; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: .5rem; }
+    h2 { margin-top: 2rem; border-bottom: 1px solid #ccc; padding-bottom: .3rem; }
+    h3 { margin-top: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+    th { background: #f4f4f4; }
+    code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+    pre { background: #f9f9f9; border: 1px solid #ddd; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: .9em; }
+    .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: .75rem 1rem; margin: 1rem 0; }
+    .security { background: #e8f5e9; border-left: 4px solid #388e3c; padding: .75rem 1rem; margin: 1rem 0; }
+    blockquote { border-left: 4px solid #ccc; margin: 0; padding: .5rem 1rem; color: #555; }
+  </style>
+</head>
+<body>
+
+<h1>AWS Resources — DD Chain Explorer</h1>
+<blockquote>
+  <p>Account: <strong>016098071081</strong> | Region: <strong>sa-east-1</strong><br>
+  State: post pipeline-restart-r1 (provisioned / validated 2026-05-23).</p>
+</blockquote>
+
+<section id="s3">
+<h2>S3 Buckets</h2>
+
+<table>
+  <thead><tr><th>Bucket Name</th><th>Environment</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>dm-chain-explorer-terraform-state</code></td><td>All</td><td>Terraform remote state backend (versioned + lock)</td></tr>
+    <tr><td><code>dm-chain-explorer-raw-data</code></td><td>PRD</td><td>Raw NDJSON delivery from all Firehose streams. Provisioned 2026-05-23.</td></tr>
+    <tr><td><code>dm-chain-explorer-lakehouse</code></td><td>PRD</td><td>Delta tables managed by Databricks (checkpoints, staging, unity-catalog prefixes only — no medallion layer prefixes). Provisioned 2026-05-23.</td></tr>
+    <tr><td><code>dm-chain-explorer-databricks</code></td><td>PRD</td><td>Databricks workspace storage</td></tr>
+    <tr><td><code>dm-chain-explorer-dev-ingestion</code></td><td>DEV</td><td>Raw NDJSON delivery (DEV Firehose streams)</td></tr>
+    <tr><td><code>dm-chain-explorer-hml-raw</code></td><td>HML</td><td>Raw NDJSON delivery (HML Firehose streams)</td></tr>
+    <tr><td><code>dm-chain-explorer-hml-lakehouse</code></td><td>HML</td><td>Delta tables (HML Databricks)</td></tr>
+    <tr><td><code>dm-chain-explorer-hml-databricks</code></td><td>HML</td><td>Databricks workspace storage (HML)</td></tr>
+  </tbody>
+</table>
+
+<div class="note">
+  <strong>Lakehouse bucket path convention (post R1):</strong> No medallion-layer folder prefixes
+  (<code>bronze/</code>, <code>silver/</code>, <code>gold/</code> were removed in T-R1-18).
+  Only <code>checkpoints/</code>, <code>staging/</code>, <code>unity-catalog/</code> prefixes exist.
+</div>
+
+<h3>S3 Path Convention</h3>
+<pre>
+# Firehose streaming delivery
+s3://{bucket}/raw/{stream-name}/year=YYYY/month=MM/day=DD/hour=HH/
+
+# Lambda batch delivery
+s3://{bucket}/raw/batch/{dataset}/year=YYYY/month=MM/day=DD/
+
+# Gold exports (job_export_gold)
+s3://{bucket}/exports/{table_name}/
+
+# Databricks checkpoints (Auto Loader)
+s3://{databricks-bucket}/checkpoints/{pipeline_id}/{table_name}/
+</pre>
+
+</section>
+
+<section id="kinesis">
+<h2>Kinesis Data Streams</h2>
+
+<table>
+  <thead><tr><th>Stream Name</th><th>Env</th><th>Mode</th><th>Shards</th><th>Producer</th><th>Consumer</th></tr></thead>
+  <tbody>
+    <tr><td><code>mainnet-transactions-data-dev</code></td><td>DEV</td><td>PROVISIONED</td><td>1</td><td>Job 4 (×6)</td><td>Job 5 (×3)</td></tr>
+    <tr><td><code>mainnet-transactions-data-hml</code></td><td>HML</td><td>PROVISIONED</td><td>1</td><td>Job 4 (×6)</td><td>Job 5 (×3)</td></tr>
+    <tr><td><code>mainnet-transactions-data</code></td><td>PRD</td><td>PROVISIONED</td><td>1</td><td>Job 4 (×6)</td><td>Job 5 (×3)</td></tr>
+  </tbody>
+</table>
+<p>Managed by Terraform <code>04_peripherals</code>. Only one Kinesis stream exists (raw transactions). Blocks and decoded txs use Firehose Direct Put.</p>
+
+</section>
+
+<section id="firehose">
+<h2>Kinesis Firehose Delivery Streams</h2>
+
+<table>
+  <thead><tr><th>Stream Name</th><th>Env</th><th>Source</th><th>S3 Destination</th></tr></thead>
+  <tbody>
+    <tr><td><code>firehose-mainnet-blocks-data-dev</code></td><td>DEV</td><td>Direct Put (Job 3)</td><td><code>dm-chain-explorer-dev-ingestion/raw/mainnet-blocks-data/</code></td></tr>
+    <tr><td><code>firehose-mainnet-transactions-data-dev</code></td><td>DEV</td><td>Kinesis-source</td><td><code>dm-chain-explorer-dev-ingestion/raw/mainnet-transactions-data/</code></td></tr>
+    <tr><td><code>firehose-mainnet-transactions-decoded-dev</code></td><td>DEV</td><td>Direct Put (Job 5)</td><td><code>dm-chain-explorer-dev-ingestion/raw/mainnet-transactions-decoded/</code></td></tr>
+    <tr><td><code>firehose-app-logs-dev</code></td><td>DEV</td><td>CloudWatch Logs</td><td><code>dm-chain-explorer-dev-ingestion/raw/app_logs/</code></td></tr>
+    <tr><td><code>firehose-app-logs-hml</code></td><td>HML</td><td>CloudWatch Logs</td><td><code>dm-chain-explorer-hml-raw/raw/app_logs/</code></td></tr>
+  </tbody>
+</table>
+<p>PRD equivalents (managed by Terraform, no <code>-dev</code> suffix): same structure, pointing to <code>dm-chain-explorer-raw-data</code>.</p>
+<p><strong>Firehose config:</strong> Buffer 1 MB OR 60 s. Format: NDJSON. Partitioning: <code>year=YYYY/month=MM/day=DD/hour=HH/</code>.</p>
+
+</section>
+
+<section id="sqs">
+<h2>SQS Queues</h2>
+
+<table>
+  <thead><tr><th>Queue Name</th><th>Env</th><th>Producer</th><th>Consumer</th><th>DLQ</th><th>Visibility Timeout</th></tr></thead>
+  <tbody>
+    <tr><td><code>mainnet-mined-blocks-events-dev</code></td><td>DEV</td><td>Job 1, Job 2</td><td>Job 2, Job 3</td><td><code>...-dlq-dev</code></td><td>30s</td></tr>
+    <tr><td><code>mainnet-mined-blocks-events-hml</code></td><td>HML</td><td>Job 1, Job 2</td><td>Job 2, Job 3</td><td><code>...-dlq-hml</code></td><td>30s</td></tr>
+    <tr><td><code>mainnet-mined-blocks-events</code></td><td>PRD</td><td>Job 1, Job 2</td><td>Job 2, Job 3</td><td><code>...-dlq</code></td><td>30s</td></tr>
+    <tr><td><code>mainnet-block-txs-hash-id-dev</code></td><td>DEV</td><td>Job 3</td><td>Job 4 (×6)</td><td><code>...-dlq-dev</code></td><td>30s</td></tr>
+    <tr><td><code>mainnet-block-txs-hash-id-hml</code></td><td>HML</td><td>Job 3</td><td>Job 4 (×6)</td><td><code>...-dlq-hml</code></td><td>30s</td></tr>
+    <tr><td><code>mainnet-block-txs-hash-id</code></td><td>PRD</td><td>Job 3</td><td>Job 4 (×6)</td><td><code>...-dlq</code></td><td>30s</td></tr>
+  </tbody>
+</table>
+<p>Config: long-polling (20s), max receive count = 3 before DLQ. PRD queues provisioned 2026-05-23.</p>
+
+</section>
+
+<section id="dynamodb">
+<h2>DynamoDB Tables</h2>
+
+<table>
+  <thead><tr><th>Table Name</th><th>Env</th><th>Key Schema</th><th>Billing</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>dm-chain-explorer-dev</code></td><td>DEV</td>
+      <td>PK=<code>pk</code> (S), SK=<code>sk</code> (S), TTL=<code>ttl</code></td>
+      <td>On-demand</td>
+      <td>All entities: SEMAPHORE, COUNTER, BLOCK_CACHE, ABI, ABI_NEG, CONTRACT, CONSUMPTION</td>
+    </tr>
+    <tr>
+      <td><code>dm-chain-explorer-hml</code></td><td>HML</td>
+      <td>Same</td><td>On-demand</td><td>Same entities for HML integration tests</td>
+    </tr>
+    <tr>
+      <td><code>dm-chain-explorer</code></td><td>PRD</td>
+      <td>Same</td><td>On-demand</td><td>Production single-table</td>
+    </tr>
+    <tr>
+      <td><code>dm-chain-explorer-terraform-lock</code></td><td>All</td>
+      <td>LockID (S)</td><td>On-demand</td><td>Terraform state locking</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="lambda">
+<h2>Lambda Functions</h2>
+
+<table>
+  <thead><tr><th>Function Name</th><th>Env</th><th>Runtime</th><th>Trigger</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>dm-chain-explorer-gold-to-dynamodb-dev</code></td><td>DEV</td>
+      <td>Python 3.12</td><td>S3 PutObject (<code>exports/</code>)</td>
+      <td>Reads Gold JSON export → writes CONSUMPTION entities to DynamoDB</td>
+    </tr>
+    <tr>
+      <td><code>dm-chain-explorer-contracts-ingestion-dev</code></td><td>DEV</td>
+      <td>Python 3.12</td><td>EventBridge Scheduler (hourly)</td>
+      <td>Reads CONTRACT entities from DynamoDB → Etherscan API → writes batch JSON to S3</td>
+    </tr>
+    <tr>
+      <td><code>dm-chain-explorer-gold-to-dynamodb</code></td><td>PRD</td>
+      <td>Python 3.12</td><td>S3 PutObject</td>
+      <td>Same as DEV, PRD bucket. Provisioned 2026-05-23.</td>
+    </tr>
+    <tr>
+      <td><code>dm-chain-explorer-contracts-ingestion</code></td><td>PRD</td>
+      <td>Python 3.12</td><td>EventBridge Scheduler (hourly)</td>
+      <td>Same as DEV, PRD resources. Provisioned 2026-05-23.</td>
+    </tr>
+  </tbody>
+</table>
+<p><strong>Lambda Layer:</strong> <code>dm-chain-utils==0.2.9</code> installed as a Lambda layer (shared between both functions). Pinned in R1.</p>
+<p><strong>CloudWatch log ARN (post R1):</strong> <code>arn:aws:logs:${region}:${account_id}:log-group:/aws/lambda/${name_prefix}-*</code> — scoped, no wildcard resource.</p>
+
+</section>
+
+<section id="ecs-ecr">
+<h2>ECS / ECR</h2>
+
+<table>
+  <thead><tr><th>Resource</th><th>Name</th><th>Notes</th></tr></thead>
+  <tbody>
+    <tr><td>ECS Cluster (HML)</td><td><code>dm-chain-explorer-ecs-hml</code></td><td>Ephemeral — created per CI/CD run</td></tr>
+    <tr><td>ECS Cluster (PRD)</td><td><code>dm-chain-explorer-ecs</code></td><td>Managed by <code>07_ecs</code> Terraform module</td></tr>
+    <tr><td>ECR Repository</td><td><code>onchain-stream-txs</code></td><td>Docker image for all 5 streaming jobs. <code>dm-chain-utils==0.2.9</code> pinned in requirements.txt.</td></tr>
+    <tr><td>ECS Services (PRD)</td><td>5 services (jobs 1–5)</td><td>Job 4: 6 tasks; Job 5: 3 tasks</td></tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="cloudwatch">
+<h2>CloudWatch Logs</h2>
+
+<table>
+  <thead><tr><th>Log Group</th><th>Source</th><th>Firehose Subscription</th></tr></thead>
+  <tbody>
+    <tr><td><code>/apps/dm-chain-explorer-dev</code></td><td>Docker streaming jobs (DEV)</td><td><code>firehose-app-logs-dev</code></td></tr>
+    <tr><td><code>/apps/dm-chain-explorer-hml</code></td><td>ECS tasks (HML)</td><td><code>firehose-app-logs-hml</code></td></tr>
+    <tr><td><code>/apps/dm-chain-explorer</code></td><td>ECS tasks (PRD)</td><td><code>firehose-app-logs</code></td></tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="iam">
+<h2>IAM Key Roles (PRD)</h2>
+
+<div class="security">
+  <strong>Post R1 security state:</strong> All wildcard ARNs (<code>*:*</code>) replaced with
+  <code>${region}:${account_id}</code>-scoped ARNs. ECS task role has no <code>dynamodb:Scan</code>.
+  Databricks cluster role has no SSM access. Lambda CloudWatch ARN scoped to log-group prefix.
+  All changes applied to <code>services/prd/03_iam/iam.tf</code> (commit <code>60c71c7</code>).
+</div>
+
+<table>
+  <thead><tr><th>Role</th><th>Name</th><th>Usage</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>ECS Task Execution</td>
+      <td><code>dm-ecs-task-execution-role</code></td>
+      <td>ECS task pull from ECR + CloudWatch logs. No data-plane permissions.</td>
+    </tr>
+    <tr>
+      <td>ECS Task Role</td>
+      <td><code>dm-chain-explorer-ecs-task-role</code> (policy: <code>dm-ecs-task-permissions</code>)</td>
+      <td>Container runtime access: DynamoDB (GetItem/PutItem/UpdateItem/DeleteItem only), SQS, Kinesis, Firehose, S3, SSM. No Scan. No wildcard ARNs. Provisioned in <code>services/prd/03_iam/iam.tf</code>.</td>
+    </tr>
+    <tr>
+      <td>Databricks Cross-Account</td>
+      <td><code>dm-databricks-cross-account-role</code></td>
+      <td>Databricks workspace cross-account access (AWS-managed trust policy).</td>
+    </tr>
+    <tr>
+      <td>Databricks Cluster</td>
+      <td><code>dm-databricks-cluster-role</code></td>
+      <td>Databricks cluster S3 access (External Location). No SSM access (removed in R1).</td>
+    </tr>
+    <tr>
+      <td>Lambda Execution</td>
+      <td><code>dm-lambda-role</code></td>
+      <td>Lambda: S3, DynamoDB, SSM, EventBridge. CloudWatch log ARN scoped to <code>/aws/lambda/${name_prefix}-*</code>.</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="terraform-state">
+<h2>Terraform State Paths</h2>
+
+<pre>
+s3://dm-chain-explorer-terraform-state/
+  dev/
+    peripherals/terraform.tfstate    # S3, Kinesis, SQS, Firehose, DynamoDB, CloudWatch
+    lambda/terraform.tfstate         # gold_to_dynamodb Lambda (DEV)
+  hml/
+    vpc/terraform.tfstate            # (ephemeral, created per CI run)
+    peripherals/terraform.tfstate
+    iam/terraform.tfstate
+    ecs/terraform.tfstate
+    databricks-workspace/terraform.tfstate
+  prd/
+    vpc/terraform.tfstate
+    iam/terraform.tfstate            # applied 2026-05-23 (post IAM fix, 2 changed)
+    peripherals/terraform.tfstate    # applied 2026-05-23 (40 added fresh)
+    databricks-account/terraform.tfstate
+    databricks-workspace/terraform.tfstate
+    lambda/terraform.tfstate         # applied 2026-05-23 (12 added fresh)
+    ecs/terraform.tfstate
+</pre>
+
+</section>
+
+</body>
+</html>

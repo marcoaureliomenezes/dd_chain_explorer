@@ -15,3 +15,24 @@ variable "project_version" {
   type        = string
   default     = "0.0.0"
 }
+
+# ---- Lambda layer artifact (T-B.14, D15) ----
+# layer_s3_bucket defaults to the artifacts bucket name (prd/04_peripherals);
+# layer_s3_key/layer_sha256_b64 have NO default — CI supplies them from
+# scripts/build_lambda_layer.sh's output, so a plan run without them fails
+# loudly instead of silently resolving a stale layer.
+variable "layer_s3_bucket" {
+  description = "S3 bucket holding the built Lambda layer zip"
+  type        = string
+  default     = "dm-chain-explorer-artifacts"
+}
+
+variable "layer_s3_key" {
+  description = "S3 key of the built Lambda layer zip (content-addressed: lambda-layers/dm-chain-utils/<sha256>.zip)"
+  type        = string
+}
+
+variable "layer_sha256_b64" {
+  description = "base64-encoded RAW sha256 digest of the built Lambda layer zip (source_code_hash) -- NOT the hex digest used in the S3 key (T-R.2 F-02)"
+  type        = string
+}

@@ -10,10 +10,18 @@
 
 # ---- Lambda Layer: dm_chain_utils + requests ----
 
+# Layer artifact resolved from the artifacts bucket (T-B.14, D15) — never a
+# working-tree path. layer_s3_key/layer_sha256_b64 have no default: CI passes
+# them as -var, built by scripts/build_lambda_layer.sh's content-addressed
+# output (LAYER_SHA256=<hex>, uploaded to
+# s3://<layer_s3_bucket>/lambda-layers/dm-chain-utils/<sha256>.zip). A plan
+# with neither var supplied fails loudly instead of silently reusing a
+# stale/local zip.
 resource "aws_lambda_layer_version" "dm_chain_utils" {
   layer_name          = "${local.name_prefix}-dm-chain-utils"
-  filename            = "${path.module}/.lambda_zip/dm_chain_utils_layer.zip"
-  source_code_hash    = filebase64sha256("${path.module}/.lambda_zip/dm_chain_utils_layer.zip")
+  s3_bucket           = var.layer_s3_bucket
+  s3_key              = var.layer_s3_key
+  source_code_hash    = var.layer_sha256_b64
   compatible_runtimes = ["python3.12"]
   description         = "dm_chain_utils library + requests for Lambda functions"
 }
@@ -35,6 +43,10 @@ resource "aws_iam_role" "contracts_ingestion_lambda" {
       }
     ]
   })
+
+  # T-A.2 rev2 HIGH — permissions-boundary retrofit (data source declared
+  # in lambda.tf, same root module).
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
 
   tags = local.common_tags
 }
@@ -116,7 +128,7 @@ resource "aws_lambda_function" "contracts_ingestion" {
       NETWORK              = "mainnet"
       SSM_ETHERSCAN_PATH   = "/etherscan-api-keys"
       DYNAMODB_TABLE       = data.terraform_remote_state.dynamodb.outputs.dynamodb_table_name
-      CLOUDWATCH_LOG_GROUP = data.terraform_remote_state.kinesis_sqs.outputs.cloudwatch_log_group_name
+      CLOUDWATCH_LOG_GROUP = data.terraform_remote_state.s3.outputs.cloudwatch_log_group_name
     }
   }
 
@@ -141,6 +153,10 @@ resource "aws_iam_role" "eventbridge_contracts_ingestion" {
     ]
   })
 
+  # T-A.2 rev2 HIGH — permissions-boundary retrofit (data source declared
+  # in lambda.tf, same root module).
+  permissions_boundary = data.terraform_remote_state.bootstrap.outputs.ci_boundary_policy_arn
+
   tags = local.common_tags
 }
 
@@ -163,6 +179,13 @@ resource "aws_iam_role_policy" "eventbridge_invoke_contracts_ingestion" {
 resource "aws_scheduler_schedule" "contracts_ingestion_hourly" {
   name       = "${local.name_prefix}-contracts-ingestion-hourly"
   group_name = "default"
+
+  # DISABLED through Terraform (T-B.7, B4, DRIFT-21): every run processed 0
+  # contracts because DynamoDB has been empty since the capture layer's
+  # retirement — it was burning Etherscan quota and log storage for nothing.
+  # The Lambda, its role and the job_export_gold -> gold_to_dynamodb ->
+  # DynamoDB CONSUMPTION chain are kept, consumer-unverified (CLOSURE.md).
+  state = "DISABLED"
 
   schedule_expression          = "rate(1 hour)"
   schedule_expression_timezone = "America/Sao_Paulo"

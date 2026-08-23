@@ -9,29 +9,39 @@ on:
         type: choice
         options:
           - DEV (Cloud AWS)
+          - hml
           - prd
       confirm:
         description: 'Type DESTROY to confirm infrastructure destruction'
         required: true
         type: string
+      full_destroy:
+        description: 'Unused — hml has a single surviving stack (04_peripherals, post-B2 purge); destroy_env.sh ignores this flag (T-R.2 F-07).'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: read
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 env:
-  AWS_REGION:      sa-east-1
-  TF_VERSION:      1.7.0
-  PRD_ROOT:        services/prd
-  DEV_PERIPHERALS: services/dev/01_peripherals
-  DEV_LAMBDA:      services/dev/02_lambda
+  AWS_REGION: sa-east-1
+  TF_VERSION:      1.9.8
 
 jobs:
 
   safety-check:
     name: Safety check
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: Enforce develop branch
         run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
       - name: Validate confirmation
@@ -39,295 +49,152 @@ jobs:
         env:
           CONFIRM: ${{ github.event.inputs.confirm }}
 
+  preflight-oidc:
+    name: Preflight — OIDC role variables
+    needs: safety-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Validate AWS_DEPLOY_ROLE_{DEV,HML,PRD} are set
+        run: |
+          MISSING=""
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_DEV }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_DEV"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_HML }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_HML"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_PRD }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_PRD"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing repository variable(s):${MISSING}. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "All required OIDC role variables present."
+
   # ══════════════════════════════════════════════════════════════
   #  DEV
   # ══════════════════════════════════════════════════════════════
 
-  dev-destroy-lambda:
-    name: DEV — Destroy 02_lambda
-    needs: safety-check
+  dev-destroy:
+    name: DEV — Destroy all modules
+    concurrency:
+      group: tf-dev
+      cancel-in-progress: false
+    needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
+    timeout-minutes: 45
     environment: dev
-    defaults:
-      run:
-        working-directory: ${{ env.DEV_LAMBDA }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: mkdir -p .lambda_zip
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "DEV/02_lambda destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-cloud-infra-dev-destroy
+          mask-aws-account-id: true
+      - name: Destroy DEV
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" dev
+        env:
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
-  dev-destroy-peripherals:
-    name: DEV — Destroy 01_peripherals
-    needs: dev-destroy-lambda
-    if: always() && github.event.inputs.environment == 'DEV (Cloud AWS)'
+  # ══════════════════════════════════════════════════════════════
+  #  HML
+  # ══════════════════════════════════════════════════════════════
+  # Post-B2 purge, hml's only surviving stack is 04_peripherals — destroy_env.sh
+  # destroys every stack_map.json-declared hml stack unconditionally; the
+  # `full_destroy` input is accepted but not consumed (T-R.2 F-07).
+
+  hml-destroy:
+    name: HML — Destroy modules
+    concurrency:
+      group: tf-hml
+      cancel-in-progress: false
+    needs: [safety-check, preflight-oidc]
+    if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
-    environment: dev
-    defaults:
-      run:
-        working-directory: ${{ env.DEV_PERIPHERALS }}
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_HML via OIDC
+    timeout-minutes: 45
+    environment: hml
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - name: Empty DEV S3 buckets before destroy
-        run: |
-          for BUCKET in dm-chain-explorer-dev-ingestion dm-chain-explorer-dev; do
-            if aws s3api head-bucket --bucket "$BUCKET" 2>/dev/null; then
-              bash "$GITHUB_WORKSPACE/scripts/empty_s3_bucket.sh" "$BUCKET" "${{ env.AWS_REGION }}"
-            else
-              echo "Bucket $BUCKET does not exist — skipping."
-            fi
-          done
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "DEV/01_peripherals destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  dev-summary:
-    name: DEV — Destroy summary
-    needs: dev-destroy-peripherals
-    if: always() && github.event.inputs.environment == 'DEV (Cloud AWS)'
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "## DEV Infrastructure Destroy Complete" >> $GITHUB_STEP_SUMMARY
-          echo "Modules destroyed: dev/01_peripherals, dev/02_lambda" >> $GITHUB_STEP_SUMMARY
-          echo "Run Deploy Infra Cloud (DEV) to redeploy." >> $GITHUB_STEP_SUMMARY
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-cloud-infra-hml-destroy
+          mask-aws-account-id: true
+      - name: Destroy HML
+        env:
+          # F-07: DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET removed — no
+          # `databricks` Terraform provider block or CLI call consumes them on
+          # this path (grep-verified); they were dead repo-scoped-secret reads.
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
+          # F-09: env-indirection — never substitute an event input as a CLI arg
+          # directly into a `run:` script body.
+          FULL_DESTROY: ${{ github.event.inputs.full_destroy }}
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" hml "${FULL_DESTROY}"
 
   # ══════════════════════════════════════════════════════════════
-  #  PRD — Step 1: Empty S3 + ECR (required before TF destroy)
+  #  PRD
   # ══════════════════════════════════════════════════════════════
 
-  prd-empty-s3-and-ecr:
-    name: PRD — Empty S3 buckets + ECR repos
-    needs: safety-check
+  prd-destroy:
+    name: PRD — Destroy all modules
+    concurrency:
+      group: tf-prd
+      cancel-in-progress: false
+    needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'prd'
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - name: Empty PRD S3 buckets + ECR repos
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/empty_s3_and_ecr.sh"
-
-  # ── PRD Layer 3: Lambda + ECS (parallel) ──────────────────────
-
-  prd-destroy-lambda:
-    name: PRD — Destroy 06_lambda
-    needs: prd-empty-s3-and-ecr
-    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
+    timeout-minutes: 45
     environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/06_lambda
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: mkdir -p .lambda_zip
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "PRD/06_lambda destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-destroy-cloud-infra-prd-destroy
+          mask-aws-account-id: true
+      - name: Destroy PRD
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/destroy_env.sh" prd
 
-  prd-destroy-ecs:
-    name: PRD — Destroy 07_ecs
-    needs: prd-empty-s3-and-ecr
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/07_ecs
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "PRD/07_ecs destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  # ── PRD Layer 2: Databricks workspace (primeiro) ─────────────
-
-  prd-destroy-databricks-workspace:
-    name: PRD — Destroy 05b_databricks_workspace
-    needs: [prd-destroy-lambda, prd-destroy-ecs]
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Get workspace URL from 05a state
-        id: ws_url
-        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
-        run: |
-          terraform init -input=false
-          WS_HOST=$(terraform output -raw databricks_workspace_url 2>/dev/null || echo "")
-          echo "host=$WS_HOST" >> $GITHUB_OUTPUT
-      - run: terraform destroy -auto-approve -input=false -no-color
-        env:
-          TF_VAR_workspace_host:           ${{ steps.ws_url.outputs.host }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      - if: always()
-        run: echo "PRD/05b_databricks_workspace destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  # ── PRD Layer 2: Databricks account (depois do workspace) ─────
-
-  prd-destroy-databricks-account:
-    name: PRD — Destroy 05a_databricks_account
-    needs: prd-destroy-databricks-workspace
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      - if: always()
-        run: echo "PRD/05a_databricks_account destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  # ── PRD Layer 1: Peripherals ──────────────────────────────────
-
-  prd-destroy-peripherals:
-    name: PRD — Destroy 04_peripherals
-    needs: [prd-destroy-lambda, prd-destroy-ecs, prd-destroy-databricks-account]
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/04_peripherals
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "PRD/04_peripherals destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  # ── PRD Layer 0: IAM ──────────────────────────────────────────
-
-  prd-destroy-iam:
-    name: PRD — Destroy 03_iam
-    needs: prd-destroy-peripherals
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/03_iam
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "PRD/03_iam destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  # ── PRD Layer -1: VPC ─────────────────────────────────────────
-
-  prd-destroy-vpc:
-    name: PRD — Destroy 02_vpc
-    needs: prd-destroy-iam
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/02_vpc
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform destroy -auto-approve -input=false -no-color
-      - if: always()
-        run: echo "PRD/02_vpc destroyed - status ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
-
-  prd-summary:
-    name: PRD — Destroy summary
-    needs: prd-destroy-vpc
-    if: always() && github.event.inputs.environment == 'prd'
-    runs-on: ubuntu-latest
-    steps:
-      - run: |
-          echo "## PRD Infrastructure Destroy Complete" >> $GITHUB_STEP_SUMMARY
-          echo "All modules destroyed. 01_tf_state (remote state bucket + DynamoDB lock) preserved." >> $GITHUB_STEP_SUMMARY
-          echo "Run Deploy Infra Cloud with force_apply=true to redeploy." >> $GITHUB_STEP_SUMMARY

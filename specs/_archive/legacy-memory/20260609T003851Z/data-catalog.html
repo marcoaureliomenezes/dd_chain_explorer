@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Catalog — DD Chain Explorer</title>
+  <style>
+    body { font-family: sans-serif; max-width: 960px; margin: 2rem auto; padding: 0 1.5rem; color: #1a1a1a; }
+    h1 { border-bottom: 2px solid #333; padding-bottom: .5rem; }
+    h2 { margin-top: 2rem; border-bottom: 1px solid #ccc; padding-bottom: .3rem; }
+    h3 { margin-top: 1.5rem; }
+    table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+    th, td { border: 1px solid #ccc; padding: .5rem .75rem; text-align: left; vertical-align: top; }
+    th { background: #f4f4f4; }
+    code { background: #f0f0f0; padding: .1rem .3rem; border-radius: 3px; font-size: .9em; }
+    pre { background: #f9f9f9; border: 1px solid #ddd; padding: 1rem; border-radius: 4px; overflow-x: auto; font-size: .9em; }
+    .note { background: #fff8e1; border-left: 4px solid #f9a825; padding: .75rem 1rem; margin: 1rem 0; }
+    .fix { background: #e3f2fd; border-left: 4px solid #1976d2; padding: .75rem 1rem; margin: 1rem 0; }
+    blockquote { border-left: 4px solid #ccc; margin: 0; padding: .5rem 1rem; color: #555; }
+  </style>
+</head>
+<body>
+
+<h1>Data Catalog — DD Chain Explorer</h1>
+<blockquote>
+  <p>Source: Databricks DEV workspace (Free Edition) — validated 2026-05-23 (post pipeline-restart-r1).<br>
+  Catalog <code>dev</code> maps to <code>dd_chain_explorer</code> in PRD. Table names and schemas are identical across environments.</p>
+</blockquote>
+
+<div class="fix">
+  <strong>Post R1 corrections:</strong> Stale <code>_fast</code> aliases removed from all FQNs (Genie and dashboards).
+  Alert reference corrected to <code>s_logs.logs_streaming</code>.
+  <code>tx_type_semantic</code> is the canonical column name in <code>ethereum_gas_consume</code> (not <code>type_transaction</code>).
+  <code>popular_contracts_ranking</code> is 0 rows — DEV DLT pipeline is PAUSED by design.
+</div>
+
+<section id="b-ethereum">
+<h2>Schema: <code>b_ethereum</code> — Bronze Ethereum</h2>
+
+<p>All tables are STREAMING_TABLE (append-only via DLT Auto Loader from S3 NDJSON).</p>
+
+<table>
+  <thead><tr><th>Table</th><th>Type</th><th>Source S3 Prefix</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>eth_mined_blocks</code></td><td>STREAMING_TABLE</td>
+      <td><code>raw/mainnet-mined-blocks-data/</code></td>
+      <td>Raw mined block events from Job 1 via SQS/Firehose</td>
+    </tr>
+    <tr>
+      <td><code>eth_transactions</code></td><td>STREAMING_TABLE</td>
+      <td><code>raw/mainnet-transactions-data/</code></td>
+      <td>Raw transaction records from Job 4 via Kinesis</td>
+    </tr>
+    <tr>
+      <td><code>eth_txs_input_decoded</code></td><td>STREAMING_TABLE</td>
+      <td><code>raw/mainnet-transactions-decoded/</code></td>
+      <td>Decoded calldata from Job 5 via Firehose Direct Put</td>
+    </tr>
+    <tr>
+      <td><code>popular_contracts_txs</code></td><td>STREAMING_TABLE</td>
+      <td><code>raw/batch/</code></td>
+      <td>Batch contract transactions from Lambda <code>contracts_ingestion</code></td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="b-app-logs">
+<h2>Schema: <code>b_app_logs</code> — Bronze Application Logs</h2>
+
+<table>
+  <thead><tr><th>Table</th><th>Type</th><th>Source S3 Prefix</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>b_app_logs_data</code></td><td>STREAMING_TABLE</td>
+      <td><code>raw/app_logs/</code></td>
+      <td>CloudWatch structured logs from all 5 streaming jobs (double-gzip binaryFile format)</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="s-apps">
+<h2>Schema: <code>s_apps</code> — Silver Ethereum Analytics</h2>
+
+<table>
+  <thead><tr><th>Table</th><th>Type</th><th>Source</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>eth_blocks</code></td><td>STREAMING_TABLE</td>
+      <td><code>b_ethereum.eth_mined_blocks</code></td>
+      <td>Parsed block headers: number, hash, parent_hash, miner, gas_used, gas_limit, base_fee_per_gas, timestamp, tx_count</td>
+    </tr>
+    <tr>
+      <td><code>eth_blocks_withdrawals</code></td><td>STREAMING_TABLE</td>
+      <td><code>eth_blocks</code> (explode withdrawals[])</td>
+      <td>EIP-4895 validator withdrawals: validator_index, withdrawal_address, amount_gwei, amount_eth</td>
+    </tr>
+    <tr>
+      <td><code>eth_transactions_staging</code></td><td>STREAMING_TABLE</td>
+      <td><code>b_ethereum.eth_transactions</code></td>
+      <td>Parsed raw transactions: tx_hash, block_number, from_address, to_address, value, input, gas, gas_price, tx_type, access_list. <code>from_address</code> expectation: <code>expect_or_drop</code> (post R1).</td>
+    </tr>
+    <tr>
+      <td><code>txs_inputs_decoded_fast</code></td><td>STREAMING_TABLE</td>
+      <td><code>b_ethereum.eth_txs_input_decoded</code></td>
+      <td>Parsed decoded calldata: tx_hash, contract_address, method, parms, decode_type</td>
+    </tr>
+    <tr>
+      <td><code>transactions_ethereum</code></td><td>STREAMING_TABLE</td>
+      <td>JOIN: eth_transactions_staging + txs_inputs_decoded_fast + eth_blocks</td>
+      <td>Full enriched transactions: all tx fields + method + params + block metadata + event_date partition</td>
+    </tr>
+    <tr>
+      <td><code>eth_canonical_blocks_index</code></td><td>MATERIALIZED_VIEW</td>
+      <td><code>eth_blocks</code> + parent_hash chain</td>
+      <td>Canonical chain index — classifies each block as <code>canonical</code> or <code>orphan</code>. <strong>Bounded rolling window of 1,000 blocks</strong> (<code>_CANONICAL_WINDOW_BLOCKS=1_000</code>, post R1). Blocks outside window are marked canonical by default. No full-table O(N²) self-join. Critical for Gold MV correctness.</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="s-logs">
+<h2>Schema: <code>s_logs</code> — Silver Application Logs</h2>
+
+<table>
+  <thead><tr><th>Table</th><th>Type</th><th>Source</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>logs_streaming</code></td><td>STREAMING_TABLE</td>
+      <td><code>b_app_logs.b_app_logs_data</code> (recent)</td>
+      <td>Parsed structured logs (last N hours): job_name, level, message, timestamp, api_key_name, call_count. Used by <code>alert_dynamodb_deadlock</code> (post R1 fix — was erroneously referencing a non-existent table).</td>
+    </tr>
+    <tr>
+      <td><code>logs_batch</code></td><td>STREAMING_TABLE</td>
+      <td><code>b_app_logs.b_app_logs_data</code> (historical)</td>
+      <td>Historical log records for batch aggregation</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="g-apps">
+<h2>Schema: <code>g_apps</code> — Gold Ethereum Analytics</h2>
+
+<p>All tables are MATERIALIZED_VIEW, refreshed by the <code>dm-ethereum</code> DLT pipeline trigger (every 5 min when unpaused).</p>
+
+<div class="note">
+  <strong>DEV state (post R1):</strong> DLT pipeline is PAUSED. <code>popular_contracts_ranking</code> returns 0 rows — this is expected and correct. MVs reflect historical data from last pipeline run (April 2026).
+</div>
+
+<table>
+  <thead><tr><th>MV</th><th>Source</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>popular_contracts_ranking</code></td>
+      <td><code>eth_transactions_staging</code> (1h window)</td>
+      <td>Top 100 contracts by tx volume: contract_address, tx_count, unique_senders, first_seen, last_seen. 0 rows in DEV — pipeline PAUSED.</td>
+    </tr>
+    <tr>
+      <td><code>peer_to_peer_txs</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>EOA→EOA transfers: tx_hash, from_address, to_address, value, gas_price, base_fee_per_gas, tx_timestamp</td>
+    </tr>
+    <tr>
+      <td><code>ethereum_gas_consume</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>Gas per tx with type classification. Canonical column: <code>tx_type_semantic</code> (values: <code>contract_deploy</code>, <code>peer_to_peer</code>, <code>contract_interaction</code>). Also includes <code>gas_pct_of_block</code>. DEV validated: contract_interaction ~710K, peer_to_peer ~96.5K rows.</td>
+    </tr>
+    <tr>
+      <td><code>transactions_lambda</code></td>
+      <td><code>transactions_ethereum</code> ∪ <code>popular_contracts_txs</code></td>
+      <td>Lambda Architecture union: deduplicates by tx_hash with priority decode_type: full(1) &gt; full_4byte(2) &gt; partial(3) &gt; batch_sem_decode(4) &gt; unknown(5)</td>
+    </tr>
+    <tr>
+      <td><code>contract_volume_ranking</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>Extended contract ranking with volume bucketing by hour</td>
+    </tr>
+    <tr>
+      <td><code>contract_method_activity</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>Most called methods per contract: contract_address, method, call_count</td>
+    </tr>
+    <tr>
+      <td><code>contract_deploy_metrics_hourly</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>Hourly deployment rate: deploy_count, deployer_count, avg_gas</td>
+    </tr>
+    <tr>
+      <td><code>gas_price_distribution_hourly</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>Gas price percentiles per hour: p25, p50, p75, p95, max. Aggregated over <code>tx_type_semantic</code> dimension. DEV validated: 65 distinct hour_buckets.</td>
+    </tr>
+    <tr>
+      <td><code>p2p_transfer_metrics_hourly</code></td>
+      <td><code>transactions_ethereum</code></td>
+      <td>P2P transfer stats: tx_count, total_value_eth, avg_value_eth, unique_senders</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="g-network">
+<h2>Schema: <code>g_network</code> — Gold Network Metrics</h2>
+
+<p>All tables are MATERIALIZED_VIEW.</p>
+
+<table>
+  <thead><tr><th>MV</th><th>Source</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>network_metrics_hourly</code></td>
+      <td><code>eth_blocks</code> + <code>eth_transactions_staging</code></td>
+      <td>Per-hour network KPIs: block_count, tx_count, tps_avg, avg_gas_price_gwei, avg_block_gas_used, avg_block_utilization_pct, avg_txs_per_block. DEV validated: 136 rows (April 2026 data).</td>
+    </tr>
+    <tr>
+      <td><code>chain_health_metrics</code></td>
+      <td><code>eth_canonical_blocks_index</code></td>
+      <td>Orphan rate, canonical block %, reorg detection metrics</td>
+    </tr>
+    <tr>
+      <td><code>block_production_health</code></td>
+      <td><code>eth_blocks</code></td>
+      <td>Block time distribution. Actual columns: hour_bucket, block_count, missed_slots_estimated, missed_slot_rate_pct, avg_slot_gap_sec, max_slot_gap_sec, gap_events_count. DEV validated: 136 rows.</td>
+    </tr>
+    <tr>
+      <td><code>eth_burn_hourly</code></td>
+      <td><code>eth_transactions_staging</code> + <code>eth_blocks</code></td>
+      <td>EIP-1559 ETH burn per hour: base_fee_per_gas × gas_used summed</td>
+    </tr>
+    <tr>
+      <td><code>withdrawal_metrics</code></td>
+      <td><code>eth_blocks_withdrawals</code></td>
+      <td>Beacon Chain withdrawals: total_withdrawals, total_eth, active_validators</td>
+    </tr>
+    <tr>
+      <td><code>validator_activity</code></td>
+      <td><code>eth_blocks_withdrawals</code></td>
+      <td>Per-validator withdrawal history: validator_index, total_eth_withdrawn, withdrawal_count</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="g-api-keys">
+<h2>Schema: <code>g_api_keys</code> — Gold API Key Consumption</h2>
+
+<p>All tables are MATERIALIZED_VIEW from <code>dm-app-logs</code> pipeline.</p>
+
+<table>
+  <thead><tr><th>MV</th><th>Source</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>etherscan_consumption</code></td>
+      <td><code>s_logs.logs_streaming</code> + <code>s_logs.logs_batch</code></td>
+      <td>Etherscan API calls by key: calls_total, calls_ok_total, calls_error_total, calls_1h/2h/12h/24h/48h, last_call_at. DEV: 6 rows.</td>
+    </tr>
+    <tr>
+      <td><code>web3_keys_consumption</code></td>
+      <td><code>s_logs.logs_streaming</code> + <code>s_logs.logs_batch</code></td>
+      <td>Infura/Alchemy API calls by key: same fields + vendor (alchemy/infura). DEV: 9 rows.</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="alerts">
+<h2>Alerts</h2>
+
+<table>
+  <thead><tr><th>Alert</th><th>DABs bundle</th><th>Query source</th><th>Description</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>alert_dynamodb_deadlock</code></td>
+      <td><code>apps/dabs/alert_dynamodb_deadlock/</code></td>
+      <td><code>s_logs.logs_streaming</code></td>
+      <td>Fires when <code>deadlock_events &gt; 0</code> in streaming logs. Table reference corrected in R1 — was referencing a non-existent table. DEV validated: SUCCEEDED, 0 deadlock_events.</td>
+    </tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="summary">
+<h2>Catalog Summary</h2>
+
+<table>
+  <thead><tr><th>Schema</th><th>Streaming Tables</th><th>MVs</th><th>Total</th></tr></thead>
+  <tbody>
+    <tr><td><code>b_ethereum</code></td><td>4</td><td>0</td><td>4</td></tr>
+    <tr><td><code>b_app_logs</code></td><td>1</td><td>0</td><td>1</td></tr>
+    <tr><td><code>s_apps</code></td><td>5</td><td>1</td><td>6</td></tr>
+    <tr><td><code>s_logs</code></td><td>2</td><td>0</td><td>2</td></tr>
+    <tr><td><code>g_apps</code></td><td>0</td><td>9</td><td>9</td></tr>
+    <tr><td><code>g_network</code></td><td>0</td><td>6</td><td>6</td></tr>
+    <tr><td><code>g_api_keys</code></td><td>0</td><td>2</td><td>2</td></tr>
+    <tr><th>TOTAL</th><th>12</th><th>18</th><th>30</th></tr>
+  </tbody>
+</table>
+
+</section>
+
+<section id="relationships">
+<h2>Key Relationships</h2>
+
+<pre class="mermaid">
+flowchart LR
+  BLK["b_ethereum.eth_mined_blocks"] --> EBLK["s_apps.eth_blocks"]
+  EBLK --> EBW["s_apps.eth_blocks_withdrawals"]
+  EBLK --> ECBI["s_apps.eth_canonical_blocks_index\n(bounded 1000 blocks)"]
+  BTXS["b_ethereum.eth_transactions"] --> ETS["s_apps.eth_transactions_staging"]
+  BDEC["b_ethereum.eth_txs_input_decoded"] --> TIF["s_apps.txs_inputs_decoded_fast"]
+  ETS & TIF & EBLK --> TE["s_apps.transactions_ethereum"]
+  ETS --> PCR["g_apps.popular_contracts_ranking\n(1h window, 0 rows — pipeline PAUSED)"]
+  TE --> P2P["g_apps.peer_to_peer_txs"]
+  TE --> EGC["g_apps.ethereum_gas_consume\n(tx_type_semantic column)"]
+  TE --> TL["g_apps.transactions_lambda"]
+  BTXS2["b_ethereum.popular_contracts_txs"] --> TL
+  EBLK & ETS --> NMH["g_network.network_metrics_hourly"]
+  ECBI --> CHM["g_network.chain_health_metrics"]
+  BLOG["b_app_logs.b_app_logs_data"] --> LST["s_logs.logs_streaming"]
+  BLOG --> LBT["s_logs.logs_batch"]
+  LST & LBT --> EC["g_api_keys.etherscan_consumption"]
+  LST & LBT --> WKC["g_api_keys.web3_keys_consumption"]
+  LST --> ALT["alert_dynamodb_deadlock"]
+</pre>
+
+</section>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true });
+</script>
+</body>
+</html>

@@ -1,0 +1,488 @@
+name: Plan on PR
+
+# ── IS-10 — Speculative plan on every PR that touches services/ ──
+# Runs `terraform plan` (no apply) for each changed module.
+# Results are posted to the GitHub Step Summary visible on the PR.
+#
+# Coverage (T-A.8 — the single source of truth is scripts/ci/stack_map.json;
+# this list is a drift-checked subset, never a second source — see
+# scripts/ci/tests/test_stack_map.py::test_plan_on_pr_working_dirs_match_stack_map):
+#   DEV  — 01_peripherals, 02_lambda
+#   HML  — 04_peripherals
+#   PRD  — 03_iam, 04_peripherals, 06_lambda
+#
+# prd/00_bootstrap is operator_only (never planned by CI, D14/O-1); prd/01_tf_state is
+# the remote-state backend and is not planned speculatively here. All plan jobs assume
+# AWS_DEPLOY_ROLE_READONLY, which carries no dynamodb:PutItem/DeleteItem on the state
+# lock table (SEC-I-01) — every plan below passes TF_PLAN_ARGS=-lock=false (T-A.8, F-04).
+
+on:
+  # T-R.2 F-04 — no workflow-level `paths:` filter: this workflow's first-run
+  # check name becomes a REQUIRED status check on `main` (T-A.10/T-A.11). A
+  # path filter here would leave that check permanently "Expected" on any PR
+  # that never touches the listed globs (tests/**, apps/dabs/**, Makefile,
+  # docs/**, …), deadlocking every such PR. The workflow always triggers and
+  # always reports; path-scoping instead lives at the job level below — the
+  # `quality` gate always runs (WS-C/WS-D stay covered), and the Terraform
+  # plan jobs still gate on `detect-changes` (scripts/ci/stack_map.json).
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plan-pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: sa-east-1
+  TF_VERSION: 1.9.8
+  UTILS_DIR:  utils
+
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── 0. Fail-fast quality gate (T-R6-A7, CI-H1) ────────────────────────────
+  # terraform fmt -check + validate + actionlint on every PR touching services/
+  # or scripts/ci/. Runs before the speculative plans so format/syntax drift is
+  # rejected without spending plan time.
+  quality:
+    name: Quality gate (fmt / validate / actionlint / lint / tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: Terraform fmt (check, recursive)
+        run: terraform fmt -check -recursive services/
+
+      - name: Terraform validate (per stack/module)
+        run: |
+          set -euo pipefail
+          # Validate every directory holding Terraform sources. -backend=false
+          # keeps validate offline (no remote state / no AWS credentials).
+          while IFS= read -r dir; do
+            echo "::group::validate ${dir}"
+            terraform -chdir="${dir}" init -backend=false -input=false >/dev/null
+            terraform -chdir="${dir}" validate
+            echo "::endgroup::"
+          done < <(find services -type f -name '*.tf' -printf '%h\n' | sort -u)
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dev tooling from the hash-locked apps/lambda/requirements-dev.lock
+        run: |
+          python -m pip install --upgrade pip
+          pip install --require-hashes -r apps/lambda/requirements-dev.lock
+          pip install -e "${{ env.UTILS_DIR }}[dev]"
+
+      - name: ruff format --check
+        run: ruff format --check . --no-cache
+
+      - name: ruff check
+        run: ruff check . --no-cache
+
+      - name: mypy
+        run: mypy
+
+      - name: pytest — scripts/ci/tests, tests/, utils/tests (if present)
+        run: |
+          set -euo pipefail
+          # utils/tests may be emptied/absent (WS-D) — only pass directories that exist,
+          # so an empty/removed suite never fails collection.
+          TARGETS=(scripts/ci/tests tests)
+          [ -d utils/tests ] && TARGETS+=(utils/tests)
+          pytest "${TARGETS[@]}" -p no:cacheprovider -v
+
+      - name: pip-audit — apps/lambda/requirements.lock
+        run: pip-audit -r apps/lambda/requirements.lock
+
+      - name: actionlint (workflow lint, pinned version + checksum)
+        env:
+          ACTIONLINT_VERSION: "1.7.7"
+          ACTIONLINT_SHA256:  "023070a287cd8cccd71515fedc843f1985bf96c436b7effaecce67290e7e0757"
+        run: |
+          set -euo pipefail
+          curl -fsSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          echo "${ACTIONLINT_SHA256}  actionlint.tar.gz" | sha256sum -c -
+          tar xzf actionlint.tar.gz actionlint
+          chmod +x actionlint
+          ./actionlint -color
+
+      - name: zizmor (workflow security lint, pinned version, F-12)
+        run: |
+          set -euo pipefail
+          pip install --quiet 'zizmor==1.29.0'
+          zizmor --persona regular --offline --min-severity high .github/workflows
+
+      - name: Lambda layer build (build-only — proves the from-source build stays
+          reproducible; no upload from a PR context, T-A.7)
+        if: hashFiles('scripts/build_lambda_layer.sh') != ''
+        run: bash scripts/build_lambda_layer.sh
+
+  # ── Preflight: OIDC role variable must exist before any plan job ──────────
+  preflight-oidc:
+    name: Preflight — OIDC role variable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Validate AWS_DEPLOY_ROLE_READONLY is set
+        run: |
+          if [ -z "${{ vars.AWS_DEPLOY_ROLE_READONLY }}" ]; then
+            echo "::error::AWS_DEPLOY_ROLE_READONLY is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "AWS_DEPLOY_ROLE_READONLY present — OK."
+
+  # ── 1. Detect which modules changed in this PR ────────────────────────────
+  detect-changes:
+    name: Detect changed modules
+    needs: [quality, preflight-oidc]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      dev_peripherals: ${{ steps.detect.outputs.dev_peripherals }}
+      dev_lambda:      ${{ steps.detect.outputs.dev_lambda }}
+      hml_peripherals: ${{ steps.detect.outputs.hml_peripherals }}
+      prd_iam:         ${{ steps.detect.outputs.prd_iam }}
+      prd_peripherals: ${{ steps.detect.outputs.prd_peripherals }}
+      prd_lambda:      ${{ steps.detect.outputs.prd_lambda }}
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Detect changed modules
+        id: detect
+        env:
+          # F-09: env-indirection — never substitute github.base_ref directly
+          # into a `run:` script body.
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+          # Fail-loud diff base (CI-H3, T-R6-A8(b)): the PR base ref must be
+          # fetchable and share a merge-base with HEAD — no silent HEAD~1 fallback.
+          BASE="origin/${BASE_REF}"
+          if ! git rev-parse --verify --quiet "$BASE" >/dev/null; then
+            echo "::error::detect-changes: base ref '$BASE' not available — checkout needs fetch-depth: 0." >&2
+            exit 1
+          fi
+          if ! MERGE_BASE="$(git merge-base "$BASE" HEAD 2>/dev/null)"; then
+            echo "::error::detect-changes: no merge-base between '$BASE' and HEAD (shallow clone / unrelated history). Refusing to degrade to 'git diff HEAD~1'." >&2
+            exit 1
+          fi
+          DIFF="$(git diff --name-only "${MERGE_BASE}...HEAD")"
+          echo "Changed files:"
+          echo "$DIFF"
+
+          # Single-source stack/module resolution (F-ARCH-4): stack->module edges
+          # live in scripts/ci/stack_map.json; a module edit triggers ONLY the
+          # consuming stacks (blanket ^services/modules/ clause removed, CI-H3).
+          # Emit keys without the _changed suffix to match this job's outputs.
+          for env in dev hml prd; do
+            CHANGED_FILES="$DIFF" python3 "$GITHUB_WORKSPACE/scripts/ci/changed_stacks.py" "$env" --emit-github \
+              | sed 's/_changed=/=/'
+          done >> "$GITHUB_OUTPUT"
+
+  # ── DEV ──────────────────────────────────────────────────────────────────
+
+  plan-dev-peripherals:
+    name: Plan — DEV/Peripherals
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dev_peripherals == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: services/dev/01_peripherals
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-dev-peripherals
+          mask-aws-account-id: true
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (read-only role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Peripherals
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
+
+  plan-dev-lambda:
+    name: Plan — DEV/Lambda
+    needs: detect-changes
+    if: needs.detect-changes.outputs.dev_lambda == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: services/dev/02_lambda
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-dev-lambda
+          mask-aws-account-id: true
+      - run: mkdir -p .lambda_zip
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Lambda
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  # ── HML ──────────────────────────────────────────────────────────────────
+
+  plan-hml-peripherals:
+    name: Plan — HML/Peripherals
+    needs: detect-changes
+    if: needs.detect-changes.outputs.hml_peripherals == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: services/hml/04_peripherals
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-hml-peripherals
+          mask-aws-account-id: true
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/Peripherals
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
+
+  # ── PRD ──────────────────────────────────────────────────────────────────
+
+  plan-prd-iam:
+    name: Plan — PRD/IAM
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_iam == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: services/prd/03_iam
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-prd-iam
+          mask-aws-account-id: true
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/IAM
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-prd-peripherals:
+    name: Plan — PRD/Peripherals
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_peripherals == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: services/prd/04_peripherals
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-prd-peripherals
+          mask-aws-account-id: true
+      - run: terraform init -input=false
+      - name: Terraform Plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Peripherals
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+
+  plan-prd-lambda:
+    name: Plan — PRD/Lambda
+    needs: detect-changes
+    if: needs.detect-changes.outputs.prd_lambda == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: services/prd/06_lambda
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-plan-on-pr-plan-prd-lambda
+          mask-aws-account-id: true
+      - run: mkdir -p .lambda_zip
+      - run: terraform init -input=false
+      - name: Resolve lambda layer artifact (T-A.7, WS-A) — skip if not yet provisioned
+        id: resolve-layer
+        run: |
+          set -euo pipefail
+          # Addendum (2026-08-23): this is a NON-GATING advisory plan — the
+          # lambda-layer artifact store may not be provisioned yet (PRD resource
+          # creation is deliberately deferred, docs/runbooks/v0.5.0-live-cutover.md
+          # §5). resolve_layer_or_skip.sh warns + reports skip=true instead of
+          # failing the job in that case; any OTHER failure still fails hard.
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer_or_skip.sh" \
+            dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
+          echo "${OUT}"
+          SKIP="$(echo "${OUT}" | grep -oP 'skip=\K\S+')"
+          echo "skip=${SKIP}" >> "$GITHUB_OUTPUT"
+          if [ "${SKIP}" != "true" ]; then
+            echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
+            echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Terraform Plan
+        if: steps.resolve-layer.outputs.skip != 'true'
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Lambda
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
+          # Resolved to the newest real artifact deploy_all_dm_applications.yml's
+          # build-layer job uploaded (T-A.7, WS-A) — a PR plan now reflects the same
+          # layer prd would actually apply, instead of a placeholder that could mask
+          # a layer-shaped plan diff.
+          TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:    ${{ steps.resolve-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256_b64: ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}

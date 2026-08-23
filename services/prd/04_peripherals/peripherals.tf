@@ -1,7 +1,8 @@
 ###############################################################################
 # prd/04_peripherals/peripherals.tf
 #
-# Consolida 3_kinesis_sqs + 4_s3 + 9_dynamodb em um único módulo Terraform.
+# Consolida os módulos de peripherals (S3 + DynamoDB + CloudWatch) em um único
+# módulo Terraform. The capture-era streaming stack was retired in v0.4.0.
 ###############################################################################
 
 # ---------------------------------------------------------------------------
@@ -28,6 +29,17 @@ module "s3_raw" {
   ]
 }
 
+module "s3_artifacts" {
+  source = "../../modules/s3"
+
+  environment        = var.environment
+  region             = var.region
+  common_tags        = local.common_tags
+  bucket_name        = var.artifacts_bucket_name
+  versioning_enabled = true
+  ownership_controls = "BucketOwnerEnforced"
+}
+
 module "s3_lakehouse" {
   source = "../../modules/s3"
 
@@ -46,8 +58,10 @@ module "s3_lakehouse" {
       ]
     }
   ]
-
-  folder_prefixes = ["bronze", "silver", "gold"]
+  # ISSUE-029 / AWS-03: folder_prefixes removed. Delta tables under Unity Catalog must NOT
+  # carry medallion-tier prefixes (bronze/silver/gold) in S3 paths — UC manages external
+  # locations independently. The .keep placeholder objects must be deleted from the bucket
+  # after terraform apply (see handoff sidecar for the aws s3 rm commands).
 }
 
 module "s3_databricks" {
@@ -74,86 +88,24 @@ module "s3_databricks" {
     }
   ]
 
-  folder_prefixes = ["checkpoints", "staging", "unity-catalog"]
+  # folder_prefixes removed (v0.5.0): the .keep prefix markers were the last
+  # remnant of a pattern already retired in dev (T-B.6/B5) and in the lakehouse
+  # bucket (ISSUE-029/AWS-03). S3 prefixes need no materialization, and the
+  # read-only plan role deliberately carries no s3:GetObject (T-A.2 MEDIUM #1),
+  # so state-held marker objects broke every speculative plan refresh.
 }
 
 # ---------------------------------------------------------------------------
-# Kinesis Data Streams + Firehose → S3 Lakehouse
-# ---------------------------------------------------------------------------
-
-module "kinesis" {
-  source = "../../modules/kinesis"
-
-  environment = var.environment
-  region      = var.region
-  common_tags = local.common_tags
-
-  streams = {
-    "mainnet-blocks-data" = {
-      stream_mode      = "ON_DEMAND"
-      retention_period = 24
-      encryption_type  = "NONE"
-    }
-    "mainnet-transactions-data" = {
-      stream_mode      = "ON_DEMAND"
-      retention_period = 24
-      encryption_type  = "NONE"
-    }
-    "mainnet-transactions-decoded" = {
-      stream_mode      = "ON_DEMAND"
-      retention_period = 24
-      encryption_type  = "NONE"
-    }
-  }
-
-  firehose_enabled       = true
-  firehose_s3_bucket_arn = module.s3_lakehouse.bucket_arn
-  firehose_s3_prefix     = "raw/"
-}
-
-# ---------------------------------------------------------------------------
-# SQS Queues + Dead Letter Queues
-# ---------------------------------------------------------------------------
-
-module "sqs" {
-  source = "../../modules/sqs"
-
-  environment = var.environment
-  common_tags = local.common_tags
-
-  queues = {
-    "mainnet-mined-blocks-events" = {
-      visibility_timeout_seconds = 30
-      receive_wait_time_seconds  = 20
-      dlq_enabled                = true
-      dlq_max_receive_count      = 3
-    }
-    "mainnet-block-txs-hash-id" = {
-      visibility_timeout_seconds = 60
-      receive_wait_time_seconds  = 20
-      dlq_enabled                = true
-      dlq_max_receive_count      = 3
-    }
-  }
-}
-
-# ---------------------------------------------------------------------------
-# CloudWatch Log Group + Firehose → S3 Lakehouse
+# CloudWatch Log Group (the capture-layer log-delivery branch was retired — v0.4.0)
 # ---------------------------------------------------------------------------
 
 module "cloudwatch_logs" {
   source = "../../modules/cloudwatch_logs"
 
-  environment            = var.environment
-  region                 = var.region
-  common_tags            = local.common_tags
-  log_group_name         = "/apps/dm-chain-explorer"
-  retention_in_days      = 30
-  firehose_enabled       = true
-  firehose_s3_bucket_arn = module.s3_lakehouse.bucket_arn
-  firehose_s3_prefix     = "raw/app_logs/"
-  firehose_buffer_size_mb          = 5
-  firehose_buffer_interval_seconds = 300
+  environment       = var.environment
+  common_tags       = local.common_tags
+  log_group_name    = "/apps/dm-chain-explorer"
+  retention_in_days = 30
 }
 
 # ---------------------------------------------------------------------------

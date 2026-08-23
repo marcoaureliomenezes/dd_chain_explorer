@@ -26,12 +26,6 @@ variable "versioning_enabled" {
   default     = false
 }
 
-variable "prevent_destroy" {
-  description = "Enable lifecycle prevent_destroy (for production buckets)"
-  type        = bool
-  default     = false
-}
-
 variable "ownership_controls" {
   description = "Object ownership: BucketOwnerEnforced or BucketOwnerPreferred"
   type        = string

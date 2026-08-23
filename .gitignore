@@ -2,6 +2,18 @@
 .idea
 .ipynb_checkpoints
 __pycache__
+
+# Python build artifacts (generic — covers all subdirectories)
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+
+# DABs-specific legacy entries (superseded by generic rules above — kept for clarity)
+apps/dabs/src/build/
+apps/dabs/src/dist/
+apps/dabs/src/*.egg-info/
 src/.infura_auth.txt
 .history
 **/*.pyc
@@ -33,7 +45,9 @@ z_OLD_README.md
 **/.terraform/
 **/terraform.tfstate
 **/terraform.tfstate.backup
-**/.terraform.lock.hcl
+# .terraform.lock.hcl is DELIBERATELY NOT ignored — every surviving root stack
+# commits its provider lock file (SPEC B5/AC-15, T-R.2 F-06). A blanket ignore
+# here would silently untrack the next stack's lock file with no signal.
 **/secrets.tfvars
 **/*.tfvars.local
 
@@ -70,3 +84,24 @@ dabs/.databricks/
 # Terraform plan files
 tfplan
 *.tfplan
+
+# Lake schemas workflow — estado local de idempotência (não versionar)
+docs/.lake-schemas-hash
+
+# dadaia-workspace runtime state — must never be inside a repo (workspace-root only)
+.dadaia/
+
+# specs_bkp/ — operator-approved transient backup from specs upgrade; delete after migration
+specs_bkp/
+
+# T-D.4/T-D.5 — reproducible build outputs, tool caches, Databricks CLI state.
+# Never committed: CI (T-A.7) rebuilds the layer from source and uploads it to
+# the artifacts bucket (T-B.14); Terraform reads it back by s3_key/sha256, not
+# from a working-tree path.
+.lambda_zip/
+apps/**/*.zip
+services/**/*.zip
+.databricks/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/

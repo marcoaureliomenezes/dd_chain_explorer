@@ -1,180 +1,201 @@
 ################################################################################
 # dd-chain-explorer — Makefile
-# Atalhos para operações de desenvolvimento e deploy.
+#
+# Post-capture-retirement scope (v0.5.0): thin wrappers over the scripts CI
+# already runs (scripts/ci/*.sh, scripts/build_lambda_layer.sh), plus the
+# Databricks Asset Bundle and dev Terraform shortcuts that CI does not drive.
+# Capture (blockchain ingestion) lives in the separate dd-chain-capture repo —
+# nothing here builds, deploys, or logs a streaming producer.
+#
+# `make -n <target>` (dry-run) must resolve for every target below — that is
+# this file's own acceptance bar (AC-24).
 ################################################################################
 
+SHELL := /bin/bash
+
+.PHONY: help test lint typecheck check build_lambda_layer \
+        dabs_validate_all dabs_deploy_all dabs_destroy_all dabs_run \
+        dabs_run_dlt_ethereum dabs_run_dlt_app_logs dabs_run_export_gold \
+        dabs_deploy_dashboards dabs_status \
+        tf_plan tf_deploy tf_destroy \
+        dev_tf_init dev_tf_plan dev_tf_apply dev_tf_destroy dev_tf_output \
+        prd_bootstrap_apply
+
+help:
+	@echo "dd-chain-explorer — available targets:"
+	@echo ""
+	@echo "  Quality gates"
+	@echo "    make test              - pytest: tests/, scripts/ci/tests"
+	@echo "    make lint              - ruff format --check + ruff check (repo-wide)"
+	@echo "    make typecheck         - mypy --config-file pyproject.toml (strict scope)"
+	@echo "    make check             - lint + typecheck + test"
+	@echo ""
+	@echo "  Lambda layer"
+	@echo "    make build_lambda_layer - scripts/build_lambda_layer.sh (see its docstring)"
+	@echo ""
+	@echo "  Databricks Asset Bundles (apps/dabs/<bundle>/, default TARGET=dev)"
+	@echo "    make dabs_validate_all             - validate every bundle"
+	@echo "    make dabs_deploy_all TARGET=dev     - deploy every bundle"
+	@echo "    make dabs_destroy_all               - destroy every bundle (target=dev)"
+	@echo "    make dabs_run BUNDLE=<name> JOB=<key> TARGET=dev  - run one job/pipeline"
+	@echo "    make dabs_run_dlt_ethereum | dabs_run_dlt_app_logs | dabs_run_export_gold"
+	@echo "    make dabs_deploy_dashboards TARGET=dev - deploy all 4 dashboards"
+	@echo "    make dabs_status                    - summary of the main dev bundles"
+	@echo ""
+	@echo "  Terraform (hml/prd) — driven by scripts/ci/stack_map.json, same as CI"
+	@echo "    make tf_plan ENV=hml|prd            - scripts/ci/plan_env.sh"
+	@echo "    make tf_deploy ENV=hml|prd          - scripts/ci/deploy_env.sh"
+	@echo "    make tf_destroy ENV=dev|hml|prd [FULL=true] - scripts/ci/destroy_env.sh"
+	@echo ""
+	@echo "  Terraform (dev) — no CI gate; services/dev/{01_peripherals,02_lambda}"
+	@echo "    make dev_tf_init | dev_tf_plan | dev_tf_apply | dev_tf_destroy | dev_tf_output"
+	@echo ""
+	@echo "  Operator-only, one-time (docs/runbooks/00-bootstrap-apply.md)"
+	@echo "    make prd_bootstrap_apply             - services/prd/00_bootstrap (T-A.3)"
+
 ################################################################################
-# DEV: Aplicações Python de captura on-chain
-# Arquivo: services/dev/00_compose/app_services.yml
+# Quality gates — same commands the pre-push chokepoint and plan_on_pr run
 ################################################################################
 
-deploy_dev_stream:
-	@docker compose -f services/dev/00_compose/app_services.yml up -d --build
+test:
+	pytest tests scripts/ci/tests -p no:cacheprovider
 
-stop_dev_stream:
-	@docker compose -f services/dev/00_compose/app_services.yml down
+lint:
+	ruff format --check . --no-cache
+	ruff check . --no-cache
 
-watch_dev_stream:
-	watch docker compose -f services/dev/00_compose/app_services.yml ps
+typecheck:
+	mypy --config-file pyproject.toml
 
-# Deploy para DEV (Databricks Free Edition)
-dabs_deploy_dev:
-	cd apps/dabs && databricks bundle deploy --target dev
+check: lint typecheck test
 
-# Deploy para PROD (normalmente feito via CI/CD)
-dabs_deploy_prod:
-	cd apps/dabs && databricks bundle deploy --target prod
+################################################################################
+# Lambda layer — scripts/build_lambda_layer.sh (T-D.4)
+################################################################################
 
-# Executar um workflow em DEV
-# Uso: make dabs_run_dev JOB=dm-ddl-setup
-# Jobs disponíveis: dm-ddl-setup, dm-batch-contracts, dm-iceberg-maintenance, dm-dlt-full-refresh
-dabs_run_dev:
-	cd apps/dabs && databricks bundle run --target dev $(JOB)
+build_lambda_layer:
+	bash scripts/build_lambda_layer.sh
 
-# Ver status dos recursos deployados em DEV
-dabs_status_dev:
-	cd apps/dabs && databricks bundle summary --target dev
+################################################################################
+# Databricks Asset Bundles (apps/dabs/<bundle>/)
+#
+# The bundle set changes across this release (WS-C is actively deleting and
+# reshaping bundles) — every target below discovers bundles by globbing
+# apps/dabs/*/databricks.yml rather than hardcoding a bundle list, so it
+# never goes stale the way the pre-v0.5.0 Makefile did.
+################################################################################
 
-# Deploy apenas os dashboards em DEV (auto-descobre o warehouse_id via CLI)
-# Requer: databricks CLI autenticado + Python 3
-dabs_deploy_dev_dashboards:
-	$(eval WAREHOUSE_ID := $(shell cd apps/dabs && databricks warehouses list \
-	  --output json 2>/dev/null | python3 -c \
-	  "import sys, json; whs=json.load(sys.stdin).get('warehouses',[]); \
-	   print(next((w['id'] for w in whs), ''))" 2>/dev/null))
-	@if [ -z "$(WAREHOUSE_ID)" ]; then \
-	  echo "AVISO: Nenhum SQL Warehouse encontrado. Deployando sem warehouse_id..."; \
-	  cd apps/dabs && databricks bundle deploy --target dev; \
-	else \
-	  echo ">>> Usando warehouse_id=$(WAREHOUSE_ID)"; \
-	  cd apps/dabs && databricks bundle deploy --target dev --var warehouse_id=$(WAREHOUSE_ID); \
+DABS_DIR    := apps/dabs
+TARGET      ?= dev
+DEV_CATALOG ?= dev
+
+dabs_validate_all:
+	@echo ">>> Validating every apps/dabs bundle (target=$(TARGET))..."
+	@FAILED=""; \
+	for d in $(DABS_DIR)/*/; do \
+	  name=$$(basename "$$d"); \
+	  [[ ! -f "$$d/databricks.yml" ]] && continue; \
+	  printf "  %-30s " "$$name"; \
+	  if (cd "$$d" && databricks bundle validate --target $(TARGET) > /dev/null 2>&1); then \
+	    echo "OK"; \
+	  else \
+	    echo "FAIL"; FAILED="$$FAILED $$name"; \
+	  fi; \
+	done; \
+	if [ -n "$$FAILED" ]; then echo "FAILED:$$FAILED"; exit 1; fi
+	@echo ">>> All bundles OK."
+
+dabs_deploy_all:
+	@echo ">>> Deploying every apps/dabs bundle (target=$(TARGET))..."
+	@for d in $(DABS_DIR)/*/; do \
+	  name=$$(basename "$$d"); \
+	  [[ ! -f "$$d/databricks.yml" ]] && continue; \
+	  echo "  >>> deploy $$name"; \
+	  (cd "$$d" && databricks bundle deploy --target $(TARGET)); \
+	done
+	@echo ">>> Deploy complete."
+
+dabs_destroy_all:
+	@echo ">>> Destroying every apps/dabs bundle (target=$(TARGET))..."
+	@for d in $(DABS_DIR)/*/; do \
+	  name=$$(basename "$$d"); \
+	  [[ ! -f "$$d/databricks.yml" ]] && continue; \
+	  echo "  >>> destroy $$name"; \
+	  (cd "$$d" && databricks bundle destroy --target $(TARGET) --auto-approve 2>&1) || true; \
+	done
+	@echo ">>> Destroy complete."
+
+# Run one job or pipeline trigger by its bundle resource key.
+# Usage: make dabs_run BUNDLE=dlt_ethereum JOB=workflow_trigger_ethereum
+dabs_run:
+	@if [ -z "$(BUNDLE)" ] || [ -z "$(JOB)" ]; then \
+	  echo "Usage: make dabs_run BUNDLE=<bundle-dir-name> JOB=<resource-key> [TARGET=dev]"; \
+	  exit 1; \
 	fi
+	cd $(DABS_DIR)/$(BUNDLE) && databricks bundle run --target $(TARGET) $(JOB)
 
-################################################################################
-# Terraform — atalhos para módulos individuais
-# Diretório: terraform/
-#
-# Autenticação:
-#   AWS        → AWS CLI (perfil padrão ou env vars AWS_ACCESS_KEY_ID/SECRET)
-#   Databricks → ~/.databrickscfg (config: scripts/setup_databricks_profiles.sh)
-#                Env vars em CI/CD: DATABRICKS_ACCOUNT_ID, DATABRICKS_CLIENT_ID,
-#                                   DATABRICKS_CLIENT_SECRET
-################################################################################
+dabs_run_dlt_ethereum:
+	$(MAKE) dabs_run BUNDLE=dlt_ethereum JOB=workflow_trigger_ethereum TARGET=$(TARGET)
 
-TF_ARGS ?=
-TF_DIR  := services/prd
+dabs_run_dlt_app_logs:
+	$(MAKE) dabs_run BUNDLE=dlt_app_logs JOB=workflow_trigger_app_logs TARGET=$(TARGET)
 
-publish_apps:
-	# docker push marcoaureliomenezes/onchain-batch-txs:$(current_branch)
-	# docker push marcoaureliomenezes/onchain-stream-txs:$(current_branch)
-	docker push marcoaureliomenezes/spark-batch-jobs:$(current_branch)
-	# docker push marcoaureliomenezes/spark-streaming-jobs:$(current_branch)
+dabs_run_export_gold:
+	$(MAKE) dabs_run BUNDLE=job_export_gold JOB=workflow_dm_export_gold TARGET=$(TARGET)
 
-tf_apply_free_resources:
-	@echo ">>> Aplicando recursos gratuitos: VPC + peripherals + IAM ..."
-	cd $(TF_DIR)/02_vpc         && terraform apply -auto-approve
-	cd $(TF_DIR)/04_peripherals && terraform apply -auto-approve
-	cd $(TF_DIR)/03_iam         && terraform apply -auto-approve
-	@echo ">>> Recursos gratuitos: OK"
+# Deploys every dashboard_* bundle with the first available SQL Warehouse id
+# auto-discovered and passed as --var warehouse_id (falls back to no --var if
+# the CLI/warehouse lookup is unavailable, matching each bundle's own default).
+dabs_deploy_dashboards:
+	@echo ">>> Deploying dashboards (target=$(TARGET))..."
+	@_WH_ID=$$(databricks warehouses list --output json 2>/dev/null \
+	  | python3 -c "import sys,json; whs=json.load(sys.stdin).get('warehouses',[]); print(next((w['id'] for w in whs),''))" 2>/dev/null); \
+	for d in $(DABS_DIR)/dashboard_*/; do \
+	  name=$$(basename "$$d"); \
+	  echo "  >>> $$name"; \
+	  if [ -n "$$_WH_ID" ]; then \
+	    (cd "$$d" && databricks bundle deploy --target $(TARGET) --var "warehouse_id=$$_WH_ID"); \
+	  else \
+	    (cd "$$d" && databricks bundle deploy --target $(TARGET)); \
+	  fi; \
+	done
+	@echo ">>> Dashboards deployed."
 
-deploy_dev_all:
-	# docker compose -f services/compose/python_streaming_apps_layer.yml up -d --build
-	docker compose -f services/compose/airflow_orchestration_layer.yml up -d --build
-	# docker compose -f services/compose/spark_streaming_apps_layer.yml up -d --build
-
-# =============================================================================
-# GRUPO 2 — Recursos AWS pagos: Kinesis/SQS + DynamoDB + ECS + Lambda
-#
-# Ordem de apply (dependências):
-#   1. Kinesis/SQS/Firehose/CloudWatch (3_kinesis_sqs)
-#   2. DynamoDB (9_dynamodb) — ECS tasks precisam do output dynamodb_table_name
-#   3. ECS Fargate (6_ecs) — tasks de captura streaming
-#   4. Lambda (10_lambda)
-#
-# Apply:   make tf_apply_aws_resources
-# Destroy: make tf_destroy_aws_resources
-# =============================================================================
-
-tf_apply_aws_resources:
-	@echo ">>> [1/2] ECS Fargate ..."
-	cd $(TF_DIR)/07_ecs    && terraform apply -auto-approve
-	@echo ">>> [2/2] Lambda ..."
-	cd $(TF_DIR)/06_lambda && terraform apply -auto-approve
-	@echo ">>> Recursos AWS: OK"
-
-tf_destroy_aws_resources:
-	@echo ">>> Destruindo recursos AWS: Lambda → ECS ..."
-	cd $(TF_DIR)/06_lambda && terraform destroy -auto-approve
-	cd $(TF_DIR)/07_ecs    && terraform destroy -auto-approve
-	@echo ">>> Recursos AWS destruídos."
-
-# =============================================================================
-# GRUPO 3 — Databricks: workspace + Unity Catalog + cluster
-#
-# Autenticação: perfil [prd] em ~/.databrickscfg
-#   Configure com: scripts/setup_databricks_profiles.sh
-#   Ou em CI/CD via env vars (veja .github/workflows/deploy_infrastructure.yml)
-#
-# Apply:   make tf_apply_databricks
-# Destroy: make tf_destroy_databricks
-# =============================================================================
-
-tf_apply_databricks:
-	@echo ">>> Aplicando recursos Databricks ..."
-	cd $(TF_DIR)/05_databricks && terraform apply -auto-approve
-	@echo ">>> Databricks: OK"
-
-tf_destroy_databricks:
-	@echo ">>> Destruindo recursos Databricks ..."
-	cd $(TF_DIR)/05_databricks && terraform destroy -auto-approve
-	@echo ">>> Databricks destruído."
-
-# =============================================================================
-# Deploy / Destroy completo de PRD (todos os grupos em sequência)
-# =============================================================================
-
-prod_deploy_infra:
-	@echo "===== Deploy completo PRD ====="
-	$(MAKE) tf_apply_free_resources
-	$(MAKE) tf_apply_aws_resources
-	$(MAKE) tf_apply_databricks
-	@echo "===== Deploy PRD concluído ====="
-
-prod_destroy_infra:
-	@echo "===== Destroy completo PRD ====="
-	$(MAKE) tf_destroy_databricks
-	$(MAKE) tf_destroy_aws_resources
-	$(MAKE) tf_destroy_free_resources
-	@echo "===== Destroy PRD concluído ====="
-
-# ---------------------------------------------------------------------------
-# Inicialização PRD — necessário após clonar o repo ou atualizar providers
-# ---------------------------------------------------------------------------
-
-tf_init_prd:
-	@for dir in $(TF_DIR)/02_vpc $(TF_DIR)/03_iam $(TF_DIR)/04_peripherals \
-	            $(TF_DIR)/05_databricks $(TF_DIR)/06_lambda $(TF_DIR)/07_ecs; do \
-	  echo "=== terraform init: $$dir ==="; \
-	  (cd $$dir && terraform init -input=false); \
+dabs_status:
+	@echo ">>> Status of the main dev bundles..."
+	@for d in dlt_ethereum dlt_app_logs job_export_gold; do \
+	  [[ ! -d "$(DABS_DIR)/$$d" ]] && continue; \
+	  echo "=== $$d ==="; \
+	  (cd $(DABS_DIR)/$$d && databricks bundle summary --target dev 2>&1 | head -25) || true; \
+	  echo ""; \
 	done
 
-tf_apply_remote_state:
-	cd $(TF_DIR)/0_remote_state && terraform apply -auto-approve
+################################################################################
+# Terraform — hml/prd, driven by scripts/ci/stack_map.json (same map plan_on_pr
+# and the deploy workflow read — no stack name is hardcoded here, see T-A.8).
+################################################################################
 
-# =============================================================================
-# TERRAFORM DEV — AWS infra para Databricks Free Edition
-# Módulos: services/dev/01_peripherals/ + 02_lambda/
-#
-# Recursos: S3 + Kinesis/SQS + DynamoDB + Lambda + CloudWatch
-# Estado:   S3 remoto (bucket dm-chain-explorer-terraform-state, key dev/)
-# Autenticação AWS: perfil padrão (~/.aws/credentials)
-#
-# Apply:   make dev_tf_apply
-# Destroy: make dev_tf_destroy
-# =============================================================================
+ENV  ?=
+FULL ?= false
+
+tf_plan:
+	@if [ -z "$(ENV)" ]; then echo "Usage: make tf_plan ENV=hml|prd"; exit 1; fi
+	bash scripts/ci/plan_env.sh $(ENV)
+
+tf_deploy:
+	@if [ -z "$(ENV)" ]; then echo "Usage: make tf_deploy ENV=hml|prd"; exit 1; fi
+	bash scripts/ci/deploy_env.sh $(ENV)
+
+tf_destroy:
+	@if [ -z "$(ENV)" ]; then echo "Usage: make tf_destroy ENV=dev|hml|prd [FULL=true]"; exit 1; fi
+	bash scripts/ci/destroy_env.sh $(ENV) $(FULL)
+
+################################################################################
+# Terraform — dev (no CI gate; services/dev/{01_peripherals,02_lambda})
+################################################################################
 
 DEV_PERIPHERALS_DIR := services/dev/01_peripherals
-DEV_LAMBDA_DIR      := services/dev/02_lambda
+DEV_LAMBDA_DIR       := services/dev/02_lambda
 
 dev_tf_init:
 	cd $(DEV_PERIPHERALS_DIR) && terraform init -input=false
@@ -200,84 +221,12 @@ dev_tf_output:
 	cd $(DEV_PERIPHERALS_DIR) && terraform output
 	cd $(DEV_LAMBDA_DIR)      && terraform output
 
-# =============================================================================
-# TERRAFORM HML — AWS infra para ambiente de homologação
-# Módulos: services/hml/02_vpc/ + 03_iam/ + 04_peripherals/ + 05_databricks/ + 07_ecs/
-#
-# Estado:   S3 remoto (bucket dm-chain-explorer-terraform-state, key hml/)
-# Autenticação AWS: perfil padrão (~/.aws/credentials)
-#
-# Apply:   make hml_tf_apply
-# Destroy: make hml_tf_destroy
-# =============================================================================
-
-HML_ROOT := services/hml
-
-hml_tf_init:
-	@for dir in $(HML_ROOT)/02_vpc $(HML_ROOT)/03_iam $(HML_ROOT)/04_peripherals \
-	            $(HML_ROOT)/05_databricks $(HML_ROOT)/07_ecs; do \
-	  echo "=== terraform init: $$dir ==="; \
-	  (cd $$dir && terraform init -input=false); \
-	done
-
-hml_tf_plan:
-	@for dir in $(HML_ROOT)/02_vpc $(HML_ROOT)/04_peripherals $(HML_ROOT)/03_iam \
-	            $(HML_ROOT)/07_ecs $(HML_ROOT)/05_databricks; do \
-	  echo "=== terraform plan: $$dir ==="; \
-	  (cd $$dir && terraform plan); \
-	done
-
-hml_tf_apply:
-	@echo ">>> [1/3] HML vpc + peripherals (paralelo)..."
-	cd $(HML_ROOT)/02_vpc         && terraform apply -auto-approve
-	cd $(HML_ROOT)/04_peripherals && terraform apply -auto-approve
-	@echo ">>> [2/3] HML iam ..."
-	cd $(HML_ROOT)/03_iam         && terraform apply -auto-approve
-	@echo ">>> [3/3] HML ecs ..."
-	cd $(HML_ROOT)/07_ecs         && terraform apply -auto-approve
-
-hml_tf_destroy:
-	@echo ">>> [1/3] HML ecs ..."
-	cd $(HML_ROOT)/07_ecs         && terraform destroy -auto-approve
-	@echo ">>> [2/3] HML iam ..."
-	cd $(HML_ROOT)/03_iam         && terraform destroy -auto-approve
-	@echo ">>> [3/3] HML peripherals + vpc ..."
-	cd $(HML_ROOT)/04_peripherals && terraform destroy -auto-approve
-	cd $(HML_ROOT)/02_vpc         && terraform destroy -auto-approve
-
-hml_tf_output:
-	@for dir in $(HML_ROOT)/02_vpc $(HML_ROOT)/03_iam $(HML_ROOT)/04_peripherals \
-	            $(HML_ROOT)/07_ecs; do \
-	  echo "=== outputs: $$dir ==="; \
-	  (cd $$dir && terraform output); \
-	done
-
 ################################################################################
-# Build e push de imagens Docker (uso manual; CI/CD faz isso automaticamente)
-# Uso: make build_stream VERSION=1.0.0
-#      make push_stream  VERSION=1.0.0
-# Se VERSION não for passado, usa 'latest'.
+# Operator-only, one-time: the prd/00_bootstrap OIDC stack (T-A.1/T-A.3).
+# Never run by CI — see docs/runbooks/00-bootstrap-apply.md before running this.
 ################################################################################
 
-VERSION ?= latest
-
-build_stream:
-	docker build -t marcoaureliomenezes/onchain-stream-txs:$(VERSION) ./apps/docker/onchain-stream-txs
-
-push_stream:
-	docker push marcoaureliomenezes/onchain-stream-txs:$(VERSION)
-
-build_and_push_stream: build_stream push_stream
-
-################################################################################
-# PROD: Observabilidade — scripts de monitoramento
-################################################################################
-
-# Últimas 100 linhas de logs de todas as tasks ECS no cluster de prod
-prod_logs_ecs:
-	python scripts/prod_ecs_logs.py --lines 100
-
-# Logs de um único serviço: make prod_logs_ecs_svc SVC=dm-mined-txs-crawler
-prod_logs_ecs_svc:
-	python scripts/prod_ecs_logs.py --lines 100 --service $(SVC)
-
+prd_bootstrap_apply:
+	@echo ">>> This applies services/prd/00_bootstrap with YOUR OWN AWS credentials."
+	@echo ">>> Read docs/runbooks/00-bootstrap-apply.md first. Ctrl-C now to abort."
+	cd services/prd/00_bootstrap && terraform init -input=false && terraform apply

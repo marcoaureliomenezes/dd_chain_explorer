@@ -9,6 +9,7 @@ on:
         type: choice
         options:
           - DEV (Cloud AWS)
+          - hml
           - prd
       force_apply:
         description: 'Force apply / skip version tag check (PRD only)'
@@ -16,7 +17,7 @@ on:
         default: false
         type: boolean
       skip_databricks:
-        description: 'Skip 05_databricks module (PRD only)'
+        description: 'Skip Databricks modules (PRD only)'
         required: false
         default: false
         type: boolean
@@ -25,14 +26,18 @@ on:
         required: false
         default: false
         type: boolean
+      destroy_ack:
+        description: 'HML/PRD: acknowledge that destroy-containing plans may apply (required when any pre-gate plan shows resource destroys — ADR-R6-4)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
-  contents: write
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 env:
   AWS_REGION:      sa-east-1
-  TF_VERSION:      1.7.0
-  PRD_ROOT:        services/prd
+  TF_VERSION:      1.9.8
   DEV_PERIPHERALS: services/dev/01_peripherals
   DEV_LAMBDA:      services/dev/02_lambda
 
@@ -42,10 +47,41 @@ jobs:
   branch-guard:
     name: Branch guard
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: Enforce develop branch
         run: bash "$GITHUB_WORKSPACE/scripts/ci/branch_guard.sh"
+
+  # ── Preflight: OIDC role variables must exist before any AWS-touching job ──
+  preflight-oidc:
+    name: Preflight — OIDC role variables
+    needs: branch-guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Validate AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY} are set
+        run: |
+          MISSING=""
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_DEV }}" ]      && MISSING="$MISSING AWS_DEPLOY_ROLE_DEV"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_HML }}" ]      && MISSING="$MISSING AWS_DEPLOY_ROLE_HML"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_PRD }}" ]      && MISSING="$MISSING AWS_DEPLOY_ROLE_PRD"
+          [ -z "${{ vars.AWS_DEPLOY_ROLE_READONLY }}" ] && MISSING="$MISSING AWS_DEPLOY_ROLE_READONLY"
+          if [ -n "$MISSING" ]; then
+            echo "::error::Missing repository variable(s):${MISSING}. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "All required OIDC role variables present."
 
   # ══════════════════════════════════════════════════════════════
   #  DEV (Cloud AWS)
@@ -53,15 +89,21 @@ jobs:
 
   dev-detect-changes:
     name: DEV — Detect changes
-    needs: branch-guard
+    needs: preflight-oidc
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       peripherals_changed: ${{ steps.detect.outputs.peripherals_changed }}
       lambda_changed:      ${{ steps.detect.outputs.lambda_changed }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Determine changed modules
         id: detect
@@ -71,29 +113,51 @@ jobs:
 
   dev-deploy-peripherals:
     name: DEV — Deploy Peripherals AWS
+    concurrency:
+      group: tf-dev
+      cancel-in-progress: false
     needs: dev-detect-changes
     if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
+    timeout-minutes: 45
     environment: dev
     defaults:
       run:
         working-directory: ${{ env.DEV_PERIPHERALS }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-dev-deploy-peripherals
+          mask-aws-account-id: true
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (dev deploy role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
       - run: terraform init -input=false
       - run: terraform validate
       - name: Read VERSION
         id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        run: echo "version=$(tr -d '[:space:]' < "${{ github.workspace }}/VERSION")" >> "$GITHUB_OUTPUT"
       - name: Terraform Plan
         id: plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -101,38 +165,54 @@ jobs:
           MODULE_NAME: DEV/Peripherals
           TAIL_LINES: "20"
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
       - name: Terraform Apply
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: terraform apply -input=false -auto-approve tfplan
         env:
           TF_VAR_project_version: ${{ steps.ver.outputs.version }}
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
 
   dev-deploy-lambda:
     name: DEV — Deploy Lambda AWS
+    concurrency:
+      group: tf-dev
+      cancel-in-progress: false
     needs: [dev-detect-changes, dev-deploy-peripherals]
     if: |
       always() &&
       needs.dev-detect-changes.outputs.lambda_changed == 'true' &&
       (needs.dev-deploy-peripherals.result == 'success' || needs.dev-deploy-peripherals.result == 'skipped')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
+    timeout-minutes: 45
     environment: dev
     defaults:
       run:
         working-directory: ${{ env.DEV_LAMBDA }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_DEV }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-dev-deploy-lambda
+          mask-aws-account-id: true
       - name: Read VERSION
         id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        run: echo "version=$(tr -d '[:space:]' < "${{ github.workspace }}/VERSION")" >> "$GITHUB_OUTPUT"
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
       - run: terraform validate
@@ -155,14 +235,20 @@ jobs:
 
   prd-check-version:
     name: PRD — Check version
-    needs: branch-guard
+    needs: preflight-oidc
     if: github.event.inputs.environment == 'prd'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
         with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
           fetch-depth: 0
       - name: Read and validate VERSION
         id: ver
@@ -170,312 +256,163 @@ jobs:
         env:
           FORCE_APPLY: ${{ github.event.inputs.force_apply }}
 
-  # ── PRD Layer 1: VPC + Peripherals (parallel) ─────────────────
+  # ── PRD — Phase 1: pre-gate PLAN (informed gate, ADR-R6-4/R6-5) ─
+  #  Plans every currently-plannable stack (per scripts/ci/stack_map.json),
+  #  uploads ONLY the redacted plan.txt text summary as an artifact (F-01 — never
+  #  the tfplan binary, which carries TF_VAR_* secret values in plaintext and would
+  #  be world-downloadable on this public repo), writes a consolidated
+  #  add/change/destroy summary BEFORE the environment gate, and enforces the
+  #  destroy-acknowledgment gate. NO environment gate here — the approver reviews
+  #  this job's run summary, then approves prd-apply.
 
-  prd-deploy-vpc:
-    name: PRD — Deploy VPC AWS
+  prd-plan:
+    name: PRD — Plan (pre-gate)
+    concurrency:
+      group: tf-prd
+      cancel-in-progress: false
     needs: prd-check-version
     runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/02_vpc
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/VPC
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  prd-deploy-peripherals:
-    name: PRD — Deploy Peripherals AWS
-    needs: prd-check-version
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/04_peripherals
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Peripherals
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  # ── PRD Layer 2: IAM (depends on VPC + Peripherals) ────────────
-
-  prd-deploy-iam:
-    name: PRD — Deploy IAM AWS
-    needs: [prd-deploy-vpc, prd-deploy-peripherals]
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/03_iam
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/IAM
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  # ── PRD Layer 3: Databricks Account + Lambda + ECS (parallel) ──
-
-  prd-deploy-databricks-account:
-    name: PRD — Deploy Databricks Part 1 - Account
-    needs: prd-deploy-iam
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    environment: production
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    timeout-minutes: 15
     outputs:
-      workspace_url:   ${{ steps.ws_out.outputs.workspace_url }}
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05a_databricks_account
+      layer_s3_key: ${{ steps.resolve-layer.outputs.layer_s3_key }}
+      layer_sha256_b64: ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
         with:
           terraform_version: ${{ env.TF_VERSION }}
           terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
         with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - name: Import existing Databricks account resources (idempotent)
-        env:
-          DATABRICKS_ACCOUNT_ID:       ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:        ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET:    ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/databricks_account_import.sh"
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Databricks Account
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan 2>&1 | tee apply.txt; exit ${PIPESTATUS[0]}
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_project_version:   ${{ steps.ver.outputs.version }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-      - name: Dump apply errors
-        if: failure()
+          # Pre-gate plan job carries NO `environment:` — its OIDC sub claim is the
+          # branch-ref (`repo:<org>/<repo>:ref:refs/heads/<branch>`), which only the
+          # READONLY trust accepts (oidc.tf:134). A deploy role's trust requires an
+          # environment-scoped sub and would deny AssumeRoleWithWebIdentity here
+          # (F-QA-A1-2). Plan-only = read-only, matching drift_detection.yml.
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-prd-plan
+          mask-aws-account-id: true
+      - name: Resolve lambda layer artifact (T-A.7, WS-A)
+        id: resolve-layer
         run: |
-          echo "### Apply Error — PRD/Databricks Account" >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          tail -100 apply.txt >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-      - name: Export workspace outputs
-        id: ws_out
+          set -euo pipefail
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer.sh" \
+            dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
+          echo "${OUT}"
+          {
+            echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')"
+            echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')"
+            echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')"
+          } >> "$GITHUB_OUTPUT"
+      - name: Plan PRD (pre-gate)
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" prd
+        env:
+          TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
+          DESTROY_ACK:                     ${{ github.event.inputs.destroy_ack }}
+          PLAN_ARTIFACT_DIR:               ${{ github.workspace }}/.plan-artifacts
+          # READONLY role carries no dynamodb:PutItem/DeleteItem on the lock table
+          # (SEC-I-01) — tf_plan.sh (called via plan_env.sh) must not try to lock (T-A.8).
+          TF_PLAN_ARGS:                    "-lock=false"
+          # prd/06_lambda's layer_* variables have no default (T-B.14) — resolved to
+          # the newest real artifact deploy_all_dm_applications.yml's build-layer job
+          # uploaded (T-A.7, WS-A). prd-apply reuses this exact job's outputs (never
+          # re-resolves) so a plan and its later apply can never silently diverge on
+          # which layer object they mean.
+          TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:             ${{ steps.resolve-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256_b64:         ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
+      - name: Upload saved plan summaries (text only — F-01, never the tfplan binary)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: prd-saved-plans
+          path: .plan-artifacts/**/plan.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+  # ── PRD — Phase 2: environment-gated APPLY ─────────────────────
+  #  The single informed environment gate (ADR-R6-4). After approval, deploy_env.sh
+  #  applies in the dependency order declared in scripts/ci/stack_map.json. Per ADR-R6-5,
+  #  EVERY stack is RE-PLANNED here under the environment-gated deploy role (F-01 —
+  #  the downloaded artifact below carries ONLY the redacted plan.txt text summary, never
+  #  a tfplan binary) and the fresh plan is gated against that approved summary via
+  #  scripts/ci/plan_gate_check.sh `plan-diff` — apply proceeds iff add/change/destroy
+  #  counts AND the changed-address set match; on any divergence the run FAILS CLOSED (no
+  #  further downstream applies) and publishes the approved-vs-re-plan diff to the job
+  #  summary + a divergence artifact. A stack with no pre-gate plan (the
+  #  bootstrap_plannable:false 05b, whose TF_VAR_workspace_host is re-derived from 05a's
+  #  POST-apply output) takes the informed --deferred path instead of an unconditional
+  #  fail-closed. This is ADR-R6-5 "No silent divergence, ever" — the apply never
+  #  executes an unreviewed plan without the divergence guard asserting it matches the
+  #  approved one.
+
+  prd-apply:
+    name: PRD — Apply (gated)
+    concurrency:
+      group: tf-prd
+      cancel-in-progress: false
+    needs:
+      - prd-check-version
+      - prd-plan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
+    timeout-minutes: 45
+    environment: production
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_PRD }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-prd-apply
+          mask-aws-account-id: true
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (prd deploy role).
+      - name: Verify assumed role (sts get-caller-identity)
         run: |
-          WS_JSON=$(terraform output -json)
-          WS_URL=$(echo "$WS_JSON" | jq -r '.databricks_workspace_url.value')
-          echo "workspace_url=$WS_URL"   >> $GITHUB_OUTPUT
-          echo "Workspace URL: $WS_URL"
-        env:
-          DATABRICKS_ACCOUNT_ID:    ${{ secrets.DATABRICKS_ACCOUNT_ID }}
-          DATABRICKS_CLIENT_ID:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-          TF_VAR_databricks_client_id: ${{ secrets.DATABRICKS_CLIENT_ID }}
-
-  prd-deploy-lambda:
-    name: PRD — Deploy Lambda AWS
-    needs: prd-deploy-iam
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/06_lambda
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
+      - name: Download saved plan summaries (text only — F-01)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - run: mkdir -p .lambda_zip
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+          name: prd-saved-plans
+          path: .plan-artifacts
+      - name: Deploy PRD
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/deploy_env.sh" prd
         env:
-          MODULE_NAME: PRD/Lambda
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  prd-deploy-ecs:
-    name: PRD — Deploy ECS AWS
-    needs: prd-deploy-iam
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/07_ecs
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/ECS
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-
-  # ── PRD Layer 4: Databricks Workspace (depends on Account) ─────
-
-  prd-deploy-databricks-workspace:
-    name: PRD — Deploy Databricks Part 2 - Workspace
-    needs: prd-deploy-databricks-account
-    if: github.event.inputs.skip_databricks != 'true'
-    runs-on: ubuntu-latest
-    environment: production
-    defaults:
-      run:
-        working-directory: ${{ env.PRD_ROOT }}/05b_databricks_workspace
-    steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id:     ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region:            ${{ env.AWS_REGION }}
-      - run: terraform init -input=false
-      - run: terraform validate
-      - name: Read VERSION
-        id: ver
-        run: echo "version=$(cat ${{ github.workspace }}/VERSION | tr -d '[:space:]')" >> $GITHUB_OUTPUT
-      - name: Terraform Plan
-        id: plan
-        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
-        env:
-          MODULE_NAME: PRD/Databricks Workspace
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-          TF_VAR_create_cluster: ${{ github.event.inputs.fast_mode == 'true' && 'false' || 'true' }}
-          TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
-      - name: Terraform Apply
-        if: steps.plan.outputs.plan_has_changes == 'true'
-        run: terraform apply -input=false -auto-approve tfplan
-        env:
-          TF_VAR_project_version: ${{ steps.ver.outputs.version }}
-          TF_VAR_create_cluster: ${{ github.event.inputs.fast_mode == 'true' && 'false' || 'true' }}
-          TF_VAR_workspace_host:  ${{ needs.prd-deploy-databricks-account.outputs.workspace_url }}
-          TF_VAR_databricks_client_id:     ${{ secrets.DATABRICKS_CLIENT_ID }}
-          TF_VAR_databricks_client_secret: ${{ secrets.DATABRICKS_CLIENT_SECRET }}
+          TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
+          SKIP_DATABRICKS:                 ${{ github.event.inputs.skip_databricks }}
+          FAST_MODE:                       ${{ github.event.inputs.fast_mode }}
+          # T-A.7, WS-A — deploy_env.sh normally applies prd-plan's SAVED plan binary
+          # unchanged, but re-plans (and re-resolves layer_* here) on a divergence
+          # (ADR-R6-5). Reusing prd-plan's exact outputs (not a fresh resolve) keeps a
+          # re-plan consistent with what the gate approver reviewed.
+          TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:             ${{ needs.prd-plan.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256_b64:         ${{ needs.prd-plan.outputs.layer_sha256_b64 }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 
@@ -483,35 +420,146 @@ jobs:
     name: PRD — Create git tag
     needs:
       - prd-check-version
-      - prd-deploy-ecs
-      - prd-deploy-lambda
-      - prd-deploy-databricks-account
-      - prd-deploy-databricks-workspace
-    if: |
-      always() &&
-      needs.prd-check-version.result == 'success' &&
-      needs.prd-deploy-ecs.result == 'success' &&
-      needs.prd-deploy-lambda.result == 'success' &&
-      (needs.prd-deploy-databricks-account.result == 'success' || needs.prd-deploy-databricks-account.result == 'skipped') &&
-      (needs.prd-deploy-databricks-workspace.result == 'success' || needs.prd-deploy-databricks-workspace.result == 'skipped')
+      - prd-apply
+    if: needs.prd-check-version.result == 'success' && needs.prd-apply.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      # F-10: this checkout legitimately needs a persisted, writable credential
+      # (it pushes a tag below) — persist-credentials stays at its default
+      # (true), unlike every other checkout in this repo.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-      - name: Tag master
+      - name: Tag main
         run: |
           VERSION="${{ needs.prd-check-version.outputs.version }}"
           TAG="v${VERSION}-infra"
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git fetch origin master
-          git checkout master
+          git fetch origin main
+          git checkout main
           if git tag --list | grep -qx "$TAG"; then
-            echo "Tag $TAG already exists — skipping." >> $GITHUB_STEP_SUMMARY
+            echo "Tag $TAG already exists — skipping." >> "$GITHUB_STEP_SUMMARY"
           else
             git tag -a "$TAG" -m "PRD infra v${VERSION}"
             git push origin "$TAG"
-            echo "## Tag created: \`$TAG\` on master" >> $GITHUB_STEP_SUMMARY
+            echo "## Tag created: \`$TAG\` on main" >> "$GITHUB_STEP_SUMMARY"
           fi
+
+  # ══════════════════════════════════════════════════════════════
+  #  HML — single job (all modules sequentially via wrapper script)
+  # ══════════════════════════════════════════════════════════════
+
+  # ── HML — Phase 1: pre-gate PLAN ───────────────────────────────
+  hml-plan:
+    name: HML — Plan (pre-gate)
+    concurrency:
+      group: tf-hml
+      cancel-in-progress: false
+    needs: branch-guard
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    timeout-minutes: 15
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          # Pre-gate plan job carries NO `environment:` — branch-ref OIDC sub, accepted
+          # only by the READONLY trust (oidc.tf:134). Borrowing a deploy role here both
+          # fails role assumption and escalates privilege (F-QA-A1-2).
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-hml-plan
+          mask-aws-account-id: true
+      - name: Plan HML (pre-gate)
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" hml
+        env:
+          # F-07: DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET removed — no
+          # `databricks` Terraform provider block or CLI call consumes them on
+          # this path (grep-verified); they were dead repo-scoped-secret reads.
+          DESTROY_ACK:              ${{ github.event.inputs.destroy_ack }}
+          PLAN_ARTIFACT_DIR:        ${{ github.workspace }}/.plan-artifacts
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
+      - name: Upload saved plan summaries (text only — F-01, never the tfplan binary)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: hml-saved-plans
+          path: .plan-artifacts/**/plan.txt
+          if-no-files-found: warn
+          retention-days: 1
+
+  # ── HML — Phase 2: environment-gated APPLY ─────────────────────
+  hml-apply:
+    name: HML — Apply (gated)
+    concurrency:
+      group: tf-hml
+      cancel-in-progress: false
+    needs:
+      - branch-guard
+      - hml-plan
+    if: github.event.inputs.environment == 'hml'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_HML via OIDC
+    timeout-minutes: 45
+    environment: hml
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_HML }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-deploy-cloud-infra-hml-apply
+          mask-aws-account-id: true
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (hml deploy role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
+      - name: Download saved plan summaries (text only — F-01)
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: hml-saved-plans
+          path: .plan-artifacts
+      - name: Deploy HML
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/deploy_env.sh" hml
+        env:
+          # F-07: DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET removed — no
+          # `databricks` Terraform provider block or CLI call consumes them on
+          # this path (grep-verified); they were dead repo-scoped-secret reads.
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}

@@ -1,0 +1,400 @@
+name: Drift Detection
+
+# ── IS-12 — Weekly drift scan for persistent environments ────────
+# Runs `terraform plan` (no apply) on every CI-managed stack every Monday.
+# Any pending change = drift detected -> job fails with ::error:: annotation.
+#
+# Coverage (T-A.8 — single source of truth is scripts/ci/stack_map.json):
+#   DEV — 01_peripherals, 02_lambda
+#   HML — 04_peripherals
+#   PRD — 03_iam, 04_peripherals, 06_lambda
+#
+# prd/00_bootstrap is operator_only (never planned by CI, D14/O-1); prd/01_tf_state is
+# the remote-state backend and is not drift-scanned here. Every job assumes
+# AWS_DEPLOY_ROLE_READONLY, which carries no dynamodb:PutItem/DeleteItem on the state
+# lock table (SEC-I-01) — every plan below passes TF_PLAN_ARGS=-lock=false (T-A.8, F-04).
+#
+# Can also be triggered manually via workflow_dispatch for on-demand checks.
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Every Monday at 06:00 UTC
+  workflow_dispatch: {}
+
+permissions:
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
+
+# CI-M9 — Serialize drift scans. Concurrent runs plan against the same remote
+# state and collide on the Terraform state lock. Do not cancel an in-flight scan
+# (cancel-in-progress: false) so a manual workflow_dispatch never aborts the
+# scheduled run mid-plan and leave a stale lock.
+concurrency:
+  group: drift-detection
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: sa-east-1
+  TF_VERSION: 1.9.8
+
+# ──────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── Preflight: OIDC role variable must exist before any drift job ─────────
+  preflight-oidc:
+    name: Preflight — OIDC role variable
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Validate AWS_DEPLOY_ROLE_READONLY is set
+        run: |
+          if [ -z "${{ vars.AWS_DEPLOY_ROLE_READONLY }}" ]; then
+            echo "::error::AWS_DEPLOY_ROLE_READONLY is not set. Run scripts/ci/publish_oidc_vars.sh after applying services/prd/00_bootstrap — see docs/runbooks/00-bootstrap-apply.md."
+            exit 1
+          fi
+          echo "AWS_DEPLOY_ROLE_READONLY present — OK."
+
+  # ── DEV ──────────────────────────────────────────────────────────────────
+
+  drift-dev-peripherals:
+    name: Drift — DEV/Peripherals
+    needs: preflight-oidc
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    defaults:
+      run:
+        working-directory: services/dev/01_peripherals
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-drift-detection-drift-dev-peripherals
+          mask-aws-account-id: true
+      # F-QA-3 cutover-safety: non-mutating role-assumption evidence (read-only role).
+      - name: Verify assumed role (sts get-caller-identity)
+        run: |
+          # F-11: never print the unmasked account id + role ARN to public logs —
+          # this is a public repo. Show only the ARN, with the 12-digit account id
+          # masked (mask-aws-account-id: true above already masks it whenever the
+          # action itself emits it; this covers this explicit evidence step too).
+          aws sts get-caller-identity --query Arn --output text | sed -E 's/[0-9]{12}/************/'
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Peripherals
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "drift-check"
+          TF_VAR_databricks_dev_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in DEV/Peripherals — unexpected pending changes found."
+          exit 1
+
+  drift-dev-lambda:
+    name: Drift — DEV/Lambda
+    needs: preflight-oidc
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    defaults:
+      run:
+        working-directory: services/dev/02_lambda
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-drift-detection-drift-dev-lambda
+          mask-aws-account-id: true
+      - run: mkdir -p .lambda_zip
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: DEV/Lambda
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in DEV/Lambda — unexpected pending changes found."
+          exit 1
+
+  # ── HML ──────────────────────────────────────────────────────────────────
+
+  drift-hml-peripherals:
+    name: Drift — HML/Peripherals
+    needs: preflight-oidc
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    defaults:
+      run:
+        working-directory: services/hml/04_peripherals
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-drift-detection-drift-hml-peripherals
+          mask-aws-account-id: true
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: HML/Peripherals
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "drift-check"
+          TF_VAR_databricks_hml_uc_external_id: ${{ secrets.DATABRICKS_UC_EXTERNAL_ID }}
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in HML/Peripherals — unexpected pending changes found."
+          exit 1
+
+  # ── PRD ──────────────────────────────────────────────────────────────────
+
+  drift-prd-iam:
+    name: Drift — PRD/IAM
+    needs: preflight-oidc
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    defaults:
+      run:
+        working-directory: services/prd/03_iam
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-drift-detection-drift-prd-iam
+          mask-aws-account-id: true
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/IAM
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/IAM — unexpected pending changes found."
+          exit 1
+
+  drift-prd-peripherals:
+    name: Drift — PRD/Peripherals
+    needs: preflight-oidc
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    defaults:
+      run:
+        working-directory: services/prd/04_peripherals
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-drift-detection-drift-prd-peripherals
+          mask-aws-account-id: true
+      - run: terraform init -input=false
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Peripherals
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "drift-check"
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/Peripherals — unexpected pending changes found."
+          exit 1
+
+  drift-prd-lambda:
+    name: Drift — PRD/Lambda
+    needs: preflight-oidc
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
+    defaults:
+      run:
+        working-directory: services/prd/06_lambda
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e  # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a  # v4.3.1
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
+          aws-region:     ${{ env.AWS_REGION }}
+          role-session-name: gha-drift-detection-drift-prd-lambda
+          mask-aws-account-id: true
+      - run: mkdir -p .lambda_zip
+      - run: terraform init -input=false
+      - name: Resolve lambda layer artifact (T-A.7, WS-A) — skip if not yet provisioned
+        id: resolve-layer
+        run: |
+          set -euo pipefail
+          # Addendum (2026-08-23): this is a NON-GATING advisory/scheduled plan —
+          # the lambda-layer artifact store may not be provisioned yet (PRD resource
+          # creation is deliberately deferred, docs/runbooks/v0.5.0-live-cutover.md
+          # §5). resolve_layer_or_skip.sh warns + reports skip=true instead of
+          # failing the job in that case; any OTHER failure still fails hard.
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer_or_skip.sh" \
+            dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
+          echo "${OUT}"
+          SKIP="$(echo "${OUT}" | grep -oP 'skip=\K\S+')"
+          echo "skip=${SKIP}" >> "$GITHUB_OUTPUT"
+          if [ "${SKIP}" != "true" ]; then
+            echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
+            echo "layer_sha256_b64=$(echo "${OUT}" | grep -oP 'LAYER_SHA256_B64=\K\S+')" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Terraform Plan (Drift Check)
+        id: plan
+        if: steps.resolve-layer.outputs.skip != 'true'
+        run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
+        env:
+          MODULE_NAME: PRD/Lambda
+          TAIL_LINES: "30"
+          TF_PLAN_ARGS: "-lock=false"
+          TF_VAR_project_version: "drift-check"
+          # T-A.7, WS-A: the placeholder this job used to pass here differed from
+          # live state's actually-applied layer_s3_key/sha256 on every run, so this
+          # drift check always reported a false-positive diff on those 2 attributes.
+          # Resolved to the newest real artifact instead — a real drift check again.
+          TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:    ${{ steps.resolve-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256_b64: ${{ steps.resolve-layer.outputs.layer_sha256_b64 }}
+      - name: Alert on drift
+        if: steps.plan.outputs.plan_has_changes == 'true'
+        run: |
+          echo "::error::DRIFT DETECTED in PRD/Lambda — unexpected pending changes found."
+          exit 1
+
+  # ── Summary ──────────────────────────────────────────────────────────────
+
+  drift-summary:
+    name: Drift Summary
+    needs:
+      - drift-dev-peripherals
+      - drift-dev-lambda
+      - drift-hml-peripherals
+      - drift-prd-iam
+      - drift-prd-peripherals
+      - drift-prd-lambda
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+      - name: Report drift results
+        run: |
+          {
+            echo "## Drift Detection Results"
+            echo ""
+            echo "| Module | Result |"
+            echo "|--------|--------|"
+            echo "| DEV/Peripherals | ${{ needs.drift-dev-peripherals.result }} |"
+            echo "| DEV/Lambda      | ${{ needs.drift-dev-lambda.result }} |"
+            echo "| HML/Peripherals | ${{ needs.drift-hml-peripherals.result }} |"
+            echo "| PRD/IAM         | ${{ needs.drift-prd-iam.result }} |"
+            echo "| PRD/Peripherals | ${{ needs.drift-prd-peripherals.result }} |"
+            echo "| PRD/Lambda      | ${{ needs.drift-prd-lambda.result }} |"
+          } >> "$GITHUB_STEP_SUMMARY"

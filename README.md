@@ -1,140 +1,133 @@
 # dd-chain-explorer
 
-> **Versão:** `0.2.9` | **Região AWS:** `sa-east-1` | **Branch principal:** `develop`
+> Region: `sa-east-1` | Default branch: `master` (renaming to `main` at this release's ship — T-A.11) | Active release: see `specs/releases/ACTIVE.md`
 
-Pipeline de dados on-chain para extração, processamento e análise de transações Ethereum. Captura dados em tempo real via streaming (ECS Fargate + Kinesis), processa com Delta Live Tables no Databricks e disponibiliza em um lakehouse Delta (Bronze → Silver → Gold) no Unity Catalog.
-
----
-
-## Arquitetura em Resumo
+An S3-anchored Ethereum data platform: `dd-chain-capture` (a separate repo,
+running on a VPS) writes raw blockchain data to this project's S3 raw bucket
+— the sole integration boundary. This repository owns everything downstream
+of that boundary: Databricks Delta Live Tables (Bronze → Silver → Gold on
+Unity Catalog), two AWS Lambda functions, the Terraform that provisions all
+of it, and the GitHub Actions CI/CD pipeline. **There is no blockchain
+capture code in this repository** — no Kinesis, no Firehose, no SQS, no ECS
+producer. Databricks runs on the **Free Edition** (serverless compute only;
+no `prod` deployment target exists there).
 
 ```
-Ethereum APIs (Alchemy/Infura)
-        │
+dd-chain-capture (separate repo, VPS)
+        │  writes raw JSON
         ▼
-[ECS Fargate — 5 Python jobs]  ──→  Kinesis Streams  ──→  Firehose  ──→  S3 (raw/)
-        │                                                                      │
-        └──→  SQS  ──→  DynamoDB (hot data)              Databricks DLT ◄────┘
-                                                          (Bronze → Silver → Gold)
+   S3 raw bucket  ──────────────────────────────────────┐
+        │                                                │
+        ▼                                                │
+  Databricks DLT (apps/dabs/dlt_*)                        │
+  Bronze → Silver → Gold, Unity Catalog                   │
+        │                                                 │
+        ├──► Lakeview dashboards (apps/dabs/dashboard_*)   │
+        │                                                  │
+        └──► job_export_gold ──► S3 ──► Lambda ──► DynamoDB │
+                                  (apps/lambda/gold_to_dynamodb) │
                                                                   │
-                                          Lambda (Etherscan) ─────┘
+  Lambda contracts_ingestion (EventBridge, hourly) ───────────────┘
+  Etherscan API → S3 raw/batch/  (a second, independent raw producer)
 ```
 
-| Componente | Tecnologia | Localização |
-|-----------|-----------|-------------|
-| Streaming apps (5 jobs) | Python + ECS Fargate | `apps/docker/onchain-stream-txs/` |
-| DLT pipelines + batch workflows | Databricks Asset Bundles | `apps/dabs/` |
-| Lambda functions (2) | Python + AWS Lambda | `apps/lambda/` |
-| Infra DEV | Terraform (2 módulos) | `services/dev/` |
-| Infra PRD | Terraform (8 módulos: 01–07 + 05a/05b) | `services/prd/` |
-| Biblioteca compartilhada | `dm-chain-utils` (PyPI) | `utils/` |
+| Component | Technology | Path |
+|-----------|-----------|------|
+| DLT pipelines + batch jobs + dashboards | Databricks Asset Bundles | `apps/dabs/` |
+| Lambda functions (2) | Python 3.12 | `apps/lambda/` |
+| Shared library | `dm_chain_utils` — path-installed, never published | `utils/` |
+| Infra DEV | Terraform (2 stacks) | `services/dev/` |
+| Infra HML | Terraform (1 stack — minimal lane) | `services/hml/` |
+| Infra PRD | Terraform (5 stacks incl. the OIDC bootstrap) | `services/prd/` |
+| CI/CD | GitHub Actions + `scripts/ci/` | `.github/workflows/`, `scripts/ci/` |
 
 ---
 
-## Quick Start — DEV
-
-**Pré-requisitos:** Docker, AWS CLI configurado, Databricks CLI, `make`.
+## Quick start — quality gates (no cloud credentials needed)
 
 ```bash
-# 1. Provisionar infra DEV na AWS
-make tf_apply_dev_peripherals
-make tf_apply_dev_lambda
-
-# 2. Subir streaming apps localmente (Docker Compose)
-make deploy_dev_stream
-
-# 3. Deploy DABs no workspace DEV
-make dabs_deploy_dev
+make check         # ruff format --check + ruff check + mypy + pytest
+make test           # pytest: tests/, utils/tests/unit, scripts/ci/tests
+make lint            # ruff format --check + ruff check
+make typecheck        # mypy --config-file pyproject.toml
 ```
 
-Para configurar perfis Databricks e secrets GitHub: ver `scripts/tmp/setup_databricks_profiles.sh` e `scripts/tmp/setup_github_secrets.sh`.
+Every new/kept live-surface module (both Lambda handlers, the 3 live
+`dm_chain_utils` modules, `job_export_gold`'s pure functions, the DLT
+expectation predicates) has moto-mocked or source-text-contract test
+coverage under the repo-level `tests/` tree — see `specs/memory/quality-assurance.md`.
 
----
-
-## Deploy em Produção
-
-Todos os deploys de PRD são feitos via **GitHub Actions** a partir da branch `develop`.
-
-| Componente | Workflow | Pré-requisito |
-|-----------|----------|---------------|
-| Infra Cloud (DEV/PRD) | `Deploy Infra Cloud` | Branch `develop`, VERSION não tagueado |
-| Streaming apps | `Deploy DM Applications` → `streaming-apps` | Infra PRD deployada |
-| DABs Databricks | `Deploy DM Applications` → `databricks-dabs` | Workspace Databricks acessível |
-| Lambda functions | `Deploy DM Applications` → `lambda-functions` | IAM roles PRD criados |
-| Python lib (`dm-chain-utils`) | `Deploy Python Lib` | PyPI version nova |
-| Destruição de infra | `Destroy Infra Cloud` | Digitar `DESTROY` para confirmar |
-
-> Use o workflow `/deploy-infra` no Windsurf para guia interativo de deploy.
-
----
-
-## Makefile — Referência Rápida
+## Building the Lambda layer
 
 ```bash
-make help                    # listar todos os targets
-make deploy_dev_stream       # Docker Compose DEV (streaming)
-make dabs_deploy_dev         # DABs → target dev
-make tf_plan_dev_peripherals # Terraform plan DEV/01_peripherals
-make tf_apply_dev_lambda     # Terraform apply DEV/02_lambda
-make prod_standby            # Pausar ambiente PRD (ECS + Databricks)
-make prod_resume             # Retomar ambiente PRD
-make prod_ecs_logs           # Ver logs ECS PRD em tempo real
+make build_lambda_layer   # scripts/build_lambda_layer.sh — see apps/lambda/README.md
 ```
+
+## Databricks Asset Bundles
+
+```bash
+make dabs_validate_all              # validate every bundle, target=dev
+make dabs_deploy_all TARGET=dev     # deploy every bundle
+make dabs_run_dlt_ethereum          # trigger the Ethereum DLT pipeline
+```
+
+Full bundle-by-bundle reference: [`apps/dabs/README.md`](apps/dabs/README.md).
+
+## Terraform
+
+```bash
+make dev_tf_apply                   # DEV — no CI gate, your own AWS credentials
+make tf_plan ENV=hml                # HML/PRD — same scripts/ci/plan_env.sh CI runs
+make tf_deploy ENV=hml
+```
+
+`services/prd/00_bootstrap` is the one stack CI can never apply — see
+[`docs/runbooks/00-bootstrap-apply.md`](docs/runbooks/00-bootstrap-apply.md).
+
+`make help` lists every target.
 
 ---
 
-## Documentação
+## Documentation
 
-| Documento | Conteúdo |
-|-----------|----------|
-| [`docs/01_architecture.md`](docs/01_architecture.md) | Arquitetura geral, topologia de rede, segurança |
-| [`docs/02_data_capture.md`](docs/02_data_capture.md) | Jobs de streaming, Kinesis, Lambda, DynamoDB |
-| [`docs/03_data_processing.md`](docs/03_data_processing.md) | DLT pipelines, modelo Medallion, workflows Databricks |
-| [`docs/04_data_ops.md`](docs/04_data_ops.md) | CI/CD, Terraform, DABs, GitFlow, observabilidade |
-| [`docs/05_data_serving.md`](docs/05_data_serving.md) | Tabelas Gold, dashboards, APIs |
-| [`docs/06_integration_tests_specs.md`](docs/06_integration_tests_specs.md) | Especificações e regras dos testes de integração |
-| [`docs/ROADMAP.md`](docs/ROADMAP.md) | TODOs, prioridades e dependências |
-| [`docs/report_finops.md`](docs/report_finops.md) | Inventário de recursos e custos AWS |
-| [`docs/report_security.md`](docs/report_security.md) | Relatório de auditoria de segurança |
+The source of truth for product/architecture/tech-stack state is
+`specs/memory/**` (Markdown atoms) — read `specs/memory/tech-stack.md` and
+`specs/memory/architecture.md` before making a structural change.
+`specs/releases/ACTIVE.md` points at the release currently being implemented.
 
-**READMEs de componentes:**
-- [`apps/docker/README.md`](apps/docker/README.md) — Streaming apps (Kinesis architecture)
-- [`apps/dabs/README.md`](apps/dabs/README.md) — Databricks Asset Bundles
-- [`apps/lambda/README.md`](apps/lambda/README.md) — Lambda functions
+Component READMEs: [`apps/dabs/README.md`](apps/dabs/README.md) ·
+[`apps/lambda/README.md`](apps/lambda/README.md) ·
+[`utils/README.md`](utils/README.md) · [`docs/README.md`](docs/README.md).
 
 ---
 
-## Estrutura do Repositório
+## Repository layout
 
 ```
-dd_chain_explorer/
+dd-chain-explorer/
 ├── apps/
-│   ├── dabs/          ← Databricks Asset Bundles (DLT pipelines + workflows)
-│   ├── docker/        ← Streaming app container (5 Python jobs)
-│   └── lambda/        ← AWS Lambda handlers (2 funções)
-├── docs/              ← Documentação técnica
-├── scripts/           ← Scripts operacionais permanentes
-│   ├── ci/            ← Scripts CI compartilhados (12 scripts)
-│   └── tmp/           ← Scripts de setup e utilitários pontuais
+│   ├── dabs/           ← Databricks Asset Bundles (DLT + batch jobs + dashboards)
+│   └── lambda/         ← AWS Lambda handlers (2 functions) + requirements.lock
+├── docs/
+│   └── runbooks/       ← operator-only, one-time procedures
+├── scripts/
+│   ├── ci/             ← scripts GitHub Actions runs (not this repo's write set to describe here)
+│   └── build_lambda_layer.sh
 ├── services/
-│   ├── dev/           ← Terraform DEV (2 módulos) + Docker Compose
-│   ├── prd/           ← Terraform PRD (8 módulos numerados, incl. 05a/05b)
-│   └── modules/       ← Módulos Terraform compartilhados
-├── utils/             ← Biblioteca Python compartilhada (dm-chain-utils)
+│   ├── dev/            ← Terraform DEV (2 stacks)
+│   ├── hml/             ← Terraform HML (1 stack — minimal lane)
+│   ├── prd/              ← Terraform PRD (incl. 00_bootstrap, operator-applied)
+│   └── modules/           ← shared Terraform modules
+├── tests/                    ← repo-level pytest tree (Lambda, utils, DABs pure functions, DLT contracts)
+├── utils/                       ← dm_chain_utils shared library
 ├── Makefile
-└── VERSION
+└── VERSION                        ← single version axis, tracks the SDD release id
 ```
 
 ---
 
-## Versioning & GitFlow
+## Versioning
 
-```
-master  ←─ release/* (após aprovação PRD)
-  └── develop  ←─ feature/*, hotfix/*
-```
-
-- Bump `VERSION` antes de qualquer deploy PRD
-- Cada pipeline usa suffix de tag: `-infra`, `-dabs`, `-lambda`, `-lib`
-- Exemplo: `v0.2.9-infra`, `v0.2.9-dabs`
-- Auto-bump de versão via `auto-bump-version.yml` após merge de PRs
+One version axis: `VERSION` (repo root), every `apps/dabs/*/VERSION`, and
+`utils/`'s package version all track the SDD release id (`specs/releases/`).
+There is no separate artifact-version scheme.

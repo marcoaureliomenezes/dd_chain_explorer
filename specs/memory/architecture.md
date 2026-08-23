@@ -1,162 +1,222 @@
-# Architecture — DD Chain Explorer
-
-> System design reference. Source of truth for structural decisions.  
-> Current state validated from: code, Terraform state, and live Databricks DEV catalog (2026-04).
-
+---
+slug: architecture
+title: Architecture
+category: core
+tldr: Infrastructure, CI and Databricks artifacts; data capture is external (dd-chain-capture on a VPS) and the S3 raw bucket is the integration boundary.
+summary: System design reference for the three things this repository owns — Terraform infrastructure (services/dev|hml|prd|modules), the GitHub Actions CI pipeline, and the Databricks artifacts (DLT pipelines, jobs, Lakeview dashboards) plus two AWS Lambdas. Covers the S3 integration boundary with the external dd-chain-capture project, the medallion data flow, the single Free-Edition Databricks workspace, environment topology, Terraform deploy order, and the architectural decisions in force.
+tags:
+  - architecture
+  - terraform
+  - databricks
+  - medallion
+  - s3-boundary
+  - adr
+last_updated: "2026-08-23"
+release_origin: v0.4.0
 ---
 
-## End-to-End Data Flow
+## Visão geral
 
-```
-Ethereum Mainnet (RPC)
-    │
-    ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  CAPTURE LAYER — 5 Python Jobs on ECS Fargate                       │
-│                                                                      │
-│  Job 1: MinedBlocksWatcher                                           │
-│    └─ polls eth_getBlock('latest') every 1s                          │
-│    └─ emits block events → SQS [mainnet-mined-blocks-events]         │
-│                                                                      │
-│  Job 2: OrphanBlocksWatcher                                          │
-│    └─ consumes SQS, verifies block hashes via RPC                    │
-│    └─ checks DynamoDB TTL cache (BLOCK_CACHE, TTL 1h)                │
-│    └─ flags chain reorgs → re-emits to same SQS                      │
-│                                                                      │
-│  Job 3: BlockDataCrawler                                             │
-│    └─ consumes SQS, fetches full block (18+ fields) via RPC          │
-│    └─ → Firehose Direct Put [mainnet-blocks-data]                    │
-│    └─ fan-out tx hashes → SQS [mainnet-block-txs-hash-id]           │
-│                                                                      │
-│  Job 4: MinedTxsCrawler (×6 replicas)                               │
-│    └─ consumes SQS, fetches tx details via Infura (17 API keys)      │
-│    └─ DynamoDB SEMAPHORE for distributed key rotation                │
-│    └─ → Kinesis [mainnet-transactions-data]                          │
-│                                                                      │
-│  Job 5: TxsInputDecoder (×3 replicas)                               │
-│    └─ consumes Kinesis, decodes calldata (4-stage pipeline)          │
-│    └─ DynamoDB ABI cache / ABI_NEG negative cache                   │
-│    └─ → Firehose Direct Put [mainnet-transactions-decoded]           │
-└─────────────────────────────────────────────────────────────────────┘
-    │
-    ▼ (all Firehose streams → S3 NDJSON, hourly partitioned)
-┌─────────────────────────────────────────────────────────────────────┐
-│  S3 RAW LAYER                                                        │
-│  bucket: dm-chain-explorer-raw-data (PRD)                            │
-│  raw/mainnet-blocks-data/year=Y/month=M/day=D/hour=H/               │
-│  raw/mainnet-transactions-data/year=Y/month=M/day=D/hour=H/         │
-│  raw/mainnet-transactions-decoded/year=Y/month=M/day=D/hour=H/      │
-│  raw/app_logs/year=Y/month=M/day=D/hour=H/                          │
-│  raw/batch/year=Y/month=M/day=D/ (Lambda contracts)                 │
-└─────────────────────────────────────────────────────────────────────┘
-    │
-    ▼ (Auto Loader cloudFiles, triggered every 5 min by dm-trigger-dlt-all)
-┌─────────────────────────────────────────────────────────────────────┐
-│  DATABRICKS DLT — MEDALLION ARCHITECTURE                             │
-│                                                                      │
-│  Pipeline: dm-ethereum                                               │
-│  ├─ Bronze (b_ethereum): eth_mined_blocks, eth_transactions,         │
-│  │   eth_txs_input_decoded, popular_contracts_txs                   │
-│  ├─ Silver (s_apps): eth_blocks, eth_transactions_staging,           │
-│  │   eth_blocks_withdrawals, txs_inputs_decoded_fast,               │
-│  │   transactions_ethereum, eth_canonical_blocks_index (MV)         │
-│  └─ Gold (g_apps, g_network): 15 MVs                                │
-│                                                                      │
-│  Pipeline: dm-app-logs                                               │
-│  ├─ Bronze (b_app_logs): b_app_logs_data                            │
-│  ├─ Silver (s_logs): logs_streaming, logs_batch                     │
-│  └─ Gold (g_api_keys): etherscan_consumption, web3_keys_consumption  │
-└─────────────────────────────────────────────────────────────────────┘
-    │
-    ├─► Databricks Lakeview Dashboards (4)
-    ├─► Databricks Genie AI/BI (1)
-    ├─► S3 Gold Exports (job_export_gold)
-    └─► DynamoDB (CONSUMPTION entities via gold_to_dynamodb Lambda)
-```
+DD Chain Explorer is the **data-platform half** of a two-project system. It does not
+capture blockchain data. Ethereum block, transaction and calldata ingestion belongs to a
+separate project, **dd-chain-capture**, which runs on a VPS and delivers raw JSON into
+this project's S3 raw bucket. **The S3 bucket is the integration boundary** — no queue,
+no stream, no shared code, no network path between the two projects.
 
----
+What this repository owns is exactly three things:
 
-## Architectural Decisions
+1. **Infrastructure** — Terraform under `services/{dev,hml,prd,modules}`.
+2. **The CI pipeline** — GitHub Actions workflows that deploy infrastructure and apps.
+3. **The artifacts deployed to Databricks** for data processing — DLT pipelines,
+   workflows/jobs and Lakeview dashboards under `apps/dabs/` — plus the two AWS Lambdas
+   under `apps/lambda` (contracts ingestion, gold → DynamoDB export).
 
-### ADR-001: No Apache Kafka / No Schema Registry
+The platform is currently **idle**: the raw bucket has held no data since 2026-05-23, DLT
+triggers are paused, and no job has run in 60 days. It is waiting on the first delivery
+from dd-chain-capture.
 
-**Decision:** Use Kinesis Data Streams + Firehose Direct Put as the event bus. Use JSON (NDJSON) natively with no Avro/Protobuf/Schema Registry.
+## Camadas
 
-**Rationale:** Kafka MSK introduces significant operational overhead and cost for a single-pipeline platform. Kinesis provides comparable throughput (1 shard = 1 MB/s) at lower operational complexity. JSON simplicity avoids schema evolution friction with minor payload overhead.
+| Camada | Responsabilidade |
+|--------|-----------------|
+| Capture (external) | `dd-chain-capture` on a VPS — writes raw JSON to the S3 raw bucket. Not in this repo; see [[capture-layer]] |
+| S3 Raw Layer | `dm-chain-explorer-raw-data` — landing zone, `raw/mainnet-*/year=/month=/day=/…` partitions, Kafka-Connect JSON; app logs as Fluent-Bit NDJSON |
+| Databricks DLT | Two pipelines (`dm-ethereum`, `dm-app-logs`) reading S3 with Auto Loader; bronze → silver → gold in one Free-Edition workspace |
+| Serving | 4 Lakeview dashboards, gold exports to S3, `gold-to-dynamodb` Lambda writing CONSUMPTION entities |
+| Control plane | Terraform stacks per environment + GitHub Actions workflows that plan/apply them and deploy the DABs bundles |
 
-**Constraints:** Serialization coupling is implicit in code (no schema contract). Schema changes require coordinated code and DLT pipeline updates.
+## Fluxo de dados — pipeline asset chain
 
----
+```mermaid
+flowchart TD
+  subgraph EXT ["EXTERNAL — dd-chain-capture (VPS, separate repo)"]
+    CAP["Ethereum ingestion<br/>blocks · transactions · calldata"]
+    FB["Fluent-Bit<br/>application logs (NDJSON)"]
+  end
 
-### ADR-002: Firehose Direct Put vs Kinesis Intermediary
+  subgraph S3RAW ["S3 RAW LAYER — dm-chain-explorer-raw-data (integration boundary)"]
+    S3["raw/mainnet-blocks-data/<br/>raw/mainnet-transactions-data/<br/>raw/mainnet-transactions-decoded/<br/>raw/app_logs/<br/>raw/batch/ (Lambda)<br/>year=/month=/day=/…"]
+  end
 
-**Decision:** Blocks data and decoded transactions go directly to Firehose Direct Put. Only raw transactions flow through Kinesis Data Streams (because Job 5 reads from Kinesis — a Kinesis intermediary is required for the multi-replica consumer pattern).
+  subgraph DBX ["DATABRICKS — one Free-Edition workspace (serverless)"]
+    TRIG["dm-trigger-all-dlts<br/>PAUSED"]
+    PIPE1["dm-ethereum<br/>bronze → silver → gold<br/>24 tables · 11 expectations"]
+    PIPE2["dm-app-logs<br/>bronze → silver → gold<br/>5 tables"]
+  end
 
-**Rationale:** Jobs 3 and 5 do not need the consumer group/shard offset functionality — they only need reliable S3 delivery. Only Job 4→Job 5 requires the Kinesis consumer model (multiple replicas, shard iteration).
+  subgraph SERVE ["SERVING"]
+    DASH["4 Lakeview dashboards<br/>Network Overview · Gas Analytics<br/>Hot Contracts · API Health"]
+    EXP["job_export_gold<br/>→ S3 exports/"]
+    LMB["gold-to-dynamodb Lambda"]
+    DDB["DynamoDB<br/>CONSUMPTION entities"]
+  end
 
----
+  subgraph CTRL ["CONTROL PLANE"]
+    TF["Terraform stacks<br/>services/dev · hml · prd<br/>+ services/modules"]
+    CI["GitHub Actions<br/>7 workflows — plan/apply infra,<br/>deploy DABs + Lambdas"]
+  end
 
-### ADR-003: Single-Table DynamoDB Design
+  LAMBDA["contracts-ingestion Lambda<br/>Etherscan (SSM key) · hourly"]
 
-**Decision:** One DynamoDB table (`dm-chain-explorer`) for all entity types, using PK+SK composite key with entity type as PK prefix.
-
-**Rationale:** Simplifies IAM policy (single resource ARN), avoids table proliferation, standard single-table design pattern with clear entity boundaries.
-
----
-
-### ADR-004: DABs Component Atomicity
-
-**Decision:** Each Databricks component (DLT pipeline, batch job, dashboard, alert, Genie) is an autonomous Databricks Asset Bundle with its own `databricks.yml` and 3-target config (dev/hml/prod).
-
-**Rationale:** Enables independent deployment and lifecycle management. A fix in `job_delta_maintenance` does not require redeploying `dlt_ethereum`. Enables CI/CD parallelization and independent versioning tags.
-
-**Tool:** `beteugeuse` CLI generates the component skeleton via Cookiecutter templates.
-
----
-
-### ADR-005: Lambda Architecture for Transactions
-
-**Decision:** `transactions_lambda` Gold MV unions streaming transactions (from `transactions_ethereum`) with batch contract transactions (from `popular_contracts_txs` Bronze, sourced via Lambda) with deduplication by `tx_hash` and priority by decode quality.
-
-**Rationale:** Streaming pipeline captures recent transactions but has limited decode depth (Etherscan rate-limited). Batch Lambda provides richer, Etherscan-verified data for popular contracts. Union covers both recency and depth.
-
----
-
-### ADR-006: Distributed API Key Rotation via DynamoDB Semaphore
-
-**Decision:** Job 4 (MinedTxsCrawler) runs as 6 parallel replicas coordinating API key assignment via a DynamoDB-based semaphore (SEMAPHORE entity with TTL=60s).
-
-**Rationale:** Single-node API key management would bottleneck at Infura rate limits (17 keys × ~100 RPS/key). Distributed semaphore allows each replica to claim an exclusive API key slot, maximizing throughput across the key pool without a central coordinator.
-
----
-
-## Environment Topology
-
-| Aspect | DEV | HML | PRD |
-|--------|-----|-----|-----|
-| Streaming apps | Docker Compose (local) | ECS Fargate (ephemeral, per-deploy) | ECS Fargate (persistent) |
-| Databricks | Free Edition (`dev` catalog) | Free Edition (`hml` catalog) | Databricks Workspace (`dd_chain_explorer` catalog) |
-| S3 | `dm-chain-explorer-dev-ingestion` | `dm-chain-explorer-hml-*` | `dm-chain-explorer-raw-data` + `dm-chain-explorer-lakehouse` |
-| DynamoDB | `dm-chain-explorer-dev` | `dm-chain-explorer-hml` | `dm-chain-explorer` |
-| Terraform state | `dev/` prefix in TF state bucket | `hml/` prefix | `prd/` prefix |
-| Auth (streaming) | `~/.aws` profile | GitHub Secrets IAM user | ECS IAM task role |
-| Auth (Databricks) | PAT (`[dev]` profile) | PAT (GitHub Secret) | OAuth M2M service principal |
-
----
-
-## PRD Deploy Order (Terraform)
-
-```
-Phase 1 (parallel): 02_vpc + 04_peripherals
-    │
-    ▼
-Phase 2: 03_iam
-    │
-    ▼
-Phase 3 (parallel): 05a_databricks_account + 06_lambda + 07_ecs
-    │
-    ▼
-Phase 4: 05b_databricks_workspace
+  CAP -->|"S3 PutObject (JSON)"| S3
+  FB -->|"NDJSON"| S3
+  LAMBDA -->|"raw/batch/"| S3
+  S3 -->|"Auto Loader cloudFiles"| PIPE1
+  S3 -->|"Auto Loader cloudFiles"| PIPE2
+  TRIG --> PIPE1
+  TRIG --> PIPE2
+  PIPE1 --> DASH
+  PIPE2 --> DASH
+  PIPE1 --> EXP
+  EXP -->|"S3 PutObject event"| LMB
+  LMB --> DDB
+  CI --> TF
+  CI --> DBX
+  CI --> LAMBDA
+  TF --> S3
+  TF --> DDB
 ```
 
-**Destroy order** (reverse): 05b → (05a + 06 + 07 parallel) → 04 → 03 → (02) → never destroy 01.
+## Contratos entre módulos
+
+| De | Para | Tipo | Notas |
+|----|------|------|-------|
+| dd-chain-capture → S3 | `dm-chain-explorer-raw-data` | Object delivery | Kafka-Connect JSON under `raw/mainnet-{blocks-data,transactions-data,transactions-decoded}/`, `year=/month=/day=/…` partitions. **The only contract between the two projects.** |
+| dd-chain-capture (Fluent-Bit) → S3 | `raw/app_logs/` | Object delivery | NDJSON application logs |
+| S3 → DLT | Auto Loader (`cloudFiles`) | File-based | JSON format, `partitionColumns=""` — the path contract is compatible with the Kafka-Connect layout; **field-name compatibility with the DLT schemas is not yet validated** |
+| contracts-ingestion Lambda → S3 | `raw/batch/` | Object delivery | Batch contract JSON from the Etherscan API |
+| DLT gold → S3 | `exports/` | Object delivery | `job_export_gold` writes gold JSON |
+| S3 `exports/` → Lambda | S3 PutObject event | Event trigger | Fires `gold-to-dynamodb` |
+| Lambda → DynamoDB | `PutItem` | SDK call | CONSUMPTION entities on the single table |
+| CI → Terraform / Databricks / Lambda | GitHub Actions | Deploy | OIDC role-assumption *(gap — see audit `20260823T145726Z-4db47555`)* |
+
+## Regras de dependência
+
+```mermaid
+flowchart TB
+  CAPTURE["dd-chain-capture (external)"] --> S3_RAW["S3 Raw Layer"]
+  LAMBDA_IN["contracts-ingestion Lambda"] --> S3_RAW
+  S3_RAW --> DLT["Databricks DLT"]
+  DLT --> SERVING["Serving — dashboards, gold exports"]
+  SERVING --> LAMBDA_OUT["gold-to-dynamodb Lambda"]
+  LAMBDA_OUT --> DDB["DynamoDB"]
+  TF["Terraform stacks"] --> S3_RAW & DDB & LAMBDA_IN & LAMBDA_OUT
+  CI["GitHub Actions"] --> TF & DLT
+```
+
+**Constraints.** Nothing in this repository reaches back across the S3 boundary — there
+is no code path from this project to dd-chain-capture. DLT pipelines are triggered
+independently of each other. Lambdas are event-driven (EventBridge schedule for
+contracts ingestion, S3 PutObject for the gold export).
+
+### Topologia de ambientes
+
+| Aspecto | dev | hml | prd |
+|---------|-----|-----|-----|
+| Databricks | `[dev]`-prefixed assets → `dev` target/catalog | unprefixed assets → `hml` target/catalog | **no workspace exists**; the `prod` DABs target is not deployable and is guarded |
+| Workspace | one Free Edition workspace, serverless compute only — `dev` and `hml` are catalogs inside it | ← same workspace | — |
+| S3 | `dm-chain-explorer-dev-ingestion` | buckets declared in state but not live | `dm-chain-explorer-raw-data`, `-lakehouse`, `-databricks` |
+| DynamoDB | `dm-chain-explorer-dev` | — | `dm-chain-explorer` |
+| Lambdas | `dm-chain-explorer-gold-to-dynamodb-dev` | — | `dm-dd-chain-explorer-prd-{contracts-ingestion,gold-to-dynamodb}` |
+| Compute for capture | none | empty ECS cluster shell | ECS shell in code only |
+
+### Ordem de deploy Terraform (prd)
+
+```mermaid
+flowchart TD
+  P1A["Phase 1a: 02_vpc"] & P1B["Phase 1b: 04_peripherals"] --> P2
+  P2["Phase 2: 03_iam"] --> P3A & P3B
+  P3A["Phase 3a: 05a_databricks_account"]
+  P3B["Phase 3b: 06_lambda"]
+  P3A & P3B --> P4["Phase 4: 05b_databricks_workspace"]
+```
+
+Destroy order is the reverse; `01_tf_state` is never destroyed.
+
+## Estado runtime
+
+- `services/{dev,hml,prd}/**` — Terraform stacks; remote state in
+  `s3://dm-chain-explorer-terraform-state/`
+- `services/modules/**` — shared modules (`s3`, `dynamodb`, `iam`, `lambda`,
+  `cloudwatch_logs`, `ecs`, `vpc`); the `kinesis` and `sqs` modules were deleted
+- `apps/dabs/**` — Databricks Asset Bundles (DLT pipelines, jobs, dashboards)
+- `apps/lambda/**` — contracts ingestion and gold → DynamoDB export
+- `.github/workflows/**` + `scripts/ci/**` — the CI control plane
+- S3 `dm-chain-explorer-raw-data` / `-lakehouse` / `-databricks`, DynamoDB
+  `dm-chain-explorer`, SSM `/etherscan-api-keys` and `/web3-api-keys/*`
+
+## Limites conhecidos
+
+- No capture code and no capture infrastructure in this repository. Kinesis, Kinesis
+  Firehose, SQS, the five ECS Fargate producer services and the PRD Databricks workspace
+  were destroyed in AWS (2026-06-22 and 2026-04-11) and the `kinesis`/`sqs` Terraform
+  modules were deleted.
+- **Residue, not capability:** ECS clusters survive as empty shells in `prd/07_ecs` and
+  `hml/07_ecs`, and Kinesis/Firehose/SQS IAM grants remain in `prd/03_iam/iam.tf` and
+  `hml/03_iam/main.tf`. They grant access to resources that no longer exist and are
+  slated for removal *(audit `20260823T145726Z-4db47555`, DRIFT-13)*.
+- The end-to-end data path has never run against a dd-chain-capture delivery; field-name
+  compatibility between the delivered JSON and the DLT Auto Loader schemas is unverified.
+- One Databricks workspace only — there is no production workspace, and Free Edition
+  offers serverless compute only.
+
+## Referência
+
+### ADR-001: The S3 raw bucket is the integration boundary
+
+Capture is a separate project with a separate lifecycle. The only coupling permitted is
+object delivery into `dm-chain-explorer-raw-data` under the agreed prefixes and partition
+layout. No shared queue, stream, database or library. This supersedes the earlier
+event-bus design (Kinesis Data Streams + Firehose Direct Put), which no longer exists.
+
+### ADR-002: One Databricks workspace, catalogs as environments
+
+All Databricks assets live in a single Free-Edition workspace. Environment separation is
+by target and catalog: `[dev]`-prefixed assets deploy to the `dev` target/catalog,
+unprefixed assets to `hml`. The `prod` target has no workspace behind it and is not
+deployable.
+
+### ADR-003: Single-table DynamoDB design
+
+One DynamoDB table per environment (`dm-chain-explorer[-dev]`). Entity types
+(CONTRACT, CONSUMPTION, and the caches inherited from the capture era) share a PK+SK
+composite key with the entity type as PK prefix.
+
+### ADR-004: DABs component atomicity
+
+Each Databricks component (DLT pipeline, batch job, dashboard) is an autonomous
+Databricks Asset Bundle with its own `databricks.yml` and per-target config, so each
+deploys and versions independently.
+
+### ADR-005: Lambda architecture for transactions
+
+The `transactions_lambda` gold view unions streaming transactions with batch contract
+transactions produced by the contracts-ingestion Lambda, deduplicating by `tx_hash` with
+priority by decode quality (full=1, full_4byte=2, partial=3, batch_sem_decode=4,
+unknown=5).
+
+### ADR-006: SSM as the shared secret plane
+
+Web3 API keys (Infura, Alchemy, Etherscan) live in SSM Parameter Store as SecureString
+parameters and are shared with dd-chain-capture. This repository consumes only the
+Etherscan keys, from the contracts-ingestion Lambda.
