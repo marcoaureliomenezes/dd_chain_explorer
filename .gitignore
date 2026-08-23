@@ -91,3 +91,15 @@ docs/.lake-schemas-hash
 
 # specs_bkp/ — operator-approved transient backup from specs upgrade; delete after migration
 specs_bkp/
+
+# T-D.4/T-D.5 — reproducible build outputs, tool caches, Databricks CLI state.
+# Never committed: CI (T-A.7) rebuilds the layer from source and uploads it to
+# the artifacts bucket (T-B.14); Terraform reads it back by s3_key/sha256, not
+# from a working-tree path.
+.lambda_zip/
+apps/**/*.zip
+services/**/*.zip
+.databricks/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
