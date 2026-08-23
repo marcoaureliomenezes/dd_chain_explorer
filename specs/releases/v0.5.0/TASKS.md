@@ -160,7 +160,7 @@
   - Deps: T-A.9 (O-4) · AC-17, AC-18 · Findings: DRIFT-19, ARCH-M3, ARCH-M5
   - Evidence: `databricks bundle validate -t dev` per survivor; alert/Genie reinstatement recorded as a deferred intake candidate (T-E.7).
 
-- [ ] **T-C.2** — **Delete `apps/dabs/job_trigger_all` and `apps/dabs/job_full_refresh` entirely** (C2, F-06): the DLT bundles already own per-pipeline trigger jobs with native ids, and full refresh is `databricks pipelines start-update --full-refresh <id>` — documented in `apps/dabs/README.md` by T-C.4. No cross-bundle reference and no display-name `lookup` is introduced; the ADR-004 corollary "no bundle references another bundle's resource" is recorded by `T-E.4`. Remove the silently-dropped DLT `schedule:` blocks.
+- [-] **T-C.2** — **Delete `apps/dabs/job_trigger_all` and `apps/dabs/job_full_refresh` entirely** (C2, F-06): the DLT bundles already own per-pipeline trigger jobs with native ids, and full refresh is `databricks pipelines start-update --full-refresh <id>` — documented in `apps/dabs/README.md` by T-C.4. No cross-bundle reference and no display-name `lookup` is introduced; the ADR-004 corollary "no bundle references another bundle's resource" is recorded by `T-E.4`. Remove the silently-dropped DLT `schedule:` blocks.
   - Owner: software-engineer · Write set: `apps/dabs/job_trigger_all/**`, `apps/dabs/job_full_refresh/**` (deletion), the DLT bundles' `schedule:` blocks
   - Deps: T-C.1 · AC-17, AC-18 · Findings: DRIFT-19, ARCH-M3
   - Evidence: both directories absent from disk; `databricks bundle summary -t dev` with no empty `pipeline_id`; the in-bundle trigger job of each DLT bundle validated.
@@ -233,7 +233,7 @@
 
 ## WS-E — Governance documents, dispositions, memory truth
 
-- [ ] **T-E.1** — Author `specs/constitution.md` from the archived 231-line version, scoped to the infra / CI / Databricks reality (E1).
+- [-] **T-E.1** — Author `specs/constitution.md` from the archived 231-line version, scoped to the infra / CI / Databricks reality (E1).
   - Owner: product-engineer · Write set: `specs/constitution.md`
   - Deps: — · AC-26 · Findings: DRIFT-31
   - Evidence: `wc -l specs/constitution.md` (not the 33-byte stub); `dadaia specs doctor`.
