@@ -8,12 +8,6 @@ variable "environment" {
   type    = string
 }
 
-variable "databricks_account_uuid" {
-  description = "Databricks account UUID (found in accounts.cloud.databricks.com) — used as ExternalId in the cross-account trust policy. No default: this project's PRD Databricks workspace was destroyed 2026-04-11 (ADR-002) and no resource in this stack consumes the value today — kept only so a future PRD cross-account role does not reintroduce a public-repo account identifier as a literal default."
-  type        = string
-  sensitive   = true
-}
-
 variable "project_version" {
   description = "Project version from VERSION file — propagated to resource tags"
   type        = string
