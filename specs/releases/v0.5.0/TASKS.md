@@ -155,7 +155,7 @@
 
 ## WS-C — Databricks artifacts
 
-- [ ] **T-C.1** — Drop the no-op `alert_*` and `genie_ethereum` bundles and `job_reconcile_orphans` (C1).
+- [-] **T-C.1** — Drop the no-op `alert_*` and `genie_ethereum` bundles and `job_reconcile_orphans` (C1).
   - Owner: software-engineer · Write set: `apps/dabs/**` (the named bundles/jobs)
   - Deps: T-A.9 (O-4) · AC-17, AC-18 · Findings: DRIFT-19, ARCH-M3, ARCH-M5
   - Evidence: `databricks bundle validate -t dev` per survivor; alert/Genie reinstatement recorded as a deferred intake candidate (T-E.7).
