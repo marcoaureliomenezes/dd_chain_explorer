@@ -1,46 +1,59 @@
 #!/usr/bin/env bash
-# destroy_env.sh — Sequential destroy of all Terraform modules for a given environment.
+# destroy_env.sh — Sequential, map-driven destroy of every destroyable Terraform stack
+# for a given environment (T-A.8, F-ARCH-4).
 #
-# Destroys modules in REVERSE dependency order (fail-fast: stops on first error).
-# Writes per-module status lines to $GITHUB_STEP_SUMMARY.
+# The stack list and destroy order are NOT hardcoded here — they are read from the
+# single-source map scripts/ci/stack_map.json via scripts/ci/stack_list.sh <env>
+# --destroyable (excludes operator_only stacks always, e.g. prd/00_bootstrap, D14/O-1;
+# and never_destroy stacks, e.g. prd/01_tf_state — the remote-state backend every other
+# stack's apply/destroy depends on), applied in REVERSE declared order (downstream
+# stacks first) so a stack is never destroyed while a dependent still references it.
 #
-# IMPORTANT: set -e is used. If a module destroy fails, downstream modules are NOT
-# destroyed. This prevents state inconsistency (orphaned resources that can't be
-# managed because their dependencies are gone).
+# S3 buckets in the environment are emptied first (all object versions) since a
+# non-empty bucket blocks `terraform destroy`. Idempotent: a resource absent from TF
+# state is a no-op.
+#
+# set -e: if a stack destroy fails, downstream (in destroy order — i.e. upstream in the
+# dependency graph) stacks are NOT destroyed, preventing orphaned resources whose
+# dependencies are already gone.
 #
 # Usage:
-#   bash scripts/ci/destroy_env.sh <environment> [full_destroy]
+#   bash scripts/ci/destroy_env.sh <environment>
 #
 # Arguments:
-#   environment  — dev | hml | prd
-#   full_destroy — "true" to destroy ALL HML modules (default: false = Databricks only)
+#   environment — dev | hml | prd
 #
-# Required env vars (hml/prd):
-#   DATABRICKS_ACCOUNT_ID, DATABRICKS_CLIENT_ID, DATABRICKS_CLIENT_SECRET
-#   AWS credentials must already be configured on the runner.
-#
-# Required env vars (prd):
-#   TF_VAR_databricks_client_id, TF_VAR_databricks_client_secret
+# AWS credentials must already be configured on the runner (or locally, operator-gated).
 set -euo pipefail
 
 ENV="${1:-}"
-FULL_DESTROY="${2:-false}"
 
 if [[ -z "$ENV" ]]; then
-  echo "::error::Usage: destroy_env.sh <dev|hml|prd> [full_destroy=true]"
+  echo "::error::Usage: destroy_env.sh <dev|hml|prd>"
   exit 1
 fi
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+STACK_MAP="${STACK_MAP:-${REPO_ROOT}/scripts/ci/stack_map.json}"
+
+if ! command -v jq >/dev/null 2>&1; then
+  echo "::error::jq is required by destroy_env.sh"
+  exit 1
+fi
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 summary() { echo "$*" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"; }
 
+stack_field() {
+  local sid="$1" field="$2"
+  jq -r --arg e "$ENV" --arg s "$sid" --arg f "$field" \
+    '.environments[$e].stacks[] | select(.id==$s) | .[$f]' "$STACK_MAP"
+}
+
 destroy_module() {
   local module_dir="$1"   # absolute path to module directory
   local module_name="$2"  # display name for summary
-  local extra_args="${3:-}"  # optional additional terraform args (e.g. -target for S3-preserved)
 
   echo ""
   echo "════════════════════════════════════════════════════════"
@@ -62,190 +75,49 @@ destroy_module() {
 
   terraform init -input=false
 
-  # shellcheck disable=SC2086
-  terraform destroy -auto-approve -input=false -no-color ${extra_args}
+  terraform destroy -auto-approve -input=false -no-color
 
   summary "| ✅ | ${module_name} | destroyed |"
   cd "${REPO_ROOT}"
-}
-
-# ──────────────────────────────────────────────────────────────────────────────
-# WARNING (OQ-3, v0.4.0): this script is a WHOLE-ENV TEARDOWN tool ONLY. It is NOT
-# the mechanism for the capture-layer retirement. module.dynamodb is a SURVIVOR
-# and remains a target here because a whole-env teardown intentionally destroys it;
-# do NOT run this script to retire kinesis/sqs/firehose. Capture removal is a
-# config-diff `terraform apply` via deploy_cloud_infra.yml (informed gate +
-# destroy_ack), per SPEC §7 / OQ-4. The kinesis/sqs modules were removed in v0.4.0,
-# so they are no longer valid -target= addresses and have been dropped below.
-# ──────────────────────────────────────────────────────────────────────────────
-# S3-preserved partial destroy (only non-S3 resources)
-S3_PRESERVED_TARGETS="-target=module.dynamodb -target=module.cloudwatch_logs"
-
-# ── DEV destroy order ─────────────────────────────────────────────────────────
-
-destroy_dev() {
-  local root="${REPO_ROOT}/services/dev"
-
-  summary ""
-  summary "## DEV Destroy"
-  summary "| Status | Module | Result |"
-  summary "|--------|--------|--------|"
-
-  # Lambda first
-  mkdir -p "${root}/02_lambda/.lambda_zip"
-  destroy_module "${root}/02_lambda"        "DEV/Lambda"
-
-  # Peripherals: S3 preserved
-  destroy_module "${root}/01_peripherals"   "DEV/Peripherals (S3 preserved)" "${S3_PRESERVED_TARGETS}"
-
-  summary ""
-  summary "> DEV destroy complete. S3 buckets preserved."
-}
-
-# ── HML destroy order ─────────────────────────────────────────────────────────
-
-destroy_hml() {
-  local root="${REPO_ROOT}/services/hml"
-
-  summary ""
-  summary "## HML Destroy"
-  summary "| Status | Module | Result |"
-  summary "|--------|--------|--------|"
-
-  # 05b uses workspace-level PAT token from TF remote state.
-  # Unset OAuth env vars to avoid "two auth methods" conflict with the token-based provider.
-  (unset DATABRICKS_ACCOUNT_ID DATABRICKS_CLIENT_ID DATABRICKS_CLIENT_SECRET; \
-    destroy_module "${root}/05b_databricks_workspace" "HML/DatabricksWorkspace")
-
-  # Then account-level Databricks (workspace, metastore, credentials, networks)
-  destroy_module "${root}/05_databricks"            "HML/Databricks"
-
-  if [[ "$FULL_DESTROY" == "true" ]]; then
-    # ECS (parallel with Databricks destroy — but sequential is safer for state consistency)
-    destroy_module "${root}/07_ecs"                 "HML/ECS"
-
-    # Peripherals: S3 preserved
-    destroy_module "${root}/04_peripherals"         "HML/Peripherals (S3 preserved)" "${S3_PRESERVED_TARGETS}"
-
-    # IAM after peripherals (roles may be referenced by peripherals resources)
-    destroy_module "${root}/03_iam"                 "HML/IAM"
-
-    # VPC last: wait for ENI release first
-    echo "==> Waiting for ENI release before VPC destroy..."
-    VPC_NAME_TAG="dm-chain-explorer-hml" \
-    AWS_REGION="${AWS_REGION:-sa-east-1}" \
-    bash "${REPO_ROOT}/scripts/ci/wait_eni_release.sh"
-
-    destroy_module "${root}/02_vpc"                 "HML/VPC"
-
-    summary ""
-    summary "> HML full destroy complete. S3 buckets preserved."
-  else
-    summary ""
-    summary "> HML Databricks-only destroy complete. VPC/IAM/Peripherals/ECS preserved."
-  fi
-}
-
-# ── PRD destroy order ─────────────────────────────────────────────────────────
-
-destroy_prd() {
-  local root="${REPO_ROOT}/services/prd"
-
-  summary ""
-  summary "## PRD Destroy"
-  summary "| Status | Module | Result |"
-  summary "|--------|--------|--------|"
-
-  # Step 0: empty ECR repos before destroying ECS
-  echo "==> Emptying PRD ECR repositories..."
-  bash "${REPO_ROOT}/scripts/ci/empty_s3_and_ecr.sh"
-  summary "| ✅ | PRD/ECR | emptied |"
-
-  # Lambda + ECS first (parallel-safe here but sequential avoids race conditions)
-  mkdir -p "${root}/06_lambda/.lambda_zip"
-  destroy_module "${root}/06_lambda"            "PRD/Lambda"
-  destroy_module "${root}/07_ecs"               "PRD/ECS"
-
-  # Databricks workspace resources (catalog, external locations, credentials)
-  # Resolve workspace URL for 05b provider config
-  WORKSPACE_URL=""
-  cd "${root}/05a_databricks_account"
-  terraform init -input=false -reconfigure 2>/dev/null || terraform init -input=false
-  WORKSPACE_URL=$(terraform output -raw databricks_workspace_url 2>/dev/null || true)  # capture-then-check: empty URL is handled by the API fallback + loud guard below
-  if [[ -z "$WORKSPACE_URL" ]]; then
-    echo "::warning::TF output returned empty workspace URL — trying Databricks API fallback"
-    TOKEN=$(curl -sf -X POST \
-      "https://accounts.cloud.databricks.com/oidc/accounts/${DATABRICKS_ACCOUNT_ID}/v1/token" \
-      -H "Content-Type: application/x-www-form-urlencoded" \
-      --data-urlencode "grant_type=client_credentials" \
-      --data-urlencode "client_id=${DATABRICKS_CLIENT_ID}" \
-      --data-urlencode "client_secret=${DATABRICKS_CLIENT_SECRET}" \
-      --data-urlencode "scope=all-apis" \
-      | jq -r '.access_token' 2>/dev/null || true)  # capture-then-check: empty/null token guarded below
-    if [[ -n "$TOKEN" && "$TOKEN" != "null" ]]; then
-      WORKSPACE_URL=$(curl -sf \
-        -H "Authorization: Bearer $TOKEN" \
-        "https://accounts.cloud.databricks.com/api/2.0/accounts/${DATABRICKS_ACCOUNT_ID}/workspaces" \
-        2>/dev/null \
-        | jq -r '[.[] | select(.workspace_name=="dm-chain-explorer-prd")][0].workspace_url // empty' \
-        2>/dev/null || true)  # capture-then-check: empty result handled by the loud guard below
-    fi
-  fi
-  cd "${REPO_ROOT}"
-
-  if [[ -z "$WORKSPACE_URL" ]]; then
-    echo "::error::Cannot destroy PRD/05b_databricks_workspace: workspace URL could not be determined (TF output and API fallback both failed)"
-    exit 1
-  fi
-  export TF_VAR_workspace_host="${WORKSPACE_URL}"
-
-  destroy_module "${root}/05b_databricks_workspace" "PRD/DatabricksWorkspace"
-
-  # Databricks account-level: import before destroy
-  cd "${root}/05a_databricks_account"
-  bash "${REPO_ROOT}/scripts/ci/databricks_account_import.sh"
-  cd "${REPO_ROOT}"
-
-  destroy_module "${root}/05a_databricks_account" "PRD/DatabricksAccount"
-
-  # Peripherals: S3 preserved
-  destroy_module "${root}/04_peripherals" "PRD/Peripherals (S3 preserved)" "${S3_PRESERVED_TARGETS}"
-
-  # IAM
-  destroy_module "${root}/03_iam" "PRD/IAM"
-
-  # VPC last: wait for ENI release first
-  echo "==> Waiting for ENI release before VPC destroy..."
-  VPC_NAME_TAG="dm-chain-explorer-prd" \
-  AWS_REGION="${AWS_REGION:-sa-east-1}" \
-  bash "${REPO_ROOT}/scripts/ci/wait_eni_release.sh"
-
-  destroy_module "${root}/02_vpc" "PRD/VPC"
-
-  summary ""
-  summary "> PRD destroy complete. S3 buckets and DynamoDB lock table preserved."
 }
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 summary ""
 summary "## Destroy \`${ENV}\` — $(date -u '+%Y-%m-%d %H:%M UTC')"
-if [[ "$ENV" == "hml" && "$FULL_DESTROY" == "true" ]]; then
-  summary "> Mode: **full destroy** (all modules)"
-elif [[ "$ENV" == "hml" ]]; then
-  summary "> Mode: **Databricks-only** (VPC/IAM/Peripherals/ECS preserved)"
-fi
 summary ""
+summary "| Status | Module | Result |"
+summary "|--------|--------|--------|"
 
 case "$ENV" in
-  dev) destroy_dev  ;;
-  hml) destroy_hml  ;;
-  prd) destroy_prd  ;;
+  dev|hml|prd) ;;
   *)
     echo "::error::Unknown environment '${ENV}'. Supported: dev, hml, prd"
     exit 1
     ;;
 esac
+
+echo "==> Emptying ${ENV} S3 buckets (all object versions) before destroy..."
+bash "${REPO_ROOT}/scripts/ci/empty_s3_and_ecr.sh" "${ENV}" || \
+  echo "::warning::empty_s3_and_ecr.sh ${ENV} reported a non-zero exit — continuing (idempotent, may be a no-op environment)."
+
+# Destroy in REVERSE declared order (downstream stacks first) — mirrors
+# deploy_env.sh's forward, upstream-first apply order.
+mapfile -t STACK_IDS < <(bash "${REPO_ROOT}/scripts/ci/stack_list.sh" "${ENV}" --destroyable)
+if [[ "${#STACK_IDS[@]}" -eq 0 ]]; then
+  echo "::error::No destroyable stacks declared for environment '${ENV}' in ${STACK_MAP}"
+  exit 1
+fi
+
+for (( idx=${#STACK_IDS[@]}-1 ; idx>=0 ; idx-- )); do
+  sid="${STACK_IDS[$idx]}"
+  label="$(stack_field "$sid" label)"
+  path="$(stack_field "$sid" path)"
+  destroy_module "${REPO_ROOT}/${path}" "${label}"
+done
+
+summary ""
+summary "> ${ENV} destroy complete."
 
 echo ""
 echo "✅ destroy_env.sh ${ENV} — DONE"

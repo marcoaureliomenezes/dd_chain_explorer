@@ -1,24 +1,36 @@
 {
   "$comment": [
-    "SINGLE-SOURCE stack dependency map (F-ARCH-4, ADR-R6-5).",
+    "SINGLE-SOURCE stack dependency map (F-ARCH-4, ADR-R6-5, T-A.8).",
     "This is the ONE data-driven file that declares, per environment:",
-    "  - the ordered list of Terraform stacks deployed by deploy_cloud_infra.yml,",
+    "  - the ordered list of Terraform stacks CI may plan/apply/destroy,",
     "  - each stack's module path under services/,",
-    "  - each stack's upstream stacks (the dependency chain — derived from the",
-    "    terraform_remote_state references in the .tf sources),",
-    "  - bootstrap_plannable: false when the stack cannot be planned against current",
-    "    state on a clean bootstrap because an upstream output only exists post-apply",
-    "    (the canonical case: 05b reads TF_VAR_workspace_host from 05a's post-apply",
-    "    output, deploy_env.sh:147-184). Such stacks are reported in the pre-gate plan",
-    "    summary as 'deferred to post-upstream stage' — never silently skipped.",
-    "  - modules: the shared services/modules/* consumed by the stack (T-R6-A8 uses",
-    "    this for module-edit -> dependent-stack change detection; no stack name is",
-    "    hardcoded in plan_on_pr.yml or any deploy helper — they all read THIS file).",
-    "No stack name may be hardcoded in more than one place. Both deploy_cloud_infra.yml",
-    "(the informed gate, T-R6-A2) and plan_on_pr.yml (change detection, T-R6-A8) read",
-    "this file. WS-D's future stack restructure edits exactly this artifact."
+    "  - each stack's upstream stacks WITHIN THE SAME ENVIRONMENT (the dependency",
+    "    chain — derived from the literal `data.terraform_remote_state` references in",
+    "    the .tf sources, verified 2026-08-23 against the post-T-B.2/T-B.3 survivor",
+    "    tree). Every dev/hml/prd stack also reads services/prd/00_bootstrap's",
+    "    permissions_boundary output via remote state — that cross-environment edge is",
+    "    NOT modelled in `upstreams` (the graph + deploy_env.sh 'did an upstream apply",
+    "    in this run' logic is scoped per-environment, and bootstrap is never CI-applied",
+    "    in any run — see operator_only below) — it is documented here instead.",
+    "  - modules: the shared services/modules/* the stack's .tf sources literally",
+    "    `source = \"../../modules/<m>\"` (T-R6-A8 uses this for module-edit -> ",
+    "    dependent-stack change detection; no stack name is hardcoded in",
+    "    plan_on_pr.yml/drift_detection.yml/destroy_all_cloud_infra.yml or any deploy",
+    "    helper — they all read THIS file, via scripts/ci/stack_list.sh),",
+    "  - operator_only: true marks a stack CI must NEVER plan/apply/destroy — it is",
+    "    applied exclusively by a human operator with their own credentials (D14, O-1).",
+    "    scripts/ci/stack_list.sh always excludes operator_only stacks.",
+    "  - never_destroy: true marks a stack CI's destroy paths must never target, even",
+    "    though CI may plan/apply it normally (it is the remote-state backend every",
+    "    other stack's apply/destroy depends on). scripts/ci/stack_list.sh excludes it",
+    "    only when called with --destroyable.",
+    "  - bootstrap_plannable: kept true on every survivor (no deferred-plan stack",
+    "    survives T-B.2's deletion of 05b_databricks_workspace) — retained for schema",
+    "    stability; deploy_env.sh/plan_env.sh treat any non-'false' value as plannable.",
+    "No stack name may be hardcoded in more than one place — every consumer reads",
+    "this file, directly or via scripts/ci/stack_list.sh."
   ],
-  "version": 1,
+  "version": 2,
   "environments": {
     "dev": {
       "stacks": [
@@ -28,7 +40,7 @@
           "path": "services/dev/01_peripherals",
           "upstreams": [],
           "bootstrap_plannable": true,
-          "modules": []
+          "modules": ["s3", "dynamodb", "cloudwatch_logs"]
         },
         {
           "id": "lambda",
@@ -36,71 +48,49 @@
           "path": "services/dev/02_lambda",
           "upstreams": ["peripherals"],
           "bootstrap_plannable": true,
-          "modules": []
+          "modules": ["lambda"]
         }
       ]
     },
     "hml": {
       "stacks": [
         {
-          "id": "vpc",
-          "label": "HML/VPC",
-          "path": "services/hml/02_vpc",
-          "upstreams": [],
-          "bootstrap_plannable": true,
-          "modules": ["vpc"]
-        },
-        {
           "id": "peripherals",
           "label": "HML/Peripherals",
           "path": "services/hml/04_peripherals",
           "upstreams": [],
           "bootstrap_plannable": true,
-          "modules": ["s3", "dynamodb", "cloudwatch_logs"]
-        },
-        {
-          "id": "iam",
-          "label": "HML/IAM",
-          "path": "services/hml/03_iam",
-          "upstreams": [],
-          "bootstrap_plannable": true,
-          "modules": ["iam"]
-        },
-        {
-          "id": "ecs",
-          "label": "HML/ECS",
-          "path": "services/hml/07_ecs",
-          "upstreams": ["vpc"],
-          "bootstrap_plannable": true,
-          "modules": ["ecs"]
-        },
-        {
-          "id": "databricks",
-          "label": "HML/Databricks",
-          "path": "services/hml/05_databricks",
-          "upstreams": ["vpc", "iam", "peripherals"],
-          "bootstrap_plannable": true,
-          "modules": []
-        },
-        {
-          "id": "databricks_workspace",
-          "label": "HML/DatabricksWorkspace",
-          "path": "services/hml/05b_databricks_workspace",
-          "upstreams": ["iam", "peripherals", "databricks"],
-          "bootstrap_plannable": false,
-          "modules": []
+          "modules": ["s3"]
         }
       ]
     },
     "prd": {
       "stacks": [
         {
-          "id": "vpc",
-          "label": "PRD/VPC",
-          "path": "services/prd/02_vpc",
+          "id": "bootstrap",
+          "label": "PRD/Bootstrap",
+          "path": "services/prd/00_bootstrap",
           "upstreams": [],
           "bootstrap_plannable": true,
-          "modules": ["vpc"]
+          "modules": [],
+          "operator_only": true
+        },
+        {
+          "id": "tf_state",
+          "label": "PRD/TFState",
+          "path": "services/prd/01_tf_state",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": [],
+          "never_destroy": true
+        },
+        {
+          "id": "iam",
+          "label": "PRD/IAM",
+          "path": "services/prd/03_iam",
+          "upstreams": [],
+          "bootstrap_plannable": true,
+          "modules": []
         },
         {
           "id": "peripherals",
@@ -108,15 +98,7 @@
           "path": "services/prd/04_peripherals",
           "upstreams": [],
           "bootstrap_plannable": true,
-          "modules": ["s3", "dynamodb", "cloudwatch_logs"]
-        },
-        {
-          "id": "iam",
-          "label": "PRD/IAM",
-          "path": "services/prd/03_iam",
-          "upstreams": ["vpc"],
-          "bootstrap_plannable": true,
-          "modules": ["iam"]
+          "modules": ["s3", "cloudwatch_logs", "dynamodb"]
         },
         {
           "id": "lambda",
@@ -124,30 +106,6 @@
           "path": "services/prd/06_lambda",
           "upstreams": ["peripherals"],
           "bootstrap_plannable": true,
-          "modules": ["lambda"]
-        },
-        {
-          "id": "ecs",
-          "label": "PRD/ECS",
-          "path": "services/prd/07_ecs",
-          "upstreams": ["vpc", "iam", "peripherals"],
-          "bootstrap_plannable": true,
-          "modules": ["ecs"]
-        },
-        {
-          "id": "databricks_account",
-          "label": "PRD/DatabricksAccount",
-          "path": "services/prd/05a_databricks_account",
-          "upstreams": ["vpc", "iam", "peripherals"],
-          "bootstrap_plannable": true,
-          "modules": []
-        },
-        {
-          "id": "databricks_workspace",
-          "label": "PRD/DatabricksWorkspace",
-          "path": "services/prd/05b_databricks_workspace",
-          "upstreams": ["iam", "peripherals", "databricks_account"],
-          "bootstrap_plannable": false,
           "modules": []
         }
       ]

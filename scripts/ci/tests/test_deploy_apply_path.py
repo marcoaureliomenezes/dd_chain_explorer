@@ -10,8 +10,9 @@ instead of blindly re-planning + applying (F-QA-A1-1):
     divergence diff.
 
 terraform and aws are mocked by stub binaries on PATH (no real cloud, no real venv).
-Tests run hml with SKIP_DATABRICKS=true so the stack set is vpc, peripherals, iam, ecs
-(ecs.upstreams=[vpc]). Hermetic; run with `-p no:cacheprovider`.
+Tests run prd (T-A.8 survivor set): tf_state, iam, peripherals, lambda
+(lambda.upstreams=[peripherals] — the one real same-env dependency edge that survives
+T-B.2/T-B.3, per scripts/ci/stack_map.json). Hermetic; run with `-p no:cacheprovider`.
 """
 
 from __future__ import annotations
@@ -104,7 +105,6 @@ def _run(tmp_path: Path, env_extra: dict[str, str]) -> subprocess.CompletedProce
     env = {
         **os.environ,
         "PATH": f"{bindir}:{os.environ['PATH']}",
-        "SKIP_DATABRICKS": "true",
         "PLAN_ARTIFACT_DIR": str(artifact_dir),
         "DIVERGENCE_DIR": str(div_dir),
         "TF_APPLY_LOG": str(apply_log),
@@ -113,7 +113,7 @@ def _run(tmp_path: Path, env_extra: dict[str, str]) -> subprocess.CompletedProce
     }
     env.update(env_extra)
     proc = subprocess.run(
-        ["bash", str(DEPLOY_ENV), "hml"],
+        ["bash", str(DEPLOY_ENV), "prd"],
         cwd=str(REPO_ROOT),
         env=env,
         capture_output=True,
@@ -136,76 +136,79 @@ def _run(tmp_path: Path, env_extra: dict[str, str]) -> subprocess.CompletedProce
     return proc
 
 
-# Stacks present for hml with SKIP_DATABRICKS=true (module basenames terraform sees):
-#   vpc -> 02_vpc, peripherals -> 04_peripherals, iam -> 03_iam, ecs -> 07_ecs
+# Stacks present for prd (module basenames terraform sees, T-A.8 survivor set):
+#   tf_state -> 01_tf_state, iam -> 03_iam, peripherals -> 04_peripherals, lambda -> 06_lambda
+# bootstrap (00_bootstrap) is operator_only -> excluded from deploy_env.sh's loop by
+# scripts/ci/stack_list.sh (T-A.8) and never appears here.
 def _seed_all_no_change_plans(artifact_dir: Path) -> None:
-    for sid in ("vpc", "peripherals", "iam", "ecs"):
+    for sid in ("tf_state", "iam", "peripherals", "lambda"):
         _stage_approved_plan(artifact_dir, sid, has_changes=False)
 
 
 def test_upstream_unchanged_applies_saved_plan(tmp_path: Path) -> None:
-    """vpc has a saved plan with changes, upstreams=[] -> applies the SAVED tfplan
-    binary, NOT a freshly re-planned one. terraform plan is NOT consulted for it."""
+    """peripherals has a saved plan with changes, upstreams=[] -> applies the SAVED
+    tfplan binary, NOT a freshly re-planned one. terraform plan is NOT consulted for it."""
     artifact_dir = tmp_path / ".plan-artifacts"
     _seed_all_no_change_plans(artifact_dir)
-    _stage_approved_plan(artifact_dir, "vpc", has_changes=True)
-    # vpc's saved plan binary must be the file applied:
+    _stage_approved_plan(artifact_dir, "peripherals", has_changes=True)
+    # peripherals's saved plan binary must be the file applied:
     proc = _run(tmp_path, {})
     assert proc.returncode == 0, proc.stderr
     log = proc.apply_log  # type: ignore[attr-defined]
-    # The applied plan arg for 02_vpc must be the absolute path into .plan-artifacts/vpc
-    assert "02_vpc" in log
-    vpc_line = next(ln for ln in log.splitlines() if ln.startswith("02_vpc "))
-    assert str(artifact_dir / "vpc" / "tfplan") in vpc_line, vpc_line
+    # The applied plan arg for 04_peripherals must be the absolute path into
+    # .plan-artifacts/peripherals
+    assert "04_peripherals" in log
+    peripherals_line = next(ln for ln in log.splitlines() if ln.startswith("04_peripherals "))
+    assert str(artifact_dir / "peripherals" / "tfplan") in peripherals_line, peripherals_line
 
 
 def test_replan_diff_match_applies_fresh_plan(tmp_path: Path) -> None:
-    """vpc applies a change in-run; ecs (upstreams=[vpc]) is therefore RE-PLANNED. Its
-    re-plan matches its approved summary (both 1-add) -> apply proceeds against the
-    FRESH tfplan, not the saved binary."""
+    """peripherals applies a change in-run; lambda (upstreams=[peripherals]) is
+    therefore RE-PLANNED. Its re-plan matches its approved summary (both 1-add) ->
+    apply proceeds against the FRESH tfplan, not the saved binary."""
     artifact_dir = tmp_path / ".plan-artifacts"
     _seed_all_no_change_plans(artifact_dir)
-    _stage_approved_plan(artifact_dir, "vpc", has_changes=True)
-    _stage_approved_plan(artifact_dir, "ecs", has_changes=True)
-    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "07_ecs"})
+    _stage_approved_plan(artifact_dir, "peripherals", has_changes=True)
+    _stage_approved_plan(artifact_dir, "lambda", has_changes=True)
+    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "06_lambda"})
     assert proc.returncode == 0, proc.stderr
     log = proc.apply_log  # type: ignore[attr-defined]
-    ecs_line = next(ln for ln in log.splitlines() if ln.startswith("07_ecs "))
+    lambda_line = next(ln for ln in log.splitlines() if ln.startswith("06_lambda "))
     # fresh re-plan tfplan is the relative "tfplan" in the module dir, NOT the artifact path
-    assert ecs_line.strip() == "07_ecs tfplan", ecs_line
-    assert str(artifact_dir / "ecs" / "tfplan") not in ecs_line
+    assert lambda_line.strip() == "06_lambda tfplan", lambda_line
+    assert str(artifact_dir / "lambda" / "tfplan") not in lambda_line
 
 
 def test_replan_diff_divergence_fails_closed(tmp_path: Path) -> None:
-    """vpc applies in-run -> ecs re-planned. The approved ecs summary was 1-add but the
-    re-plan now returns NO changes -> DIVERGENCE -> fail closed (exit 3), diff published,
-    ecs NOT applied."""
+    """peripherals applies in-run -> lambda re-planned. The approved lambda summary was
+    1-add but the re-plan now returns NO changes -> DIVERGENCE -> fail closed (exit 3),
+    diff published, lambda NOT applied."""
     artifact_dir = tmp_path / ".plan-artifacts"
     _seed_all_no_change_plans(artifact_dir)
-    _stage_approved_plan(artifact_dir, "vpc", has_changes=True)
-    _stage_approved_plan(artifact_dir, "ecs", has_changes=True)  # approved = 1 add
-    # ecs re-plan returns no changes (07_ecs NOT in changed list) -> diverges from approved
+    _stage_approved_plan(artifact_dir, "peripherals", has_changes=True)
+    _stage_approved_plan(artifact_dir, "lambda", has_changes=True)  # approved = 1 add
+    # lambda re-plan returns no changes (06_lambda NOT in changed list) -> diverges
     proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": ""})
     assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
-    div_file = proc.div_dir / "ecs.diff.txt"  # type: ignore[attr-defined]
+    div_file = proc.div_dir / "lambda.diff.txt"  # type: ignore[attr-defined]
     assert div_file.exists(), "divergence diff must be published as an artifact"
     log = proc.apply_log  # type: ignore[attr-defined]
-    assert "07_ecs" not in log, "ecs must NOT be applied on divergence"
+    assert "06_lambda" not in log, "lambda must NOT be applied on divergence"
 
 
 def test_no_saved_plan_replans_and_gates(tmp_path: Path) -> None:
     """A stack with NO saved approved plan (artifact absent) is re-planned and gated.
     With no approved plan, plan_gate_check.sh plan-diff fails closed (exit 3) unless the
-    re-plan is itself a no-op. Here ecs has no saved plan and re-plans WITH changes ->
+    re-plan is itself a no-op. Here lambda has no saved plan and re-plans WITH changes ->
     diverges (missing approved) -> fail closed."""
     artifact_dir = tmp_path / ".plan-artifacts"
-    for sid in ("vpc", "peripherals", "iam"):
+    for sid in ("tf_state", "iam", "peripherals"):
         _stage_approved_plan(artifact_dir, sid, has_changes=False)
-    # ecs: no artifact staged at all
-    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "07_ecs"})
+    # lambda: no artifact staged at all
+    proc = _run(tmp_path, {"TF_PLAN_CHANGED_STACKS": "06_lambda"})
     assert proc.returncode == 3, (proc.returncode, proc.stdout, proc.stderr)
     log = proc.apply_log  # type: ignore[attr-defined]
-    assert "07_ecs" not in log
+    assert "06_lambda" not in log
 
 
 def _run_replan_diff(
@@ -338,8 +341,8 @@ def test_deploy_order_matches_stack_map(tmp_path: Path) -> None:
     data = json.loads((CI_DIR / "stack_map.json").read_text())
     expected_paths = [
         s["path"].split("/")[-1]
-        for s in data["environments"]["hml"]["stacks"]
-        if not s["id"].startswith("databricks")
+        for s in data["environments"]["prd"]["stacks"]
+        if not s.get("operator_only", False)
     ]
     seen = [
         ln.split()[-1].rsplit("/", 1)[-1].replace(")", "")

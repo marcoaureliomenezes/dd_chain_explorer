@@ -110,23 +110,23 @@ def test_declared_modules_exist_on_disk() -> None:
 def test_stack_own_path_edit_triggers_only_that_stack() -> None:
     cs = _load_changed_stacks()
     stacks = {s["id"]: s for s in cs.stacks_for_env("prd")}
-    changed = ["services/prd/02_vpc/main.tf"]
-    assert cs.stack_is_changed(stacks["vpc"], changed) is True
+    changed = ["services/prd/04_peripherals/peripherals.tf"]
+    assert cs.stack_is_changed(stacks["peripherals"], changed) is True
     assert cs.stack_is_changed(stacks["iam"], changed) is False
 
 
 def test_module_edit_triggers_only_consuming_stacks() -> None:
-    """A services/modules/iam edit triggers stacks that DECLARE iam, never every
-    stack (the old blanket ^services/modules/ behaviour, CI-H3)."""
+    """A services/modules/cloudwatch_logs edit triggers stacks that DECLARE it, never
+    every stack (the old blanket ^services/modules/ behaviour, CI-H3)."""
     cs = _load_changed_stacks()
     stacks = {s["id"]: s for s in cs.stacks_for_env("prd")}
-    changed = ["services/modules/iam/main.tf"]
-    # iam stack declares modules:["iam"] -> changed
-    assert cs.stack_is_changed(stacks["iam"], changed) is True
-    # vpc stack declares modules:["vpc"] -> NOT changed by an iam module edit
-    assert cs.stack_is_changed(stacks["vpc"], changed) is False
-    # peripherals declares s3/dynamodb/... but not iam -> NOT changed
-    assert cs.stack_is_changed(stacks["peripherals"], changed) is False
+    changed = ["services/modules/cloudwatch_logs/main.tf"]
+    # peripherals declares modules:["s3","cloudwatch_logs","dynamodb"] -> changed
+    assert cs.stack_is_changed(stacks["peripherals"], changed) is True
+    # iam declares no modules -> NOT changed by a cloudwatch_logs module edit
+    assert cs.stack_is_changed(stacks["iam"], changed) is False
+    # lambda declares no modules (prd/06_lambda has no shared-module source, T-A.8) -> NOT changed
+    assert cs.stack_is_changed(stacks["lambda"], changed) is False
 
 
 def test_module_edit_with_multiple_consumers() -> None:
@@ -135,7 +135,7 @@ def test_module_edit_with_multiple_consumers() -> None:
     # peripherals declares s3; only it (of prd stacks) consumes s3.
     changed = ["services/modules/s3/outputs.tf"]
     assert cs.stack_is_changed(stacks["peripherals"], changed) is True
-    assert cs.stack_is_changed(stacks["vpc"], changed) is False
+    assert cs.stack_is_changed(stacks["iam"], changed) is False
 
 
 def test_unrelated_edit_triggers_no_stack() -> None:

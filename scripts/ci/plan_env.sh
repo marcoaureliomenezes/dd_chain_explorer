@@ -64,7 +64,7 @@ summary ""
 summary "| Stack | add | change | destroy | status |"
 summary "|-------|-----|--------|---------|--------|"
 
-mapfile -t STACK_IDS < <(jq -r --arg e "$ENV" '.environments[$e].stacks[].id' "$STACK_MAP")
+mapfile -t STACK_IDS < <(bash "${REPO_ROOT}/scripts/ci/stack_list.sh" "$ENV")
 if [[ "${#STACK_IDS[@]}" -eq 0 ]]; then
   echo "::error::No stacks declared for environment '${ENV}' in ${STACK_MAP}"
   exit 1

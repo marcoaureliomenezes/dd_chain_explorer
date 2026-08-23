@@ -57,7 +57,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SKIP_DATABRICKS="${SKIP_DATABRICKS:-false}"
 FAST_MODE="${FAST_MODE:-false}"
-TF_VERSION="${TF_VERSION:-1.7.0}"
+TF_VERSION="${TF_VERSION:-1.9.8}"
 TF_BIN="${TF_BIN:-terraform}"
 STACK_MAP="${STACK_MAP:-${REPO_ROOT}/scripts/ci/stack_map.json}"
 PLAN_ARTIFACT_DIR="${PLAN_ARTIFACT_DIR:-${REPO_ROOT}/.plan-artifacts}"
@@ -272,41 +272,18 @@ deploy_stack_replan_diff() {
 # ── HML deploy ────────────────────────────────────────────────────────────────
 
 deploy_hml() {
-  local root="${REPO_ROOT}/services/hml"
-
   summary ""
   summary "## HML Deploy"
   summary "| Status | Module | Result |"
   summary "|--------|--------|--------|"
 
-  # Stack order is the map's declared order, EXCEPT databricks stacks are gated on
-  # SKIP_DATABRICKS. Iterate the map; skip databricks ids when SKIP_DATABRICKS=true.
+  # Stack order + membership are the map's declared order (T-A.8, F-ARCH-4) minus
+  # operator_only stacks — scripts/ci/stack_list.sh is the ONE place that resolves it.
   local sid path
   while IFS= read -r sid; do
     path="$(stack_field "$sid" path)"
-    case "$sid" in
-      databricks)
-        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
-          summary "| ⏭️ | HML/Databricks | skipped (SKIP_DATABRICKS=true) |"
-          continue
-        fi
-        deploy_stack "$sid" "${REPO_ROOT}/${path}"
-        ;;
-      databricks_workspace)
-        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
-          summary "| ⏭️ | HML/DatabricksWorkspace | skipped |"
-          continue
-        fi
-        # 05b uses workspace-level PAT token from TF remote state. Unset OAuth env vars
-        # to avoid "two auth methods" conflict with the token-based provider.
-        (unset DATABRICKS_ACCOUNT_ID DATABRICKS_CLIENT_ID DATABRICKS_CLIENT_SECRET; \
-          deploy_stack "$sid" "${REPO_ROOT}/${path}")
-        ;;
-      *)
-        deploy_stack "$sid" "${REPO_ROOT}/${path}"
-        ;;
-    esac
-  done < <(jq -r --arg e "hml" '.environments[$e].stacks[].id' "$STACK_MAP")
+    deploy_stack "$sid" "${REPO_ROOT}/${path}"
+  done < <(bash "${REPO_ROOT}/scripts/ci/stack_list.sh" hml)
 
   summary ""
   summary "> HML deploy complete."
@@ -315,47 +292,22 @@ deploy_hml() {
 # ── PRD deploy ────────────────────────────────────────────────────────────────
 
 deploy_prd() {
-  local root="${REPO_ROOT}/services/prd"
-
   summary ""
   summary "## PRD Deploy"
   summary "| Status | Module | Result |"
   summary "|--------|--------|--------|"
 
+  # Stack order + membership are the map's declared order (T-A.8, F-ARCH-4) minus
+  # operator_only stacks (00_bootstrap, D14/O-1) — scripts/ci/stack_list.sh resolves it.
   local sid path
   while IFS= read -r sid; do
     path="$(stack_field "$sid" path)"
-    case "$sid" in
-      lambda)
-        # Lambda: needs .lambda_zip dir
-        mkdir -p "${REPO_ROOT}/${path}/.lambda_zip"
-        deploy_stack "$sid" "${REPO_ROOT}/${path}"
-        ;;
-      databricks_account)
-        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
-          summary "| ⏭️ | PRD/DatabricksAccount | skipped (SKIP_DATABRICKS=true) |"
-          continue
-        fi
-        # 05a: idempotent import first
-        cd "${REPO_ROOT}/${path}"
-        "${TF_BIN}" init -input=false
-        bash "${REPO_ROOT}/scripts/ci/databricks_account_import.sh"
-        cd "${REPO_ROOT}"
-        deploy_stack "$sid" "${REPO_ROOT}/${path}"
-        prd_read_workspace_url "${REPO_ROOT}/${path}"
-        ;;
-      databricks_workspace)
-        if [[ "$SKIP_DATABRICKS" == "true" ]]; then
-          summary "| ⏭️ | PRD/DatabricksWorkspace | skipped |"
-          continue
-        fi
-        deploy_stack "$sid" "${REPO_ROOT}/${path}"
-        ;;
-      *)
-        deploy_stack "$sid" "${REPO_ROOT}/${path}"
-        ;;
-    esac
-  done < <(jq -r --arg e "prd" '.environments[$e].stacks[].id' "$STACK_MAP")
+    if [[ "$sid" == "lambda" ]]; then
+      # Lambda: needs .lambda_zip dir
+      mkdir -p "${REPO_ROOT}/${path}/.lambda_zip"
+    fi
+    deploy_stack "$sid" "${REPO_ROOT}/${path}"
+  done < <(bash "${REPO_ROOT}/scripts/ci/stack_list.sh" prd)
 
   summary ""
   summary "> PRD deploy complete."

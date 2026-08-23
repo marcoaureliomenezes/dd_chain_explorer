@@ -11,7 +11,16 @@
 #   MODULE_NAME — display label used in the summary heading, e.g. "PRD/VPC"
 #
 # Optional env vars:
-#   TAIL_LINES  — number of plan lines to show in summary (default: 15)
+#   TAIL_LINES    — number of plan lines to show in summary (default: 15)
+#   TF_PLAN_ARGS  — extra `terraform plan` CLI args, e.g. "-lock=false" (T-A.8, F-04).
+#                   The read-only role's IAM policy carries no dynamodb:PutItem/
+#                   DeleteItem on the lock table (T-A.1/SEC-I-01) — every caller that
+#                   assumes AWS_DEPLOY_ROLE_READONLY (plan_on_pr.yml, drift_detection.yml,
+#                   the pre-gate plan jobs in deploy_cloud_infra.yml) MUST set
+#                   TF_PLAN_ARGS="-lock=false"; a deploy-role apply-path plan (the
+#                   post-gate re-plan in deploy_env.sh) leaves it unset and locks
+#                   normally, since it is immediately followed by an apply against the
+#                   same state.
 #
 # Any TF_VAR_* vars needed by the specific plan must also be passed in the step env:.
 #
@@ -27,6 +36,7 @@ set -euo pipefail
 
 MODULE_NAME="${MODULE_NAME:-Terraform}"
 TAIL_LINES="${TAIL_LINES:-15}"
+TF_PLAN_ARGS="${TF_PLAN_ARGS:-}"
 
 # GH-native gating channel. On a real runner GITHUB_OUTPUT/GITHUB_STEP_SUMMARY are set;
 # off-runner (sequential deploy_env.sh wrapper or local tests) they default to /dev/null.
@@ -39,7 +49,8 @@ GITHUB_STEP_SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/null}"
 PLAN_SIGNAL_FILE="${PLAN_SIGNAL_FILE:-tfplan.haschanges}"
 
 set +e
-terraform plan -no-color -input=false -out=tfplan -detailed-exitcode > plan.txt 2>&1
+# shellcheck disable=SC2086  # TF_PLAN_ARGS is a caller-controlled word-splittable flag list
+terraform plan -no-color -input=false -out=tfplan -detailed-exitcode ${TF_PLAN_ARGS} > plan.txt 2>&1
 PLAN_EXIT=$?
 set -e
 
