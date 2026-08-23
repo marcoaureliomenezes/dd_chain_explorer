@@ -57,7 +57,7 @@
   - Deps: T-A.7 · AC-4b, AC-9 · Findings: DRIFT-14, DRIFT-15
   - Evidence: `pytest scripts/ci/tests -p no:cacheprovider` green **and** the CI job log proving the suite ran; `grep -n 'lock=false' scripts/ci/tf_plan.sh`; the read-only role's policy carries no `dynamodb:PutItem`/`DeleteItem`.
 
-- [ ] **T-A.9** — One version axis = the SDD release id (A6). **Lands before any WS-C/WS-D edit (O-4, K3).**
+- [-] **T-A.9** — One version axis = the SDD release id (A6). **Lands before any WS-C/WS-D edit (O-4, K3).**
   - Owner: software-engineer · Write set: `VERSION`, `apps/dabs/*/VERSION`, `apps/dabs/deploy_all.sh`, `scripts/ci/check_prd_version.sh`
   - Deps: — · AC-8 · Findings: DRIFT-11, CI-M10
   - Evidence: `cat VERSION`; `cat apps/dabs/*/VERSION | sort -u` → `0.5.0`; tag-skip gone from `deploy_all.sh`. The library declarations are `T-D.7`'s, ordered after this task — the one ordered-not-disjoint seam.
