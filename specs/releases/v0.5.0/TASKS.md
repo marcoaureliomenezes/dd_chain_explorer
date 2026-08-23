@@ -222,7 +222,7 @@
   - Deps: T-A.9, T-D.4 · AC-8 · Findings: DRIFT-11, CI-M6
   - Evidence: `grep -n version utils/pyproject.toml utils/src/dm_chain_utils/__init__.py` → `0.5.0`; `grep -rn '0\.2\.9' -- . ':!specs'` → 0.
 
-- [ ] **T-D.5** — Quality gates and a clean worktree: `ruff` + `mypy` configured and passing; state directories gitignored; duplicate test tree removed; residual key-tail logging and the bulk parameter-listing helper removed; the scanner-ignore blind spot closed (D3).
+- [-] **T-D.5** — Quality gates and a clean worktree: `ruff` + `mypy` configured and passing; state directories gitignored; duplicate test tree removed; residual key-tail logging and the bulk parameter-listing helper removed; the scanner-ignore blind spot closed (D3).
   - Owner: software-engineer · Write set: root `pyproject.toml`/ruff/mypy config, `.gitignore`, `.gitguardian.yml`, the kept modules under `apps/lambda/**` and `utils/**`
   - Deps: T-D.4 · AC-22 · Findings: DRIFT-26, DRIFT-29, ARCH-M7, CI-L6, SEC-H-01 (residual), SEC-L-05
   - Evidence: `ruff format --check . --no-cache`, `ruff check . --no-cache`, `mypy`, `git status --porcelain` — all clean.
