@@ -33,7 +33,7 @@
   - Deps: T-A.3 · AC-2, AC-2b · Findings: DRIFT-08
   - Evidence: `implicitDeny`/`explicitDeny` for the forbidden action on all four roles, `allowed` for the permitted one; the assertion test green in CI.
 
-- [ ] **T-A.4** — Bootstrap-as-code and the credential surface (A2): check in `scripts/ci/publish_oidc_vars.sh` (reads the `00_bootstrap` outputs, runs `gh variable set` for the four names), add the fail-fast preflight step to every role-assuming workflow with a `scripts/ci/tests` case asserting its presence, write the one-time-apply runbook entry (`docs/`, executed by WS-D's `T-D.6`), then publish the four variables and delete the static + capture-era secrets.
+- [-] **T-A.4** — Bootstrap-as-code and the credential surface (A2): check in `scripts/ci/publish_oidc_vars.sh` (reads the `00_bootstrap` outputs, runs `gh variable set` for the four names), add the fail-fast preflight step to every role-assuming workflow with a `scripts/ci/tests` case asserting its presence, write the one-time-apply runbook entry (`docs/`, executed by WS-D's `T-D.6`), then publish the four variables and delete the static + capture-era secrets.
   - Owner: software-engineer (script, preflight, test) · coordinator (variables + secrets, operator credentials) · Write set: `scripts/ci/publish_oidc_vars.sh`, `scripts/ci/tests/**`, `.github/workflows/**` (preflight step), GitHub repository variables + secrets
   - Deps: T-A.3 (roles must exist first, O-9) · AC-1, AC-3, AC-3b · Findings: DRIFT-01, DRIFT-09, SEC-M-05, SEC-I-01
   - Evidence: `gh variable list`, `gh secret list` (generic names only — public repo); a deliberate empty-variable run failing **at the preflight step** with an explicit message.
