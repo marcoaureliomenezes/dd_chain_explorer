@@ -136,7 +136,7 @@
   - Deps: T-B.2, T-B.4 · AC-11 · Findings: DRIFT-24
   - Evidence: per-key resource count 0 recorded before deletion; bucket versioning confirmed ON; `aws s3api list-objects-v2 --bucket <state-bucket> --query 'Contents[].Key'` after. **State files are never copied to local disk** (`DADAIA.md` §8).
 
-- [ ] **T-B.12** — Import the live `dm-databricks-dev-s3-role` into `dev/01_peripherals` — load-bearing, never deleted (B2/B3, F-05).
+- [-] **T-B.12** — Import the live `dm-databricks-dev-s3-role` into `dev/01_peripherals` — load-bearing, never deleted (B2/B3, F-05).
   - Owner: software-engineer (operator-gated) · Write set: `services/dev/01_peripherals/**`; that stack's Terraform state
   - Deps: T-B.4 · AC-10, AC-18b · Findings: DRIFT-22
   - Evidence: `terraform import` output; post-import plan 0 diff; the dev Databricks storage credential still resolves.
