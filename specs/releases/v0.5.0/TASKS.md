@@ -229,7 +229,7 @@
   - Deps: T-D.4 · AC-22 · Findings: DRIFT-26, DRIFT-29, ARCH-M7, CI-L6, SEC-H-01 (residual), SEC-L-05
   - Evidence: `ruff format --check . --no-cache`, `ruff check . --no-cache`, `mypy`, `git status --porcelain` — all clean.
 
-- [ ] **T-D.6** — Docs to the post-capture truth: the Makefile reduced to thin wrappers over the scripts CI runs (the 16 broken targets fixed); `README.md`, `docs/**`, app READMEs, DLT notebook headers, DDL comments and integration-test prerequisites rewritten (D5).
+- [-] **T-D.6** — Docs to the post-capture truth: the Makefile reduced to thin wrappers over the scripts CI runs (the 16 broken targets fixed); `README.md`, `docs/**`, app READMEs, DLT notebook headers, DDL comments and integration-test prerequisites rewritten (D5).
   - Owner: software-engineer · Write set: `Makefile`, `README*`, `docs/**`, repo-local `AGENTS.md`, app READMEs and notebook/DDL headers outside `apps/dabs/**`
   - Deps: T-D.5 · AC-24 · Findings: DRIFT-28, ARCH-H2, CI-L1, CI-L2, CI-L3, CI-L4, CI-L5, DRIFT-N10
   - Evidence: `make -n <target>` for every documented target; `grep -rniE 'kinesis|firehose|ECS producer' README* docs/ apps/**/README*` → 0.
