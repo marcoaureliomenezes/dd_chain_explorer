@@ -107,7 +107,7 @@ Component READMEs: [`apps/dabs/README.md`](apps/dabs/README.md) ·
 dd-chain-explorer/
 ├── apps/
 │   ├── dabs/           ← Databricks Asset Bundles (DLT + batch jobs + dashboards)
-│   └── lambda/         ← AWS Lambda handlers (2 functions) + requirements.lock
+│   └── lambda/         ← AWS Lambda handlers (2 functions) + requirements.txt
 ├── docs/
 │   └── runbooks/       ← operator-only, one-time procedures
 ├── scripts/

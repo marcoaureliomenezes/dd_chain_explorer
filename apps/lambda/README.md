@@ -63,7 +63,7 @@ scripts/build_lambda_layer.sh
 # imprime a última linha: LAYER_ZIP=<path> LAYER_SHA256=<hex>
 ```
 
-Instala as dependências de terceiros hash-pinned de `apps/lambda/requirements.lock`
+Instala as dependências de terceiros hash-pinned de `apps/lambda/requirements.txt`
 mais `dm_chain_utils` como **path requirement** (`--no-deps`), e zipa
 `build/python/` para `.lambda_zip/dm_chain_utils_layer.zip` (untracked,
 gitignored — build determinístico, mesmo sha256 a cada execução com os
@@ -93,7 +93,7 @@ Não existe stack Lambda em HML — as duas funções só rodam em `dev` e `prd`
 
 ```
 apps/lambda/
-  requirements.lock          # hash-pinned, terceiros — scripts/build_lambda_layer.sh
+  requirements.txt          # hash-pinned, terceiros — scripts/build_lambda_layer.sh
   requirements.in            # source do pip-compile
   contracts_ingestion/
     handler.py

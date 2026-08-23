@@ -85,10 +85,10 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install dev tooling from the hash-locked apps/lambda/requirements-dev.lock
+      - name: Install dev tooling from the hash-locked apps/lambda/requirements-dev.txt
         run: |
           python -m pip install --upgrade pip
-          pip install --require-hashes -r apps/lambda/requirements-dev.lock
+          pip install --require-hashes -r apps/lambda/requirements-dev.txt
           pip install -e "${{ env.UTILS_DIR }}[dev]"
 
       - name: ruff format --check

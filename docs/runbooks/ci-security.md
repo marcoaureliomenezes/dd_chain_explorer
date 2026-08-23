@@ -163,7 +163,7 @@ allowlist is a follow-up, not blocked on this session).
 
 `plan_on_pr.yml`'s `quality` job now runs `zizmor` (pinned `1.29.0` via `pip install`,
 matching the version this audit itself used — not hash-locked into
-`apps/lambda/requirements-dev.lock`, since zizmor is a workflow-lint tool with no runtime
+`apps/lambda/requirements-dev.txt`, since zizmor is a workflow-lint tool with no runtime
 coupling to the Lambda dev environment) with `--persona regular --offline --min-severity
 high` against `.github/workflows` on every PR. This repo is currently clean at that
 threshold: `zizmor --persona auditor --offline .github/workflows` reports 64 findings —

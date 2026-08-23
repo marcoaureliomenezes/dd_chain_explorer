@@ -74,7 +74,7 @@ Legacy/history: `specs/_archive/**` — read-only, never a source of approval.
 | `specs/memory/` | Current product/architecture/tech-stack truth |
 | `specs/backlog/BACKLOG.md` | Single-source backlog (ACTIVE + LEDGER) |
 | `apps/dabs/` | Databricks Asset Bundles (DLT pipelines, batch jobs, dashboards) |
-| `apps/lambda/` | Lambda functions (`contracts_ingestion`, `gold_to_dynamodb`) + `requirements.lock` |
+| `apps/lambda/` | Lambda functions (`contracts_ingestion`, `gold_to_dynamodb`) + `requirements.txt` |
 | `utils/` | `dm_chain_utils` shared library (path-installed only) |
 | `services/dev/`, `services/hml/`, `services/prd/` | Terraform, one root stack per numbered directory |
 | `services/modules/` | Shared Terraform modules |

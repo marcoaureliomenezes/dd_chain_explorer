@@ -3,7 +3,7 @@
 #
 # Deterministic, reproducible build:
 #   1. Third-party dependencies are installed hash-pinned from
-#      apps/lambda/requirements.lock (--require-hashes).
+#      apps/lambda/requirements.txt (--require-hashes).
 #   2. dm_chain_utils itself is installed as a PATH requirement, --no-deps —
 #      this closes dependency confusion (a malicious "dm-chain-utils" package
 #      could never be published to a public index and picked up instead,
@@ -34,7 +34,7 @@ BUILD_DIR="${REPO_ROOT}/build"
 LAYER_PYTHON_DIR="${BUILD_DIR}/python"
 ZIP_DIR="${REPO_ROOT}/.lambda_zip"
 ZIP_PATH="${ZIP_DIR}/dm_chain_utils_layer.zip"
-REQUIREMENTS_LOCK="${REPO_ROOT}/apps/lambda/requirements.lock"
+REQUIREMENTS_LOCK="${REPO_ROOT}/apps/lambda/requirements.txt"
 UTILS_DIR="${REPO_ROOT}/utils"
 
 PYTHON_BIN="${PYTHON_BIN:-python3}"
