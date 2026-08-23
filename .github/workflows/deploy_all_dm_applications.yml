@@ -139,10 +139,15 @@ jobs:
           set -euo pipefail
           BUCKET="dm-chain-explorer-artifacts"
           KEY="${{ steps.build.outputs.layer_s3_key }}"
+          SHA256="${{ steps.build.outputs.layer_sha256 }}"
           if aws s3api head-object --bucket "${BUCKET}" --key "${KEY}" >/dev/null 2>&1; then
             echo "Object s3://${BUCKET}/${KEY} already exists — skipping upload (content-addressed, T-B.14)."
           else
-            aws s3 cp "${{ steps.build.outputs.layer_zip }}" "s3://${BUCKET}/${KEY}"
+            # T-A.7: tag the object with its own sha256 as S3 metadata so
+            # scripts/ci/resolve_layer.sh (infra-only plans/applies) can cross-check
+            # the key-derived hash against an independent source before trusting it.
+            aws s3 cp "${{ steps.build.outputs.layer_zip }}" "s3://${BUCKET}/${KEY}" \
+              --metadata "sha256=${SHA256}"
           fi
 
   # ── Lambda: terraform apply (dev/prd only — hml has no Lambda stack, B2) ──

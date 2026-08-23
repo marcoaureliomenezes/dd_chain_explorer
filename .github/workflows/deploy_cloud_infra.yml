@@ -223,6 +223,9 @@ jobs:
     needs: prd-check-version
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      layer_s3_key: ${{ steps.resolve-layer.outputs.layer_s3_key }}
+      layer_sha256: ${{ steps.resolve-layer.outputs.layer_sha256 }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -238,6 +241,15 @@ jobs:
           # (F-QA-A1-2). Plan-only = read-only, matching drift_detection.yml.
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_READONLY }}
           aws-region:     ${{ env.AWS_REGION }}
+      - name: Resolve lambda layer artifact (T-A.7, WS-A)
+        id: resolve-layer
+        run: |
+          set -euo pipefail
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer.sh" \
+            dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
+          echo "${OUT}"
+          echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
+          echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
       - name: Plan PRD (pre-gate)
         run: bash "$GITHUB_WORKSPACE/scripts/ci/plan_env.sh" prd
         env:
@@ -252,13 +264,14 @@ jobs:
           # READONLY role carries no dynamodb:PutItem/DeleteItem on the lock table
           # (SEC-I-01) — tf_plan.sh (called via plan_env.sh) must not try to lock (T-A.8).
           TF_PLAN_ARGS:                    "-lock=false"
-          # prd/06_lambda's layer_* variables have no default (T-B.14) — the pre-gate
-          # plan is read-only and never applied, so a stable placeholder is sufficient
-          # here; deploy_all_dm_applications.yml's build-layer job supplies the real
-          # values for the app-code apply path (T-A.7).
+          # prd/06_lambda's layer_* variables have no default (T-B.14) — resolved to
+          # the newest real artifact deploy_all_dm_applications.yml's build-layer job
+          # uploaded (T-A.7, WS-A). prd-apply reuses this exact job's outputs (never
+          # re-resolves) so a plan and its later apply can never silently diverge on
+          # which layer object they mean.
           TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
-          TF_VAR_layer_s3_key:             "lambda-layers/dm-chain-utils/pre-gate-plan-placeholder.zip"
-          TF_VAR_layer_sha256:             "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          TF_VAR_layer_s3_key:             ${{ steps.resolve-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256:             ${{ steps.resolve-layer.outputs.layer_sha256 }}
       - name: Upload saved plans
         uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08  # v4
         with:
@@ -322,6 +335,13 @@ jobs:
           TF_VAR_project_version:          ${{ needs.prd-check-version.outputs.version }}
           SKIP_DATABRICKS:                 ${{ github.event.inputs.skip_databricks }}
           FAST_MODE:                       ${{ github.event.inputs.fast_mode }}
+          # T-A.7, WS-A — deploy_env.sh normally applies prd-plan's SAVED plan binary
+          # unchanged, but re-plans (and re-resolves layer_* here) on a divergence
+          # (ADR-R6-5). Reusing prd-plan's exact outputs (not a fresh resolve) keeps a
+          # re-plan consistent with what the gate approver reviewed.
+          TF_VAR_layer_s3_bucket:          "dm-chain-explorer-artifacts"
+          TF_VAR_layer_s3_key:             ${{ needs.prd-plan.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256:             ${{ needs.prd-plan.outputs.layer_sha256 }}
 
   # ── PRD git tag ────────────────────────────────────────────────
 

@@ -352,6 +352,15 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
+      - name: Resolve lambda layer artifact (T-A.7, WS-A)
+        id: resolve-layer
+        run: |
+          set -euo pipefail
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer.sh" \
+            dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
+          echo "${OUT}"
+          echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
+          echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
       - name: Terraform Plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
         env:
@@ -359,10 +368,10 @@ jobs:
           TAIL_LINES: "30"
           TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "pr-${{ github.event.pull_request.number }}"
-          # No real artifact exists to plan against from a PR context — a stable
-          # placeholder value keeps the speculative plan reproducible (T-A.7). The
-          # real sha256/key are supplied by the layer build+upload job on deploy
-          # (deploy_all_dm_applications.yml, T-A.7).
+          # Resolved to the newest real artifact deploy_all_dm_applications.yml's
+          # build-layer job uploaded (T-A.7, WS-A) — a PR plan now reflects the same
+          # layer prd would actually apply, instead of a placeholder that could mask
+          # a layer-shaped plan diff.
           TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
-          TF_VAR_layer_s3_key:    "lambda-layers/dm-chain-utils/pr-plan-placeholder.zip"
-          TF_VAR_layer_sha256:    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          TF_VAR_layer_s3_key:    ${{ steps.resolve-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256:    ${{ steps.resolve-layer.outputs.layer_sha256 }}

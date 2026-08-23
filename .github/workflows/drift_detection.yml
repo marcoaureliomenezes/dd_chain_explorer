@@ -249,6 +249,15 @@ jobs:
           aws-region:     ${{ env.AWS_REGION }}
       - run: mkdir -p .lambda_zip
       - run: terraform init -input=false
+      - name: Resolve lambda layer artifact (T-A.7, WS-A)
+        id: resolve-layer
+        run: |
+          set -euo pipefail
+          OUT="$(bash "$GITHUB_WORKSPACE/scripts/ci/resolve_layer.sh" \
+            dm-chain-explorer-artifacts lambda-layers/dm-chain-utils/)"
+          echo "${OUT}"
+          echo "layer_s3_key=$(echo "${OUT}" | grep -oP 'LAYER_S3_KEY=\K\S+')" >> "$GITHUB_OUTPUT"
+          echo "layer_sha256=$(echo "${OUT}" | grep -oP 'LAYER_SHA256=\K\S+')" >> "$GITHUB_OUTPUT"
       - name: Terraform Plan (Drift Check)
         id: plan
         run: bash "$GITHUB_WORKSPACE/scripts/ci/tf_plan.sh"
@@ -257,12 +266,13 @@ jobs:
           TAIL_LINES: "30"
           TF_PLAN_ARGS: "-lock=false"
           TF_VAR_project_version: "drift-check"
-          # No new build in a scheduled drift scan — plan against whatever the live
-          # state already references; the layer variables have no default (T-B.14),
-          # so a stable placeholder keeps this a real drift check on everything else.
+          # T-A.7, WS-A: the placeholder this job used to pass here differed from
+          # live state's actually-applied layer_s3_key/sha256 on every run, so this
+          # drift check always reported a false-positive diff on those 2 attributes.
+          # Resolved to the newest real artifact instead — a real drift check again.
           TF_VAR_layer_s3_bucket: "dm-chain-explorer-artifacts"
-          TF_VAR_layer_s3_key:    "lambda-layers/dm-chain-utils/drift-check-placeholder.zip"
-          TF_VAR_layer_sha256:    "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+          TF_VAR_layer_s3_key:    ${{ steps.resolve-layer.outputs.layer_s3_key }}
+          TF_VAR_layer_sha256:    ${{ steps.resolve-layer.outputs.layer_sha256 }}
       - name: Alert on drift
         if: steps.plan.outputs.plan_has_changes == 'true'
         run: |
