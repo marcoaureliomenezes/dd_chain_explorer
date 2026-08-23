@@ -33,8 +33,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
-  id-token: write
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 env:
   AWS_REGION:      sa-east-1
@@ -105,6 +104,9 @@ jobs:
     needs: dev-detect-changes
     if: needs.dev-detect-changes.outputs.peripherals_changed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     timeout-minutes: 45
     environment: dev
     defaults:
@@ -154,6 +156,9 @@ jobs:
       needs.dev-detect-changes.outputs.lambda_changed == 'true' &&
       (needs.dev-deploy-peripherals.result == 'success' || needs.dev-deploy-peripherals.result == 'skipped')
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     timeout-minutes: 45
     environment: dev
     defaults:
@@ -226,6 +231,9 @@ jobs:
       cancel-in-progress: false
     needs: prd-check-version
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     timeout-minutes: 15
     outputs:
       layer_s3_key: ${{ steps.resolve-layer.outputs.layer_s3_key }}
@@ -305,6 +313,9 @@ jobs:
       - prd-check-version
       - prd-plan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     timeout-minutes: 45
     environment: production
     steps:
@@ -385,6 +396,9 @@ jobs:
     needs: branch-guard
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
@@ -427,6 +441,9 @@ jobs:
       - hml-plan
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_HML via OIDC
     timeout-minutes: 45
     environment: hml
     steps:

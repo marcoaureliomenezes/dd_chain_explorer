@@ -22,8 +22,7 @@ on:
   workflow_dispatch: {}
 
 permissions:
-  contents: read
-  id-token: write
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 # CI-M9 — Serialize drift scans. Concurrent runs plan against the same remote
 # state and collide on the Terraform state lock. Do not cancel an in-flight scan
@@ -61,6 +60,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     defaults:
       run:
         working-directory: services/dev/01_peripherals
@@ -98,6 +100,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     defaults:
       run:
         working-directory: services/dev/02_lambda
@@ -134,6 +139,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     defaults:
       run:
         working-directory: services/hml/04_peripherals
@@ -170,6 +178,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     defaults:
       run:
         working-directory: services/prd/03_iam
@@ -203,6 +214,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     defaults:
       run:
         working-directory: services/prd/04_peripherals
@@ -236,6 +250,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_READONLY via OIDC
     defaults:
       run:
         working-directory: services/prd/06_lambda

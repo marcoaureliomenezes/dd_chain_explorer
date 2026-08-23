@@ -25,8 +25,7 @@ on:
         options: [dev, hml, prod]
 
 permissions:
-  contents: read
-  id-token: write
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 concurrency:
   group: deploy-apps-${{ inputs.target }}
@@ -109,6 +108,9 @@ jobs:
     if: inputs.target == 'prod'
     runs-on: ubuntu-latest
     environment: production
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     timeout-minutes: 30
     outputs:
       layer_s3_key: ${{ steps.build.outputs.layer_s3_key }}
@@ -164,6 +166,9 @@ jobs:
       (needs.build-layer.result == 'success' || needs.build-layer.result == 'skipped')
     runs-on: ubuntu-latest
     environment: ${{ inputs.target == 'prod' && 'production' || inputs.target }}
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume the target's AWS deploy role via OIDC
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4

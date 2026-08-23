@@ -27,8 +27,7 @@ on:
         type: string
 
 permissions:
-  contents: read
-  id-token: write
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 # Serialize the nuclear teardown — two concurrent dispatches racing the same
 # backend would corrupt/orphan remote state for all stacks. Shares its group
@@ -89,6 +88,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -109,6 +111,9 @@ jobs:
     needs: dev-destroy-lambda
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -138,6 +143,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_HML via OIDC
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -168,6 +176,9 @@ jobs:
     needs: preflight-oidc
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -188,6 +199,9 @@ jobs:
     needs: prd-destroy-lambda
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3
@@ -211,6 +225,9 @@ jobs:
     needs: prd-destroy-peripherals
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5  # v4
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd  # v3

@@ -22,8 +22,7 @@ on:
         type: boolean
 
 permissions:
-  contents: read
-  id-token: write
+  contents: read  # F-04: id-token: write is granted only on the jobs that need it
 
 env:
   AWS_REGION: sa-east-1
@@ -74,6 +73,9 @@ jobs:
     needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'DEV (Cloud AWS)'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     timeout-minutes: 45
     environment: dev
     steps:
@@ -106,6 +108,9 @@ jobs:
     needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'hml'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_HML via OIDC
     timeout-minutes: 45
     environment: hml
     steps:
@@ -138,6 +143,9 @@ jobs:
     needs: [safety-check, preflight-oidc]
     if: github.event.inputs.environment == 'prd'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     timeout-minutes: 45
     environment: production
     steps:
