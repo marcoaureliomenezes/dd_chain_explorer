@@ -1,0 +1,56 @@
+name: Scorecard supply-chain security
+
+# F-12 — public-repo CI security audit, 2026-08-23. OpenSSF Scorecard scores
+# this repo's supply-chain security posture (branch protection, pinned
+# dependencies, dangerous workflow patterns, ...) and publishes the result to
+# the public Scorecard API + badge. Runs weekly (drift can appear without any
+# code change here — e.g. a GitHub setting change) and on-demand.
+
+on:
+  schedule:
+    - cron: '30 6 * * 1'  # Every Monday at 06:30 UTC (drift_detection.yml already owns 06:00)
+  workflow_dispatch: {}
+
+permissions: {}  # least-privilege default; the analysis job grants exactly what it needs
+
+concurrency:
+  group: scorecard
+  cancel-in-progress: false
+
+jobs:
+  analysis:
+    name: Scorecard analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      # Required to read repository settings/branch-protection for scoring.
+      contents: read
+      # Required for publish_results: true (public-repo badge/API access via OIDC).
+      # security-events: write is NOT added — that is only required for private
+      # repos or when uploading SARIF to GitHub code scanning, neither of which
+      # this job does (public repo; results are uploaded as a plain artifact).
+      id-token: write
+    steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Run Scorecard analysis
+        uses: ossf/scorecard-action@2d1146689b8cda280b9bc96326124645441f03bc  # v2.4.4
+        with:
+          results_file: results.sarif
+          results_format: sarif
+          publish_results: true
+
+      - name: Upload SARIF results
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: scorecard-sarif
+          path: results.sarif
+          retention-days: 5

@@ -46,6 +46,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - name: Enforce develop branch
         run: |
           if [ "${GITHUB_REF}" != "refs/heads/develop" ]; then
@@ -63,6 +67,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - name: Resolve and validate AWS_DEPLOY_ROLE_* for the target
         env:
           # F-09: env-indirection — inputs.target is a `type: choice`, but
@@ -91,6 +99,10 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -125,6 +137,10 @@ jobs:
       layer_s3_key: ${{ steps.build.outputs.layer_s3_key }}
       layer_sha256_b64: ${{ steps.build.outputs.layer_sha256_b64 }}
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -184,6 +200,10 @@ jobs:
       id-token: write  # F-04: needed to assume the target's AWS deploy role via OIDC
     timeout-minutes: 45
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -228,6 +248,10 @@ jobs:
     environment: ${{ inputs.target == 'prod' && 'production' || inputs.target }}
     timeout-minutes: 45
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false

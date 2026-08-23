@@ -53,6 +53,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - name: Verify confirmation phrase
         env:
           # F-09: env-indirection — inputs.confirm is free-form text; never
@@ -71,6 +75,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - name: Validate AWS_DEPLOY_ROLE_{DEV,HML,PRD} are set
         run: |
           MISSING=""
@@ -96,6 +104,10 @@ jobs:
       contents: read
       id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -123,6 +135,10 @@ jobs:
       contents: read
       id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_DEV via OIDC
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -159,6 +175,10 @@ jobs:
       contents: read
       id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_HML via OIDC
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -196,6 +216,10 @@ jobs:
       contents: read
       id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -223,6 +247,10 @@ jobs:
       contents: read
       id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -253,6 +281,10 @@ jobs:
       contents: read
       id-token: write  # F-04: needed to assume AWS_DEPLOY_ROLE_PRD via OIDC
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
@@ -283,6 +315,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@05e31511f85b41b11d1cf0ef85d0992719546e2c  # v2.21.0
+        with:
+          egress-policy: audit
       - name: Write summary
         run: |
           echo "## Destroy ALL — summary" >> $GITHUB_STEP_SUMMARY
