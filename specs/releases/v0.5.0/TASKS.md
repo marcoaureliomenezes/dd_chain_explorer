@@ -299,15 +299,17 @@
 
 ## Review checkpoints
 
-- [ ] **T-R.1** — **alpha-1**: all WS-A..WS-E implementation tasks review-ready → `qa-engineer` review committed to the branch.
+- [x] **T-R.1** — **alpha-1**: all WS-A..WS-E implementation tasks review-ready → `qa-engineer` review committed to the branch.
   - Owner: qa-engineer · Write set: `.dadaia/handoff/dd-chain-explorer/` + the qa artifact on `feature/0.5.0`
   - Deps: T-A.1..T-A.11 (incl. T-A.3b), T-B.1..T-B.14 (incl. T-B.3a), T-C.1..T-C.7, T-D.1..T-D.7, T-E.1..T-E.3 · AC-1..AC-26 evidence assembled
   - Evidence: `APPROVE`/`REQUEST_CHANGES` handoff. Unlocks `[x]` on the implementation tasks — **not** push, PR, merge or CLOSURE.
+  - Coordinator 2026-08-23: alpha-1 qa review APPROVED (rc-2 re-check, handoff 2026-08-23T175530Z-qa-engineer-v050-rc2-review): 143/143 tests, gates clean; live ACs AC-2/12/13/14 classified MET-CODE-LIVE-PENDING (operator runbook `docs/runbooks/v0.5.0-live-cutover.md`).
 
-- [ ] **T-R.2** — **rc-1**: `qa-engineer` + `code-reviewer` (six-axis on the delta) + `security-reviewer` (diff-based) all APPROVE the **same** commit.
+- [-] **T-R.2** — **rc-1**: `qa-engineer` + `code-reviewer` (six-axis on the delta) + `security-reviewer` (diff-based) all APPROVE the **same** commit.
   - Owner: qa-engineer, code-reviewer, security-reviewer · Write set: `.dadaia/handoff/dd-chain-explorer/`
   - Deps: T-R.1 green · the full AC set
   - Evidence: three APPROVED handoffs naming one commit sha. Unlocks memory → CLOSURE → archive (T-E.4..T-E.8), then ship.
+  - Coordinator 2026-08-23: rc-1: qa APPROVED (rc-2), code-reviewer APPROVE (2026-08-23T182018Z-code-reviewer-v050-rc2-review; residual R-1 LOW: Databricks creds still injected into 3 HML jobs — record-only/next touch); security: rc-1 REJECTED (UC ExternalId default) → fixed cfb60c3 + local history rewritten (0 commits/trees carry the value); security re-verdict rides the push verdict on develop.
 
 - [ ] **T-R.3** — **ship + the O-8 `main` cut-over**, in this exact order: (1) merge `feature/0.5.0` → local `develop` (milestone b), security push verdict on `origin/develop..develop`, push `develop` — every workstream now on `develop`; (2) confirm `plan_on_pr` already triggers on `main` (landed by T-A.7); (3) the `master`→`main` rename and (4) the PR `develop` → `main` are `T-A.11`'s; (5) that PR's **first** `plan_on_pr` run names the required check; (6) `T-A.10` sets `main` + `develop` protection; (7) merge the PR with a **merge commit — never squash** — so `master`'s 4 unique commits are reconciled rather than orphaned; (8) merge `main` back into `develop` locally and push `develop`; (9) verify `drift_detection.yml` on the default branch and the workflow **enabled** — its next cron is the first real run, recorded as **pending**, not as evidence. Tag `v0.5.0`.
   - Owner: software-engineer (merge/push/CI) · security-reviewer (push verdict) · coordinator (rename, PR, protection, merge)
