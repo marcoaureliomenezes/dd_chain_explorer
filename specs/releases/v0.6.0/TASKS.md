@@ -98,7 +98,8 @@ agent may author its inputs and verify its outcome — never run it.
 
 ## WS-X — the new `dd-chain-explorer` (PUBLIC from birth)
 
-- [-] **T-X.1** — Create the repository skeleton on a **fresh git** (X1, ADR-2): `git init`, no legacy remote ever added; branches `main` → `develop` → `feature/0.6.0`; a lean root `pyproject.toml` (ruff + mypy + pytest scoped to this tree); a Makefile of thin wrappers over the scripts CI actually runs; `.gitignore`; and a **new** README describing the spec-context main repo and its two surfaces.
+- [x] **T-X.1** — Create the repository skeleton on a **fresh git** (X1, ADR-2): `git init`, no legacy remote ever added; branches `main` → `develop` → `feature/0.6.0`; a lean root `pyproject.toml` (ruff + mypy + pytest scoped to this tree); a Makefile of thin wrappers over the scripts CI actually runs; `.gitignore`; and a **new** README describing the spec-context main repo and its two surfaces.
+  - Evidence: done e2f7774 (new explorer main): skeleton, branches main->develop->feature/0.6.0, VERSION 0.6.0, no services/.
   - Owner: software-engineer · Write set: new `dd-chain-explorer` repo root
   - Deps: — · AC-1, AC-10
   - Acceptance: fresh history (no legacy sha reachable); `make -n <target>` resolves for every target the README cites; no `services/` directory exists.
@@ -108,12 +109,14 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-X.1 · AC-19, AC-22
   - Acceptance: `gh repo view --json visibility` → `PUBLIC`; protection and environments match the described configuration; `gh secret list` shows names only, and no agent has read a value.
 
-- [ ] **T-X.3** — Migrate the application content as content (X2, X7): `apps/dabs/` (7 bundles), `apps/lambda/` (both handlers + requirements + the hash-checked lock), `utils/` (the three-module `dm-chain-utils`), `docs/runbooks/{ci-security,lambda-layer}.md`, `scripts/build_lambda_layer.sh`. Set the version axis to `0.6.0`: root `VERSION`, every `apps/dabs/*/VERSION`, the library distribution version and its `__init__.py` declaration (the infrastructure repo's `VERSION` is `T-I.1`'s).
+- [x] **T-X.3** — Migrate the application content as content (X2, X7): `apps/dabs/` (7 bundles), `apps/lambda/` (both handlers + requirements + the hash-checked lock), `utils/` (the three-module `dm-chain-utils`), `docs/runbooks/{ci-security,lambda-layer}.md`, `scripts/build_lambda_layer.sh`. Set the version axis to `0.6.0`: root `VERSION`, every `apps/dabs/*/VERSION`, the library distribution version and its `__init__.py` declaration (the infrastructure repo's `VERSION` is `T-I.1`'s).
+  - Evidence: done 531fe41: apps/dabs 52/52 files, apps/lambda 9/9, utils 6/6 (parity vs legacy, caches excluded), runbooks + build script; version axis 0.6.0 everywhere; apps/docker correctly dead.
   - Owner: software-engineer · Write set: `apps/**`, `utils/**`, `docs/runbooks/**`, `scripts/build_lambda_layer.sh`, `VERSION` in the new explorer repo
   - Deps: T-X.1 · AC-10, AC-14
   - Acceptance: every manifest row of SPEC §6.2 present; `cat VERSION` and `cat apps/dabs/*/VERSION | sort -u` → `0.6.0`, matching the infrastructure repo.
 
-- [ ] **T-X.4** — Migrate the test tree (X2, K6, O-8): `tests/` — the dabs, lambda and utils suites plus `conftest.py` and `tests/README.md`. The `scripts/ci/tests` suite travels to WS-I instead; the **union** of the two repositories' suites must equal the set that was green at v0.5.0. Any test dropped in the move requires a `qa-engineer` verdict.
+- [x] **T-X.4** — Migrate the test tree (X2, K6, O-8): `tests/` — the dabs, lambda and utils suites plus `conftest.py` and `tests/README.md`. The `scripts/ci/tests` suite travels to WS-I instead; the **union** of the two repositories' suites must equal the set that was green at v0.5.0. Any test dropped in the move requires a `qa-engineer` verdict.
+  - Evidence: done bb5393c: tests migrated; pytest 62 passed + 1 pyspark skip = exact arithmetic (147 legacy - 85 scripts/ci moving to WS-I); ruff/mypy strict clean; no subtraction, no qa verdict needed.
   - Owner: software-engineer · Write set: `tests/**` in the new explorer repo
   - Deps: T-X.3 · AC-12
   - Acceptance: `pytest -p no:cacheprovider` green locally and in CI; every test declares intent and size; a `qa-engineer` verdict handoff exists for any subtraction, or the count reconciles exactly with v0.5.0's.
@@ -147,7 +150,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-X.1 · AC-16
   - Acceptance: all three statements present; the boundary to the other two repositories named explicitly.
 
-- [ ] **T-L.3** — Author the cross-repo contract document (L3, K3) in the new explorer's `docs/`, **before** `T-I.4` and `T-X.5` are written: the artifacts bucket, prefixes and content-addressed key shape; who publishes and who resolves; the five-role OIDC map with the repository each trusts and what each may do; the Databricks split (workspace infra = Terraform-by-import in the infrastructure repo, DLT/workflows/dashboards = DABs here); and the three-repo boundary diagram. Re-point every migrated runbook at its new repository.
+- [x] **T-L.3** — Author the cross-repo contract document (L3, K3) in the new explorer's `docs/`, **before** `T-I.4` and `T-X.5` are written: the artifacts bucket, prefixes and content-addressed key shape; who publishes and who resolves; the five-role OIDC map with the repository each trusts and what each may do; the Databricks split (workspace infra = Terraform-by-import in the infrastructure repo, DLT/workflows/dashboards = DABs here); and the three-repo boundary diagram. Re-point every migrated runbook at its new repository.
+  - Evidence: done 080358d: docs/cross-repo-contract.md — bucket dm-chain-explorer-artifacts, key shapes (layers existing + lambda-handlers/<fn>/<sha256>.zip proposed), 5-role OIDC map, Databricks split, mermaid boundary; runbooks re-pointed; grep clean of stale names/ids.
   - Owner: software-engineer · Write set: `docs/**` in the new `dd-chain-explorer`
   - Deps: T-X.1 · AC-17
   - Acceptance: the key shape is stated once and is the source both implementations cite; `grep` finds no stale repository name in any migrated runbook; no account id, host or personal identifier appears (the repository is public).
