@@ -24,7 +24,8 @@ agent may author its inputs and verify its outcome — never run it.
 
 ## WS-I — `dd-chain-infrastructure` (PRIVATE until validated)
 
-- [-] **T-I.1** — Create the repository skeleton on a **fresh git** (I1, ADR-2): `git init` in the empty target repo, with **no** remote of the legacy repository ever added; branches `main` → `develop` → `feature/0.6.0`; root `VERSION` = `0.6.0`; `.gitignore`; `pyproject.toml` carrying the ruff/mypy/pytest configuration the CI script suite needs; a new README naming this repository's single concern.
+- [x] **T-I.1** — Create the repository skeleton on a **fresh git** (I1, ADR-2): `git init` in the empty target repo, with **no** remote of the legacy repository ever added; branches `main` → `develop` → `feature/0.6.0`; root `VERSION` = `0.6.0`; `.gitignore`; `pyproject.toml` carrying the ruff/mypy/pytest configuration the CI script suite needs; a new README naming this repository's single concern.
+  - Evidence: done db00b51 (infra repo): skeleton, VERSION 0.6.0, branches main->develop->feature/0.6.0, fresh history (4 migration commits only).
   - Owner: software-engineer · Write set: `dd-chain-infrastructure` repo root
   - Deps: — · AC-1, AC-14
   - Acceptance: `git log --format=%H | tail -1` is this migration's own initial commit; `git log --oneline | wc -l` counts only migration commits; no legacy sha is reachable; `cat VERSION` → `0.6.0`.
@@ -34,12 +35,13 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.1 · AC-19, AC-21
   - Acceptance: `gh api repos/{owner}/{repo}/branches/{main,develop}/protection` and `.../environments` return the described configuration; `gh repo view --json visibility` → `PRIVATE`.
 
-- [ ] **T-I.3** — Move Terraform as content with **identical backend keys and resource addresses** (I2): the 7 surviving root stacks (`prd/{00_bootstrap,01_tf_state,04_peripherals,06_lambda}`, `dev/{01_peripherals,02_lambda}`, `hml/04_peripherals`) and the 4 modules (`cloudwatch_logs`, `dynamodb`, `lambda`, `s3`), with their committed `.terraform.lock.hcl` files and `required_providers`. **`prd/03_iam` is not copied** — it declares no resource.
+- [x] **T-I.3** — Move Terraform as content with **identical backend keys and resource addresses** (I2): the 7 surviving root stacks (`prd/{00_bootstrap,01_tf_state,04_peripherals,06_lambda}`, `dev/{01_peripherals,02_lambda}`, `hml/04_peripherals`) and the 4 modules (`cloudwatch_logs`, `dynamodb`, `lambda`, `s3`), with their committed `.terraform.lock.hcl` files and `required_providers`. **`prd/03_iam` is not copied** — it declares no resource.
+  - Evidence: done e3ad0ce+56dea74: 55 files byte-identical vs legacy HEAD (diff-proved), prd/03_iam excluded; real defect fixed (tf_state .gitignore swallowed its own lock file); fmt+validate clean on all 7 stacks.
   - Owner: software-engineer · Write set: `services/**` in `dd-chain-infrastructure`
   - Deps: T-I.1 · AC-2, AC-3
   - Acceptance: `terraform fmt -check -recursive` and `terraform validate` clean on every stack; a lock file per root stack; `services/prd/03_iam` absent; every `backend "s3"` key byte-identical to the legacy declaration.
 
-- [ ] **T-I.4** — Rewrite `prd/06_lambda` and `dev/02_lambda` to the **artifact contract** (I3, ADR-3, K3): the layer and both handler zips arrive as `*_s3_key` + `*_sha256` variables resolved by `scripts/ci/resolve_layer.sh` against the bucket and key shape pinned by `T-L.3`. No `archive_file` over a working-tree path survives — the source tree lives in the other repository.
+- [-] **T-I.4** — Rewrite `prd/06_lambda` and `dev/02_lambda` to the **artifact contract** (I3, ADR-3, K3): the layer and both handler zips arrive as `*_s3_key` + `*_sha256` variables resolved by `scripts/ci/resolve_layer.sh` against the bucket and key shape pinned by `T-L.3`. No `archive_file` over a working-tree path survives — the source tree lives in the other repository.
   - Owner: software-engineer · Write set: `services/prd/06_lambda/**`, `services/dev/02_lambda/**`, `scripts/ci/resolve_layer*.sh`
   - Deps: T-I.3, T-L.3 (contract pinned first) · AC-3, AC-11
   - Acceptance: `grep -rn 'filebase64sha256\|archive_file' services/` → 0; `terraform validate` clean; the resolve step skips **with a warning** when no object exists at the key, never plans against a stale artifact.
@@ -84,7 +86,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.11 · AC-7
   - Acceptance: post-import `terraform plan` → **`No changes`**; `databricks storage-credentials get` / `external-locations get` return the **same ids** that the `T-I.11` inventory recorded — nothing was recreated.
 
-- [ ] **T-I.13** — Migrate and re-point `scripts/ci/**` and its pytest suite (I8, K6): helpers, `changed_stacks.py`, `stack_map.json` (surviving stacks only — `prd/03_iam` dropped), `publish_oidc_vars.sh`, `resolve_layer*.sh`, and `scripts/ci/tests/`. Add the two new guard tests: one pinning the permissions boundary's `sts:` allowances against silent widening, one pinning `log_groups_describe_arn` to its single statement.
+- [x] **T-I.13** — Migrate and re-point `scripts/ci/**` and its pytest suite (I8, K6): helpers, `changed_stacks.py`, `stack_map.json` (surviving stacks only — `prd/03_iam` dropped), `publish_oidc_vars.sh`, `resolve_layer*.sh`, and `scripts/ci/tests/`. Add the two new guard tests: one pinning the permissions boundary's `sts:` allowances against silent widening, one pinning `log_groups_describe_arn` to its single statement.
+  - Evidence: done 087b7aa: scripts/ci + suite migrated; stack_map drops prd/03_iam (3 tests re-anchored); new test_boundary_guards.py (sts: pinning + log_groups_describe_arn single-statement — absorbs 2 security LOWs); gates 84 passed + 3 skips explicitly T-I.14-gated; ruff/mypy strict clean. Pushed by coordinator (subagent sandbox blocked push).
   - Owner: software-engineer · Write set: `scripts/ci/**` in `dd-chain-infrastructure`
   - Deps: T-I.3 · AC-9 · Absorbs: 2 of the 4 v0.5.0 security LOW residuals
   - Acceptance: `pytest scripts/ci/tests -p no:cacheprovider` green **and** executed by CI; a test asserts `stack_map.json`'s stack set equals the directories on disk; a test asserts `destroy_all`'s stack set equals the map's survivors.
@@ -140,7 +143,7 @@ agent may author its inputs and verify its outcome — never run it.
 
 ## WS-L — laws, `AGENTS.md`, cross-repo documentation
 
-- [ ] **T-L.1** — Author the scoped `AGENTS.md` of `dd-chain-infrastructure` carrying the new law (L1, ADR-6), stated normatively: infrastructure resources are created, changed and destroyed **only** by the CI pipeline applying Terraform — never by a console click, never by an ad-hoc CLI mutation. The **sole** documented exception is `services/prd/00_bootstrap`, applied by the operator, never by CI, with its reason recorded (the bootstrap paradox). A CLI mutation outside that exception is a defect to register, not a shortcut.
+- [-] **T-L.1** — Author the scoped `AGENTS.md` of `dd-chain-infrastructure` carrying the new law (L1, ADR-6), stated normatively: infrastructure resources are created, changed and destroyed **only** by the CI pipeline applying Terraform — never by a console click, never by an ad-hoc CLI mutation. The **sole** documented exception is `services/prd/00_bootstrap`, applied by the operator, never by CI, with its reason recorded (the bootstrap paradox). A CLI mutation outside that exception is a defect to register, not a shortcut.
   - Owner: ai-engineer (scoped `AGENTS.md` is AI-surface) · Write set: `AGENTS.md` in `dd-chain-infrastructure`
   - Deps: T-I.1 · AC-16
   - Acceptance: the law and its single exception are stated once, unambiguously, with the bootstrap path named literally.
