@@ -24,7 +24,7 @@ agent may author its inputs and verify its outcome — never run it.
 
 ## WS-I — `dd-chain-infrastructure` (PRIVATE until validated)
 
-- [ ] **T-I.1** — Create the repository skeleton on a **fresh git** (I1, ADR-2): `git init` in the empty target repo, with **no** remote of the legacy repository ever added; branches `main` → `develop` → `feature/0.6.0`; root `VERSION` = `0.6.0`; `.gitignore`; `pyproject.toml` carrying the ruff/mypy/pytest configuration the CI script suite needs; a new README naming this repository's single concern.
+- [-] **T-I.1** — Create the repository skeleton on a **fresh git** (I1, ADR-2): `git init` in the empty target repo, with **no** remote of the legacy repository ever added; branches `main` → `develop` → `feature/0.6.0`; root `VERSION` = `0.6.0`; `.gitignore`; `pyproject.toml` carrying the ruff/mypy/pytest configuration the CI script suite needs; a new README naming this repository's single concern.
   - Owner: software-engineer · Write set: `dd-chain-infrastructure` repo root
   - Deps: — · AC-1, AC-14
   - Acceptance: `git log --format=%H | tail -1` is this migration's own initial commit; `git log --oneline | wc -l` counts only migration commits; no legacy sha is reachable; `cat VERSION` → `0.6.0`.
@@ -98,7 +98,7 @@ agent may author its inputs and verify its outcome — never run it.
 
 ## WS-X — the new `dd-chain-explorer` (PUBLIC from birth)
 
-- [ ] **T-X.1** — Create the repository skeleton on a **fresh git** (X1, ADR-2): `git init`, no legacy remote ever added; branches `main` → `develop` → `feature/0.6.0`; a lean root `pyproject.toml` (ruff + mypy + pytest scoped to this tree); a Makefile of thin wrappers over the scripts CI actually runs; `.gitignore`; and a **new** README describing the spec-context main repo and its two surfaces.
+- [-] **T-X.1** — Create the repository skeleton on a **fresh git** (X1, ADR-2): `git init`, no legacy remote ever added; branches `main` → `develop` → `feature/0.6.0`; a lean root `pyproject.toml` (ruff + mypy + pytest scoped to this tree); a Makefile of thin wrappers over the scripts CI actually runs; `.gitignore`; and a **new** README describing the spec-context main repo and its two surfaces.
   - Owner: software-engineer · Write set: new `dd-chain-explorer` repo root
   - Deps: — · AC-1, AC-10
   - Acceptance: fresh history (no legacy sha reachable); `make -n <target>` resolves for every target the README cites; no `services/` directory exists.
