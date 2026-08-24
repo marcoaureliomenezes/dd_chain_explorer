@@ -79,7 +79,7 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.3, T-I.9 · AC-4, AC-5 · Absorbs: v0.5.0 `T-B.14`, `T-B.7`
   - Acceptance: `head-bucket` 200; `get-bucket-versioning` → `Enabled`; `get-public-access-block` → four `true`; `aws scheduler get-schedule` → `State: DISABLED` **and** declared so; post-apply plan clean on all three stacks.
 
-- [ ] **T-I.11** — Inventory and declare the Databricks workspace infrastructure (I7, ADR-5, K4): list every existing Unity Catalog **storage credential**, **external location** and **catalog** (`databricks storage-credentials list`, `external-locations list`, `catalogs list`), then author a Terraform stack declaring exactly those objects — no more, no fewer. DLT pipelines, workflows, jobs and dashboards are **not** declared; they stay DABs.
+- [-] **T-I.11** — Inventory and declare the Databricks workspace infrastructure (I7, ADR-5, K4): list every existing Unity Catalog **storage credential**, **external location** and **catalog** (`databricks storage-credentials list`, `external-locations list`, `catalogs list`), then author a Terraform stack declaring exactly those objects — no more, no fewer. DLT pipelines, workflows, jobs and dashboards are **not** declared; they stay DABs.
   - Owner: software-engineer · Write set: the new Databricks UC stack under `services/**`
   - Deps: T-I.3 · AC-7
   - Acceptance: the committed inventory lists every object with its id; the stack declares one resource per inventoried object; `terraform validate` clean; **no `create` has been run** at this point.
@@ -166,7 +166,7 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-X.1 · AC-17
   - Acceptance: the key shape is stated once and is the source both implementations cite; `grep` finds no stale repository name in any migrated runbook; no account id, host or personal identifier appears (the repository is public).
 
-- [ ] **T-L.4** — Amend `specs/constitution.md` to the three-repo topology **in the legacy repository, before C-DAY** (L4, K5), so it travels already correct: the repository boundary, the two laws of `T-L.1`/`T-L.2`, and the statement that `specs/` is authoritative in the new explorer repository. **Requires explicit operator confirmation** before writing.
+- [-] **T-L.4** — Amend `specs/constitution.md` to the three-repo topology **in the legacy repository, before C-DAY** (L4, K5), so it travels already correct: the repository boundary, the two laws of `T-L.1`/`T-L.2`, and the statement that `specs/` is authoritative in the new explorer repository. **Requires explicit operator confirmation** before writing.
   - Owner: product-engineer · Write set: `specs/constitution.md` (legacy repo)
   - Deps: T-L.1, T-L.2 · **Must land before T-V.4 (O-7)** · AC-18
   - Acceptance: the three statements present; `dadaia specs doctor` clean; the file is included byte-identically in `T-V.4`'s handover.
