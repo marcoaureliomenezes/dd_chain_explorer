@@ -166,7 +166,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-X.1 · AC-17
   - Acceptance: the key shape is stated once and is the source both implementations cite; `grep` finds no stale repository name in any migrated runbook; no account id, host or personal identifier appears (the repository is public).
 
-- [-] **T-L.4** — Amend `specs/constitution.md` to the three-repo topology **in the legacy repository, before C-DAY** (L4, K5), so it travels already correct: the repository boundary, the two laws of `T-L.1`/`T-L.2`, and the statement that `specs/` is authoritative in the new explorer repository. **Requires explicit operator confirmation** before writing.
+- [x] **T-L.4** — Amend `specs/constitution.md` to the three-repo topology **in the legacy repository, before C-DAY** (L4, K5), so it travels already correct: the repository boundary, the two laws of `T-L.1`/`T-L.2`, and the statement that `specs/` is authoritative in the new explorer repository. **Requires explicit operator confirmation** before writing.
+  - Evidence: constitution.md amended (operator-confirmed): §1 three-repo boundary + both seams, §3.1 explorer PUBLIC/no-infra law, §3.8 CI+Terraform-only law with the bootstrap exception, §5 scoping, §6 Databricks split; specs doctor 0 errors; travels byte-identically at T-V.4.
   - Owner: product-engineer · Write set: `specs/constitution.md` (legacy repo)
   - Deps: T-L.1, T-L.2 · **Must land before T-V.4 (O-7)** · AC-18
   - Acceptance: the three statements present; `dadaia specs doctor` clean; the file is included byte-identically in `T-V.4`'s handover.

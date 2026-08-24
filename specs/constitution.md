@@ -7,20 +7,39 @@ specs_pattern_version: 5
 > The immutable laws of this repository. They hold for every change, forever.
 > When code and the constitution disagree, the code is corrected — never the constitution.
 
-## 1. What this repository is
+## 1. What this product is — three repositories, one boundary
 
-Three surfaces, one repository:
+The product is segregated into exactly **three** repositories. Nothing lives in two of
+them, and no fourth repository is introduced without amending this article.
 
-| Surface | Path | Contents |
+| Repository | Single concern | Contents |
 |---|---|---|
-| Infrastructure | `services/` | Terraform stacks per environment plus shared modules |
-| Control plane | `.github/workflows/`, `scripts/ci/` | GitHub Actions workflows and their helper scripts |
-| Data artifacts | `apps/dabs/`, `apps/lambda/` | Databricks Asset Bundles (DLT pipelines, jobs, dashboards) and two Python 3.12 Lambdas |
+| `dd-chain-infrastructure` | All infrastructure, for all three environments | Terraform root stacks (`dev`, `hml`, `prd`) plus shared modules, and the infrastructure control plane (`.github/workflows/`, `scripts/ci/`) that plans and applies them |
+| `dd-chain-explorer` | The application surface and the **main repository of the spec context** | `specs/` (authoritative), `apps/dabs/` (Databricks Asset Bundles — DLT pipelines, jobs, dashboards), `apps/lambda/` (the Python 3.12 Lambdas), `utils/` (the `dm-chain-utils` shared library), `docs/`, `tests/`, and its own application CI |
+| `dd-chain-capture` | Blockchain capture | The capture applications that land raw blockchain data. Unchanged by this segregation |
 
-Blockchain **capture is not in this repository**. It belongs to the external
-`dd-chain-capture` project. The two projects meet at exactly one place: the **S3 raw
-bucket**. No second integration surface — no stream, no queue, no shared runtime, no
-direct call — may be introduced between them.
+**The two seams, and only these two.** Repositories meet at S3 boundaries, never at a
+runtime call, a stream, a queue, or a shared code path:
+
+1. **The capture seam — the S3 raw bucket.** `dd-chain-capture` writes it; this product
+   reads it. No second integration surface may be introduced between them.
+2. **The lambda seam — the S3 artifacts bucket.** `dd-chain-explorer` CI builds and
+   publishes the Lambda layer and handler zips to content-addressed keys;
+   `dd-chain-infrastructure` Terraform resolves them by key and digest. Neither repository
+   reads the other's working tree.
+
+Both seams are pinned by one document — `docs/cross-repo-contract.md` in
+`dd-chain-explorer` — which states the bucket, prefix and key shapes, the OIDC role map,
+and the Databricks split (workspace infrastructure is Terraform-by-import in the
+infrastructure repository; DLT pipelines, workflows and dashboards are DABs in the
+explorer). A seam changed in code but not in that document is a defect.
+
+**`specs/` is authoritative in `dd-chain-explorer`.** Once the v0.6.0 cutover lands, the
+`specs/` tree of the new `dd-chain-explorer` repository is the single source of SDD truth
+for all three repositories — constitution, memory, releases, backlog, bugs and audits.
+Until that cutover commit, this legacy tree is the live one; after it, the legacy tree is
+frozen and no SDD artifact is ever written there again. Neither
+`dd-chain-infrastructure` nor `dd-chain-capture` carries its own `specs/` tree.
 
 ## 2. Environments
 
@@ -36,9 +55,15 @@ serving the `dev` and `hml` targets. No production Databricks workspace exists; 
 
 ## 3. Principles
 
-1. **The repository is public.** No personal identifiers, e-mail addresses, secrets,
-   cloud account ids, or machine-local absolute paths anywhere in the tree — source,
-   specs, evidence, or commit messages. Evidence uses generic resource names.
+1. **`dd-chain-explorer` is public, and declares no infrastructure.** It is PUBLIC from
+   birth, so only public-grade content may be committed: no personal identifiers, e-mail
+   addresses, secrets, cloud account ids, hostnames, or machine-local absolute paths
+   anywhere in the tree — source, specs, evidence, or commit messages; evidence uses
+   generic resource names. It declares **no** infrastructure: no Terraform, no
+   `services/` directory, no cloud-mutating workflow, and no deploy role beyond the
+   single artifacts-publish role of the lambda seam. Infrastructure belongs to
+   `dd-chain-infrastructure`, capture to `dd-chain-capture`. The same public-grade bar
+   applies to `dd-chain-infrastructure` once it is made public.
 2. **Secrets never live in the tree.** Runtime reads them from SSM Parameter Store; CI
    reads them from the repository secret store. Only `*.example` files are committed.
 3. **CI authenticates by OIDC only.** No static cloud keys in any workflow. The trust
@@ -54,8 +79,14 @@ serving the `dev` and `hml` targets. No production Databricks workspace exists; 
    `qa-engineer` verdict carrying evidence — never to make a run go green.
 7. **Memory is current truth.** `specs/memory/**` describes the product as it is now;
    history lives in `CLOSURE.md` and `specs/_archive/`. No changelog in memory.
-8. **Terraform is the only source of truth for infrastructure.** Never create, modify or
-   destroy a resource from the console or by ad-hoc CLI call.
+8. **Infrastructure changes only through CI applying Terraform.** Terraform, in
+   `dd-chain-infrastructure`, is the only source of truth for infrastructure, and the CI
+   pipeline is the only actor that applies it: a resource is never created, modified or
+   destroyed by a console click or an ad-hoc CLI mutation. The **sole** exception is
+   `services/prd/00_bootstrap` — the trust anchor that mints the CI roles, and therefore
+   cannot be applied by them (the bootstrap paradox); it is applied by the operator, never
+   by CI. A mutation outside CI and outside that one exception is a defect to register,
+   not a shortcut.
 9. **Branch law**, no fifth pattern: `main` (never committed or pushed to directly;
    advances only by PR from `develop`), `develop` (the only pushable branch),
    `feature/{M.m.p}` and `hotfix/{M.m.p}` (local only, cut from `develop`).
@@ -80,6 +111,9 @@ serving the `dev` and `hml` targets. No production Databricks workspace exists; 
 
 ## 5. Terraform rules
 
+These rules govern `dd-chain-infrastructure`, the only repository that declares
+infrastructure (§1, §3.8).
+
 - Remote state, always; never apply with `-lock=false`.
 - Plan before apply — in CI the plan is produced, gated and only then applied.
 - Provider and Terraform versions are pinned; lock files are committed.
@@ -99,8 +133,12 @@ serving the `dev` and `hml` targets. No production Databricks workspace exists; 
   S3 prefix.
 - **No bundle references another bundle's resource.** Each bundle is self-contained;
   a pipeline's trigger job lives in the pipeline's own bundle.
-- Deployed state equals repository state: an asset that is not in a bundle does not
-  belong in the workspace.
+- Deployed state equals repository state. The workspace is split at one line: Unity
+  Catalog **workspace infrastructure** — storage credentials, external locations and
+  catalogs — is declared by Terraform in `dd-chain-infrastructure` and adopted by import,
+  never created ad hoc; everything above it — DLT pipelines, workflows, jobs and
+  dashboards — is a DAB in `dd-chain-explorer`. An asset that is neither Terraform-declared
+  nor in a bundle does not belong in the workspace.
 
 ## 7. Data conventions
 
