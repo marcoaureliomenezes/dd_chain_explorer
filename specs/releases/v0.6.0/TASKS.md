@@ -58,7 +58,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.3 · AC-6, AC-6b
   - Acceptance: no managed-policy attachment, no `iam:*` on `"*"`, no widened `sts:` allowance; `terraform validate`/`fmt -check` clean; `terraform plan` shows only the trust-policy update and the one new role.
 
-- [ ] **T-I.7** — Security verdict on the bootstrap delta **before** any apply (O-2).
+- [x] **T-I.7** — Security verdict on the bootstrap delta **before** any apply (O-2).
+  - Evidence: APPROVED handoff 2026-08-24T012408Z (0 CRIT/HIGH/MED, 2 LOW record-only); sub repoints verified sole-consumer; publish role minimal (2 env subs, 4 S3 actions, boundary + Deny glob, mutation-tested guards); plan arithmetic reconciled 3/4/0.
   - Owner: security-reviewer · Write set: `.dadaia/handoff/dd-chain-explorer/` (handoff only)
   - Deps: T-I.6 · AC-6, AC-6b
   - Acceptance: an APPROVED handoff naming the commit sha, confirming the repointed `sub` conditions, the artifacts-publish role's minimality, the retained self-mutation `Deny` and the boundary on the new role.
