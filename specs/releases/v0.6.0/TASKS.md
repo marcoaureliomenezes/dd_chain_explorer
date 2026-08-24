@@ -41,7 +41,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.1 · AC-2, AC-3
   - Acceptance: `terraform fmt -check -recursive` and `terraform validate` clean on every stack; a lock file per root stack; `services/prd/03_iam` absent; every `backend "s3"` key byte-identical to the legacy declaration.
 
-- [-] **T-I.4** — Rewrite `prd/06_lambda` and `dev/02_lambda` to the **artifact contract** (I3, ADR-3, K3): the layer and both handler zips arrive as `*_s3_key` + `*_sha256` variables resolved by `scripts/ci/resolve_layer.sh` against the bucket and key shape pinned by `T-L.3`. No `archive_file` over a working-tree path survives — the source tree lives in the other repository.
+- [x] **T-I.4** — Rewrite `prd/06_lambda` and `dev/02_lambda` to the **artifact contract** (I3, ADR-3, K3): the layer and both handler zips arrive as `*_s3_key` + `*_sha256` variables resolved by `scripts/ci/resolve_layer.sh` against the bucket and key shape pinned by `T-L.3`. No `archive_file` over a working-tree path survives — the source tree lives in the other repository.
+  - Evidence: done 9434a71: archive_file/filebase64sha256 = 0 in services/ (incl. shared modules/lambda); handlers+layer via *_s3_key/*_sha256_b64 vars; resolve_* refactored to shared cores + handler resolvers; fmt/validate clean; pytest 96+3skip.
   - Owner: software-engineer · Write set: `services/prd/06_lambda/**`, `services/dev/02_lambda/**`, `scripts/ci/resolve_layer*.sh`
   - Deps: T-I.3, T-L.3 (contract pinned first) · AC-3, AC-11
   - Acceptance: `grep -rn 'filebase64sha256\|archive_file' services/` → 0; `terraform validate` clean; the resolve step skips **with a warning** when no object exists at the key, never plans against a stale artifact.
@@ -51,7 +52,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.3, T-V.2 · AC-2
   - Acceptance: `aws s3api list-objects-v2 --bucket <state-bucket>` shows the surviving stack keys plus `capture/ecr` (owned by `dd-chain-capture`, documented not moved) and **no** `prd/03_iam` key.
 
-- [ ] **T-I.6** — Author the bootstrap repoint (I6, ADR-4): a `github_repo` variable feeding the four deploy roles' trust `sub` conditions (`repo:<owner>/dd-chain-infrastructure:environment:<env>` per deploy role; `pull_request` + `refs/heads/{develop,main}` for the read-only role), plus a new `…-gha-artifacts-publish` role trusted to `repo:<owner>/dd-chain-explorer:…` whose **entire** policy is `s3:PutObject`, `s3:PutObjectTagging`, `s3:AbortMultipartUpload` on `<artifacts-bucket>/*` and `s3:ListBucket` on the bucket, carrying the project permissions boundary like every other project role.
+- [x] **T-I.6** — Author the bootstrap repoint (I6, ADR-4): a `github_repo` variable feeding the four deploy roles' trust `sub` conditions (`repo:<owner>/dd-chain-infrastructure:environment:<env>` per deploy role; `pull_request` + `refs/heads/{develop,main}` for the read-only role), plus a new `…-gha-artifacts-publish` role trusted to `repo:<owner>/dd-chain-explorer:…` whose **entire** policy is `s3:PutObject`, `s3:PutObjectTagging`, `s3:AbortMultipartUpload` on `<artifacts-bucket>/*` and `s3:ListBucket` on the bucket, carrying the project permissions boundary like every other project role.
+  - Evidence: done 8f793c8: github_repo default -> dd-chain-infrastructure (4 sub-claim-only trust diffs verified); new dm-chain-explorer-gha-artifacts-publish (env dev/hml, minimal S3 policy, boundary + self-mutation deny); live -lock=false plan: 3 add / 4 change / 0 destroy; pytest 87+3skip.
   - Owner: software-engineer · Write set: `services/prd/00_bootstrap/**`
   - Deps: T-I.3 · AC-6, AC-6b
   - Acceptance: no managed-policy attachment, no `iam:*` on `"*"`, no widened `sts:` allowance; `terraform validate`/`fmt -check` clean; `terraform plan` shows only the trust-policy update and the one new role.
@@ -143,12 +145,14 @@ agent may author its inputs and verify its outcome — never run it.
 
 ## WS-L — laws, `AGENTS.md`, cross-repo documentation
 
-- [-] **T-L.1** — Author the scoped `AGENTS.md` of `dd-chain-infrastructure` carrying the new law (L1, ADR-6), stated normatively: infrastructure resources are created, changed and destroyed **only** by the CI pipeline applying Terraform — never by a console click, never by an ad-hoc CLI mutation. The **sole** documented exception is `services/prd/00_bootstrap`, applied by the operator, never by CI, with its reason recorded (the bootstrap paradox). A CLI mutation outside that exception is a defect to register, not a shortcut.
+- [x] **T-L.1** — Author the scoped `AGENTS.md` of `dd-chain-infrastructure` carrying the new law (L1, ADR-6), stated normatively: infrastructure resources are created, changed and destroyed **only** by the CI pipeline applying Terraform — never by a console click, never by an ad-hoc CLI mutation. The **sole** documented exception is `services/prd/00_bootstrap`, applied by the operator, never by CI, with its reason recorded (the bootstrap paradox). A CLI mutation outside that exception is a defect to register, not a shortcut.
+  - Evidence: done c85586b (infra repo): AGENTS.md 63 lines — the CI+Terraform-only law with the single bootstrap exception; boundaries; state-keys-are-contract. Content reviewed line-by-line by coordinator (gate false-positive workaround disclosed; bug routed to dadaia-workspace ledger).
   - Owner: ai-engineer (scoped `AGENTS.md` is AI-surface) · Write set: `AGENTS.md` in `dd-chain-infrastructure`
   - Deps: T-I.1 · AC-16
   - Acceptance: the law and its single exception are stated once, unambiguously, with the bootstrap path named literally.
 
-- [ ] **T-L.2** — Author the scoped `AGENTS.md` of the new `dd-chain-explorer` (L2): this repository declares **no** infrastructure — Terraform belongs to `dd-chain-infrastructure`, capture to `dd-chain-capture`; it is the **main repo of the spec context**, so `specs/` is authoritative here; it is **PUBLIC**, so nothing that is not public-grade may be committed.
+- [x] **T-L.2** — Author the scoped `AGENTS.md` of the new `dd-chain-explorer` (L2): this repository declares **no** infrastructure — Terraform belongs to `dd-chain-infrastructure`, capture to `dd-chain-capture`; it is the **main repo of the spec context**, so `specs/` is authoritative here; it is **PUBLIC**, so nothing that is not public-grade may be committed.
+  - Evidence: done aa0a834 (new explorer): AGENTS.md 58 lines — no-infrastructure law, main-repo-of-spec-context, public-grade-only. Coordinator content review passed.
   - Owner: ai-engineer · Write set: `AGENTS.md` in the new `dd-chain-explorer`
   - Deps: T-X.1 · AC-16
   - Acceptance: all three statements present; the boundary to the other two repositories named explicitly.
