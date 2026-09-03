@@ -4,11 +4,12 @@
 > **Release ID:** v0.6.0
 > **Owner:** product-engineer (authoring) → software-engineer / qa-engineer / code-reviewer / security-reviewer / coordinator / **operator** (execution, per task)
 > **Depends on:** SPEC.md + PLAN.md v0.6.0 (`Aprovado`)
+> **Amended:** 2026-09-02 — SPEC ADR-10 (two environments; `hml` retired). Tasks T-I.15–T-I.17, T-X.8 added; every `hml` enumeration rewritten.
 > **Marker contract:** `[ ]` OPEN → `[-]` IN PROGRESS → `[x]` DONE. Reserve with an isolated `chore(tasks): start <id>` commit **before** writing. Max one `[-]` per owner; the workstreams have disjoint write sets (by repository and tree), so WS-I, WS-X, WS-L and the closer may each hold one `[-]` in parallel. Flip to `[x]` only after the review boundary covering the task clears. All tasks below are `[ ]`.
 
 **Write-set law.** WS-I writes only inside `dd-chain-infrastructure` (plus the Terraform
 state keys and the live AWS resources this project already owns). WS-X writes only inside
-the new `dd-chain-explorer` (plus the live Databricks `dev`/`hml` targets and objects under
+the new `dd-chain-explorer` (plus the live Databricks `dev`/`prod` targets and objects under
 the artifacts bucket's own prefixes). WS-L writes `AGENTS.md` in both new repos, the new
 explorer's `docs/`, and `specs/constitution.md` in whichever repo is authoritative. WS-V
 writes evidence and, after C-DAY, `specs/**` in the **new explorer repo only**. WS-D writes
@@ -30,8 +31,8 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: — · AC-1, AC-14
   - Acceptance: `git log --format=%H | tail -1` is this migration's own initial commit; `git log --oneline | wc -l` counts only migration commits; no legacy sha is reachable; `cat VERSION` → `0.6.0`.
 
-- [-] **T-I.2** — **OPERATOR-ONLY.** Provision the `dd-chain-infrastructure` repository settings: visibility **PRIVATE**; branch protection on `main` (PR required + required status checks, no force-push, no deletion) and `develop` (no force-push, no deletion); environments `dev`, `hml`, `production` with the operator as required reviewer on `hml` and `production` and a deployment-branch policy of `develop` + `main`; the allowed-actions allowlist; all secret **values** entered by the operator (no agent reads or transcribes one, O-10).
-  - Progress 2026-08-31 (operator-authorized session): visibility PRIVATE confirmed; environments dev/hml/production created, each with deployment-branch policies develop+main; allowed-actions allowlist set (github-owned + verified + 4 infra patterns). **Platform limit (GitHub Free × private repo): required reviewers on environments and branch protection are unavailable — operator ruled proceed without them while private (gate = operator-only dispatch + divergence/destroy-ack gates); both to be enabled at the T-D.2 public flip.** Pending: DATABRICKS_UC_EXTERNAL_ID secret (operator-typed), main required-status-checks after the first PR reveals check names.
+- [-] **T-I.2** — **OPERATOR-ONLY.** Provision the `dd-chain-infrastructure` repository settings: visibility **PRIVATE**; branch protection on `main` (PR required + required status checks, no force-push, no deletion) and `develop` (no force-push, no deletion); environments `dev` and `production` (ADR-10) with the operator as required reviewer on `production` and a deployment-branch policy of `develop` + `main`; the allowed-actions allowlist; all secret **values** entered by the operator (no agent reads or transcribes one, O-10).
+  - Progress 2026-08-31 (operator-authorized session): visibility PRIVATE confirmed; environments dev/hml/production created, each with deployment-branch policies develop+main; allowed-actions allowlist set (github-owned + verified + 4 infra patterns). **Platform limit (GitHub Free × private repo): required reviewers on environments and branch protection are unavailable — operator ruled proceed without them while private (gate = operator-only dispatch + divergence/destroy-ack gates); both to be enabled at the T-D.2 public flip.** Pending: DATABRICKS_UC_EXTERNAL_ID secret (operator-typed), main required-status-checks after the first PR reveals check names. 2026-09-02 (ADR-10): the `hml` environment is deleted by the operator after T-I.15/T-I.16.
   - Owner: **operator** · Write set: GitHub repository settings
   - Deps: T-I.1 · AC-19, AC-21
   - Acceptance: `gh api repos/{owner}/{repo}/branches/{main,develop}/protection` and `.../environments` return the described configuration; `gh repo view --json visibility` → `PRIVATE`.
@@ -53,7 +54,7 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.3, T-V.2 · AC-2
   - Acceptance: `aws s3api list-objects-v2 --bucket <state-bucket>` shows the surviving stack keys plus `capture/ecr` (owned by `dd-chain-capture`, documented not moved) and **no** `prd/03_iam` key.
 
-- [x] **T-I.6** — Author the bootstrap repoint (I6, ADR-4): a `github_repo` variable feeding the four deploy roles' trust `sub` conditions (`repo:<owner>/dd-chain-infrastructure:environment:<env>` per deploy role; `pull_request` + `refs/heads/{develop,main}` for the read-only role), plus a new `…-gha-artifacts-publish` role trusted to `repo:<owner>/dd-chain-explorer:…` whose **entire** policy is `s3:PutObject`, `s3:PutObjectTagging`, `s3:AbortMultipartUpload` on `<artifacts-bucket>/*` and `s3:ListBucket` on the bucket, carrying the project permissions boundary like every other project role.
+- [x] **T-I.6** — Author the bootstrap repoint (I6, ADR-4): a `github_repo` variable feeding the deploy roles' trust `sub` conditions (`repo:<owner>/dd-chain-infrastructure:environment:<env>` per deploy role; `pull_request` + `refs/heads/{develop,main}` for the read-only role), plus a new `…-gha-artifacts-publish` role trusted to `repo:<owner>/dd-chain-explorer:…` whose **entire** policy is `s3:PutObject`, `s3:PutObjectTagging`, `s3:AbortMultipartUpload` on `<artifacts-bucket>/*` and `s3:ListBucket` on the bucket, carrying the project permissions boundary like every other project role.
   - Evidence: done 8f793c8: github_repo default -> dd-chain-infrastructure (4 sub-claim-only trust diffs verified); new dm-chain-explorer-gha-artifacts-publish (env dev/hml, minimal S3 policy, boundary + self-mutation deny); live -lock=false plan: 3 add / 4 change / 0 destroy; pytest 87+3skip.
   - Owner: software-engineer · Write set: `services/prd/00_bootstrap/**`
   - Deps: T-I.3 · AC-6, AC-6b
@@ -71,7 +72,7 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.7 · AC-6
   - Acceptance: apply summary; post-apply `terraform plan` → `No changes`; `aws iam get-role` on all five roles shows the new trust; `simulate-principal-policy` on `…-gha-artifacts-publish`: `s3:PutObject` on `<artifacts-bucket>/*` → `allowed`, and `s3:GetObject` on the state bucket / `lambda:UpdateFunctionCode` / `iam:PassRole` → denied.
 
-- [x] **T-I.9** — Publish the deploy-role variables in the new repository: run `scripts/ci/publish_oidc_vars.sh` against the applied bootstrap outputs to set `AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}`, and confirm the fail-fast preflight guards every role-assuming job. The **values** are role ARNs, published by the operator-run script; no static key is ever created (O-10).
+- [x] **T-I.9** — Publish the deploy-role variables in the new repository: run `scripts/ci/publish_oidc_vars.sh` against the applied bootstrap outputs to set `AWS_DEPLOY_ROLE_{DEV,HML,PRD,READONLY}` (`_HML` retired by T-I.16, ADR-10), and confirm the fail-fast preflight guards every role-assuming job. The **values** are role ARNs, published by the operator-run script; no static key is ever created (O-10).
   - Evidence: done 2026-08-31: blocked first by bug publish-oidc-vars-bootstrap-output-name-mismatch (script's TF_TO_GH keys vs outputs.tf names; fixed f38bd86 with a regression test cross-checking both sides). Dry-run reviewed, then --apply published all four AWS_DEPLOY_ROLE_* variables (gh variable list confirms); AWS_ARTIFACTS_PUBLISH_ROLE additionally published to the new dd-chain-explorer repo (name matched against its publish-artifacts.yml). Preflight negative test deferred to the first CI run window (deliberately-emptied-variable check).
   - Owner: software-engineer (script, preflight, test) · **operator** (execution against live outputs) · Write set: `scripts/ci/publish_oidc_vars.sh`, `scripts/ci/tests/**`, repository variables
   - Deps: T-I.8 · AC-8, AC-9, AC-19
@@ -105,6 +106,22 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.13 · AC-8, AC-24 · Absorbs: 2 of the 4 v0.5.0 security LOW residuals
   - Acceptance: `gh workflow list` shows the infrastructure lane only; `actionlint` and `zizmor` clean; `grep` finds no raw interpolation into a privileged step; drift detection present on the default branch and **enabled** (its first cron recorded as pending, never claimed as evidence).
 
+- [ ] **T-I.15** — **OPERATOR-ONLY (dispatch).** Destroy the `hml` AWS stack through the CI destroy lane (ADR-10, ADR-6): with `DATABRICKS_UC_EXTERNAL_ID` set (T-I.2) and the `hml` code still on the pushed tip, run `destroy_cloud_infra.yml` with `environment=hml` and `confirm=DESTROY` — this is also the first live proof of the OIDC chain (`…-gha-deploy-hml` assumed, preflight green). The stack's state key is then removed like `prd/03_iam`'s (T-I.5).
+  - Owner: **operator** (dispatch) · software-engineer (evidence) · Write set: live `hml` AWS resources, the `hml` state key
+  - Deps: T-I.2 (secret), T-I.14 · AC-8
+  - Acceptance: run green; `aws s3api head-bucket` → 404 on both hml buckets; `terraform state list` on the removed key is empty/absent.
+
+- [ ] **T-I.16** — Retire `hml` from the repository and the bootstrap (ADR-10): delete `services/hml/`, every hml CI lane, `stack_map.json`'s hml entry and the `AWS_DEPLOY_ROLE_HML` mapping in `publish_oidc_vars.sh`; the tests pin the two-environment truth. Bootstrap delta: `…-gha-deploy-hml` removed; `…-gha-artifacts-publish` trusts `environment:{dev,production}` of the explorer. **OPERATOR-ONLY tail:** apply `prd/00_bootstrap` (O-2, T-I.7 verdict pattern), then delete the `AWS_DEPLOY_ROLE_HML` variable and the `hml` GitHub environment in both repositories.
+  - Progress 2026-09-02: authored in the working tree of `dd-chain-infrastructure` (uncommitted until T-I.15 has run — the destroy needs the code and the role it removes).
+  - Owner: software-engineer · security-reviewer (bootstrap delta verdict) · **operator** (apply + settings) · Write set: `services/hml/**`, `services/prd/00_bootstrap/**`, `.github/workflows/**`, `scripts/ci/**` in `dd-chain-infrastructure`; repository variables/environments
+  - Deps: T-I.15 · AC-8, AC-19
+  - Acceptance: `grep -rIi hml` in the repo returns only retirement notes; `gh variable list` shows `AWS_DEPLOY_ROLE_{DEV,PRD,READONLY}` only; `gh api .../environments` lists `dev` + `production` only; a fresh plan of every surviving stack is `0/0/0`.
+
+- [ ] **T-I.17** — Declare the **production** Databricks workspace infrastructure (ADR-5, ADR-10): inventory the official account's Unity Catalog storage credential / external location / catalog (`prd`) that front the `prd` buckets, and adopt them by `terraform import` under the same fail-closed rule as T-I.11/T-I.12 (an object that does not exist is **created by the operator in the workspace**, never by Terraform `create`, then imported). The Free-Edition inventory of T-I.11 stays the `dev` half.
+  - Owner: software-engineer · **operator** (production workspace objects, credentials) · Write set: `services/databricks/**`
+  - Deps: T-I.12, T-X.8 (the production service principal must exist to authenticate the provider) · AC-7
+  - Acceptance: `terraform plan` on the stack shows `No changes` for both workspaces' objects; `databricks external-locations validate` green against the production workspace.
+
 ---
 
 ## WS-X — the new `dd-chain-explorer` (PUBLIC from birth)
@@ -115,10 +132,11 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: — · AC-1, AC-10
   - Acceptance: fresh history (no legacy sha reachable); `make -n <target>` resolves for every target the README cites; no `services/` directory exists.
 
-- [ ] **T-X.2** — **OPERATOR-ONLY.** Provision the new `dd-chain-explorer` repository settings: visibility **PUBLIC** from birth (ADR-9); branch protection on `main` and `develop` mirroring the infrastructure repo; environments `dev`, `hml`, `production` with the operator as required reviewer on `hml` and `production`; the allowed-actions allowlist; all secret **values** (Databricks host/token and any environment secret) entered by the operator (O-10).
+- [ ] **T-X.2** — **OPERATOR-ONLY.** Provision the new `dd-chain-explorer` repository settings: visibility **PUBLIC** from birth (ADR-9); branch protection on `main` and `develop` mirroring the infrastructure repo; environments `dev` and `production` (ADR-10) with the operator as required reviewer on `production` and a deployment-branch policy of `main` on `production`; the allowed-actions allowlist; all secret **values** entered by the operator (O-10): `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` on `dev` (the Free-Edition `dm_spn_user` OAuth M2M secret) and on `production` (T-X.8's service principal). The `hml` environment is deleted.
+  - Progress 2026-09-02: environments `dev`/`hml` exist without policy or reviewers; no `production`; no branch protection; no secret in any scope (`gh` names-only inspection).
   - Owner: **operator** · Write set: GitHub repository settings
   - Deps: T-X.1 · AC-19, AC-22
-  - Acceptance: `gh repo view --json visibility` → `PUBLIC`; protection and environments match the described configuration; `gh secret list` shows names only, and no agent has read a value.
+  - Acceptance: `gh repo view --json visibility` → `PUBLIC`; protection and environments match the described configuration; `gh api .../environments/{dev,production}/secrets` shows the three names in each, and no agent has read a value.
 
 - [x] **T-X.3** — Migrate the application content as content (X2, X7): `apps/dabs/` (7 bundles), `apps/lambda/` (both handlers + requirements + the hash-checked lock), `utils/` (the three-module `dm-chain-utils`), `docs/runbooks/{ci-security,lambda-layer}.md`, `scripts/build_lambda_layer.sh`. Set the version axis to `0.6.0`: root `VERSION`, every `apps/dabs/*/VERSION`, the library distribution version and its `__init__.py` declaration (the infrastructure repo's `VERSION` is `T-I.1`'s).
   - Evidence: done 531fe41: apps/dabs 52/52 files, apps/lambda 9/9, utils 6/6 (parity vs legacy, caches excluded), runbooks + build script; version axis 0.6.0 everywhere; apps/docker correctly dead.
@@ -138,15 +156,21 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-X.3, T-I.8 (the role must exist), T-L.3 · AC-11
   - Acceptance: `aws s3api list-objects-v2` shows the layer and both handler zips at content-addressed keys; the job log shows the artifacts-publish role and no other; `grep` finds no public-index pin of the library.
 
-- [ ] **T-X.6** — Build the explorer CI (X4): the quality gate (`ruff format --check`, `ruff check`, `mypy`, `pytest -p no:cacheprovider`, `pip-audit -r` over the lock), the publish job of `T-X.5`, `databricks bundle validate` per bundle per target, and the DABs deploy lane behind the informed environment gate. `actionlint` + `zizmor` clean, every action SHA-pinned, `persist-credentials: false`, runner hardening. **No Terraform workflow, and no role beyond `artifacts-publish`.**
+- [ ] **T-X.6** — Build the explorer CI (X4): the quality gate (`ruff format --check`, `ruff check`, `mypy`, `pytest -p no:cacheprovider`, `pip-audit -r` over the lock), the publish job of `T-X.5`, `databricks bundle validate` per bundle (`dev` on every PR/push, `prod` on pushes to `main` bound to `production`, ADR-10), and the DABs deploy lane behind the informed environment gate. `actionlint` + `zizmor` clean, every action SHA-pinned, `persist-credentials: false`, runner hardening. **No Terraform workflow, and no role beyond `artifacts-publish`.**
   - Owner: software-engineer · Write set: `.github/workflows/**` in the new explorer repo
   - Deps: T-X.4, T-X.5 · AC-12, AC-13, AC-6b
   - Acceptance: all gate jobs exit 0 in CI; `gh workflow list` contains no infrastructure workflow; `grep` finds no `AWS_DEPLOY_ROLE_*` reference in this repository.
 
-- [ ] **T-X.7** — Validate and deploy the bundles from the new repository (X5): all 7 validate in `dev` and `hml`; the `prod` target stays guarded (host variable with no default); deploy `dev` and `hml`; then diff every deployed pipeline's exported notebook against its file in the **new** repo.
-  - Owner: software-engineer · Write set: the live Databricks `dev` and `hml` targets
-  - Deps: T-X.6 · AC-13
-  - Acceptance: `databricks bundle validate -t dev` and `-t hml` exit 0 per bundle; `-t prod` with the host unset exits **non-zero**; notebook export `diff` exit 0 per deployed pipeline; no orphan job or stale `.bundle` root left behind.
+- [-] **T-X.7** — Validate and deploy the bundles from the new repository (X5, ADR-10): all 7 validate in `dev` and `prod`; deploy `dev` from CI; `prod` deploys only through the `production` gate (operator approval) once T-X.8 is done; then diff every deployed `dev` pipeline's exported notebook against its file in the **new** repo.
+  - Progress 2026-09-02: `hml` target removed from all 7 bundles; `prod` made real (`mode: production`, no `run_as` — the production service principal is the deployer, no application id in the tree); `make dabs_validate_all TARGET=dev|prod` green 14/14 locally with the Free-Edition credentials; bug fixed on the way: the validate target never rendered the dashboard templates (4 bundles failed on a fresh checkout) — the target→catalog map now lives only in `render_dashboard_templates.sh --target`, and every Makefile validate/deploy target depends on `dabs_render`.
+  - Owner: software-engineer · **operator** (production approval) · Write set: the live Databricks `dev` and `prod` targets
+  - Deps: T-X.6, T-X.8 (for `prod`) · AC-13
+  - Acceptance: `make dabs_validate_all TARGET=dev` and `TARGET=prod` exit 0 (each with its own workspace credentials); notebook export `diff` exit 0 per deployed `dev` pipeline; no orphan job or stale `.bundle` root left behind.
+
+- [ ] **T-X.8** — **OPERATOR-ONLY.** Stand up the Databricks identities the two targets run as (ADR-10, O-10): (a) `dev` — grant the Free-Edition service principal `dm_spn_user` the privileges the bundles need on catalog `dev` (`USE CATALOG`, `USE SCHEMA`, `CREATE SCHEMA`, `CREATE TABLE`, `CREATE MATERIALIZED VIEW`, `MODIFY`, `SELECT`) — today its effective grants on `dev` are **none**, so every `run_as` pipeline would fail; (b) `prod` — create a service principal in the official account, add it to the production workspace with the same privileges on catalog `prd` and `CAN_USE` on the SQL warehouse, generate its OAuth secret; (c) put each workspace's `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` on the matching GitHub environment (T-X.2). The `hml` catalog left in the Free-Edition workspace is deleted by the operator.
+  - Owner: **operator** · Write set: Databricks account/workspace settings, GitHub environment secrets
+  - Deps: T-X.2 · AC-19
+  - Acceptance: `databricks grants get-effective catalog dev --principal <dev-sp>` lists the privileges above; the same for `prd` in the production workspace; `bundle-validate-dev` and `bundle-validate-prod` green in CI.
 
 ---
 
@@ -190,7 +214,7 @@ agent may author its inputs and verify its outcome — never run it.
   - Deps: T-I.10, T-I.12, T-X.5 · AC-3, AC-7
   - Acceptance: a per-stack plan summary of `0/0/0`. **A non-zero `add` count is a stop-the-line event** — it is escalated, never reconciled by applying.
 
-- [ ] **T-V.3** — Prove the Databricks and secret-hygiene equalities: the imported UC credentials and external locations validate; both hml buckets answer `head-bucket`; every bundle validates and deployed state equals the new explorer repo; and a whole-tree secret scan (denylist + `gitleaks`-class) is clean in **both** new repositories.
+- [ ] **T-V.3** — Prove the Databricks and secret-hygiene equalities: the imported UC credentials and external locations validate; both hml buckets answer `head-bucket` **404** (destroyed, ADR-10); every bundle validates in `dev` and `prod` and deployed `dev` state equals the new explorer repo; and a whole-tree secret scan (denylist + `gitleaks`-class) is clean in **both** new repositories.
   - Owner: qa-engineer + security-reviewer · Write set: evidence only
   - Deps: T-X.7, T-I.12 · AC-13, AC-22
   - Acceptance: validate PASS on every credential and location; bundle validate exit 0; export diff exit 0; **zero** secret-scan findings in either repo.
