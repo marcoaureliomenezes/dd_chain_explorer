@@ -257,7 +257,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
-      - uses: databricks/setup-cli@6bb7075f85b326f8b9ce160933dfe9bcd63c8121  # v1.13.0
+      - uses: databricks/setup-cli@1c6cdbb6ac593995df697192e7f91d9d111cac19  # v1.15.0
       - name: Deploy all DABs components to ${{ inputs.target }}
         env:
           # F-07: environment-scoped secrets ONLY — dev/hml carry these three
