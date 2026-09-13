@@ -27,7 +27,35 @@
 > together with the intake report above). LEDGER lines are added at CLOSURE's disposition sweep.
 > The 7 deferred entries remain ACTIVE.
 
+> **Restart intake (2026-09-13).** Grill-me 2026-09-12/13 (2 rounds, rulings R1-R17, handoff
+> `.dadaia/handoff/dd-chain-explorer/2026-09-13T011657Z-project-manager-restart-audit-grill`) is
+> approved intake by direct operator ratification: the platform pivots to financial-asset data
+> (Ibovespa company metrics first). Ruling R1 PARKS the Ethereum lane: the five Ethereum-era
+> entries below (`dlt-ethereum-data-quality-enhancements`, `dashboards-analytics-enrichment`,
+> `s3-raw-lifecycle-intelligent-tiering`, `rest-api-public-endpoint`, `encryption-at-rest-posture-decision`)
+> stay ACTIVE but are not pickable while the lane is parked; they gain a LEDGER line when the lane is
+> retired or revived. Capture-side scope lives in `dd-chain-capture/specs/backlog/candidates.md`
+> (`financial-capture-ibovespa-metrics`).
+
 ## ACTIVE
+
+### market-data-medallion-restart
+- **Title:** Medallion lakehouse for Ibovespa company metrics over the new financial raw landing (dev first)
+- **Opened:** 2026-09-13
+- **Status:** candidate
+- **Description:** Operator demand (grill 2026-09-12/13). After v0.6.0 closes (R5): (a) infra — new dev raw bucket `dm-chain-explorer-dev-raw-data` (no expiry, Intelligent-Tiering, R14), ECR repositories + `gha_capture_publish` OIDC role in the bootstrap (R12), Fargate scheduled-task stacks for the three capture images (R2), UC external location + `databricks_grants` for the SP on the new landing (R9); (b) explorer — new DLT bundle(s) reading `raw/<source>/<dataset>/ingest_date=*/` untouched bytes (R13) into bronze (b3 cotahist, ibov portfolio, consolidated files; cvm cadastro/fca, dfp/itr, fre/ipe; bcb sgs), silver normalization (Latin-1, fixed-width, restatement dedupe by VERSAO), gold company-metrics computed from statements x prices (P/L, P/VP, EV/EBITDA, ROE, ROIC, margins, DL/EBITDA, CAGR, DY) per `dd-chain-capture/docs/research/ibovespa-metrics-source-study.md`; (c) Ethereum DAB resources stay undeployed (R1). Dev only; PRD-compatible design, no PRD resources (R4). Consumer: Hermes in dadaia-agents, record only (R10).
+- **Provenance:** grill-me 2026-09-12/13 rulings R1-R17 (approved 2026-09-13, operator ratification)
+- **Intents:**
+```yaml
+- subject:
+    kind: code
+    ref: apps/dabs/
+  change: A market-data DLT bundle lands bronze/silver/gold for Ibovespa company metrics from the new raw landing; Ethereum bundles remain undeployed.
+- subject:
+    kind: doc
+    ref: memory/product/capture-layer.md
+  change: Capture integration describes the Fargate batch images and the raw/<source>/<dataset>/ingest_date contract, with the Ethereum streaming lane marked parked.
+```
 
 ### capture-ecr-state-and-kms-ownership-transfer
 - **Title:** Move the dd-chain-capture `capture/ecr` Terraform state + KMS key out of this repo's state bucket (or document the hosting)
