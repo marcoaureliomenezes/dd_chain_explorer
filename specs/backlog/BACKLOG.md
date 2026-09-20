@@ -57,6 +57,56 @@
   change: Capture integration describes the Fargate batch images and the raw/<source>/<dataset>/ingest_date contract, with the Ethereum streaming lane marked parked.
 ```
 
+### e2e-dev-validation-financial-lakehouse
+- **Title:** End-to-end DEV validation — capture image run → S3 raw → bronze → silver → gold rows queryable (the POC gate)
+- **Opened:** 2026-09-20
+- **Status:** candidate (closure gate of v0.7.0 — blocks `prod-environment-official-account` and `financial-sources-expansion-data-model`)
+- **Description:** Operator demand 2026-09-20 (direct, recorded here as intake): the platform must prove ONE unbroken flow in DEV with the minimum set of sources before anything else — a published capture image executed as a Fargate task (or the operator-run `make batch-smoke-real`) lands untouched bytes + `_manifest.json` in `s3://dm-chain-explorer-dev-raw-data/raw/<source>/<dataset>/ingest_date=*/`; the `dlt_market_data` bundle deployed to `dev` ingests them into `b_market` (Auto Loader), materializes `s_market`, and produces `g_market` rows (`company_daily_prices`, `ibov_weights_daily`, `company_fundamentals_snapshot`, `macro_daily`) queryable from SQL. Evidence = row counts per layer for one ingest_date plus the manifest sha match, recorded in the v0.7.0 CLOSURE. Nothing here is new code: it is the live execution of what v0.7.0 already built (infra stacks + bundle) and the operator lane T-O7.1..T-O7.4 + T-X7.6. Live state on 2026-09-20: AWS has no dev raw bucket, no batch ECR repos, no capture cluster; Databricks `dev` has zero pipelines/jobs and only Ethereum schemas; all four PRs open, nothing merged. **Proposed: fold as the mandatory acceptance of v0.7.0** (no separate release) — the POC is "done" only when this entry's evidence exists.
+- **Provenance:** operator demand 2026-09-20 (session-bound dd-chain-explorer; restart grill R4 "DEV FIRST" and R16 "first milestone = images writing to S3" are the prior rulings it sharpens)
+- **Intents:**
+```yaml
+- subject:
+    kind: doc
+    ref: releases/v0.7.0/CLOSURE.md
+  change: The CLOSURE carries the end-to-end evidence table — one ingest_date, raw objects + manifest sha, bronze/silver/gold row counts from the dev workspace, trigger job state.
+- subject:
+    kind: code
+    ref: apps/dabs/dlt_market_data/
+  change: The bundle is deployed to dev and has run at least one successful update over real landed bytes; no Ethereum resource deployed.
+```
+
+### prod-environment-official-account
+- **Title:** PROD front — official Databricks account + PRD AWS lane, only after the DEV end-to-end is proven
+- **Opened:** 2026-09-20
+- **Status:** candidate (blocked-by `e2e-dev-validation-financial-lakehouse`)
+- **Description:** Operator demand 2026-09-20, front 1 after the POC gate. Stand up the production side declared-but-not-created since ADR-10 (R4: design PRD-compatible now, create nothing until gold is worth it): official-account SP + UC catalog/schemas + external location on the PRD raw bucket, `prod` targets of `dlt_market_data` deployed through the `production` environment gate, PRD capture schedules (`dev/03_capture` shape reused, `schedules_enabled = true`), cost ceiling stated in the SPEC. Grill required (account, catalog naming, cost, retention, who approves the production gate).
+- **Provenance:** operator demand 2026-09-20
+- **Intents:**
+```yaml
+- subject:
+    kind: doc
+    ref: memory/product/environments.md
+  change: prod is a real environment — official account, SP, catalog, buckets and the gated deploy lane are documented as live, not declared.
+```
+
+### financial-sources-expansion-data-model
+- **Title:** Sources front — more financial sources + a real data model feeding rich gold tables for dashboards and the investment agent
+- **Opened:** 2026-09-20
+- **Status:** candidate (blocked-by `e2e-dev-validation-financial-lakehouse`)
+- **Description:** Operator demand 2026-09-20, front 2 after the POC gate. Beyond the three POC images (B3 cotahist/ibov/consolidated, CVM cadastro/statements/documents, BCB SGS): find further official/free sources (grill R6 order: official APIs first, scraping last) for B3 company financials and metrics; design the dimensional/semantic model (companies, instruments, calendar, statements, prices, macro) so silver combines sources and gold exposes valuation/quality/growth metrics (P/L, P/VP, EV/EBITDA, ROE, ROIC, margins, DL/EBITDA, CAGR, DY — study `dd-chain-capture/docs/research/ibovespa-metrics-source-study.md`); first Databricks dashboards over `g_market`; the consumer contract for the investment agent in dadaia-agents (R10). Capture-side images are a `dd-chain-capture` candidate; this entry owns the model, the DLT layers and the dashboards.
+- **Provenance:** operator demand 2026-09-20
+- **Intents:**
+```yaml
+- subject:
+    kind: code
+    ref: apps/dabs/dlt_market_data/
+  change: Silver joins multiple sources through a documented data model; gold exposes the metric set above with tests per metric; at least one dashboard bundle reads g_market.
+- subject:
+    kind: doc
+    ref: memory/product/data-model.md
+  change: The financial data model (entities, keys, grain, source lineage per column) is product memory.
+```
+
 ### capture-ecr-state-and-kms-ownership-transfer
 - **Title:** Move the dd-chain-capture `capture/ecr` Terraform state + KMS key out of this repo's state bucket (or document the hosting)
 - **Opened:** 2026-08-23
