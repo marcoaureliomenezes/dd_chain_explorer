@@ -54,7 +54,7 @@
 - [x] **T-X7.5** — Gold `g_market` first cut (X5, PLAN §4.3): `company_daily_price`, `ibov_constituents_daily`, `company_fundamentals_snapshot`; NULL-never-fabricate; D&A mapping recorded; Makefile `dabs_run_dlt_market_data`; `make check` green on a fresh checkout without `pyspark` (X6). — landed ccb436d/f447c4d
   - software-engineer · write set: `apps/dabs/dlt_market_data/src/**`, `Makefile`, `tests/**` · blocked by: T-X7.4 · delivers: the three MVs declared and validated; ratio formulas readable in source · AC-11, AC-14
 
-- [ ] **T-X7.6** — Deploy **this bundle only** to `dev` and run one update (X7, O-6, O-10): — 09-21: pipeline `[dev] dm-market-data` deployed via CI; job create + update REFUSED (org 846902856679948 cancelled/inactive, RESOURCE_EXHAUSTED) → Databricks account status, operator. `databricks bundle deploy -t dev`; `make dabs_run_dlt_market_data`; verify 12/8/3 objects and `bcb/sgs` rows with matching sha; trigger job PAUSED; no Ethereum resource deployed.
+- [ ] **T-X7.6** — Deploy **this bundle only** to `dev` and run one update (X7, O-6, O-10): — 09-21: pipeline deployed via CI; job create + update REFUSED (org cancelled/inactive) → Databricks account, operator. `databricks bundle deploy -t dev`; `make dabs_run_dlt_market_data`; verify 12/8/3 objects and `bcb/sgs` rows with matching sha; trigger job PAUSED; no Ethereum resource deployed.
   - software-engineer · write set: live Databricks `dev` (this bundle) · blocked by: T-X7.5, T-O7.3, T-O7.4 · delivers: the first market-data rows in `dev.s_market` · AC-13, AC-14
 
 - [ ] **T-X7.7** — Release gates: alpha-1 qa review (AC-1..AC-15 evidence table); rc-1 trio (`qa-engineer`, `code-reviewer`, `security-reviewer`) APPROVED in **both** repos; ship — memory update (SPEC §9) → CLOSURE → disposition sweep (`market-data-medallion-restart`, the bug) → `feature/0.7.0 → develop` PRs in both repos, CI watched to green → promote-or-continue asked.
@@ -68,7 +68,7 @@
 - [ ] **T-O7.2** — Infra repo `dev` GitHub environment: secrets `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (Free-Edition SP), variable `TF_VAR_databricks_dev_sp_application_id`; agents reference names only (O-8).
   - **operator** · write set: GitHub environment settings · blocked by: none · delivers: `plan-dev-unity-catalog` can authenticate · AC-7
 
-- [ ] **T-O7.3** — Dispatch the first dev-lane apply of `unity_catalog` (K3, K5): confirm exactly 3 adds, approve, verify `grants get-effective` and `external-locations validate`.
+- [ ] **T-O7.3** — Dispatch the first dev-lane apply of `unity_catalog` (K3, K5): confirm exactly 3 adds, approve, verify `grants get-effective` and `external-locations validate`. — 09-21: blind create of hand-made objects (infra PR #8); admin grants first.
   - **operator** (dispatch) · software-engineer (evidence) · write set: live UC objects, the UC state key · blocked by: T-I7.7, T-I7.8 · delivers: the SP reads the raw bucket and writes catalog `dev` · AC-7
 
 - [ ] **T-O7.4** — First real landing (K2, K6): (a) push `dd-chain-capture` `develop` → `publish-images.yml` green, 3 images `:dev` in ECR; — 09-21: DONE, 3 images `:dev` in ECR (run 35546515532); (b) `make batch-smoke-real` from the operator machine assuming `dm-chain-explorer-capture-dev-writer` with MFA; (c) one `aws ecs run-task` of `bcb-sgs macro_series` per `docs/runbooks/capture-backfill.md`. Schedules remain `DISABLED`.
