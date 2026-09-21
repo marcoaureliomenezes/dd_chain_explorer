@@ -62,7 +62,7 @@
 
 ## WS-O — **OPERATOR-ONLY**
 
-- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`).
+- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`). — 09-18: applied + var published; PENDING the 0/4 `ec2:Describe*` delta (capture plan 403).
   - **operator** · write set: live IAM, `prd/bootstrap` key, `dd-chain-capture` variables · blocked by: T-I7.3 · delivers: capture CI can assume its role; deploy roles hold the runtime grants · AC-2, AC-3
 
 - [ ] **T-O7.2** — Infra repo `dev` GitHub environment: secrets `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (Free-Edition SP), variable `TF_VAR_databricks_dev_sp_application_id`; agents reference names only (O-8).
@@ -71,7 +71,7 @@
 - [ ] **T-O7.3** — Dispatch the first dev-lane apply of `unity_catalog` (K3, K5): confirm exactly 3 adds, approve, verify `grants get-effective` and `external-locations validate`.
   - **operator** (dispatch) · software-engineer (evidence) · write set: live UC objects, the UC state key · blocked by: T-I7.7, T-I7.8 · delivers: the SP reads the raw bucket and writes catalog `dev` · AC-7
 
-- [ ] **T-O7.4** — First real landing (K2, K6): (a) push `dd-chain-capture` `develop` → `publish-images.yml` green, 3 images `:dev` in ECR; (b) `make batch-smoke-real` from the operator machine assuming `dm-chain-explorer-capture-dev-writer` with MFA; (c) one `aws ecs run-task` of `bcb-sgs macro_series` per `docs/runbooks/capture-backfill.md`. Schedules remain `DISABLED`.
+- [ ] **T-O7.4** — First real landing (K2, K6): (a) push `dd-chain-capture` `develop` → `publish-images.yml` green, 3 images `:dev` in ECR; — 09-20: capture PR #2+#3 merged (OIDC env-binding bug fixed); push fails only on missing ECR repos — rerun 35546515532 after the PRD apply; (b) `make batch-smoke-real` from the operator machine assuming `dm-chain-explorer-capture-dev-writer` with MFA; (c) one `aws ecs run-task` of `bcb-sgs macro_series` per `docs/runbooks/capture-backfill.md`. Schedules remain `DISABLED`.
   - **operator** · write set: ECR images, `raw/bcb/sgs/…` objects, one Fargate task run · blocked by: (a) T-O7.1, T-I7.4; (b) T-I7.5; (c) T-I7.6 · delivers: real partitions with valid manifests, one from Fargate · AC-16
 
 - [ ] **T-O7.5** — Constitution amendment, **explicit operator confirmation before writing**: §1 third seam (the image seam; capture runtime hosted in the infra repo); §6 UC stack path; §7 batch raw layout + `Market data` medallion row (`b_market` / `s_market` / `g_market`); §10 classification row (CVM/B3/BCB public regulatory and market data; FRE `posicao_acionaria` reserved). `dadaia specs doctor` 0 errors.
