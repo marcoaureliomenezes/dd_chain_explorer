@@ -22,7 +22,7 @@
 - [x] **T-I7.3** — Security verdict on the bootstrap delta before any apply (O-3). APPROVED on infra `a26ce6d` (handoff `…192325Z-security-reviewer-bootstrap-delta-verdict`); 4 MEDIUM outside the bootstrap fixed in infra `55e1853`; AC-8: UC plan secrets are repo-level.
   - security-reviewer · write set: handoff only · blocked by: T-I7.2 · delivers: APPROVED handoff naming the sha, publish-role minimality, the one conditioned boundary PassRole, the retained deny · AC-2
 
-- [x] **T-I7.4** — ECR ×3 + lifecycle + outputs in `prd/04_peripherals` (I3); `empty_s3_and_ecr.sh` → `empty_s3_buckets.sh` (3 callers); `AGENTS.md`/`README.md` capture sentence; root `VERSION` `0.7.0` (I9; drift: only landed in infra PR #3, 09-21). Applied via the prd lane's informed gate (operator click). — landed d6de196 (+d241b95)
+- [x] **T-I7.4** — ECR ×3 + lifecycle + outputs in `prd/04_peripherals` (I3); `empty_s3_and_ecr.sh` → `empty_s3_buckets.sh` (3 callers); `AGENTS.md`/`README.md` capture sentence; root `VERSION` `0.7.0` (I9; landed infra PR #3). Applied via the prd lane's informed gate (operator click). — landed d6de196 (+d241b95)
   - software-engineer · write set: `services/prd/04_peripherals/**`, `scripts/ci/empty_s3_buckets.sh`, `.github/workflows/**` (callers), `AGENTS.md`, `README.md`, `VERSION` · blocked by: T-O7.1 · delivers: three repositories capture CI can push to · AC-4, AC-10
 
 - [x] **T-I7.5** — Dev raw landing in `dev/01_peripherals` (I4, PLAN §3.3): `module.s3_raw_data`, MFA-gated writer role + policy, `databricks_dev_s3_policy` widened, outputs; CI dev lane applies. — landed 0360b2a
@@ -54,7 +54,7 @@
 - [x] **T-X7.5** — Gold `g_market` first cut (X5, PLAN §4.3): `company_daily_price`, `ibov_constituents_daily`, `company_fundamentals_snapshot`; NULL-never-fabricate; D&A mapping recorded; Makefile `dabs_run_dlt_market_data`; `make check` green on a fresh checkout without `pyspark` (X6). — landed ccb436d/f447c4d
   - software-engineer · write set: `apps/dabs/dlt_market_data/src/**`, `Makefile`, `tests/**` · blocked by: T-X7.4 · delivers: the three MVs declared and validated; ratio formulas readable in source · AC-11, AC-14
 
-- [ ] **T-X7.6** — Deploy **this bundle only** to `dev` and run one update (X7, O-6, O-10): `databricks bundle deploy -t dev`; `make dabs_run_dlt_market_data`; verify 12/8/3 objects and `bcb/sgs` rows with matching sha; trigger job PAUSED; no Ethereum resource deployed.
+- [ ] **T-X7.6** — Deploy **this bundle only** to `dev` and run one update (X7, O-6, O-10): — 09-21: pipeline `[dev] dm-market-data` deployed via CI; job create + update REFUSED (org 846902856679948 cancelled/inactive, RESOURCE_EXHAUSTED) → Databricks account status, operator. `databricks bundle deploy -t dev`; `make dabs_run_dlt_market_data`; verify 12/8/3 objects and `bcb/sgs` rows with matching sha; trigger job PAUSED; no Ethereum resource deployed.
   - software-engineer · write set: live Databricks `dev` (this bundle) · blocked by: T-X7.5, T-O7.3, T-O7.4 · delivers: the first market-data rows in `dev.s_market` · AC-13, AC-14
 
 - [ ] **T-X7.7** — Release gates: alpha-1 qa review (AC-1..AC-15 evidence table); rc-1 trio (`qa-engineer`, `code-reviewer`, `security-reviewer`) APPROVED in **both** repos; ship — memory update (SPEC §9) → CLOSURE → disposition sweep (`market-data-medallion-restart`, the bug) → `feature/0.7.0 → develop` PRs in both repos, CI watched to green → promote-or-continue asked.
@@ -62,7 +62,7 @@
 
 ## WS-O — **OPERATOR-ONLY**
 
-- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`). — DONE 09-21 (bootstrap 0/4 delta applied by the operator).
+- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`). — DONE 09-21.
   - **operator** · write set: live IAM, `prd/bootstrap` key, `dd-chain-capture` variables · blocked by: T-I7.3 · delivers: capture CI can assume its role; deploy roles hold the runtime grants · AC-2, AC-3
 
 - [ ] **T-O7.2** — Infra repo `dev` GitHub environment: secrets `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (Free-Edition SP), variable `TF_VAR_databricks_dev_sp_application_id`; agents reference names only (O-8).
@@ -71,7 +71,7 @@
 - [ ] **T-O7.3** — Dispatch the first dev-lane apply of `unity_catalog` (K3, K5): confirm exactly 3 adds, approve, verify `grants get-effective` and `external-locations validate`.
   - **operator** (dispatch) · software-engineer (evidence) · write set: live UC objects, the UC state key · blocked by: T-I7.7, T-I7.8 · delivers: the SP reads the raw bucket and writes catalog `dev` · AC-7
 
-- [ ] **T-O7.4** — First real landing (K2, K6): (a) push `dd-chain-capture` `develop` → `publish-images.yml` green, 3 images `:dev` in ECR; — 09-20: capture PR #2+#3 merged (OIDC env-binding bug fixed); push fails only on missing ECR repos — rerun 35546515532 after the PRD apply; (b) `make batch-smoke-real` from the operator machine assuming `dm-chain-explorer-capture-dev-writer` with MFA; (c) one `aws ecs run-task` of `bcb-sgs macro_series` per `docs/runbooks/capture-backfill.md`. Schedules remain `DISABLED`.
+- [ ] **T-O7.4** — First real landing (K2, K6): (a) push `dd-chain-capture` `develop` → `publish-images.yml` green, 3 images `:dev` in ECR; — 09-21: DONE, 3 images `:dev` in ECR (run 35546515532); (b) `make batch-smoke-real` from the operator machine assuming `dm-chain-explorer-capture-dev-writer` with MFA; (c) one `aws ecs run-task` of `bcb-sgs macro_series` per `docs/runbooks/capture-backfill.md`. Schedules remain `DISABLED`.
   - **operator** · write set: ECR images, `raw/bcb/sgs/…` objects, one Fargate task run · blocked by: (a) T-O7.1, T-I7.4; (b) T-I7.5; (c) T-I7.6 · delivers: real partitions with valid manifests, one from Fargate · AC-16
 
 - [ ] **T-O7.5** — Constitution amendment, **explicit operator confirmation before writing**: §1 third seam (the image seam; capture runtime hosted in the infra repo); §6 UC stack path; §7 batch raw layout + `Market data` medallion row (`b_market` / `s_market` / `g_market`); §10 classification row (CVM/B3/BCB public regulatory and market data; FRE `posicao_acionaria` reserved). `dadaia specs doctor` 0 errors.
