@@ -22,7 +22,7 @@
 - [x] **T-I7.3** — Security verdict on the bootstrap delta before any apply (O-3). APPROVED on infra `a26ce6d` (handoff `…192325Z-security-reviewer-bootstrap-delta-verdict`); 4 MEDIUM outside the bootstrap fixed in infra `55e1853`; AC-8: UC plan secrets are repo-level.
   - security-reviewer · write set: handoff only · blocked by: T-I7.2 · delivers: APPROVED handoff naming the sha, publish-role minimality, the one conditioned boundary PassRole, the retained deny · AC-2
 
-- [x] **T-I7.4** — ECR ×3 + lifecycle + outputs in `prd/04_peripherals` (I3); `empty_s3_and_ecr.sh` → `empty_s3_buckets.sh` (3 callers); `AGENTS.md`/`README.md` capture sentence; root `VERSION` `0.7.0` (I9). Applied via the prd lane's informed gate (operator click). — landed d6de196 (+d241b95)
+- [x] **T-I7.4** — ECR ×3 + lifecycle + outputs in `prd/04_peripherals` (I3); `empty_s3_and_ecr.sh` → `empty_s3_buckets.sh` (3 callers); `AGENTS.md`/`README.md` capture sentence; root `VERSION` `0.7.0` (I9; drift: only landed in infra PR #3, 09-21). Applied via the prd lane's informed gate (operator click). — landed d6de196 (+d241b95)
   - software-engineer · write set: `services/prd/04_peripherals/**`, `scripts/ci/empty_s3_buckets.sh`, `.github/workflows/**` (callers), `AGENTS.md`, `README.md`, `VERSION` · blocked by: T-O7.1 · delivers: three repositories capture CI can push to · AC-4, AC-10
 
 - [x] **T-I7.5** — Dev raw landing in `dev/01_peripherals` (I4, PLAN §3.3): `module.s3_raw_data`, MFA-gated writer role + policy, `databricks_dev_s3_policy` widened, outputs; CI dev lane applies. — landed 0360b2a
@@ -62,7 +62,7 @@
 
 ## WS-O — **OPERATOR-ONLY**
 
-- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`). — 09-18: applied + var published; PENDING the 0/4 `ec2:Describe*` delta (capture plan 403).
+- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`). — DONE 09-21 (bootstrap 0/4 delta applied by the operator).
   - **operator** · write set: live IAM, `prd/bootstrap` key, `dd-chain-capture` variables · blocked by: T-I7.3 · delivers: capture CI can assume its role; deploy roles hold the runtime grants · AC-2, AC-3
 
 - [ ] **T-O7.2** — Infra repo `dev` GitHub environment: secrets `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (Free-Edition SP), variable `TF_VAR_databricks_dev_sp_application_id`; agents reference names only (O-8).
