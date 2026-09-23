@@ -1,78 +1,76 @@
-# TASKS — Release v0.7.0 — Market-data restart: batch capture runtime + medallion landing
+# TASKS — Release v0.7.0 — Market-data restart: batch capture runtime + batch medallion; Ethereum lane retired
 
 > **Status:** Aprovado
 > **Release ID:** v0.7.0
-> **Owner:** product-engineer (authoring) → software-engineer / security-reviewer / qa-engineer / code-reviewer / **operator** (execution, per task) — approved under the operator standing order of 2026-09-13 after ratifying R1-R17
+> **Owner:** product-engineer (R1-R17 authoring) · software-engineer (2026-09-23 amendment, ADR 0019) → implementers / code-reviewer (six lenses) / **operator**
 > **Depends on:** SPEC.md + PLAN.md v0.7.0 (`Aprovado`)
-> **Lifecycle:** pre-staged — no task is reserved before v0.6.0 closes and v0.7.0 turns ACTIVE.
-> **Marker contract:** `[ ]` OPEN → `[-]` IN PROGRESS → `[x]` DONE. Reserve with an isolated `chore(tasks): start <id>` commit **before** writing. One `[-]` per owner; WS-I and WS-X have disjoint write sets (one repo each) and may each hold one `[-]`. All tasks below are `[ ]`.
+> **Amended:** 2026-09-23 — R18-R26: T-X7.1/3/4/5/6 superseded (DLT → batch job); T-O7.2-7.4 folded into the seed and the chain; new tasks below, ordered so code, tests, CI and AWS teardown come before any Databricks-live step (PLAN §9).
+> **Markers:** `[ ]` → `[-]` (isolated `chore(tasks): start <id>`) → `[x]`. One `[-]` per repo. `In`/`Xn` SPEC §2 · `AC-n` §4 · `O-n` §5 · `§9.n` PLAN. **Blockers:** **B1** Databricks org inactive (no compute; jobs create 403) — operator account act; **B2** SP lacks metastore `CREATE_EXTERNAL_LOCATION` — seed S6. **PR-α/β** = the two ordered `develop` merges of a teardown (O-10).
 
-**Write-set law.** WS-I writes only inside `dd-chain-infrastructure` (+ its state keys and the live dev resources it declares); WS-X only inside the new `dd-chain-explorer` (+ this bundle's live Databricks `dev` resources); WS-O writes settings and live operator acts only. `specs/**` is written only in the authoritative tree of the moment (SPEC O-9). `In`/`Xn` = SPEC §2; `AC-n` = SPEC §4; `O-n` = SPEC §5; `Kn` = PLAN §2. **OPERATOR-ONLY** = holds a secret value, applies `prd/00_bootstrap`, dispatches a first live apply, or amends the constitution — agents author inputs and verify outcomes, never run it.
+## Done (R1-R17)
 
----
+- [x] **T-I7.1** bug + RED namespace test (AC-1) — 31f372c
+- [x] **T-I7.2** bootstrap delta + publisher (AC-1, AC-2) — 31f372c
+- [x] **T-I7.3** security verdict on the delta — a26ce6d, 55e1853
+- [x] **T-I7.4** ECR ×3 in `prd/04` (AC-4, AC-10) — d6de196, d241b95
+- [x] **T-I7.5** dev raw landing (AC-5) — 0360b2a
+- [x] **T-I7.6** `dev/03_capture`, 7 schedules `DISABLED` (AC-6) — c798ffa
+- [x] **T-I7.7** UC stack relocated + completed (AC-7) — cddf2c0; infra #8/#9
+- [x] **T-I7.8** map-driven dev lane (AC-8, AC-9) — d55d2d1, d241b95
+- [x] **T-X7.1** DLT bundle skeleton — **SUPERSEDED (R19) → T-X7.9**; closed by supersession, not evidence
+- [x] **T-X7.2** pure parsers + 41 tests — 30f6fd5; **kept**, moved unchanged by T-X7.9
+- [x] **T-X7.3** DLT bronze — **SUPERSEDED (R19) → T-X7.9**
+- [x] **T-X7.4** DLT silver — **SUPERSEDED (R19) → T-X7.9**
+- [x] **T-X7.5** DLT gold — **SUPERSEDED (R19) → T-X7.9**
+- [x] **T-X7.6** deploy DLT + one update — **SUPERSEDED (R19) → T-X7.12**; never passed (09-21 org refusal = B1); closed by supersession, not evidence
+- [x] **T-O7.1** bootstrap apply + capture var — operator, 09-21 (M1, M3; AC-2, AC-3)
 
-## WS-I — `dd-chain-infrastructure` (`feature/0.7.0`)
+## Phase A — code, tests, CI (no Databricks org needed)
 
-- [x] **T-I7.1** — Register bug `deploy-roles-lack-scheduler-grants-for-declared-schedule` (HIGH, `caused_by: none`, shape-1 commit) in the authoritative ledger; then add the namespace-coverage test (I1, PLAN §3.4) and commit it **RED** (O-2). — landed: bug registered; test with fix 31f372c
-  - software-engineer · write set: `specs/bugs/BUGS.jsonl` (authoritative tree), `scripts/ci/tests/` · blocked by: none · delivers: the suite names every namespace `services/**` needs and the bootstrap lacks · AC-1
+- [ ] **T-I7.9** Plan-as-detector lanes (M11, §9.4): `deploy_cloud_infra` on `push: develop` + dispatch; every map stack planned `-detailed-exitcode`, applied on exit 2; `prd-apply` behind `production` only when a prd plan changes; delete `changed_files_since_base`, `FORCE`, `force_apply`, `destroy_ack`; `test_deploy_apply_path.py` rewritten; drift counts `raw/` objects, fails at 8,000.
+  - infra · `scripts/ci/**`, `.github/workflows/**` · blocked by: none · AC-8, AC-24
+- [ ] **T-I7.10** Bootstrap delta 2 (§9.3-9.4): dev deploy role `ecs:RunTask/DescribeTasks` on capture task defs + cluster, `s3:GetObject` on `raw/*/_manifest.json`; exact-ARN retire grant for `dd-chain-capture-{stream,connect}` (policy + boundary, temporary); tests extended. **Security-lens verdict before any apply.**
+  - infra · `services/prd/00_bootstrap/**`, `scripts/ci/tests/**` · blocked by: none · AC-2, AC-23
+- [ ] **T-I7.11** Trust seed S1-S7 (§9.5): `scripts/seed/trust_seed.sh`, `docs/runbooks/trust-seed.md` (replaces `00-bootstrap-apply.md`); stub-binary tests: run 2 = zero mutating calls, no secret in argv/output; shellcheck.
+  - infra · `scripts/seed/**`, `docs/runbooks/**` · blocked by: T-I7.10 · AC-24
+- [ ] **T-I7.12** Teardown destroy commit, infra PR-α (§9.3 step 1): empty `dev/02_lambda`, `prd/06_lambda` to backend+provider; drop modules `s3_ingestion`/`dynamodb` (dev/01), `s3_artifacts`/`dynamodb` (prd/04); narrow `databricks_dev_s3_policy`; `retire.sh` + `retired_objects.json` (empty the two buckets; targeted destroy of ECR stream/connect in state `capture/ecr` via `services/retired/capture_ecr/`, fallback delete + `state rm`); tests (idempotent retire with stubs).
+  - infra · `services/{dev,prd,retired}/**`, `scripts/ci/**` · blocked by: T-I7.9, T-I7.10 · AC-23
+- [ ] **T-I7.14** Chain, infra half (§9.4 steps 2, 4): `signal-explorer` (App token → `infra-dev-applied`); `capture_run.yml` on `explorer-dev-deployed`: one Fargate task per image, wait, manifest check, `capture-landed`; actionlint + zizmor clean.
+  - infra · `.github/workflows/**`, `scripts/ci/**` · blocked by: T-I7.9, T-I7.10 · AC-22, AC-24
+- [ ] **T-X7.8** Retire lane, explorer PR-α (§9.3 step 3): `apps/dabs/RETIRED` (8 bundles); `ci` `deploy-dev` on `push: develop` + `infra-dev-applied`, bundle filter deleted; retire step (`bundle destroy -t dev`, then location `dm-dev-ingestion` + 7 schemas, idempotent) before deploy; `signal-infra`; bundle contract admits RETIRED dirs.
+  - explorer · `.github/workflows/ci.yml`, `apps/dabs/RETIRED`, `tests/**` · blocked by: none · AC-21, AC-23
+- [ ] **T-X7.9** Bundle `job_market_data` (X1-X7, §9.2): `git mv` parsers byte-identical; `bronze.py`/`silver.py`/`gold.py`/`_spark.py`; job + trigger + schemas YAML; `raw_manifests` bookkeeping; key/rejection helpers unit-tested; job contract + no-`dlt` tests; Makefile; `bundle validate -t dev/-t prod` in CI.
+  - explorer · `apps/dabs/job_market_data/**`, `tests/**`, `Makefile` · blocked by: T-X7.8 (merge order only) · AC-19, AC-20
+- [ ] **T-X7.10** Teardown delete, explorer PR-β (§9.3 step 4): the 8 bundle dirs, `apps/lambda/`, `utils/`, `publish-artifacts.yml`, dashboard tooling, their tests, `RETIRED` + retire step; contract = exactly 1 bundle; `docs/cross-repo-contract.md` (seam 3 once, lambda seam out), README, versions `0.7.0`; grep AC-23 = 0.
+  - explorer · `apps/**`, `utils/**`, `.github/**`, `docs/**`, `tests/**` · blocked by: T-X7.9; merge after T-X7.12(a) run id · AC-15, AC-19, AC-23
+- [ ] **T-X7.11** `e2e-verify` on `capture-landed` (§9.4 step 6): waits for the `FILE_ARRIVAL` run, reads task values, fails on 0 gold rows or sha rejections.
+  - explorer · `.github/workflows/ci.yml`, `scripts/**` · blocked by: T-X7.9 · AC-22
 
-- [x] **T-I7.2** — Bootstrap delta (I2, PLAN §3.2) + `publish_oidc_vars.sh --target`: role, statements, PassRole services, locals, output, `capture_images` default; delete `s3:HeadObject`; extend the pinned tests, add publish-role minimality + images equality; output-name test covers 5 pairs. Namespace test GREEN. — landed 31f372c
-  - software-engineer · write set: `services/prd/00_bootstrap/**`, `services/prd/06_lambda/lambda_contracts_ingestion.tf`, `scripts/ci/publish_oidc_vars.sh`, `scripts/ci/tests/**` · blocked by: T-I7.1 · delivers: plan = 1 role added, documents changed, 0 destroyed; one publisher for three repos · AC-1, AC-2
+## Phase B — live AWS and GitHub (no Databricks compute needed)
 
-- [x] **T-I7.3** — Security verdict on the bootstrap delta before any apply (O-3). APPROVED on infra `a26ce6d` (handoff `…192325Z-security-reviewer-bootstrap-delta-verdict`); 4 MEDIUM outside the bootstrap fixed in infra `55e1853`; AC-8: UC plan secrets are repo-level.
-  - security-reviewer · write set: handoff only · blocked by: T-I7.2 · delivers: APPROVED handoff naming the sha, publish-role minimality, the one conditioned boundary PassRole, the retained deny · AC-2
+- [ ] **T-O7.6** Run the trust seed (S1-S7) after the T-I7.10 verdict; confirm the App install and the default branch `develop`. Clears B2.
+  - **operator** · live IAM, GitHub settings, UC grants · blocked by: T-I7.10 verdict, T-I7.11 · AC-3, AC-7, AC-24
+- [ ] **T-I7.13** Infra teardown live + delete (§9.3 steps 1-2): merge PR-α → dev apply + `production`-approved prd apply destroy the Ethereum/lambda-seam AWS objects (cite run ids); then PR-β deletes both stacks, map entries, `resolve_*`, `retire.sh`, `services/retired/`, `gha_artifacts_publish` + Lambda/DynamoDB/artifacts/retire statements, `--target explorer`.
+  - infra · the T-I7.12 write set + `services/prd/00_bootstrap/**` · blocked by: T-I7.12, T-O7.6, O-1 · AC-9, AC-23
 
-- [x] **T-I7.4** — ECR ×3 + lifecycle + outputs in `prd/04_peripherals` (I3); `empty_s3_and_ecr.sh` → `empty_s3_buckets.sh` (3 callers); `AGENTS.md`/`README.md` capture sentence; root `VERSION` `0.7.0` (I9; landed infra PR #3). Applied via the prd lane's informed gate (operator click). — landed d6de196 (+d241b95)
-  - software-engineer · write set: `services/prd/04_peripherals/**`, `scripts/ci/empty_s3_buckets.sh`, `.github/workflows/**` (callers), `AGENTS.md`, `README.md`, `VERSION` · blocked by: T-O7.1 · delivers: three repositories capture CI can push to · AC-4, AC-10
+## Phase C — Databricks-live (last)
 
-- [x] **T-I7.5** — Dev raw landing in `dev/01_peripherals` (I4, PLAN §3.3): `module.s3_raw_data`, MFA-gated writer role + policy, `databricks_dev_s3_policy` widened, outputs; CI dev lane applies. — landed 0360b2a
-  - software-engineer · write set: `services/dev/01_peripherals/**` · blocked by: T-O7.1 · delivers: a bucket the smoke can land in and Databricks can read · AC-5
+- [ ] **T-O7.7** Restore the Databricks Free Edition org to active with compute (B1); record in the M-ledger as an account act.
+  - **operator** · blocked by: none · unblocks T-X7.12, T-V7.1
+- [ ] **T-X7.12** Explorer live: (a) PR-α merged → retire step destroys the 8 bundles + stateless UC objects (run id; 0 pipelines); (b) PR-β merged → `bundle deploy -t dev` of `job_market_data`; `bundle summary`, `jobs get` (3 tasks, serverless, `file_arrival` `UNPAUSED`), SP `.bundle/` holds this bundle only.
+  - explorer · live Databricks `dev` · blocked by: (a) T-X7.8, (b) T-X7.9, T-X7.10; both T-O7.6, T-O7.7, O-1 · AC-20, AC-21, AC-23
+- [ ] **T-V7.1** Chain proof: one `develop` merge → infra → explorer → capture run → file-arrival run → `e2e-verify` green; every event ∈ push/workflow_run/repository_dispatch/file arrival; second fire = no count change; drift on `develop` = 0; seed re-run after T-I7.13 removes the retired grants, the next run = no changes, no secret echoed; M-ledger table drafted.
+  - software-engineer (evidence) · blocked by: T-I7.13, T-I7.14, T-X7.11, T-X7.12 · AC-22, AC-24
 
-- [x] **T-I7.6** — New stack `dev/03_capture` (I5, PLAN §3.3), `schedules_enabled = false`; `stack_map.json` `dev.capture` + `$comment` edge; tests: schedules default disabled, task-role prefix scope, schedule ↔ container name; runbook `docs/runbooks/capture-backfill.md`. — landed c798ffa
-  - software-engineer · write set: `services/dev/03_capture/**`, `scripts/ci/stack_map.json`, `scripts/ci/tests/**`, `docs/runbooks/` · blocked by: T-I7.4, T-I7.5, T-O7.4(a) · delivers: seven disabled schedules, three runnable task definitions · AC-6
+## Superseded operator tasks
 
-- [x] **T-I7.7** — UC stack relocated and completed (I6, O-5): `git mv services/databricks services/dev/04_unity_catalog`, docs updated, README §"Not in stack_map" deleted, external location + two singular `databricks_grant`, `var.databricks_dev_sp_application_id` (no default), `stack_map.json` `dev.unity_catalog`. — landed cddf2c0
-  - software-engineer · write set: `services/dev/04_unity_catalog/**`, `scripts/ci/stack_map.json` · blocked by: v0.6.0 `T-I.12` (`No changes` after import), T-I7.5, T-O7.2 · delivers: a plan of exactly 3 adds; after T-O7.3 the SP reads the bucket and writes catalog `dev` · AC-7
+- [x] **T-O7.2** hand secrets — **SUPERSEDED → seed S5 (T-O7.6)**
+- [x] **T-O7.3** hand first UC apply — **SUPERSEDED → push-triggered lane (T-I7.9) + seed S6**
+- [x] **T-O7.4** first landing — (a) DONE 09-21, run 35546515532; (b, c) **SUPERSEDED → `capture_run` (T-I7.14, M14)**
 
-- [x] **T-I7.8** — Map-driven dev lane (I7, PLAN §3.5): `deploy_env.sh dev` → `deploy_dev()`, one `dev-deploy` job, **delete `detect_changes.sh`**; `plan_on_pr.yml` +2 (`plan-dev-unity-catalog` with `environment: dev`), `drift_detection.yml` +2, `destroy_all_cloud_infra.yml` +2; dev-lane case in `test_deploy_apply_path.py`; fresh-clone `0/0/0` proof on six stacks. — landed d55d2d1 + d241b95 (142 tests)
-  - software-engineer (lane) · qa-engineer (proof) · write set: `scripts/ci/deploy_env.sh`, `scripts/ci/tests/**`, `.github/workflows/**` · blocked by: T-I7.6, T-I7.7 · delivers: every dev stack planned, applied, drift-checked and destroyable from the map alone · AC-8, AC-9
+## Governance and closure
 
-## WS-X — `dd-chain-explorer` (`feature/0.7.0`)
-
-- [x] **T-X7.1** — Bundle skeleton `apps/dabs/dlt_market_data/` (X1, PLAN §4.1): `databricks.yml` (dev real, prod declared), pipeline + PAUSED trigger job, a `pipeline.py` that validates with zero tables; `test_bundle_targets_contract.py` → 8; seam 3 in `docs/cross-repo-contract.md` (K7); `apps/dabs/README.md` 8 bundles + Ethereum parked; version axis `0.7.0` (X6 docs half). — landed 30f6fd5/f447c4d
-  - software-engineer · write set: `apps/dabs/dlt_market_data/**`, `tests/dabs/test_bundle_targets_contract.py`, `docs/**`, `apps/dabs/README.md`, `VERSION`, `apps/dabs/*/VERSION`, `utils/pyproject.toml` + `__init__.py` · blocked by: none · delivers: an eighth bundle validating in both targets; the image seam stated once · AC-11, AC-12, AC-15
-
-- [x] **T-X7.2** — Pure-Python parsers (X2, PLAN §4.2) + `tests/dabs/test_market_data_parsers.py` with small public-grade fixtures; no `pyspark` import. — landed 30f6fd5 (41 tests)
-  - software-engineer · write set: `apps/dabs/dlt_market_data/src/market_data/parsers/**`, `tests/dabs/**` · blocked by: T-X7.1 · delivers: every raw format parses off-cluster, RED/GREEN per AC-11 · AC-11
-
-- [x] **T-X7.3** — Bronze `b_market` (X3, PLAN §4.3): 11 `binaryFile` streaming tables + `raw_manifests`; derived columns; no decoding. — landed ccb436d
-  - software-engineer · write set: `apps/dabs/dlt_market_data/src/market_data/pipeline.py`, `resources/dlt/**` · blocked by: T-X7.1 · delivers: `bundle validate` green with 12 bronze tables declared · AC-14 (bronze half)
-
-- [x] **T-X7.4** — Silver `s_market` (X4, PLAN §4.3): 8 streaming tables calling the parsers; expectations (parse success, manifest sha, `versao`); max-`VERSAO` dedupe; `ORDEM_EXERC = ÚLTIMO`; FRE/IPE untouched. — landed ccb436d
-  - software-engineer · write set: `apps/dabs/dlt_market_data/src/**` · blocked by: T-X7.2, T-X7.3 · delivers: `test_dlt_expectations_contract` green (silver-only); validate green · AC-11, AC-14
-
-- [x] **T-X7.5** — Gold `g_market` first cut (X5, PLAN §4.3): `company_daily_price`, `ibov_constituents_daily`, `company_fundamentals_snapshot`; NULL-never-fabricate; D&A mapping recorded; Makefile `dabs_run_dlt_market_data`; `make check` green on a fresh checkout without `pyspark` (X6). — landed ccb436d/f447c4d
-  - software-engineer · write set: `apps/dabs/dlt_market_data/src/**`, `Makefile`, `tests/**` · blocked by: T-X7.4 · delivers: the three MVs declared and validated; ratio formulas readable in source · AC-11, AC-14
-
-- [ ] **T-X7.6** — Deploy **this bundle only** to `dev` and run one update (X7, O-6, O-10): — 09-21: pipeline deployed via CI; job create + update REFUSED (org cancelled/inactive) → Databricks account, operator. `databricks bundle deploy -t dev`; `make dabs_run_dlt_market_data`; verify 12/8/3 objects and `bcb/sgs` rows with matching sha; trigger job PAUSED; no Ethereum resource deployed.
-  - software-engineer · write set: live Databricks `dev` (this bundle) · blocked by: T-X7.5, T-O7.3, T-O7.4 · delivers: the first market-data rows in `dev.s_market` · AC-13, AC-14
-
-- [ ] **T-X7.7** — Release gates: alpha-1 qa review (AC-1..AC-15 evidence table); rc-1 trio (`qa-engineer`, `code-reviewer`, `security-reviewer`) APPROVED in **both** repos; ship — memory update (SPEC §9) → CLOSURE → disposition sweep (`market-data-medallion-restart`, the bug) → `feature/0.7.0 → develop` PRs in both repos, CI watched to green → promote-or-continue asked.
-  - reviewers (trio) · product-engineer (memory, CLOSURE) · coordinator (PRs) · write set: `specs/memory/**`, `specs/releases/v0.7.0/**` in the authoritative tree; handoffs · blocked by: T-I7.8, T-X7.6, T-O7.5, v0.6.0 candidate merge (O-1) · delivers: the release closed and merged · AC-18
-
-## WS-O — **OPERATOR-ONLY**
-
-- [ ] **T-O7.1** — Apply `services/prd/00_bootstrap` with operator credentials (MFA; the sole ADR-6 exception), then run `publish_oidc_vars.sh --target capture` → `AWS_CAPTURE_PUBLISH_ROLE` in `dd-chain-capture` (envs `dev`, `production`). — DONE 09-21.
-  - **operator** · write set: live IAM, `prd/bootstrap` key, `dd-chain-capture` variables · blocked by: T-I7.3 · delivers: capture CI can assume its role; deploy roles hold the runtime grants · AC-2, AC-3
-
-- [ ] **T-O7.2** — Infra repo `dev` GitHub environment: secrets `DATABRICKS_HOST` / `DATABRICKS_CLIENT_ID` / `DATABRICKS_CLIENT_SECRET` (Free-Edition SP), variable `TF_VAR_databricks_dev_sp_application_id`; agents reference names only (O-8).
-  - **operator** · write set: GitHub environment settings · blocked by: none · delivers: `plan-dev-unity-catalog` can authenticate · AC-7
-
-- [ ] **T-O7.3** — Dispatch the first dev-lane apply of `unity_catalog` (K3, K5): confirm exactly 3 adds, approve, verify `grants get-effective` and `external-locations validate`. — 09-21: blind create of hand-made objects (infra PR #8); admin grants first.
-  - **operator** (dispatch) · software-engineer (evidence) · write set: live UC objects, the UC state key · blocked by: T-I7.7, T-I7.8 · delivers: the SP reads the raw bucket and writes catalog `dev` · AC-7
-
-- [ ] **T-O7.4** — First real landing (K2, K6): (a) push `dd-chain-capture` `develop` → `publish-images.yml` green, 3 images `:dev` in ECR; — 09-21: DONE, 3 images `:dev` in ECR (run 35546515532); (b) `make batch-smoke-real` from the operator machine assuming `dm-chain-explorer-capture-dev-writer` with MFA; (c) one `aws ecs run-task` of `bcb-sgs macro_series` per `docs/runbooks/capture-backfill.md`. Schedules remain `DISABLED`.
-  - **operator** · write set: ECR images, `raw/bcb/sgs/…` objects, one Fargate task run · blocked by: (a) T-O7.1, T-I7.4; (b) T-I7.5; (c) T-I7.6 · delivers: real partitions with valid manifests, one from Fargate · AC-16
-
-- [ ] **T-O7.5** — Constitution amendment, **explicit operator confirmation before writing**: §1 third seam (the image seam; capture runtime hosted in the infra repo); §6 UC stack path; §7 batch raw layout + `Market data` medallion row (`b_market` / `s_market` / `g_market`); §10 classification row (CVM/B3/BCB public regulatory and market data; FRE `posicao_acionaria` reserved). `dadaia specs doctor` 0 errors.
-  - product-engineer (author) · **operator** (confirmation) · write set: `specs/constitution.md` (authoritative tree) · blocked by: T-X7.1 · delivers: the constitution describes three seams and the new data source · AC-17
+- [ ] **T-O7.5** Constitution amendment, operator-confirmed before writing (AC-17): §1 image seam in, lambda seam out; §2 DynamoDB clause out; §6 UC path; §7 batch raw layout + `Market data` row in, Ethereum row + `@dlt` rule out; §10 classification row.
+  - product-engineer · **operator** · `specs/constitution.md` · blocked by: T-X7.9
+- [ ] **T-X7.7** Release gates: AC evidence table (AC-1..10, 15, 17..24) + M1..M15 → replacement table (PLAN §9.6); reviewer APPROVED per repo (six lenses); memory (SPEC §9) → CLOSURE → sweep (4 consumed entries, 5 `REJECTED · obsolete-by-R21`, the bug) → `feature/0.7.0 → develop` PRs per repo, CI watched green → promote-or-continue.
+  - code-reviewer · product-engineer · coordinator · blocked by: T-V7.1, T-O7.5, v0.6.0 merge (O-1) · AC-18
