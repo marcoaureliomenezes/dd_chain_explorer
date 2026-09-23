@@ -75,6 +75,24 @@
   change: The bundle is deployed to dev and has run at least one successful update over real landed bytes; no Ethereum resource deployed.
 ```
 
+### batch-medallion-and-ethereum-retirement
+- **Title:** Medallion becomes batch Databricks Jobs (no DLT) triggered by file arrival; the Ethereum lane is destroyed everywhere
+- **Opened:** 2026-09-23
+- **Status:** candidate (folds into v0.7.0 — SPEC amendment; the e2e gate is proven on the batch shape)
+- **Description:** Operator rulings 2026-09-23 (grill, session-bound dd-chain-explorer): **R18** the Free Edition workspace is DEV only (ADR-10 reaffirmed). **R19** processing is batch — no DLT for now: `dlt_market_data` (streaming tables + MVs, T-X7.1..X7.5) is replaced by one bundle with one serverless Databricks Job, three chained PySpark tasks bronze → silver → gold writing Delta by MERGE/overwrite; the pure parsers already tested are reused. **R20** the job fires on a Databricks file-arrival trigger over the raw landing (`_manifest.json`), not a cron and not a GitHub Actions call. **R21** the Ethereum lane dies everywhere, superseding R1 "parked": Databricks — 7 empty schemas (`b_ethereum`, `b_app_logs`, `s_apps`, `s_logs`, `g_network`, `g_apps`, `g_api_keys`) and 7 SP bundle state dirs; code — 7 bundles in `apps/dabs/` (`dlt_ethereum`, `dlt_app_logs`, `job_export_gold`, 4 dashboards); AWS — `dm-dev-ingestion` bucket + external location, DynamoDB, Lambdas (contracts-ingestion, gold_to_dynamodb), ECR stream/connect repos, PRD schedule `dm-dd-chain-explorer-prd-contracts-ingestion-hourly`; all removed through IaC/CI, never by hand (see `cicd-zero-manual-steps`). **R22** this rework lands inside v0.7.0, not a new release.
+- **Provenance:** operator demand 2026-09-23
+- **Intents:**
+```yaml
+- subject:
+    kind: code
+    ref: apps/dabs/
+  change: One batch market-data bundle (job + 3 tasks + file-arrival trigger) is the only bundle; every Ethereum bundle is gone.
+- subject:
+    kind: doc
+    ref: releases/v0.7.0/SPEC.md
+  change: The SPEC is amended to the batch shape and the Ethereum destruction scope; TASKS replace the DLT tasks.
+```
+
 ### cicd-zero-manual-steps
 - **Title:** The whole deploy chain runs from GitHub Actions — every manual step taken to reach the DEV e2e is recorded here and replaced by a workflow
 - **Opened:** 2026-09-23
