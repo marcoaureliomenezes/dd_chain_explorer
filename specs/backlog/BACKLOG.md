@@ -75,6 +75,40 @@
   change: The bundle is deployed to dev and has run at least one successful update over real landed bytes; no Ethereum resource deployed.
 ```
 
+### cicd-zero-manual-steps
+- **Title:** The whole deploy chain runs from GitHub Actions — every manual step taken to reach the DEV e2e is recorded here and replaced by a workflow
+- **Opened:** 2026-09-23
+- **Status:** candidate (closure gate of v0.7.0 together with `e2e-dev-validation-financial-lakehouse` — proposed; blocks `prod-environment-official-account`)
+- **Description:** Operator demand 2026-09-23 (direct): "every manual step must be recorded, and at the end absolutely everything is automated — deploy workflows in GitHub Actions; the CI/CD must end fully automated". A green e2e reached by hand-run commands is not done. Acceptance: from a clean `develop` merge, the chain infra → artifacts/images → UC → bundle deploy → capture run → pipeline update runs with no human command except approving a GitHub environment gate; the only irreducible manual act is ONE documented trust seed (AWS bootstrap role + Databricks SP identity + its secret), run once per account and scripted. **Manual-step ledger (append each new one as it happens):**
+  - M1 `prd/00_bootstrap` applied locally with admin creds (09-18, 09-21 delta 4 changes, 09-21 re-apply 8 changes after infra #6) — seed, keep but script it.
+  - M2 hml stack destroyed locally (ADR-6 exception) — one-off, retired env.
+  - M3 `publish_oidc_vars.sh --apply` run locally to set `AWS_DEPLOY_ROLE_*`, `AWS_ARTIFACTS_PUBLISH_ROLE`, `AWS_CAPTURE_PUBLISH_ROLE` repo variables — should be a bootstrap-lane output step.
+  - M4 GitHub environments created/deleted by hand (capture `dev`+`production`; hml envs in infra/explorer); capture `develop` branch created via API — should be declared (Terraform `github` provider or a repo-settings workflow).
+  - M5 GitHub secrets set by hand: explorer env `dev` `DATABRICKS_*`; infra repo `DATABRICKS_HOST/CLIENT_ID/CLIENT_SECRET/DEV_SP_APPLICATION_ID/UC_EXTERNAL_ID` (09-04 values stored EMPTY because `gh secret set` had no TTY).
+  - M6 Databricks SP client secret minted by hand.
+  - M7 Databricks grants by hand: SP `MANAGE` on catalog `dev`, `CREATE_EXTERNAL_LOCATION` on credential `dm-dev-s3-credential` (09-21); pending 09-23: SP `CREATE_EXTERNAL_LOCATION` on metastore `metastore_aws_us_east_2` (DEV run 35804683061 failed on it).
+  - M8 Hand-made Databricks objects outside IaC: catalog `dev`, credential `dm-dev-s3-credential`, external location `dm-dev-ingestion`.
+  - M9 Ethereum jobs/pipelines/dashboards deleted via CLI (09-13, R1).
+  - M10 Hand PRs `develop → main` in infra and explorer only so `workflow_dispatch` workflows exist on the default branch.
+  - M11 Hand dispatches: `deploy_cloud_infra` PRD; DEV always with `force_apply=true` (dispatch from develop diffs against origin/develop → every stack "unchanged"); `deploy-dabs` with a bundle filter.
+  - M12 Hand `gh run rerun --failed` of explorer `publish-artifacts` and capture `publish-images` after infra applied — cross-repo ordering carried by a human.
+  - M13 Hand `databricks pipelines start-update` of `[dev] dm-market-data`.
+  - M14 Pending: first capture run by hand (`aws ecs run-task` / `make batch-smoke-real`); schedules deployed `DISABLED`.
+  - M15 Drift Detection runs on infra `main` while deploys come from `develop` → permanent false drift until someone ships `develop → main` by hand.
+  Structural causes to fix (not symptoms): no cross-repo orchestration (`workflow_run`/`repository_dispatch`), dev lane change-detection wrong for dispatch, Databricks identity/grants outside Terraform, GitHub settings outside code, deploy branch ≠ drift branch.
+- **Provenance:** operator demand 2026-09-23 (session-bound dd-chain-explorer, mid DEV forced dispatch)
+- **Intents:**
+```yaml
+- subject:
+    kind: code
+    ref: .github/workflows/
+  change: One orchestrated lane per environment chains infra, artifacts, images, UC, bundle deploy, capture run and pipeline update with no hand command beyond an environment approval.
+- subject:
+    kind: doc
+    ref: releases/v0.7.0/CLOSURE.md
+  change: The CLOSURE lists every M-step of this entry with the workflow that replaced it, or the single scripted trust seed it folded into.
+```
+
 ### prod-environment-official-account
 - **Title:** PROD front — official Databricks account + PRD AWS lane, only after the DEV end-to-end is proven
 - **Opened:** 2026-09-20
