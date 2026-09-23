@@ -1,99 +1,84 @@
 ---
 slug: medallion-pipelines
-title: Medallion Pipelines
+title: Medallion Job — job_market_data
 category: product
-tldr: Two serverless Databricks DLT pipelines (dm-ethereum 24 tables, dm-app-logs 5) build the bronze/silver/gold medallion over S3 raw JSON.
-summary: dm-ethereum ingests three raw Ethereum prefixes via Auto Loader and produces 3 bronze streaming tables, 6 silver objects and 15 gold materialized views, guarded by 11 silver expectations. dm-app-logs ingests Fluent-Bit application logs into 1 bronze, 2 silver and 2 gold objects with 4 expectations. Both run serverless in a single Free Edition workspace, carry no DLT-level schedule (each bundle owns its own trigger job), and are deployed to dev and hml with live state equal to the repository. They are idle because raw ingestion is empty.
+tldr: One bundle, one serverless job [dev] dm-market-data — three chained PySpark batch tasks bronze → silver → gold over the raw landing, fired by file arrival; idempotent MERGE by sha256 and natural keys; no DLT.
+summary: The processing core. Bundle apps/dabs/job_market_data in the new dd-chain-explorer holds one Databricks job, dm-market-data, of three spark_python_task steps (bronze, silver, gold) on serverless compute (environment client 2, performance_target STANDARD). A file-arrival trigger on the env's raw external location (file events on) fires it when a partition's _manifest.json lands. Bronze stores undecoded bytes per dataset keyed by content_sha256 plus raw_manifests; silver decodes with the reused pure-Python dm_market_parsers and MERGEs on natural keys, rejecting (never coercing) bad rows; gold overwrites three analytic tables. Tables are external Delta on the lakehouse bucket; the bundle owns only the job. Status 2026-09-23 — coded (explorer PR #5), not deployed; no workspace exists yet.
 tags:
   - databricks
-  - dlt
+  - job
+  - batch
   - medallion
   - bronze
   - silver
   - gold
-last_updated: "2026-08-23"
-release_origin: v0.5.0
+  - file-arrival
+last_updated: "2026-09-23"
+release_origin: v0.7.0
 ---
 
 ## Propósito
 
-Two Databricks Delta Live Tables (DLT) pipelines implement the medallion architecture over the raw JSON that the external **dd-chain-capture** project lands in S3. They are the only writers of the objects listed in [[data-catalog]].
+**Status 2026-09-23 — DECIDED, coded in explorer PR #5 (`feature/0.7.0`), not deployed.**
+`bundle validate -t dev` fails in CI until the dev workspace exists (expected); the first
+deploy comes through the chain after infra PR-β ([[cicd-pipeline]]).
 
-`dm-ethereum` (24 tables: 3 bronze streaming tables, 6 silver — 5 streaming tables plus the bounded `eth_canonical_blocks_index` MV — and 15 gold materialized views) handles block headers, raw transactions and decoded calldata. It carries **11 data-quality expectations, all on the silver layer** (9 `expect_or_drop`, 2 advisory `expect`); bronze and gold declare none.
-
-`dm-app-logs` (5 tables: 1 bronze streaming table, 2 silver streaming tables, 2 gold MVs) parses application logs into API-key consumption analytics, with 4 expectations on the silver layer.
-
-Both pipelines run **serverless** (`serverless: true`, channel CURRENT) in the single Free Edition workspace: the `dev` bundle target deploys `[dev]`-prefixed pipelines writing catalog `dev`; the unprefixed target writes catalog `hml`.
+Turn every landed raw partition into queryable company prices and fundamentals, once,
+with a rerun that changes nothing. One bundle, one job, three tasks — the smallest shape
+that keeps layers separate and ordered (R19, R24).
 
 ## Fluxo de uso
 
-1. dd-chain-capture writes newline-delimited JSON to the S3 raw prefixes, partitioned `year=/month=/day=/`.
-2. Bronze Auto Loader streams (`cloudFiles.format=json`, `inferColumnTypes=true`, `partitionColumns=""`, per-stream `schemaLocation` checkpoints) pick up new files. `partitionColumns=""` makes the streams ignore the Hive-style partition directories and read the payload only.
-3. Silver streaming tables parse, type-cast, apply the expectations and join the three Ethereum streams into `transactions_ethereum`.
-4. Gold materialized views aggregate silver into analytics-ready summaries.
-5. A pipeline update is started by its trigger job or manually — there is no schedule on the pipelines themselves.
-
-### Pipeline `dm-ethereum`
-
-| Layer | Schema | Objects |
-|-------|--------|---------|
-| Bronze | `b_ethereum` | `eth_mined_blocks` (`raw/mainnet-blocks-data/`), `eth_transactions` (`raw/mainnet-transactions-data/`), `eth_txs_input_decoded` (`raw/mainnet-transactions-decoded/`) |
-| Silver | `s_apps` | `eth_blocks`, `eth_blocks_withdrawals`, `eth_transactions_staging`, `txs_inputs_decoded_fast`, `transactions_ethereum`, `eth_canonical_blocks_index` (MV, 1,000-block rolling window) |
-| Gold | `g_apps` | 9 MVs — contract ranking, gas, P2P and method analytics |
-| Gold | `g_network` | 6 MVs — network KPIs, chain health, burn, withdrawals, validators |
-
-Only `mainnet-transactions-decoded` declares schema hints; blocks and transactions rely on inference over web3 camelCase keys. Any rename of those keys upstream would silently produce nulls and be dropped by the silver `expect_or_drop` rules — the field-name contract with dd-chain-capture is the pipeline's most fragile assumption.
-
-### Pipeline `dm-app-logs`
-
-| Layer | Schema | Objects |
-|-------|--------|---------|
-| Bronze | `b_app_logs` | `b_app_logs_data` — Fluent-Bit NDJSON from `raw/app_logs/`, explicit schema |
-| Silver | `s_logs` | `logs_streaming`, `logs_batch` |
-| Gold | `g_api_keys` | `etherscan_consumption`, `web3_keys_consumption` |
-
-### Scheduling and companion jobs
-
-Scheduling is **job-based, never pipeline-based**. No pipeline bundle declares a
-`schedule:` block — the Databricks CLI in use silently drops that field, so declaring one
-would document a schedule that does not exist. Each DLT bundle instead owns its own
-trigger job in-bundle (`workflow_trigger_ethereum.yml`, `workflow_trigger_app_logs.yml`),
-referencing its own pipeline by native id. Both trigger jobs are deployed **paused**,
-matching the parked posture.
-
-Per ADR-004's corollary, no bundle reaches into another bundle's resources: cross-bundle
-orchestration jobs do not exist. A full refresh is run by CLI against a pipeline id
-(`databricks pipelines start-update --full-refresh <id>`), documented in
-`apps/dabs/README.md`.
-
-**Deployed state equals the repository.** Every surviving bundle validates clean and is
-deployed to both `dev` and `hml`: the app-logs pipeline runs the Fluent-Bit NDJSON reader
-and the hml ethereum pipeline runs current code (bounded canonical window included). The
-workspace holds exactly the seven bundles' resources — the orphan jobs and stale bundle
-roots of earlier deploys were removed, and the jobs that conflicted with Unity Catalog DLT
-ownership (`job_ddl_setup`, `job_delta_maintenance`) and the reconcile job with a deleted
-notebook no longer exist.
+1. `_manifest.json` lands under `s3://dm-chain-explorer-dev-raw/raw/`; the file-arrival
+   trigger (`min_time_between_triggers_seconds: 300`, `wait_after_last_change_seconds:
+   120`, UNPAUSED in dev) fires one run; `max_concurrent_runs: 1`, queue on.
+2. **bronze** — for each partition whose manifest sha256 is not yet in
+   `b_market.raw_manifests`: read files as `binaryFile`, write one row per file
+   (`source, dataset, ingest_date, file_name, content, content_sha256, manifest_sha256,
+   _ingested_at`) into the dataset's table, insert-only on `content_sha256`; record the
+   manifest last.
+3. **silver** — decode pending bronze rows with `dm_market_parsers`; MERGE on each natural
+   key; a parse failure, a sha256 not in the partition manifest, or `versao IS NULL` is
+   rejected and counted. `cvm_statements` keeps max `VERSAO` per (cnpj, dt_refer,
+   statement, grupo_dfp) and `ORDEM_EXERC = ÚLTIMO`, value × `ESCALA_MOEDA`.
+4. **gold** — overwrite three tables; a missing input gives NULL, never a fabricated value.
+5. Each task emits a `MARKET_DATA_SUMMARY` (rows per layer, rejections); `e2e-verify` reads
+   it and fails on 0 gold rows or any sha rejection.
 
 ## Trigger típico
 
-Started by a trigger job or a manual pipeline update whenever new raw data has landed. In practice nothing triggers while the platform is parked: raw ingestion is empty and both trigger jobs are paused. Un-pausing them is the restart action once dd-chain-capture delivers (ADR-007).
+Consulted for any change to parsing, keys, table shapes, the trigger, or the bundle
+targets. Table-level truth lives in [[data-catalog]].
 
 ## Diferencial
 
-Without the DLT medallion, every analytics question would full-scan raw JSON in S3. The pipelines materialize gold aggregations incrementally, so dashboards and ad-hoc queries answer in seconds. The bounded `eth_canonical_blocks_index` window is the key performance invariant — it keeps orphan/canonical classification linear instead of degrading quadratically as the chain grows.
+Batch tasks over immutable raw replace streaming tables: nothing runs between landings,
+every run is idempotent (manifest bookkeeping + MERGE), and the parsers are tested
+off-cluster without Spark. Tables are external and schemas are stack-owned, so destroying
+the workspace (rebuild drill, AC-29) loses no table.
 
 ## Estado runtime tocado
 
-- Databricks DLT pipelines `dm-ethereum` and `dm-app-logs`, one instance per bundle target in the single Free Edition workspace
-- Databricks catalogs `dev` (materialized) and `hml` (deployed pipelines, no schemas ever created)
-- S3 raw prefixes read by Auto Loader and the per-stream schema/checkpoint locations (see [[aws-resources]])
-- Databricks-managed Delta storage for every streaming table and MV
-- Companion Databricks jobs: the two in-bundle trigger jobs and the gold export job
+- `apps/dabs/job_market_data/`: `databricks.yml`, `resources/job_market_data.yml`,
+  `src/market_data/{bronze,silver,gold,_spark,contract}.py`, `src/dm_market_parsers/**`
+- Targets: `dev` (`run_as` the dev deploy SP, `[dev] ` prefix, catalog `dev`,
+  `root_path ~/.bundle/job-market-data/dev`); `prod` (`mode: production`, catalog `prd`,
+  validated in CI, never deployed — R28/O-7). Host from the GitHub environment, never in
+  the tree.
+- `workspace.artifact_path = /Volumes/<catalog>/ops/bundle_artifacts`
+- Tables under `<lakehouse>/<schema>/<table>` on `dm-chain-explorer-<env>-lakehouse`
 
 ## Dependências
 
-- **Upstream**: [[capture-layer]] — the external dd-chain-capture project is the sole producer of the raw prefixes; nothing in this repo writes them
-- **Upstream**: [[aws-resources]] — bucket names, prefixes and the storage credential/external location that grant Databricks read access
-- **Defines**: [[data-catalog]] — every object in the catalog is owned by one of these two pipelines
-- **Downstream**: [[serving-layer]] — dashboards and the gold export consume the gold schemas
-- **Deployment**: [[cicd-pipeline]] — Databricks Asset Bundles are deployed through the applications workflow
+- **[[capture-layer]]** — the raw partitions and manifests
+- **[[data-catalog]]** — the catalog, schemas and volume the UC stack provides
+- **[[cicd-pipeline]]** — deploy on `infra-dev-applied`/`develop` push, `e2e-verify`
+
+## Referência
+
+### Retirado do inventário
+
+The DLT pipelines `dm-ethereum` and `dm-app-logs`, `dlt_market_data`, `job_export_gold`,
+the four Lakeview dashboard bundles, Auto Loader, and the Free Edition workspace they ran in
+are gone (R19, R21, R27). No `dlt` import and no `pipelines:` resource may return without a
+ruling.

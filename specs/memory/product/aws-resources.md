@@ -2,206 +2,103 @@
 slug: aws-resources
 title: AWS Resources
 category: product
-tldr: AWS inventory after the v0.5.0 cutover — S3, DynamoDB, Lambda, SSM, IAM incl. OIDC roles, CloudWatch and Terraform state.
-summary: Single reference for every AWS resource this project touches — S3 buckets and path conventions, the DynamoDB single table and lock table, the two Lambdas and their triggers, SSM parameters, CloudWatch log groups, the IAM role set including the four GitHub OIDC deploy roles and the CI permissions boundary, and the Terraform state key layout. The capture-era residue (VPC, security groups, ECS/ECR shells, orphan roles, stale locks and orphan state keys) no longer exists; the only non-project entry left in the account boundary is dd-chain-capture's own capture/ecr state and KMS alias, pending transfer.
+tldr: Target inventory in us-east-1 (buckets dm-chain-explorer-{dev,prd}-{raw,lakehouse}, state dm-chain-explorer-tfstate-use1, ECR ×3, Fargate capture runtime, IAM) plus the live sa-east-1 teardown status — dev lane and capture/ecr destroyed, prd stacks pending PR #11.
+summary: Single reference for every AWS object the platform owns. Part one is the us-east-1 target of release v0.7.0 (R29-R34) — Terraform stacks and state keys on dm-chain-explorer-tfstate-use1 with S3-native locking, four data buckets with SSE-S3, ECR, the dev capture runtime, IAM (OIDC roles, capture publish, task roles, UC roles, MFA-gated writer, permissions boundary). Part two is the sa-east-1 teardown as of 2026-09-23 — what run 35817189275 destroyed, and what still exists (prd/04_peripherals, prd/06_lambda, the old state bucket and lock table, the bootstrap roles and their state).
 tags:
   - aws
   - infrastructure
   - s3
-  - dynamodb
-  - lambda
+  - ecr
+  - ecs
   - iam
-  - ssm
   - terraform
-last_updated: "2026-08-23"
-release_origin: v0.5.0
+  - us-east-1
+last_updated: "2026-09-23"
+release_origin: v0.7.0
 ---
 
 ## Propósito
 
-Canonical inventory of every AWS resource this project provisions or depends on, in
-region **sa-east-1**. It is the lookup an engineer or agent consults before writing
-infrastructure code, an IAM policy, or a runbook step.
+**Status 2026-09-23.** us-east-1: DECIDED, coded on infra `feature/0.7.0-us-east-1`
+(PR-β), **nothing applied**. sa-east-1: teardown in progress — see §Referência.
 
-Every resource below is Terraform-managed and live unless its status column says
-otherwise. Terraform is the sole authority: resources are created, changed and destroyed
-by an apply through the CI pipeline — the one exception is `prd/00_bootstrap`, which the
-operator applies locally because it holds the credentials CI itself uses.
+The one list of AWS objects, their owning stack and their live state. Anything not listed
+here, or owned by no stack, is a defect.
 
 ## Fluxo de uso
 
-1. Identify the target environment (`dev`, `hml`, `prd`) and the resource type.
-2. Look up the resource in the tables under **Referência** and read its status column.
-3. Cross-reference the S3 path convention or the DynamoDB key schema as needed.
-4. Check the Terraform state key before planning or applying anything.
-5. Change it in Terraform and let CI apply — never by console or ad-hoc CLI.
+1. Seed S1 (operator, MFA): `prd/01_tf_state` creates the state bucket (local state),
+   `prd/00_bootstrap` migrates to it and applies, OIDC variables are published, account
+   Block Public Access is set, then the sa-east-1 state bucket and lock table are deleted.
+2. Every other stack applies through the lanes ([[cicd-pipeline]]).
 
 ## Trigger típico
 
-Consulted whenever an exact resource name, ARN scope or state key is needed for a
-deploy, a Terraform plan, an IAM change, or a live-infrastructure investigation.
+Consulted before adding, renaming, granting or destroying any AWS object.
 
 ## Diferencial
 
-Environment prefixes differ across eras (`dm-`, `dm-dd-chain-explorer-prd-`, `-dev`,
-`-hml`), and an agent that guesses a name writes to the wrong environment. This atom is
-the single place where the live name, its owning stack and its state key are stated
-together, so infrastructure code can be written without probing the account.
+One region, one state bucket, no DynamoDB, no KMS: fewer objects, no lock table to go stale,
+SSE-S3 everywhere (R30, R33).
 
 ## Estado runtime tocado
 
-Reference-only: this atom describes resources rather than reading or writing them. The
-resources it lists collectively hold all persistent state of the platform — S3 objects,
-DynamoDB items, Terraform state, and SSM parameters.
+### Stacks and state keys (us-east-1, `s3://dm-chain-explorer-tfstate-use1/`, `use_lockfile`)
 
-## Dependências
+| Stack | Key | Owns | Applied by |
+|---|---|---|---|
+| `prd/01_tf_state` | local | state bucket | operator (S1) |
+| `prd/00_bootstrap` | `prd/bootstrap/` | OIDC roles, boundary, operator debug role | operator (S1) |
+| `prd/04_peripherals` | `prd/peripherals/` | ECR ×3, `dm-chain-explorer-prd-{raw,lakehouse}` | prd lane (gated) |
+| `dev/01_peripherals` | `dev/peripherals/` | `dm-chain-explorer-dev-{raw,lakehouse}`, MFA-gated writer role | dev lane |
+| `dev/03_capture` | `dev/capture/` | ECS cluster, SG, task roles/defs, log group, 7 schedules DISABLED | dev lane |
+| `{env}/04_unity_catalog` | `{env}/unity-catalog/` | UC IAM role `dm-chain-explorer-<env>-uc` (+ UC objects, [[data-catalog]]) | lanes |
 
-- Feeds [[medallion-pipelines]] — Databricks Auto Loader reads the S3 raw bucket
-- Feeds [[serving-layer]] — gold exports land in S3 and the export Lambda writes DynamoDB
-- Provisioned by [[cicd-pipeline]] — the Terraform stacks are applied from CI
-- Receives deliveries described in [[capture-layer]]
+`account/databricks`, `{env}/05_workspace`, `{env}/06_github` hold no AWS object.
 
-## Referência
+### S3 (SSE-S3 `AES256`, Block Public Access)
 
-### Terraform stacks
-
-| Stack | State key | Holds |
-|---|---|---|
-| `prd/00_bootstrap` | `prd/bootstrap` | the four GitHub OIDC roles + the CI permissions boundary — **operator-applied, never by CI, never destroyed** |
-| `prd/01_tf_state` | local state | the state bucket and lock table — never destroyed |
-| `prd/03_iam` | `prd/iam` | **empty** — its capture-era roles were destroyed; kept only for its bootstrap remote-state plumbing |
-| `prd/04_peripherals` | `prd/peripherals` | S3 (raw, lakehouse, databricks, artifacts), DynamoDB, log group |
-| `prd/06_lambda` | `prd/lambda` | both prd Lambdas, the layer, the ingestion schedule, Lambda log groups |
-| `dev/01_peripherals` | `dev/peripherals` | S3 ingestion, DynamoDB, log group, `dm-databricks-dev-s3-role` |
-| `dev/02_lambda` | `dev/lambda` | the dev export Lambda and its log group |
-| `hml/04_peripherals` | `hml/peripherals` | the two hml buckets and `dm-databricks-hml-s3-role` |
-
-### S3 buckets
-
-| Bucket | Env | Status | Purpose |
-|--------|-----|--------|---------|
-| `dm-chain-explorer-raw-data` | prd | live, **empty — no object since 2026-05-23** | Raw landing zone: the integration boundary with dd-chain-capture |
-| `dm-chain-explorer-lakehouse` | prd | live | Delta tables managed by Databricks (`checkpoints/`, `staging/`, `unity-catalog/`) |
-| `dm-chain-explorer-databricks` | prd | live | Databricks workspace storage; holds the `exports/` prefix that triggers the export Lambda |
-| `dm-chain-explorer-artifacts` | prd | **declared, not yet applied** | Content-addressed Lambda-layer store (`lambda-layers/dm-chain-utils/<sha256>.zip`; dev under a `dev/` prefix) |
-| `dm-chain-explorer-dev-ingestion` | dev | live, empty | DEV landing zone |
-| `dm-chain-explorer-hml-raw-data`, `dm-chain-explorer-hml-lakehouse` | hml | live, empty | The minimal hml lane; attached to Unity Catalog external locations |
-| `dm-chain-explorer-terraform-state` | all | live, versioning enabled, bootstrapped by `prd/01_tf_state` | Remote Terraform state for every stack |
-
-Path conventions:
-
-```
-# Raw delivery from dd-chain-capture (Kafka-Connect JSON)
-s3://dm-chain-explorer-raw-data/raw/mainnet-{blocks-data,transactions-data,transactions-decoded}/year=YYYY/month=MM/day=DD/...
-
-# Application logs from dd-chain-capture (Fluent-Bit NDJSON)
-s3://dm-chain-explorer-raw-data/raw/app_logs/...
-
-# Lambda batch delivery (contracts ingestion — dormant, schedule disabled)
-s3://dm-chain-explorer-raw-data/raw/batch/{dataset}/year=YYYY/month=MM/day=DD/
-
-# Gold exports (job_export_gold) — the export Lambda's trigger prefix
-s3://dm-chain-explorer-databricks/exports/{table_name}/
-
-# Databricks Auto Loader checkpoints
-s3://dm-chain-explorer-lakehouse/checkpoints/{pipeline_id}/{table_name}/
-
-# Lambda layer artifact (content-addressed)
-s3://dm-chain-explorer-artifacts/lambda-layers/dm-chain-utils/<sha256>.zip
-```
-
-### DynamoDB
-
-| Table | Env | Key schema | Status |
-|-------|-----|-----------|--------|
-| `dm-chain-explorer` | prd | PK `pk` (S), SK `sk` (S), TTL `ttl`, on-demand, PITR enabled | live, **0 items** |
-| `dm-chain-explorer-dev` | dev | same | live, 0 items |
-| `dm-chain-explorer-terraform-lock` | all | `LockID` (S), on-demand | live, **0 held locks** |
-
-Entity types in use: `CONTRACT` (contracts-ingestion input, currently unseeded) and
-`CONSUMPTION` (gold export output). The capture-era entity types are no longer written.
-
-### Lambda functions
-
-| Function | Env | Trigger | Status |
-|----------|-----|---------|--------|
-| `dm-dd-chain-explorer-prd-contracts-ingestion` | prd | EventBridge Scheduler, **DISABLED** | live and idle by declaration — the schedule is disabled in Terraform, so it burns no Etherscan quota |
-| `dm-dd-chain-explorer-prd-gold-to-dynamodb` | prd | S3 PutObject on `dm-chain-explorer-databricks` `exports/gold_api_keys/*.json` | live, never invoked |
-| `dm-chain-explorer-gold-to-dynamodb-dev` | dev | S3 PutObject on `dm-chain-explorer-dev-ingestion` `exports/` | live, idle |
-
-Handler packages are built by `data "archive_file"` at plan time from
-`apps/lambda/<fn>/src`. The `dm-chain-utils` layer is built in CI from the pinned lock
-plus a path install of `utils/`, and consumed through `layer_s3_key`/`layer_sha256`
-variables; the live functions still carry the last layer version published before that
-rewire, which lands with the artifact-bucket apply.
-
-### SSM Parameter Store
-
-27 SecureString parameters on the AWS-managed SSM key, shared with dd-chain-capture:
-
-| Path | Count | Consumed here |
-|------|-------|---------------|
-| `/etherscan-api-keys/api-key-{1..6}` | 6 | yes — contracts-ingestion Lambda |
-| `/web3-api-keys/infura/api-key-{1..17}` | 17 | no — dd-chain-capture only |
-| `/web3-api-keys/alchemy/api-key-{1..4}` | 4 | no — dd-chain-capture only |
-
-The customer-managed KMS key `alias/dd-chain-capture-ssm` protects no parameter and
-belongs to dd-chain-capture — cross-project residue pending ownership transfer.
+| Bucket | Purpose |
+|---|---|
+| `dm-chain-explorer-{dev,prd}-raw` | raw landing; Intelligent-Tiering day 0; **no expiration** |
+| `dm-chain-explorer-{dev,prd}-lakehouse` | external Delta tables, catalog `storage_root` |
+| `dm-chain-explorer-tfstate-use1` | Terraform state, versioned |
 
 ### IAM
 
-| Role / policy | Stack | Notes |
-|------|-------|-------|
-| `dm-chain-explorer-gha-deploy-{dev,hml,prd}` | `prd/00_bootstrap` | one per environment; trust pinned to `repo:<owner>/<repo>:environment:<env>`; prefix-scoped allows only |
-| `dm-chain-explorer-gha-readonly-plan` | `prd/00_bootstrap` | trust pinned to `pull_request` + `refs/heads/{develop,main}`; no lock-table write (the plan path runs `-lock=false`) |
-| `dm-chain-explorer-ci-boundary` | `prd/00_bootstrap` | permissions boundary carried by **every** project role, capping effective permissions regardless of inline grants |
-| `dm-gha-self-mutation-deny` (inline, all four roles) | `prd/00_bootstrap` | explicit `Deny` on `iam:*` against `dm-chain-explorer-gha-*` and on `iam:CreateAccessKey`/`AttachUserPolicy`/`PutUserPolicy` |
-| `dm-dd-chain-explorer-prd-contracts-ingestion-lambda`, `-eb-contracts-ingestion`, `-gold-to-dynamodb-lambda` | `prd/06_lambda` | Lambda execution and scheduler roles |
-| `dm-chain-explorer-gold-to-dynamodb-lambda-dev` | `dev/02_lambda` | dev Lambda execution role |
-| `dm-databricks-dev-s3-role` | `dev/01_peripherals` | **load-bearing** — the Unity Catalog storage credential for `dev`; imported into state, never delete |
-| `dm-databricks-hml-s3-role` | `hml/04_peripherals` | the Unity Catalog storage credential for `hml`; grants only the two hml buckets |
+| Role | Stack | Scope |
+|---|---|---|
+| `dm-chain-explorer-gha-deploy-{dev,prd}` | bootstrap | OIDC `environment:<env>`, prefix-scoped, boundary, self-mutation deny |
+| `dm-chain-explorer-gha-readonly-plan` | bootstrap | OIDC PR + `develop`/`main` refs |
+| `dm-chain-explorer-gha-capture-publish` | bootstrap | OIDC from capture `dev`/`production`; ECR push/pull on the three repos only |
+| capture task roles (one per image) | `dev/03_capture` | `s3:PutObject` on `raw/<source>/*` |
+| capture dev writer | `dev/01_peripherals` | MFA-gated assume; `PutObject raw/*`, no delete |
+| `dm-chain-explorer-<env>-uc` | `{env}/04_unity_catalog` | UCMasterRole + self + ExternalId trust; raw read, lakehouse RW, `csms-*` SNS/SQS for file events |
+| `dm-chain-explorer-ci-boundary` | bootstrap | permissions boundary on every project role |
 
-The account-level GitHub OIDC identity provider exists (operator-created, outside
-Terraform) and is referenced, not owned, by `00_bootstrap`. The legacy CI IAM user's
-access key is `Inactive`; no static AWS key is used by anything.
+## Dependências
 
-Capture-era IAM — the ECS task and task-execution roles, the Databricks cross-account and
-cluster roles, the firehose role, and the orphan legacy dev Lambda role — no longer
-exists.
+- **[[cicd-pipeline]]**, **[[capture-layer]]**, **[[data-catalog]]**, **[[environments]]**
 
-### CloudWatch log groups
+## Referência
 
-| Group | Retention | Status |
-|-------|-----------|--------|
-| `/apps/dm-chain-explorer-prd` | 30 d | managed, empty |
-| `/apps/dm-chain-explorer-dev` | 3 d | managed, empty |
-| `/aws/lambda/dm-*` (the three live functions) | 30 d declared | declared in `prd/06_lambda` / `dev/02_lambda` with `import` blocks; retention becomes live with the deferred layer apply |
+### sa-east-1 teardown — status 2026-09-23 (LIVE facts)
 
-The ~39 CI-ephemeral `hml` log groups and the container-insights groups were deleted.
+| Object | Status |
+|---|---|
+| `capture/ecr` state (ECR stream/connect, KMS key + alias, Roles Anywhere) | **destroyed** whole, 11 resources, retire job of run `35817189275`; the KMS key sits in its 7-day pending deletion |
+| sa-east-1 buckets (`dm-chain-explorer-{dev-ingestion,dev-raw-data,raw-data,lakehouse,databricks,artifacts}`) | emptied by retire (all were already empty) |
+| `dev/01_peripherals`, `dev/02_lambda`, `dev/03_capture` | **destroyed** by the dev lane of run `35817189275` (45 resources) |
+| `prd/04_peripherals` (prd buckets, emptied ECR ×3, DynamoDB), `prd/06_lambda` (Lambdas, layer, schedule) | **still live** — the prd lane was skipped by a skip-inheritance bug; fix infra PR #11 open |
+| state bucket `dm-chain-explorer-terraform-state` + lock table | live until seed S1 migrates `prd/bootstrap` and deletes them |
+| Free Edition UC objects | abandoned with that organization (R27) |
+| 27 SSM parameters `/etherscan-api-keys/*`, `/web3-api-keys/*` | owned by no stack; not verified in this pass — AC-26 probes decide |
 
-### Terraform state keys
-
-```
-s3://dm-chain-explorer-terraform-state/
-  capture/ecr/terraform.tfstate            # cross-project: dd-chain-capture (ECR, Roles Anywhere, KMS) — pending transfer
-  dev/lambda/terraform.tfstate
-  dev/peripherals/terraform.tfstate
-  hml/peripherals/terraform.tfstate
-  prd/bootstrap/terraform.tfstate          # operator-applied OIDC roles + CI boundary
-  prd/iam/terraform.tfstate                # empty
-  prd/lambda/terraform.tfstate
-  prd/peripherals/terraform.tfstate
-```
-
-Seven project keys plus the cross-project `capture/ecr` key. Every orphan and
-zero-resource key of the capture era was removed; `prd/01_tf_state` keeps local state and
-is never destroyed.
+Proof of completion is AC-23/AC-26 (tagging API empty in sa-east-1, every destroy citing a
+run id).
 
 ### Retirado do inventário
 
-Capture-era and orphan resources that used to appear here **no longer exist in the
-account**: the unmanaged `ChainExplorer-vpc` with its subnets, route table and internet
-gateway; the 24 leaked `dm-hml-sg-*` security groups; the empty ECS cluster and every
-`dm-*` task-definition revision; the HML IAM stack; the legacy dev `gold-to-dynamodb`
-Lambda with its role and log group; the firehose role; and the two stale Terraform locks.
-Do not reintroduce a reference to any of them.
+DynamoDB tables (`dm-chain-explorer[-dev]`, lock table), both Lambdas and their layer,
+the EventBridge contracts schedule, the artifacts bucket, `gha-artifacts-publish`, every
+KMS key, `hml` and every capture-era VPC/ECS residue. Do not reintroduce them.

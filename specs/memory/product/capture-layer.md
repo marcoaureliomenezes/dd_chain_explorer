@@ -1,100 +1,92 @@
 ---
 slug: capture-layer
-title: Capture Integration
+title: Capture Layer
 category: product
-tldr: Capture lives in the external dd-chain-capture project on a VPS; this repository only consumes the raw JSON it delivers to the S3 raw bucket.
-summary: Describes how Ethereum data enters the platform after capture retirement. Ingestion of blocks, transactions and calldata is owned by the external dd-chain-capture project running on a VPS, which writes Kafka-Connect JSON into the S3 raw bucket under mainnet prefixes with year/month/day partitions, plus Fluent-Bit NDJSON application logs. The bucket is the only contract — no queue, stream, shared library or network path. Field-name compatibility with the DLT Auto Loader schemas is not yet validated, and the bucket has held no data since 2026-05-23.
+tldr: Three batch images from dd-chain-capture (b3-market-data, cvm-open-data, bcb-sgs), seven jobs run as Fargate Spot tasks by infra, landing untouched source bytes plus a raw-manifest-v1 _manifest.json in the raw bucket.
+summary: How market data enters the platform. dd-chain-capture owns the code of three batch images and seven jobs and publishes them to ECR (the image seam); dd-chain-infrastructure owns the runtime — the dev/03_capture ECS cluster on Fargate Spot, per-image task roles scoped to raw/<source>/*, seven EventBridge Scheduler schedules kept DISABLED — and the capture_run workflow that starts one run per image after each explorer deploy. Every job writes raw/<source>/<dataset>/ingest_date=YYYY-MM-DD/ untouched bytes and then _manifest.json (raw-manifest-v1), the raw seam the medallion job fires on. Status 2026-09-23 — decided and coded, not yet live in us-east-1.
 tags:
   - capture
-  - integration
-  - s3
-  - ethereum
+  - ecr
+  - fargate
+  - raw
+  - manifest
   - boundary
-last_updated: "2026-08-23"
-release_origin: v0.5.0
+last_updated: "2026-09-23"
+release_origin: v0.7.0
 ---
 
 ## Propósito
 
-Data capture is **not** a feature of this repository. Ethereum block, transaction and
-calldata ingestion is owned by a separate project, **dd-chain-capture**, which runs on a
-VPS outside this account's compute. This atom documents the seam between the two
-projects, because everything downstream depends on it.
+**Status 2026-09-23 — DECIDED, not live.** The images were published once to the
+sa-east-1 ECR (run `35546515532`, 2026-09-21); those repos were emptied by the retire step
+and the sa-east-1 runtime was destroyed (run `35817189275`). The us-east-1 registry and
+runtime arrive with infra PR-β; capture PR #4 moves `publish-images.yml` to us-east-1.
 
-The seam is a single S3 bucket. dd-chain-capture writes raw JSON objects into
-`dm-chain-explorer-raw-data`; this platform's Databricks Auto Loader reads them. There is
-no queue, no stream, no shared database, no shared library and no network path between
-the two projects. Either side can be redeployed, rewritten or stopped without touching
-the other, as long as the object contract holds.
+Capture turns public Brazilian market sources into immutable raw partitions. Code and
+runtime are split on purpose: `dd-chain-capture` owns what runs (images, jobs, the landing
+library), `dd-chain-infrastructure` owns where and when it runs (registry, task
+definitions, roles, schedules).
 
-Nothing in this repository captures, polls or decodes chain data. The five ECS Fargate
-producer jobs, the Kinesis stream, the Firehose delivery streams and the SQS queues that
-used to fill this role were destroyed in AWS, and their Terraform stacks, modules,
-container images and Python code were deleted — git history is their only archive.
-Reintroducing them here is forbidden by ADR-007, not merely out of scope.
+| Image | Jobs (schedule, UTC, all DISABLED) | Datasets landed |
+|---|---|---|
+| `b3-market-data` | `b3_cotahist_daily`, `b3_ibov_portfolio_daily`, `b3_consolidated_files_daily` (daily 00:30) | `b3/cotahist`, `b3/ibov_portfolio`, `b3/instruments_consolidated`, `b3/trade_information_consolidated` |
+| `cvm-open-data` | `cvm_cadastro_fca`, `cvm_statements_dfp_itr`, `cvm_fre_ipe` (Sunday 03:00) | `cvm/cad_cia_aberta`, `cvm/fca`, `cvm/dfp`, `cvm/itr`, `cvm/fre`, `cvm/ipe` |
+| `bcb-sgs` | `bcb_macro_series` (daily 01:00) | `bcb/sgs` |
+
+History floor 2010 (R15), reached by runbook backfill (`capture-backfill.md`).
 
 ## Fluxo de uso
 
-1. dd-chain-capture ingests Ethereum mainnet data on its VPS and serialises it as
-   Kafka-Connect-style JSON.
-2. It writes objects to `s3://dm-chain-explorer-raw-data/raw/mainnet-blocks-data/`,
-   `raw/mainnet-transactions-data/` and `raw/mainnet-transactions-decoded/`, partitioned
-   `year=YYYY/month=MM/day=DD/…`.
-3. Its application logs are shipped by Fluent-Bit as NDJSON to `raw/app_logs/`.
-4. The Databricks Auto Loader in [[medallion-pipelines]] discovers new objects
-   incrementally under those prefixes (JSON format, `partitionColumns=""`) and lands them
-   in the bronze layer.
-5. Downstream silver and gold transformations, dashboards and exports proceed as
-   [[serving-layer]] describes.
+1. A push to capture `develop` (or `main`) runs `publish-images.yml`: environment `dev`
+   pushes `dev-<sha>` + mutable `:dev`; `production` pushes `<sha>` + `latest`; role
+   `dm-chain-explorer-gha-capture-publish` (ECR push/pull on the three repos only).
+2. After each explorer dev deploy (`explorer-dev-deployed`), infra `capture_run.yml` starts
+   one Fargate Spot task for `b3_cotahist_daily`, `cvm_cadastro_fca`, `bcb_macro_series`,
+   waits for them, requires exit 0 and a `_manifest.json`, then signals `capture-landed`.
+3. Each job writes its partition: data objects first, `_manifest.json` last. A present
+   manifest means SKIP (`--force` overrides); a missing file at the source is `NO_FILE`,
+   exit 0, no partition; CVM yearly ZIPs are compared by ETag/Last-Modified (UNCHANGED).
+4. The manifest's arrival fires the medallion job ([[medallion-pipelines]]).
 
 ## Trigger típico
 
-Consulted whenever a change touches the raw prefixes, the Auto Loader path configuration,
-the bucket's policy or lifecycle rules, or whenever someone asks where blockchain data
-comes from.
+Consulted when a change touches an image, a job cadence (`var.capture_jobs` is the one
+place), the raw layout, the task roles, or the question "where does the data come from".
 
 ## Diferencial
 
-Separating capture from processing removes the platform's largest operational and cost
-liability: the always-on streaming fleet. It also decouples release cycles — the capture
-project can change its runtime, its provider or its language without a single change
-here, and this platform can be idle at near-zero cost while still being ready to process
-whatever arrives. The price of that decoupling is that the contract is implicit in the
-object layout, so it must be documented and verified rather than enforced by a schema
-registry.
+Raw is the untouched source response — ZIP, Latin-1 CSV or JSON exactly as fetched — so any
+parser bug is fixed by re-reading raw, never by re-downloading (sources rotate; raw never
+expires). The manifest gives every file a sha256 that bronze and silver re-check, and
+landing last makes an interrupted run self-healing.
 
 ## Estado runtime tocado
 
-- S3 `dm-chain-explorer-raw-data` — `raw/mainnet-blocks-data/`,
-  `raw/mainnet-transactions-data/`, `raw/mainnet-transactions-decoded/`, `raw/app_logs/`
-  (written by dd-chain-capture; read by Databricks)
-- Databricks Auto Loader checkpoints under `s3://dm-chain-explorer-lakehouse/checkpoints/`
-- SSM `/web3-api-keys/infura/*` and `/web3-api-keys/alchemy/*` — the shared secret plane
-  dd-chain-capture reads; this repository does not consume these parameters
-- Terraform state key `capture/ecr` in this repository's state bucket holds
-  dd-chain-capture's ECR repositories, IAM Roles Anywhere trust anchor and KMS key —
-  cross-project state with no source code here
+- ECR `dm-chain-explorer-capture/{b3-market-data,cvm-open-data,bcb-sgs}` (`prd/04_peripherals`)
+- `dev/03_capture`: cluster, SG (no ingress; HTTPS/HTTP egress), task definitions on
+  `<repo>:dev`, task roles (`s3:PutObject` on `raw/<source>/*` of the dev raw bucket),
+  log group (14 d), seven schedules DISABLED
+- `s3://dm-chain-explorer-dev-raw/raw/<source>/<dataset>/ingest_date=YYYY-MM-DD/`
+- MFA-gated operator role for backfill writes to `raw/*` (no delete)
 
 ## Dependências
 
-- **dd-chain-capture** (external project, VPS) — the sole producer of raw chain data
-- **[[aws-resources]]** — the raw bucket, its lifecycle rules and the IAM the producer
-  assumes
-- **Triggers → [[medallion-pipelines]]** — the downstream consumer via Auto Loader
+- **dd-chain-capture** — image code; its own memory holds `raw-landing-contract` and
+  `batch-capture-lane`
+- **[[aws-resources]]** — registry, buckets, roles
+- **[[cicd-pipeline]]** — `capture_run.yml` and the chain signals
+- **Triggers → [[medallion-pipelines]]** — via file arrival
 
-**Parked until delivery.** The consuming half is deployed, validated and deliberately
-idle: DLT pipelines deployed and IDLE, trigger jobs paused, the contracts-ingestion
-schedule disabled, the raw bucket empty since 2026-05-23. This is the intended steady
-state while dd-chain-capture builds up to its first delivery, not a degraded one — the
-restart is un-pausing the trigger jobs. The posture, what it forbids, and the criteria
-that end it are ADR-007 in [[architecture]].
+## Referência
 
-**Open verification.** Field-name compatibility between the JSON dd-chain-capture
-delivers and the schemas the DLT bronze tables expect has **not** been validated. The
-path and format contract is compatible; the field-level contract is unproven. No delivery
-has been processed end to end, so this is the first-ingestion risk, and validating it is
-a sunset criterion of ADR-007.
+### `_manifest.json` — `raw-manifest-v1`
 
-**No residue.** Every capture-era resource of this account is gone — the IAM grants, the
-ECS shells, the unmanaged VPC and its leaked security groups were destroyed and their
-Terraform deleted. Nothing here points back across the boundary.
+`schema`, `source`, `dataset`, `ingest_date`, `job`, `image`, `image_tag`, `landed_at`,
+`files[]` (`name`, `sha256`, `size_bytes`, `source_url`, `fetched_at`, `http_status`,
+`etag`, `last_modified`, `content_type`).
+
+### Retirado do inventário
+
+The Ethereum capture lane (Kafka-Connect JSON under `raw/mainnet-*`, Fluent-Bit app logs,
+the VPS producer, ECR `dd-chain-capture-stream`/`-connect`, the `capture/ecr` state with its
+KMS key and Roles Anywhere anchor) is destroyed (R21, R34). Do not reintroduce it.
