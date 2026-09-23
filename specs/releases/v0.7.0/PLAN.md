@@ -6,6 +6,7 @@
 > **Depends on:** SPEC.md v0.7.0 (`Aprovado`)
 > **Branch:** `feature/0.7.0` in `dd-chain-infrastructure` and the new `dd-chain-explorer`, each stacked on `feature/0.6.0` (`DADAIA.md` §4, `dd-gitflow-default`); merges into `develop` only after v0.6.0's candidate merge (SPEC O-1)
 > **Amended:** 2026-09-23 — operator rulings R18-R26 (SPEC §11): §9 replaces the DLT design of §4 with the batch job `job_market_data`, sequences the Ethereum and lambda-seam teardown, designs the trust seed and the event-chained lanes, and maps M1..M15; §1.4, §1.6, §2 K6, §3.5 `FORCE`, §4, §5, §7 rows `T-X7.6`/`T-O7.x` superseded where §9 says so.
+> **Amended (2):** 2026-09-23 — rulings R27-R36 (SPEC 53d9a7f) + main-thread rulings Q1-Q5: §9 rewritten — us-east-1 single-region, serverless DEV/PRD workspaces as rebuildable per-env units, persistent account/UC/GitHub stacks, S3-native locking, SSE-S3, seed S1-S3, sa-east-1 teardown before bring-up (O-12), rebuild drill. Decisions: Q1 drill destroys the dev workspace itself (§9.3 survival analysis); Q2 prod bundle validated, not deployed; Q3 non-colliding names `dm-chain-explorer-{dev,prd}-{raw,lakehouse}`, state `dm-chain-explorer-tfstate-use1`; Q4 system.billing default-on, no stack resource (§9.7); Q5 constitution §2 clause operator-confirmed at T-O7.5.
 > **Lifecycle:** pre-staged — v0.6.0 is the live release until its C-DAY; this PLAN becomes executable when v0.7.0 turns ACTIVE
 
 This release adds capability, so its acceptance shapes are **existence + equality proofs**: a resource exists and its declared state plans clean (AC-4..AC-6, AC-9), a grant is effective (AC-7), a partition lands from Fargate (AC-16), a table carries rows whose `content_sha256` matches the manifest (AC-14). Every growth is justified against the deletion test (`dd-codebase-design`): the module grown, the leverage gained, the slop that dies in the same change.
@@ -137,100 +138,139 @@ Ordered by K2/K3/K5/K6: `T-O7.1` bootstrap apply + `publish_oidc_vars.sh --targe
 
 Root `VERSION` and every `apps/dabs/*/VERSION` read `0.7.0` on `feature/0.7.0` in both repositories (constitution §3.4); `feature/0.6.0` keeps `0.6.0` until v0.6.0 ships. v0.6.0 `T-X.8(a)` (hand grants on catalog `dev`) is superseded by `T-I7.7`: if it was already executed, the grants are imported, not re-created. v0.6.0 `T-I.12` remains the gate of `T-I7.7` (K4). Nothing in this PLAN edits a v0.6.0 artifact.
 
-## 9. Amendment 2026-09-23 — R18-R26
+## 9. Amendment 2026-09-23 — R18-R36
+
+R27-R36 (SPEC 53d9a7f) retire the Free Edition, move every resource to us-east-1 and add the Databricks account, workspace and GitHub stacks. This section replaces the R18-R26 §9 wholesale; §1.4, §1.6, §2 K6, §3.5 `FORCE`, §4, §5 and the §7 rows `T-X7.6`/`T-O7.x` stay superseded where this section says so.
 
 ### 9.1 Deletion test — the balance of the amendment
 
-**Dies:** the DLT pipeline, its trigger job and `dlt_market_data/`; the seven Ethereum bundles; `apps/lambda/`, `utils/` (`dm_chain_utils`), `publish-artifacts.yml`, dashboard tooling (`render_dashboard_templates.sh`, `deploy_all.sh`, `check_versions.sh` if it only walks the dead bundles); the `bundles` dispatch filter; infra `dev/02_lambda`, `prd/06_lambda`, modules `s3_ingestion` + `dynamodb` (dev), `s3_artifacts` + `dynamodb` (prd), `gha_artifacts_publish`, `resolve_*.sh` (6), `publish_oidc_vars.sh --target explorer`; `changed_files_since_base()`, `FORCE`, the `force_apply` and `destroy_ack` inputs; `docs/runbooks/00-bootstrap-apply.md` (→ the seed runbook). **Grows:** three PySpark task modules (the DLT source is rewritten, not wrapped — net smaller: no decorators, no `dlt` shim), one seed script, one capture-run workflow, one dispatch step per lane, two temporary retirement steps that die in the teardown's delete commit. Bug-surface verdict: the chain loses its two hand-kept enumerations (bundle filter, git-diff change detection — the M11 cause) and one whole seam; it gains no second code path.
+**Dies:** the DLT pipeline and `dlt_market_data/`; the seven Ethereum bundles; `apps/lambda/`, `utils/`, `publish-artifacts.yml`, dashboard tooling; the `bundles` dispatch filter; infra `dev/02_lambda`, `prd/06_lambda`, modules `dynamodb` + `lambda`, `s3_ingestion`, `s3_artifacts`, `gha_artifacts_publish`, `resolve_*.sh` (6), `--target explorer`; `changed_files_since_base()`, `FORCE`, `force_apply`, `destroy_ack`; the DynamoDB lock table, its grants, every `dynamodb_table =` backend line, `tf_state_lock_check.sh`; every KMS key and `aws:kms` setting (R30); the Free Edition UC stack and its hand-made catalog/credential (R27); the `raw/` 8,000-object drift check (R36); seed steps S4-S7 and blockers B1/B2; `docs/runbooks/00-bootstrap-apply.md`; every `sa-east-1` literal (35). **Grows:** three PySpark task modules (a rewrite, not a wrapper), one account stack, two per-env workspace units, two rewritten UC stacks, two GitHub stacks, one seed script, `capture_run.yml`, `rebuild_drill.yml`, one dispatch step per lane, one temporary retire step that dies in the region-move commit. Bug-surface verdict: every hand-kept object of the M-ledger gets exactly one owning stack; the chain loses its two hand-kept enumerations (bundle filter, git-diff detection) and one seam; no stack gains a second code path.
 
-### 9.2 WS-X — bundle `job_market_data` (X1-X7, R19/R20/R24)
+### 9.2 WS-X — bundle `job_market_data` (X1-X7, R19/R20/R24, R31)
 
-**Layout.** `apps/dabs/job_market_data/{databricks.yml, VERSION, resources/job_market_data.yml, resources/schemas.yml, src/dm_market_parsers/** (git mv, byte-identical), src/market_data/{bronze.py, silver.py, gold.py, _spark.py}}`. Variables `catalog`, `raw_data_url` (`s3://dm-chain-explorer-dev-raw-data/raw/`). `dev`: `run_as` dev SP, `[dev] ` prefix, `catalog=dev`; `prod`: declared, placeholder URL, never deployed (R18). `schemas.yml` declares `b_market`, `s_market`, `g_market` — the bundle owns them, so destroy is complete.
+**Layout.** `apps/dabs/job_market_data/{databricks.yml, VERSION, resources/job_market_data.yml, src/dm_market_parsers/** (git mv, byte-identical), src/market_data/{bronze.py, silver.py, gold.py, _spark.py}}`. Variables `catalog`, `raw_data_url`, `lakehouse_url`. Targets: `dev` (`run_as` dev SP, `[dev] ` prefix, `catalog=dev`, `raw_data_url=s3://dm-chain-explorer-dev-raw/raw/`), `prod` (`catalog=prd`, prd URLs; validated in CI, never deployed — O-7). Host never in the tree: `DATABRICKS_HOST` from the GitHub environment. `workspace.artifact_path: /Volumes/<catalog>/ops/bundle_artifacts` (the volume is owned by the UC stack, §9.4). `performance_target: STANDARD`.
 
-**Job.** One job `dm-market-data`; three `spark_python_task`s `bronze → silver → gold` (`depends_on`, `run_if: ALL_SUCCESS`), each `environment_key: default` (serverless, client `2`, no dependencies — parsers ride as workspace files; each entrypoint puts its own `src/` on `sys.path` from `__file__`). No `pipelines:`, no `dlt` import, no `%pip`, no wheel. `max_concurrent_runs: 1`, `queue.enabled: true`.
+**Schemas are not bundle-owned** (changed from R18-R26): `b_market`, `s_market`, `g_market` and `ops` belong to the UC stack. Why: the bundle's deployment state lives in the workspace (`.bundle/`); the AC-29 drill destroys the workspace, and a redeploy with a fresh state would try to re-create schemas that the metastore still holds. The bundle owns only the job — a workspace object that dies and returns with the workspace.
 
-**Trigger (R20).** `trigger.pause_status: UNPAUSED` (dev), `file_arrival.url: ${var.raw_data_url}`, `min_time_between_triggers_seconds: 300`, `wait_after_last_change_seconds: 120` (a capture run writes data then `_manifest.json` last — the wait coalesces one partition into one fire). A fire that sees no new manifest is a counted no-op, never a failure. **File-count cap decision:** without file events a file-arrival URL may hold at most 10,000 files; the landing never expires (R14). Dev volume is ~10-30 objects/day, so the cap is ≥ 1 year away; v0.7.0 does **not** enable file events (it would widen the hand-made credential's IAM role with SNS/SQS/notification grants). Bound instead: the infra drift lane counts `raw/` objects and fails at 8,000 — a signal, not a silent stop. File events are the recorded remedy for prod (`prod-environment-official-account`); the operator may reverse it.
+**Tables.** Every table is created by its task with `CREATE TABLE IF NOT EXISTS … USING DELTA LOCATION '<lakehouse_url>/<schema>/<table>'` — external, on the lakehouse external location (R31); the metastore keeps the registration across a workspace rebuild.
 
-**Bookkeeping and idempotency.** `b_market.raw_manifests` (explicit `raw-manifest-v1` schema + `manifest_sha256`, `bronze_at`, `silver_at`, `rejected_parse`, `rejected_sha`, `rejected_versao`), MERGE key `(source, dataset, ingest_date, manifest_sha256)`.
-- **bronze:** list `raw/*/*/ingest_date=*/_manifest.json`; keep manifests whose sha256 is not in `raw_manifests`; read exactly the manifest's `files[]` via `binaryFile`; MERGE each dataset table on `content_sha256` (insert-only); upsert the manifest row with `bronze_at` **last** — a crash re-processes the partition and the MERGE adds nothing.
-- **silver:** rows of `raw_manifests` with `silver_at IS NULL`; parse through `dm_market_parsers`; a parse failure, a `content_sha256 ∉ files[].sha256` or a NULL `versao` is dropped and counted into the manifest row; MERGE on the natural key; set `silver_at`. Keys: `b3_quotes (data_pregao, codneg, tpmerc)`; `b3_ibov_portfolio (date, cod)`; `b3_instruments (rpt_dt, tckr_symb)`; `cvm_companies (cnpj_cia)` (update only from a newer `ingest_date`); `cvm_fca_securities (cnpj, codigo_negociacao, mercado)`; `cvm_statements (cnpj, dt_refer, statement, grupo_dfp, ordem_exerc, cd_conta)` updated only when `source.versao ≥ target.versao`, `ORDEM_EXERC = ÚLTIMO`; `cvm_capital_composition (cnpj, dt_refer)` same `versao` rule; `bcb_series (code, date)`.
-- **gold:** the three §4.3 tables recomputed by `CREATE OR REPLACE TABLE … AS` (overwrite), NULL-never-fabricate; the task publishes `rows` per layer and the three rejection sums as task values — the AC-22 evidence is read from the run output, no SQL warehouse needed.
-- **Second fire** over the same partition: bronze finds no new manifest, silver has no `silver_at IS NULL` row, gold overwrites identical inputs → no count changes (AC-22).
+**Job.** One job `dm-market-data`; three `spark_python_task`s `bronze → silver → gold` (`depends_on`, `run_if: ALL_SUCCESS`), `environment_key: default` (serverless, client `2`, no dependencies — each entrypoint puts its `src/` on `sys.path`). No `pipelines:`, no `dlt`, no `%pip`, no wheel. `max_concurrent_runs: 1`, `queue.enabled: true`.
 
-**Tests.** Parser suite unchanged (41). `test_bundle_targets_contract.py`: every `apps/dabs/*` dir is `job_market_data` or listed in `apps/dabs/RETIRED` (T-X7.8), tightened to exactly one bundle when the list dies (T-X7.10); job contract — 1 job, 3 tasks in order, every task serverless, `file_arrival` present, `max_concurrent_runs = 1`. `test_no_dlt_import` greps `apps tests`. Pure helpers that decide keys/rejections live beside the parsers and are unit-tested; Spark I/O stays in `_spark.py` (thin, untested off-cluster by design).
+**Trigger (R20, R36).** `file_arrival.url: ${var.raw_data_url}`, `UNPAUSED` in `dev`, `min_time_between_triggers_seconds: 300`, `wait_after_last_change_seconds: 120` (data first, `_manifest.json` last — one partition, one fire). File events are on the storage credential's external location (§9.4), so the 10,000-file listing cap does not apply and the drift-lane object count dies. A fire with no new manifest is a counted no-op.
 
-### 9.3 Ethereum and lambda-seam teardown (X8, I10, R21, R23, R25, O-10)
+**Bookkeeping, idempotency, medallion keys** — unchanged from the R18-R26 design: `b_market.raw_manifests` MERGE key `(source, dataset, ingest_date, manifest_sha256)`; bronze insert-only on `content_sha256`, `bronze_at` last; silver on `silver_at IS NULL`, natural keys as listed in SPEC §6 / X4, `versao` rule; gold by overwrite, NULL-never-fabricate; task values `rows` per layer + rejection sums (AC-22 read from the run output). A second fire changes no count.
 
-**Order (destroy before delete; AWS before Databricks-live).**
-1. **Infra destroy commit (T-I7.12):** `dev/02_lambda` and `prd/06_lambda` keep only backend + provider (the lane's plan shows every resource destroyed); `dev/01`: modules `s3_ingestion`, `dynamodb` removed, `databricks_dev_s3_policy` narrowed to the raw bucket; `prd/04`: modules `s3_artifacts`, `dynamodb` removed. A `retire` job (`scripts/ci/retire.sh` + `scripts/ci/retired_objects.json`, idempotent: absent = pass) runs **before** the stack applies: empties `dm-dev-ingestion` and the prd artifacts bucket (reusing `empty_s3_buckets.sh`), then the foreign-state destroy below. The lanes (§9.4) apply dev on merge and prd behind the `production` approval.
-2. **Infra delete commit (T-I7.13), after the run ids exist:** delete both stack dirs, their `stack_map.json` entries, `resolve_*.sh`, `retire.sh` + list, `gha_artifacts_publish` and every Lambda/DynamoDB/artifacts statement in the bootstrap (reaches AWS at the next seed run), `--target explorer`; tests follow (namespace coverage stays green because the declaring stacks are gone; "five GHA roles" → four).
-3. **Explorer retire commit (T-X7.8, PR-α):** `apps/dabs/RETIRED` lists the eight bundles; the CI deploy job runs `databricks bundle destroy -t dev --auto-approve` for each listed dir still in the tree **before** any deploy, then drops the stateless UC objects no state owns — external location `dm-dev-ingestion` and the seven schemas (`DROP SCHEMA … CASCADE` / `external-locations delete`, idempotent). PR-α reaches `develop` alone.
-4. **Explorer delete commit (T-X7.10, PR-β), after PR-α's run id:** the eight dirs, `apps/lambda/`, `utils/`, `publish-artifacts.yml`, dashboard tooling, their tests, `RETIRED` and the retire step. `job_market_data` rides PR-β, so the DLT pipeline is gone before the job exists — no DLT table shadows a job table (O-10).
+**Tests.** Parser suite unchanged (41). `test_bundle_targets_contract.py`: exactly one bundle; 1 job, 3 ordered serverless tasks, `file_arrival`, `max_concurrent_runs = 1`, no `host:` literal, no `schemas:` resource. `test_no_dlt_import` greps `apps tests`. Key/rejection helpers unit-tested beside the parsers; Spark I/O stays in `_spark.py`.
 
-**Where ECR `stream`/`connect` live (R25) — located.** The repositories are `dd-chain-capture-stream` and `dd-chain-capture-connect`, tracked in the Terraform state key **`capture/ecr/terraform.tfstate` inside this project's state bucket** (backend in `dd-chain-capture` history, `infra/aws/main.tf` at `1a559df`; the source `infra/aws/*.tf` was deleted from `dd-chain-capture` in `137d6f2`, so today the state has **no source and no lane in any repository**). The state also holds Roles Anywhere + KMS (11 resources, backlog `capture-ecr-state-and-kms-ownership-transfer`). Removal stays state-consistent: `retire.sh` inits a source-less config (`services/retired/capture_ecr/`, backend + `aws` provider only, never in `stack_map.json`) and runs `terraform destroy -target=aws_ecr_repository.stream -target=aws_ecr_repository.connect`; the other nine resources are untouched. Fallback, only if Terraform refuses (provider aliases in state): `aws ecr delete-repository` + `terraform state rm` of the two addresses in the same step — the R25 retirement-job path. The prd deploy role's scope is `dm-*`, so T-I7.10 adds one exact-ARN statement (`ecr:DescribeRepositories, ListImages, BatchDeleteImage, DeleteRepository` on the two ARNs, deploy policy + boundary) that dies in T-I7.13.
+### 9.3 Target architecture — stacks, state keys, apply order
 
-### 9.4 The automated chain (I11, X9, R26)
+**State.** One bucket `dm-chain-explorer-tfstate-use1` (us-east-1, versioned, PAB, SSE-S3), created by seed S1 from `prd/01_tf_state` (operator-only, local state). Every backend: `bucket`, `key`, `encrypt = true`, `use_lockfile = true`; no `region`, no `dynamodb_table` (R33).
 
-| Step | Trigger | Workflow · job | Replaces |
-|---|---|---|---|
-| 1 | `push` to `develop` (infra) | `deploy_cloud_infra` · `retire` (while listed) → `dev-deploy` → `prd-plan` → `prd-apply` (`environment: production`, runs only when a prd plan exits 2) | M11 (dev), M10 |
-| 2 | step 1 green | same run · `signal-explorer`: App token → `repository_dispatch infra-dev-applied` to explorer | M12 |
-| 3 | `push` to `develop` or `infra-dev-applied` (explorer) | `ci` · `deploy-dev` (retire while listed → `bundle deploy -t dev`) → `signal-infra`: `explorer-dev-deployed` | M11 (bundle filter), M13 prerequisite |
-| 4 | `explorer-dev-deployed` (infra) | `capture_run` · one Fargate task per image (`bcb_macro_series`, `b3_cotahist_daily`, `cvm_cadastro_fca`) on `FARGATE_SPOT`, `ecs wait tasks-stopped`, exit 0 + `_manifest.json` present → `repository_dispatch capture-landed` | M14 |
-| 5 | file arrival | Databricks job `[dev] dm-market-data` | M13 |
-| 6 | `capture-landed` (explorer) | `ci` · `e2e-verify`: waits for the `FILE_ARRIVAL` run, reads task values (12/8/3, rows, rejections), fails on 0 gold rows or any sha rejection | AC-22 evidence |
+| Group | Stack (dir) | Key | Owns | Life |
+|---|---|---|---|---|
+| seed | `prd/01_tf_state` | local | state bucket | operator |
+| seed | `prd/00_bootstrap` | `prd/bootstrap/…` | OIDC roles, boundary, grants | operator (S1) |
+| account | `account/databricks` | `account/databricks/…` | metastore us-east-1, SPs `dm-chain-explorer-{dev,prd}-deploy` + OAuth secrets, budget alert | persistent |
+| prd | `prd/04_peripherals` | `prd/peripherals/…` | ECR ×3, `dm-chain-explorer-prd-{raw,lakehouse}` | persistent |
+| prd | `prd/05_workspace` | `prd/workspace/…` | workspace `dm-chain-explorer-prd` (SERVERLESS) + metastore assignment + permission assignments; no warehouse | rebuildable |
+| prd | `prd/04_unity_catalog` | `prd/unity-catalog/…` | UC IAM role, credential, locations, catalog `prd`, schemas, volume, binding, grants | persistent |
+| prd | `prd/06_github` | `prd/github/…` | env `production` secrets/vars, default branch `develop` (infra, explorer) | persistent |
+| dev | `dev/01_peripherals` | `dev/peripherals/…` | `dm-chain-explorer-dev-{raw,lakehouse}`, capture writer role | persistent |
+| dev | `dev/03_capture` | `dev/capture/…` | cluster, SG (default VPC), task roles/defs, schedules `DISABLED` | persistent |
+| dev | `dev/05_workspace` | `dev/workspace/…` | workspace `dm-chain-explorer-dev` + assignment + permission assignments + SQL warehouse 2X-Small, auto-stop 1 min, max 1 cluster | **rebuildable (AC-29)** |
+| dev | `dev/04_unity_catalog` | `dev/unity-catalog/…` | as prd, catalog `dev` | persistent |
+| dev | `dev/06_github` | `dev/github/…` | env `dev` secrets/vars | persistent |
 
-- **Change detection (M11).** Git-diff detection dies: every map stack is planned with `-detailed-exitcode` and applied only on exit 2 — the plan *is* the detector, identical on push and on dispatch; `FORCE`/`force_apply`/`destroy_ack` go. The prd destroy acknowledgement is the `production` approval over a plan summary that lists destroys.
-- **Default branch = `develop`** in infra and explorer (seed S3). `workflow_dispatch`, `repository_dispatch` and `schedule` all read the default branch, so hand `develop → main` PRs (M10) are unnecessary and weekly drift plans the deploy branch (M15). Promote PRs `develop → main` are unchanged.
-- **GitHub App (R26).** Created by the seed via the manifest flow; installed on the 3 repos; permissions `contents: write` (dispatch) + `metadata: read`. Each signalling job mints a 1-hour token with `actions/create-github-app-token` (SHA-pinned) scoped to the one target repository; key in secret `CHAIN_APP_PRIVATE_KEY`, id in variable `CHAIN_APP_ID` (infra, explorer). No PAT.
-- **Loops.** Step 3 on an explorer push also fires step 4 — each dev deploy is proven by one landing; step 4 never signals infra, so the chain terminates. `concurrency` groups serialise each lane.
-- Capture keeps its own push-triggered `publish-images.yml`; the registry now outlives every capture push, so M12's capture half is retired by structure — no edit in `dd-chain-capture`.
+**Survival analysis — why the workspace unit and the UC stack are separate.** A Databricks workspace holds only workspace objects: jobs, warehouses, workspace files (`.bundle/`), permission assignments. Storage credentials, external locations, catalogs, schemas, volumes and table registrations are **metastore** objects; they outlive a workspace as long as the metastore (account stack) lives. If they sat in the workspace unit, the AC-29 destroy would drop the catalog (and with it every table registration and the `SHOW TABLES` 12/8/3 proof). So the unit that is destroyed holds only what dies with the workspace, and the UC stack is persistent per env. The UC stack's `databricks` provider targets the current workspace — `host` read from the workspace unit's remote-state output — and authenticates as the account SP (account admin, metastore admin, workspace `ADMIN` by the unit's permission assignment). Its resources are addressed by name/metastore id, so after a rebuild the same state converges against the new host: the catalog-workspace binding (`databricks_workspace_binding`, workspace id from the unit's output) is replaced to the new workspace id, grants on account identities are unchanged, and nothing else plans. The UC IAM role lives in the UC stack beside its credential, because its trust needs the credential's `external_id` and the credential needs the role ARN (self-assume + `time_sleep`) — one stack breaks the cycle without a second apply. Account-level UC APIs do not manage these objects, so there is no account-core alternative; the prd workspace host is not used for dev objects (would need binding the `dev` catalog to prd, violating R31).
 
-### 9.5 The trust seed (M1, M3-M8, R26, O-8, O-11)
+**Alternatives rejected.** (a) Everything per env in one unit — fails AC-29 (catalog destroyed). (b) Workspaces in the account stack (SPEC I13 as written) — the drill would have to destroy one resource of a shared state (`-target`), an unsafe routine. (c) UC objects in the account stack via the prd host — cross-env coupling, breaks isolation.
 
-`scripts/seed/trust_seed.sh` + `docs/runbooks/trust-seed.md` (replaces `00-bootstrap-apply.md`), run by the operator with admin AWS (MFA), `gh` as repo admin and Databricks workspace-admin. Every step reads before it writes; a second run makes no change and echoes no secret (values move stdin → `gh secret set`, never argv, never logs).
+**Apply order (map `upstreams`).** account → prd/04, dev/01 (buckets, ECR) → `*/05_workspace` → `*/04_unity_catalog` → `*/06_github` → dev/03_capture. `stack_map.json` gains the `account` group (applied in the prd lane behind `production`). The dev lane applies dev without approval, so the drill never needs `production`.
+
+**Provider auth per stack.**
+- AWS (all): GitHub OIDC → `gha-deploy-{dev,prd}` / readonly-plan; `region = var.aws_region`.
+- `account/databricks`, `*/05_workspace`: `databricks` provider, `host = https://accounts.cloud.databricks.com`, `account_id` + OAuth M2M client id/secret from infra repo secrets `DATABRICKS_ACCOUNT_ID`, `DATABRICKS_ACCOUNT_CLIENT_ID`, `DATABRICKS_ACCOUNT_CLIENT_SECRET` (seed S3), passed as `TF_VAR_*`/`DATABRICKS_*` env.
+- `*/04_unity_catalog`: `databricks` workspace provider, `host = data.terraform_remote_state.workspace.outputs.host`, same account SP credentials.
+- `*/06_github`: `github` provider with `app_auth` (`CI_APP_ID`, `CI_APP_INSTALLATION_ID`, `CI_APP_PRIVATE_KEY`). Inputs: host + warehouse id (workspace unit), SP client id/secret (account stack). Writes env `dev`/`production` in infra + explorer: `DATABRICKS_HOST`, `DATABRICKS_CLIENT_ID`, `DATABRICKS_CLIENT_SECRET`, `DATABRICKS_WAREHOUSE_ID` (dev), `DATABRICKS_ACCOUNT_ID`.
+
+**Region single-source (I12).** The workflow `env: AWS_REGION: us-east-1` (one line per workflow file, pinned equal by a contract test) is the source: the S3 backend and AWS CLI read `AWS_REGION`; `TF_VAR_aws_region=$AWS_REGION` feeds `var.aws_region` (declared without default in every stack, so a missing value fails, never falls back). Workspace units pass `aws_region = var.aws_region` to `databricks_mws_workspaces`; the metastore `region` likewise. The seed exports the same value. Capture: `publish-images.yml` `AWS_REGION: us-east-1` + its test. Grep gate AC-25.
+
+**Encryption (R30).** Every bucket `sse_algorithm = "AES256"`, `bucket_key_enabled` n/a; no `aws_kms_key` anywhere (AC-27).
+
+### 9.4 UC stack content (I14, R31, R36)
+
+Per env: IAM role `dm-chain-explorer-<env>-uc` (trust: UCMasterRole + self + `sts:ExternalId` = credential external id; S3 on its env's raw (read) + lakehouse (RW); file-event statements on `csms-*` SNS/SQS and bucket notifications); `databricks_storage_credential` `dm-<env>-uc`; `databricks_external_location` raw (`read_only = true`) and lakehouse, both `enable_file_events = true` (managed SNS/SQS); `databricks_catalog` `<env>`, `isolation_mode = ISOLATED`, `storage_root` = lakehouse location; `databricks_workspace_binding` to the unit's workspace id; schemas `b_market`, `s_market`, `g_market`, `ops`; volume `ops.bundle_artifacts`; grants: deploy SP `USE_CATALOG`, `USE_SCHEMA`, `CREATE_TABLE`, `MODIFY`, `SELECT` on the catalog, `READ_FILES` on raw, `READ_FILES`/`WRITE_FILES` on lakehouse, `READ_VOLUME`/`WRITE_VOLUME` on the volume. `force_destroy = false` on the catalog — a code path that drops the catalog does not exist. Outputs: catalog, location URLs.
+
+### 9.5 Ethereum, lambda-seam and sa-east-1 teardown (I10, I12, R21, R23, R34, O-10, O-12)
+
+Teardown happens entirely in sa-east-1, against the old backend, **before** any us-east-1 apply.
+1. **PR-α destroy commit (T-I7.12), old backend:** `dev/01`, `dev/02_lambda`, `dev/03_capture`, `prd/04`, `prd/06_lambda` reduced to backend + provider; `prevent_destroy` lifted in `modules/s3`; `dev/04_unity_catalog` removed from the map (its Free Edition state is abandoned with the old bucket, R27). A `retire` job (`scripts/ci/retire.sh` + `retired_objects.json`, idempotent: absent = pass) runs first: empties every listed bucket by exact name (`empty_s3_buckets.sh`), then `terraform destroy` (whole, not targeted — R34) of `capture/ecr` through the source-less config `services/retired/capture_ecr/` (backend + `aws` provider; 11 resources incl. KMS with the minimum 7-day deletion window and Roles Anywhere). The lanes apply dev on merge and prd behind `production`; run ids recorded (AC-23, AC-26).
+2. **Seed S1 (Phase C)** deletes the last sa-east-1 objects no lane owns: the old state bucket and lock table, after migrating `prd/bootstrap` state to the new bucket.
+3. **PR-β region-move commit (T-I7.16):** deletes `dev/02_lambda`, `prd/06_lambda`, `services/retired/`, `retire.sh`, `resolve_*`, modules `dynamodb`/`lambda`, `tf_state_lock_check.sh`, lock/Lambda/DynamoDB/artifacts/KMS grants; re-adds `dev/01`, `dev/03`, `prd/04` content for us-east-1 with the new names; adds §9.3 stacks. Its merge is the bring-up.
+4. **Explorer (T-X7.8, T-X7.10):** delete-only — nothing is deployed in a workspace we own (X8). No retire step, no PR-α/β ordering in explorer.
+
+### 9.6 The automated chain (I11, X9, R26, R35)
+
+| Step | Trigger | Workflow · job |
+|---|---|---|
+| 1 | `push` to `develop` (infra) | `deploy_cloud_infra` · `dev-deploy` → `prd-plan` → `prd-apply` (`production`, only on a prd/account plan exit 2) |
+| 2 | step 1 dev green | `signal-explorer`: App token → `repository_dispatch infra-dev-applied` |
+| 3 | `push` `develop` or `infra-dev-applied` (explorer) | `ci` · `deploy-dev` (`bundle deploy -t dev`) → `signal-infra`: `explorer-dev-deployed` |
+| 4 | `explorer-dev-deployed` (infra) | `capture_run` · one Fargate Spot task per image, `ecs wait tasks-stopped`, exit 0 + `_manifest.json` → `capture-landed` |
+| 5 | file arrival | job `[dev] dm-market-data` |
+| 6 | `capture-landed` (explorer) | `ci` · `e2e-verify`: waits for the `FILE_ARRIVAL` run, reads task values, fails on 0 gold rows or any sha rejection |
+
+- **Plan as detector (M11):** every map stack `plan -detailed-exitcode`, apply on exit 2; git-diff detection, `FORCE`, `force_apply`, `destroy_ack` die. The prd destroy acknowledgement is the `production` approval over a plan summary listing destroys.
+- **Default branch `develop`** (R35) in infra and explorer, written by `prd/06_github` (`github_branch_default`): dispatch, `repository_dispatch` and `schedule` read it (M10, M15).
+- **GitHub App `dm-chain-explorer-ci`** (R26; one name set, replaces `CHAIN_APP_*`): installed on the 3 repos; secrets `CI_APP_PRIVATE_KEY`, variables `CI_APP_ID`, `CI_APP_INSTALLATION_ID` (infra, explorer). App permissions: Contents RW, Actions RW, Variables RW, Secrets RW, Environments RW, Administration RW, Metadata R. **Security lens:** the widened set exists only for the `06_github` stacks; every job mints its own 1-hour token (`actions/create-github-app-token`, SHA-pinned) with `repositories:` = the one target and `permission-*:` = the subset it needs — signalling jobs `contents: write` only; the private key never leaves the secret; no PAT.
+- **Loops:** step 4 never signals infra; `concurrency` per lane.
+- Capture keeps `publish-images.yml` (push-triggered, now us-east-1).
+
+**Rebuild drill (AC-29, `rebuild_drill.yml`, infra, `workflow_dispatch`, env `dev`).** (1) snapshot `SHOW TABLES` + `count(*)` per table through the dev warehouse; (2) `terraform destroy` `dev/05_workspace`; (3) `deploy_env.sh dev` — the unit recreates the workspace + warehouse, the UC stack re-binds the catalog, `dev/06_github` writes the new host/warehouse id; (4) `infra-dev-applied` → explorer redeploys the bundle; (5) snapshot again, compare equal, list lakehouse objects unchanged; (6) `capture_run` → next file arrival fires the job. The dispatch click is the only human act (same class as an environment approval).
+
+### 9.7 The trust seed (I11: S1-S3; M1, M3, O-8, O-11)
+
+`scripts/seed/trust_seed.sh` + `docs/runbooks/trust-seed.md` (replaces `00-bootstrap-apply.md`), run by the operator in a real terminal (admin AWS with MFA, `gh` as repo admin). Every step reads before it writes; run 2 makes no change and echoes no secret (stdin → `gh secret set`, never argv, never logs).
 
 | Step | Does | M |
 |---|---|---|
-| S1 | `terraform apply` `prd/00_bootstrap` (plan-then-apply; no change = skip) | M1 |
-| S2 | `publish_oidc_vars.sh --target infra\|capture` | M3 |
-| S3 | GitHub settings per repo: environments `dev`/`production` (reviewer on `production`), default branch `develop`, capture `develop` exists | M4, M10, M15 |
-| S4 | Databricks dev SP OAuth secret: reuse if the stored one authenticates, else mint | M6 |
-| S5 | secrets/variables: infra + explorer env `dev` `DATABRICKS_HOST/CLIENT_ID/CLIENT_SECRET`, `TF_VAR_databricks_dev_sp_application_id` | M5 |
-| S6 | UC bootstrap as workspace admin: ensure Free-Edition-only catalog `dev` + credential `dm-dev-s3-credential`; SP `MANAGE` on `dev`, `CREATE_EXTERNAL_LOCATION` on the credential **and on the metastore** (owned by "System user"; only `workspace-admins` can grant — the current AC-7 blocker), `MANAGE` on location `dm-dev-ingestion` (so T-X7.8 can drop it) | M7, M8 |
-| S7 | GitHub App: create (manifest flow, one browser confirm), install on the 3 repos, store key/id | R26 |
+| S1 | AWS: `prd/01_tf_state` apply (bucket `dm-chain-explorer-tfstate-use1`); `prd/00_bootstrap` `init -migrate-state` to it + plan-then-apply; `publish_oidc_vars.sh --target infra\|capture\|explorer`; account S3 Block Public Access; after verifying no old key is still read, delete the sa-east-1 state bucket + lock table | M1, M3 |
+| S2 | GitHub App: verify `dm-chain-explorer-ci` installed on the 3 repos (created by the operator via the manifest URL printed by the script); store `CI_APP_ID`, `CI_APP_INSTALLATION_ID`, `CI_APP_PRIVATE_KEY`; create env `production` with the operator as reviewer (adopted by `prd/06_github` via `import`) | R26, M4 |
+| S3 | Databricks: read the account SP `dm-chain-explorer-terraform` (account admin, created in the console) OAuth secret from stdin, store `DATABRICKS_ACCOUNT_ID/CLIENT_ID/CLIENT_SECRET` in infra; list metastores in us-east-1 and print the import id if one exists | M6 |
 
-Tests: `scripts/seed/tests/` runs the script against stub `terraform`/`gh`/`databricks`/`aws` binaries on `PATH` (fakes recording calls): run 1 performs each step, run 2 over the recorded state issues zero mutating calls, and no recorded argv or output contains the fake secret. `shellcheck` clean.
+Tests `scripts/seed/tests/`: stub `terraform`/`gh`/`aws`/`databricks` on `PATH` record calls; run 1 performs each step, run 2 issues zero mutating calls, no recorded argv or output holds the fake secret; `shellcheck` clean. The Phase B bootstrap delta is applied at the PR-α head (old backend) through the still-present `00-bootstrap-apply.md` (T-O7.8); the seed exists only for the new backend.
 
-**Not seedable — operator account act (blocker B1):** the Free Edition organisation refuses compute (warehouse, pipeline `RESOURCE_EXHAUSTED`, jobs create 403 "organization cancelled or not active"). Every Databricks-live task (T-X7.12, T-V7.1) is blocked by it; nothing is faked.
+**system.billing (AC-30).** `databricks_system_schema` is a workspace-provider resource and cannot live in the account stack; the `billing` schema is enabled by default on every metastore and is not toggleable. T-V7.3 asserts `SELECT … FROM system.billing.usage` returns rows; no stack resource is needed.
 
-### 9.6 M-ledger map
+### 9.8 M-ledger map
 
 | M | Replacement |
 |---|---|
 | M1 | seed S1 |
-| M2 | retired one-off — hml environment gone (ADR-10) |
-| M3 | seed S2 |
-| M4 | seed S3 |
-| M5 | seed S5 |
-| M6 | seed S4 |
-| M7 | seed S6 (catalog, credential, metastore grants) |
-| M8 | seed S6 for Free-Edition-only objects; `dm-dev-ingestion` location → explorer retire step |
-| M9 | retired one-off; every remaining object → CI `bundle destroy` / retire steps |
-| M10 | seed S3 default branch `develop` |
-| M11 | plan-as-detector lanes on `push`; `force_apply`, `destroy_ack`, bundle filter deleted |
-| M12 | lambda seam deleted (R23); ECR precedes capture pushes; `repository_dispatch` chain |
+| M2 | retired one-off — hml gone (ADR-10) |
+| M3 | seed S1 (`publish_oidc_vars.sh`) |
+| M4 | `*/06_github` environments; `production` reviewer seeded in S2 |
+| M5 | `*/06_github` env secrets/vars |
+| M6 | `account/databricks` SP secrets → `*/06_github`; account SP secret seed S3 |
+| M7 | `*/04_unity_catalog` (credential, locations, catalog, grants) |
+| M8 | `*/04_unity_catalog`; Free Edition objects abandoned (R27) |
+| M9 | retired one-off; every remaining object → CI destroy |
+| M10 | `prd/06_github` default branch `develop` |
+| M11 | plan-as-detector lanes; `force_apply`, `destroy_ack`, bundle filter deleted |
+| M12 | lambda seam deleted; ECR precedes capture pushes; `repository_dispatch` chain |
 | M13 | file-arrival trigger |
 | M14 | `capture_run` workflow |
-| M15 | seed S3 — drift runs on the default = deploy branch |
+| M15 | `prd/06_github` default branch — drift runs on the deploy branch |
 
-### 9.7 Risks added
+### 9.9 Risks added
 
 | Risk | Handling |
 |---|---|
-| Databricks org inactive (B1); metastore grant (B2) | B1 operator account act; B2 seed S6; live tasks ordered last and blocked on both |
-| Foreign-state targeted destroy fails on aliased providers | fallback in the same step (delete + `state rm`), evidence in the run log |
-| Emptying `dm-dev-ingestion`/artifacts deletes data | Ethereum data has no consumer (R21); buckets listed by exact name, never glob |
-| `DROP SCHEMA CASCADE` on a non-empty schema | the seven are empty (R21 inventory); the step logs table counts first |
-| Capture run on every explorer deploy costs Fargate Spot minutes | three short tasks per deploy; accepted for dev |
-| `prd-apply` from `develop` | unchanged practice (`branch_guard.sh` already requires `develop`); `check_prd_version.sh` and the `production` approval remain |
+| ISOLATED catalog unreadable from the rebuilt, not-yet-bound workspace during UC refresh | T-V7.2 pre-drill probe: `catalogs get dev` from a second workspace as metastore admin; if refused, move `databricks_workspace_binding` into `dev/05_workspace` (catalog name as a variable) — design change reported before the drill |
+| Workspace name reuse right after delete | the unit sets no `deployment_name`; retry in the lane |
+| SP secrets in Terraform state | state bucket readable by deploy/readonly roles only (bootstrap); SSE-S3; no output marked non-sensitive |
+| KMS key in `capture/ecr` enters a 7-day pending deletion | AC-26 counts `PendingDeletion` as absent from use; alias deleted at once |
+| Old backend deleted while a state is still read | S1 checks every old key's stack is gone from the map and its state empty before deleting |
+| Global bucket name taken by a third party | S1 `head-bucket` probe for all five names before any apply |
+| Account spend | budget alert (account stack); dev warehouse 1-min auto-stop; prd no warehouse |
+| Capture run per explorer deploy | three short Spot tasks; accepted for dev |
