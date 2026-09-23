@@ -43,7 +43,17 @@
 > `e2e-dev-validation-financial-lakehouse` turn `picked (v0.7.0)` in the SPEC-amendment commit
 > (its `**Consumes:**` line is the provenance); LEDGER lines at v0.7.0 CLOSURE. R21 supersedes R1:
 > the five parked Ethereum-era entries exit at that CLOSURE as `REJECTED · obsolete-by-R21`
-> (SPEC §7).
+> (SPEC §7) — four since the second amendment below.
+>
+> **Amendment pick v0.7.0 (2) (2026-09-23).** Operator rulings R27-R36 (grill, operator-confirmed;
+> recorded in `databricks-serverless-us-east-1-migration`) amend the v0.7.0 SPEC in place again:
+> the Free Edition workspace is abandoned (R18 struck), DEV and PROD become serverless workspaces
+> in the operator's Databricks account, everything moves to us-east-1. The new entry and
+> `capture-ecr-state-and-kms-ownership-transfer` (closed by R34) turn `picked (v0.7.0)` in that
+> SPEC-amendment commit; LEDGER lines at CLOSURE. R30 un-parks
+> `encryption-at-rest-posture-decision`, rewritten as the future cost×security study and pickable.
+> `prod-environment-official-account` is narrowed to what v0.7.0 does not build (the first PRD
+> workload).
 
 ## ACTIVE
 
@@ -88,7 +98,7 @@
 - **Title:** Medallion becomes batch Databricks Jobs (no DLT) triggered by file arrival; the Ethereum lane is destroyed everywhere
 - **Opened:** 2026-09-23
 - **Status:** picked (v0.7.0 SPEC amendment 2026-09-23; the e2e gate is proven on the batch shape)
-- **Description:** Operator rulings 2026-09-23 (grill, session-bound dd-chain-explorer): **R18** the Free Edition workspace is DEV only (ADR-10 reaffirmed). **R19** processing is batch — no DLT for now: `dlt_market_data` (streaming tables + MVs, T-X7.1..X7.5) is replaced by one bundle with one serverless Databricks Job, three chained PySpark tasks bronze → silver → gold writing Delta by MERGE/overwrite; the pure parsers already tested are reused. **R20** the job fires on a Databricks file-arrival trigger over the raw landing (`_manifest.json`), not a cron and not a GitHub Actions call. **R21** the Ethereum lane dies everywhere, superseding R1 "parked": Databricks — 7 empty schemas (`b_ethereum`, `b_app_logs`, `s_apps`, `s_logs`, `g_network`, `g_apps`, `g_api_keys`) and 7 SP bundle state dirs; code — 7 bundles in `apps/dabs/` (`dlt_ethereum`, `dlt_app_logs`, `job_export_gold`, 4 dashboards); AWS — `dm-dev-ingestion` bucket + external location, DynamoDB, Lambdas (contracts-ingestion, gold_to_dynamodb), ECR stream/connect repos, PRD schedule `dm-dd-chain-explorer-prd-contracts-ingestion-hourly`; all removed through IaC/CI, never by hand (see `cicd-zero-manual-steps`). **R22** this rework lands inside v0.7.0, not a new release.
+- **Description:** Operator rulings 2026-09-23 (grill, session-bound dd-chain-explorer): ~~**R18** the Free Edition workspace is DEV only (ADR-10 reaffirmed)~~ — struck 2026-09-23 by R27 (`databricks-serverless-us-east-1-migration`). **R19** processing is batch — no DLT for now: `dlt_market_data` (streaming tables + MVs, T-X7.1..X7.5) is replaced by one bundle with one serverless Databricks Job, three chained PySpark tasks bronze → silver → gold writing Delta by MERGE/overwrite; the pure parsers already tested are reused. **R20** the job fires on a Databricks file-arrival trigger over the raw landing (`_manifest.json`), not a cron and not a GitHub Actions call. **R21** the Ethereum lane dies everywhere, superseding R1 "parked": Databricks — 7 empty schemas (`b_ethereum`, `b_app_logs`, `s_apps`, `s_logs`, `g_network`, `g_apps`, `g_api_keys`) and 7 SP bundle state dirs; code — 7 bundles in `apps/dabs/` (`dlt_ethereum`, `dlt_app_logs`, `job_export_gold`, 4 dashboards); AWS — `dm-dev-ingestion` bucket + external location, DynamoDB, Lambdas (contracts-ingestion, gold_to_dynamodb), ECR stream/connect repos, PRD schedule `dm-dd-chain-explorer-prd-contracts-ingestion-hourly`; all removed through IaC/CI, never by hand (see `cicd-zero-manual-steps`). **R22** this rework lands inside v0.7.0, not a new release.
 - **Provenance:** operator demand 2026-09-23
 - **Intents:**
 ```yaml
@@ -136,18 +146,41 @@
   change: The CLOSURE lists every M-step of this entry with the workflow that replaced it, or the single scripted trust seed it folded into.
 ```
 
+### databricks-serverless-us-east-1-migration
+- **Title:** DEV + PROD on serverless Databricks workspaces in the operator's account, everything in us-east-1 — Free Edition abandoned
+- **Opened:** 2026-09-23
+- **Status:** picked (v0.7.0 SPEC amendment (2) 2026-09-23 — I12-I15, AC-25..30)
+- **Description:** Operator demand 2026-09-23 (grill, operator-confirmed), after the Free Edition workspace blocked v0.7.0 (no compute: warehouse refusals, `RESOURCE_EXHAUSTED`, 403 "organization cancelled"; metastore owned by "System user", so `CREATE_EXTERNAL_LOCATION` cannot be granted; UC objects hand-made, M7/M8) and a study showed a serverless workspace in a Databricks-on-AWS account has zero fixed cost, no VPC/NAT, and external tables on our S3. Rulings: **R27** retire ADR-10/R18 — Free Edition abandoned, DEV+PROD = serverless workspaces in the operator's existing (empty, Premium, card-billed) Databricks account. **R28** PROD permanent + rebuildable (drill), no destroy strategy. **R29** region us-east-1 for everything incl. state, list-price saving ~25.7% (Databricks −25%, AWS −38%) to be measured at CLOSURE. **R30** SSE-S3 only, no CMK — cost×security trade-off to be studied later (`encryption-at-rest-posture-decision`). **R31** one us-east-1 metastore, catalogs dev/prd ISOLATED, storage_root on per-env lakehouse bucket, external tables only. **R32** new bucket names `dm-chain-explorer-<env>-<purpose>` + new tf-state bucket, sa-east-1 buckets (verified empty 2026-09-23) deleted via CI. **R33** S3-native TF locking (`use_lockfile`), DynamoDB lock table removed. **R34** orphan `capture/ecr` state destroyed entirely (11 resources incl. KMS + Roles Anywhere) — closes `capture-ecr-state-and-kms-ownership-transfer`. **R35** `develop` default branch in infra + explorer. **R36** file events enabled on the storage credential. Shape: account Databricks stack (metastore, 2 serverless workspaces, per-env deploy SPs, budget alert); per-workspace UC stack rebuildable from git; GitHub stack (App-authenticated) writing environments, secrets, variables and the default branch; the trust seed shrinks to S1 bootstrap / S2 GitHub App / S3 account-SP secret; sa-east-1 torn down through CI before the us-east-1 bring-up. Folds into v0.7.0 (no new release) per the amendment-pick convention.
+- **Provenance:** operator demand 2026-09-23 (session-bound dd-chain-explorer; grill rulings R27-R36; serverless-workspace cost study)
+- **Intents:**
+```yaml
+- subject:
+    kind: doc
+    ref: releases/v0.7.0/SPEC.md
+  change: The SPEC records R27-R36 and carries the region, SSE-S3, platform, rebuild-drill and cost ACs (AC-25..30); TASKS drop the Free Edition tasks and gain the account, region and GitHub stacks.
+- subject:
+    kind: doc
+    ref: memory/product/aws-resources.md
+  change: Every project resource and the Terraform state live in us-east-1 with SSE-S3 and S3-native locking; nothing remains in sa-east-1.
+- subject:
+    kind: doc
+    ref: releases/v0.7.0/CLOSURE.md
+  change: The CLOSURE carries the rebuild-drill evidence and the before/after cost table (list price + 7 days of system.billing.usage, % saving).
+```
+
 ### prod-environment-official-account
-- **Title:** PROD front — official Databricks account + PRD AWS lane, only after the DEV end-to-end is proven
+- **Title:** PROD front — the first PRD workload (gated bundle deploy + PRD capture schedules) on the platform v0.7.0 builds
 - **Opened:** 2026-09-20
-- **Status:** candidate (blocked-by `e2e-dev-validation-financial-lakehouse`)
-- **Description:** Operator demand 2026-09-20, front 1 after the POC gate. Stand up the production side declared-but-not-created since ADR-10 (R4: design PRD-compatible now, create nothing until gold is worth it): official-account SP + UC catalog/schemas + external location on the PRD raw bucket, `prod` target of the market-data bundle (`job_market_data` since R19) deployed through the `production` environment gate, PRD capture schedules (`dev/03_capture` shape reused, `schedules_enabled = true`), cost ceiling stated in the SPEC. Grill required (account, catalog naming, cost, retention, who approves the production gate).
+- **Status:** candidate (blocked-by `e2e-dev-validation-financial-lakehouse`; narrowed 2026-09-23 by R27-R28)
+- **Narrowed (2026-09-23, R27-R31):** v0.7.0 now builds the PRD platform — the PROD serverless workspace in the operator's Databricks account, its deploy SP, catalog `prd` (ISOLATED), the PRD raw/lakehouse buckets, the PRD UC stack and the `production` environment (`databricks-serverless-us-east-1-migration`); the `prod` bundle target is validated, never deployed. **What remains here:** deploy `job_market_data` to `prod` through the `production` gate; a PRD capture runtime (`dev/03_capture` shape) with `schedules_enabled = true`; PRD data retention; a PRD cost ceiling beside the budget alert; who approves the `production` gate. Grill still required for those.
+- **Description (original, 2026-09-20):** Operator demand 2026-09-20, front 1 after the POC gate. Stand up the production side declared-but-not-created since ADR-10 (R4: design PRD-compatible now, create nothing until gold is worth it): official-account SP + UC catalog/schemas + external location on the PRD raw bucket, `prod` target of the market-data bundle (`job_market_data` since R19) deployed through the `production` environment gate, PRD capture schedules (`dev/03_capture` shape reused, `schedules_enabled = true`), cost ceiling stated in the SPEC. Grill required (account, catalog naming, cost, retention, who approves the production gate).
 - **Provenance:** operator demand 2026-09-20
 - **Intents:**
 ```yaml
 - subject:
     kind: doc
     ref: memory/product/environments.md
-  change: prod is a real environment — official account, SP, catalog, buckets and the gated deploy lane are documented as live, not declared.
+  change: prod runs a workload — the market-data job deployed through the production gate and PRD capture schedules enabled — documented as live, not declared.
 ```
 
 ### financial-sources-expansion-data-model
@@ -171,7 +204,8 @@
 ### capture-ecr-state-and-kms-ownership-transfer
 - **Title:** Move the dd-chain-capture `capture/ecr` Terraform state + KMS key out of this repo's state bucket (or document the hosting)
 - **Opened:** 2026-08-23
-- **Status:** candidate
+- **Status:** picked (v0.7.0 SPEC amendment (2) 2026-09-23 — R34 destroys the orphan state whole through CI, AC-26; exits `DELIVERED` at CLOSURE)
+- **Resolution (2026-09-23, R34):** the move is not needed — `capture/ecr` (11 resources incl. KMS `alias/dd-chain-capture-ssm`, Roles Anywhere, the empty `stream`/`connect` ECR repos) has no source and no consumer, so v0.7.0 destroys it entirely through CI before the region switch and the state key leaves the bucket.
 - **Description:** DRIFT-23 (MEDIUM, cross-project). `capture/ecr` state (dd-chain-capture ECR + RolesAnywhere + KMS, 11 resources) lives in this repo's state bucket with no source here; KMS `alias/dd-chain-capture-ssm` protects 0 params (≈US$ 1/mo); 2 ECR repos empty; scraper role last assumed 2026-07-12. Owner of the resources is dd-chain-capture. Scope: live-ops. Owner: operator + dd-chain-capture context. **Proposed: defer/route** — route to dd-chain-capture for the state move; the only v0.5.0 action here is documenting the hosted state key in `aws-resources.md` (folded into the memory residual).
 - **Provenance:** intake-report item DRIFT-23 (approved 2026-08-23, operator directive — routed)
 - **Intents:**
@@ -245,17 +279,17 @@
 ```
 
 ### encryption-at-rest-posture-decision
-- **Title:** Encryption-at-rest posture: CMK vs AWS-managed for DynamoDB/S3, KMS bill audit, Public-Default policy record
-- **Opened:** 2026-05-22
-- **Status:** candidate
-- **Description:** Legacy CAND-R2-08 (KMS bill audit + Public-Default Encryption policy, OQ-NEW-1) and the surviving half of WS-B/B4 (SEC-M-04 CMK posture for DynamoDB / S3 — the Kinesis/SQS halves are obsolete). Scope: infra-terraform. Owner: security-reviewer (posture) → software-engineer. **Proposed: defer** — no new data at rest is being written; decide with the re-feed contract; the DynamoDB table may itself be removed by v050-contracts-ingestion-schedule-and-lambda-path-decision.
-- **Provenance:** intake-report item legacy CAND-R2-08 + WS-B/B4 residual (approved 2026-08-23 as deferred)
+- **Title:** Encryption-at-rest study — cost × security of SSE-S3 vs SSE-KMS/CMK for the financial lakehouse buckets, Terraform state and Databricks storage
+- **Opened:** 2026-05-22 (rewritten 2026-09-23, R30)
+- **Status:** candidate (pickable — un-parked by R30 from the R1/R21 Ethereum-era set; no longer exits as `obsolete-by-R21`)
+- **Description:** Operator ruling R30 (2026-09-23): v0.7.0 ships SSE-S3 (AES256) everywhere with no CMK; the cost×security trade-off is studied later, here. Study scope: the us-east-1 buckets (`dm-chain-explorer-<env>-raw-data`/`-lakehouse`, tf-state), the UC storage credential path and Databricks workspace storage; for each, SSE-S3 vs SSE-KMS (AWS-managed key) vs CMK (with S3 Bucket Keys) — KMS request and key cost at the measured object volume, what a CMK adds (key-policy separation of duties, revocation, CloudTrail per-decrypt audit) against the threat model of public market data vs the credentials-bearing state; Databricks customer-managed keys only if the account tier allows. Output: a recommendation with a monthly cost delta and an ADR proposal for the operator. Replaces the Ethereum-era scope (DynamoDB/Kinesis CMK, KMS bill audit — the DynamoDB table and the capture KMS key are destroyed in v0.7.0, R21/R34). Scope: infra-terraform + security lens. Owner: code-reviewer (security lens) → software-engineer.
+- **Provenance:** intake-report item legacy CAND-R2-08 + WS-B/B4 residual (approved 2026-08-23 as deferred); rewritten by operator ruling R30 (grill 2026-09-23)
 - **Intents:**
 ```yaml
 - subject:
     kind: doc
-    ref: memory/architecture.md#adr-003-single-table-dynamodb-design
-  change: Record the encryption-at-rest decision (CMK or AWS-managed) for the table — if the table survives — and the Public-Default policy as an ADR.
+    ref: memory/product/aws-resources.md
+  change: The encryption-at-rest posture per bucket (SSE-S3 or KMS/CMK) is stated with the cost × security rationale, backed by an operator-accepted ADR.
 ```
 
 ### s3-raw-lifecycle-intelligent-tiering
