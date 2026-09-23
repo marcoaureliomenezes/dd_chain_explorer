@@ -4,7 +4,7 @@
 > **Release ID:** v0.7.0
 > **Owner:** product-engineer — approved under the operator standing order of 2026-09-13 ("faça tudo que puder, avance") after the operator ratified grill rulings R1-R17
 > **Created / Approved:** 2026-09-13
-> **Amended:** 2026-09-23 — operator rulings R18-R22 (§11): the DLT medallion (old X1-X7) becomes one batch Databricks Job fired by file arrival; the Ethereum lane is destroyed everywhere through IaC/CI; the zero-manual CI/CD chain and the DEV end-to-end run are closure gates. AC-11..14 and AC-16 superseded (§4).
+> **Amended:** 2026-09-23 — operator rulings R18-R26 (§11): the DLT medallion (old X1-X7) becomes one batch Databricks Job fired by file arrival; the Ethereum lane is destroyed everywhere through IaC/CI; the zero-manual CI/CD chain and the DEV end-to-end run are closure gates. AC-11..14 and AC-16 superseded (§4).
 > **Lifecycle:** v0.6.0 stays the live release until its C-DAY; v0.7.0 is pre-staged and becomes ACTIVE when v0.6.0 closes. `releases/ACTIVE.md` untouched.
 > **Consumes:** market-data-medallion-restart, batch-medallion-and-ethereum-retirement, cicd-zero-manual-steps, e2e-dev-validation-financial-lakehouse
 > **Provenance:** grill handoff `2026-09-13T011657Z-project-manager-restart-audit-grill` (R1-R17) · operator rulings 2026-09-23 R18-R22 (backlog `batch-medallion-and-ethereum-retirement`, `cicd-zero-manual-steps`) · architect DRAFT `dd-chain-infrastructure/docs/design/batch-capture-runtime.md` · capture v0.5.0 `CLOSURE`, atoms `batch-capture-lane`, `raw-landing-contract` · source study Part C
@@ -41,8 +41,8 @@ Write sets are disjoint by repository: WS-I → `dd-chain-infrastructure`, WS-X 
 | I7 | **Map-driven CI**: `stack_map.json` drives one `dev-deploy` job and the plan/drift/destroy workflows; **`detect_changes.sh` deleted**. |
 | I8 | **Contract tests** (PLAN §3.4): namespace coverage, publish-role minimality, images equality, schedules `DISABLED`, prefix-scoped task roles, schedule ↔ container, dev-lane order. |
 | I9 | **Words and version.** Capture code lives in `dd-chain-capture`, the runtime here; no `vars.ECR_REGISTRY`; `VERSION` `0.7.0`. |
-| I10 | **Ethereum AWS + UC surface destroyed through the lanes (R21, O-10).** dev: modules `s3_ingestion` (`dm-dev-ingestion`) and `dynamodb` leave `dev/01_peripherals`; `dev/02_lambda` destroyed by the destroy lane, then removed from code and `stack_map.json`. prd: `06_lambda` (both Lambdas, layer, notification, schedule `dm-dd-chain-explorer-prd-contracts-ingestion-hourly`), the prd `dynamodb` module and the lambda seam's infra half (`s3_artifacts`, `gha_artifacts_publish`, `resolve_*` scripts; §11) destroyed through the prd lane gate. Objects no state here owns — UC external location `dm-dev-ingestion`, the seven Ethereum schemas, ECR `stream`/`connect` — removed by one idempotent CI **retirement job**. Lambda/DynamoDB grants leave the bootstrap at the next seed run. |
-| I11 | **Zero-manual chain, infra half.** A `develop` merge runs infra apply → signals the explorer deploy → one Fargate capture run as a workflow step (M14); change detection right on push and dispatch, no `force_apply` (M11); drift runs on the deploy branch (M15); GitHub environments/variables/secrets declared in code or emitted by the seed (M3-M5); cross-repo order by events, never a hand rerun (M10, M12). **Trust seed** — one idempotent script + runbook, once per account: bootstrap apply, Databricks SP + secret, UC bootstrap privileges and Free-Edition-only objects (M1, M6-M8), GitHub publication. |
+| I10 | **Ethereum AWS + UC surface destroyed through the lanes (R21, O-10).** dev: modules `s3_ingestion` (`dm-dev-ingestion`) and `dynamodb` leave `dev/01_peripherals`; `dev/02_lambda` destroyed by the destroy lane, then removed from code and `stack_map.json`. prd: `06_lambda` (both Lambdas, layer, notification, schedule `dm-dd-chain-explorer-prd-contracts-ingestion-hourly`), the prd `dynamodb` module and the lambda seam's infra half (`s3_artifacts`, `gha_artifacts_publish`, `resolve_*` scripts; R23) destroyed through the prd lane gate. Objects no state here owns — UC external location `dm-dev-ingestion`, the seven Ethereum schemas — removed by one idempotent CI **retirement job**; ECR `stream`/`connect` leave through the lane of the Terraform state that owns them, the retirement job only if none does (R25). Lambda/DynamoDB grants leave the bootstrap at the next seed run. |
+| I11 | **Zero-manual chain, infra half.** A `develop` merge runs infra apply → signals the explorer deploy → one Fargate capture run as a workflow step (M14); change detection right on push and dispatch, no `force_apply` (M11); drift runs on the deploy branch (M15); GitHub environments/variables/secrets declared in code or emitted by the seed (M3-M5); cross-repo order by events, never a hand rerun (M10, M12). **Trust seed** — one idempotent script + runbook, once per account: bootstrap apply, Databricks SP + secret, UC bootstrap privileges and Free-Edition-only objects (M1, M6-M8), the GitHub App (R26) and GitHub publication. |
 
 **Write set:** everything in `dd-chain-infrastructure`; its state keys; the live dev
 resources above; live PRD Ethereum resources (destroy only); capture's
@@ -60,7 +60,7 @@ resource; enabling a schedule; VPC/NAT; digest-resolved images; edits in `dd-cha
 | X5 | **Gold `g_market`** — 3 tables by overwrite: `company_daily_price` (market cap via `cvm_fca_securities`; NULL never fabricated); `ibov_constituents_daily`; `company_fundamentals_snapshot` (TTM, EBITDA = EBIT + D&A, `pl pvp ev_ebitda roe roic margins dl_ebitda`; `dy` NULL deferred; banks EBITDA NULL; no CAGR). |
 | X6 | **File-arrival trigger (R20)** on a new `_manifest.json` under `s3://<raw-bucket>/raw/` (location `dm-dev-raw-data`); `UNPAUSED` in `dev`; `max_concurrent_runs: 1`; no cron, no CI-started run. |
 | X7 | **Tests, docs.** Parser suite kept; bundle contract → exactly **1** bundle (1 job, 3 ordered tasks, serverless, file-arrival); no-`dlt`-import contract; seam 3 kept in `docs/cross-repo-contract.md`; README one bundle; versions `0.7.0`. |
-| X8 | **Ethereum and DLT code destroyed (R21, O-10).** CI `bundle destroy -t dev` for `dlt_market_data` and the seven Ethereum bundles (`dlt_ethereum`, `dlt_app_logs`, `job_export_gold`, `dashboard_{api_health,gas_analytics,hot_contracts,network_overview}`), taking their SP state dirs; then the sources die: those eight dirs, `apps/lambda/`, the lambda seam's explorer half (`utils/`, `publish-artifacts.yml`; §11), dashboard tooling, their tests. |
+| X8 | **Ethereum and DLT code destroyed (R21, O-10).** CI `bundle destroy -t dev` for `dlt_market_data` and the seven Ethereum bundles (`dlt_ethereum`, `dlt_app_logs`, `job_export_gold`, `dashboard_{api_health,gas_analytics,hot_contracts,network_overview}`), taking their SP state dirs; then the sources die: those eight dirs, `apps/lambda/`, the lambda seam's explorer half (`utils/`, `publish-artifacts.yml`; R23), dashboard tooling, their tests. |
 | X9 | **Zero-manual chain, explorer half.** The infra signal deploys the bundle to `dev` with no hand filter (M11); the first run is a file-arrival fire, never a hand start (M13). |
 
 **Write set:** everything in the new `dd-chain-explorer`; live Databricks `dev` (this bundle;
@@ -193,7 +193,7 @@ promote-or-continue. The DLT slices T-X7.1..5 are superseded in `TASKS.md`, not 
 |---|---|
 | **Databricks org status refused job creation and pipeline updates (09-21)** — the batch job inherits it | operator account act, an M-step until covered; AC-21/22 block on it, nothing faked |
 | **File-arrival triggers cap the watched file count without file events**; the landing never expires (R14) | PLAN picks file events on `dm-dev-raw-data` or a bounded path; AC-21 proves it live |
-| **Cross-repo events need a credential** | minted by the seed (GitHub App / fine-grained token), never a copied PAT (O-8) |
+| **Cross-repo events need a credential** | a GitHub App created once by the seed; short-lived per-run token scoped to the 3 repos; no PAT (R26, O-8) |
 | **Bootstrap re-apply is operator + MFA**; **C-DAY moves the authoritative tree** | folded into the seed; O-9 |
 | **Mutable `:dev`; Spot interruption; default VPC absent** | schedules `DISABLED`; digest in the manifest; manifest-last + idempotent MERGE |
 | **Layout/encoding drift; bank/D&A account codes; ON/PN market cap** | parsers reject, never coerce; fixtures pin layouts; ratios NULL without inputs; D&A on ≥ 3 fixture companies |
@@ -219,9 +219,12 @@ schedule) · **R22** all inside v0.7.0; the DEV e2e is proven on the batch shape
 **SPEC additions 2026-09-13.** Singular `databricks_grant`; bronze `binaryFile`, manifest join
 at silver; FRE/IPE bronze-only; market-cap class rule; NULL-never-fabricate; writer-role MFA.
 
-**SPEC additions 2026-09-23 — the operator may object before the tasks start.** Bundle name
-`job_market_data` (the `job_*` convention). Expectations become counted task rejections
-(X4). The **lambda seam dies with the Lambdas** (I10, X8): `utils/` (`dm_chain_utils`:
-etherscan, DynamoDB, parameter store), `publish-artifacts.yml`, `s3_artifacts`,
-`gha_artifacts_publish` serve only the two Lambdas R21 destroys (deletion test). Stateless
+**R23-R26 (operator, 2026-09-23).** **R23** the lambda seam is deleted entirely: `utils/`
+(`dm_chain_utils`), `publish-artifacts.yml`, `s3_artifacts`, `gha_artifacts_publish`,
+`resolve_*` scripts (I10, X8) · **R24** bundle name `job_market_data` · **R25** ECR
+`stream`/`connect`: PLAN locates the owning Terraform state and removes them through that
+lane; the retirement job only if no state owns them · **R26** cross-repo chaining uses a
+GitHub App (short-lived per-run token, scoped to the 3 repos), created once by the trust
+seed; no PAT.
+**SPEC additions 2026-09-23.** Expectations become counted task rejections (X4). Stateless
 objects go through one retirement job. The DLT pipeline dies before the job's first run.
