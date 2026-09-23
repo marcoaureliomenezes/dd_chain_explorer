@@ -112,6 +112,20 @@
   change: The SPEC is amended to the batch shape and the Ethereum destruction scope; TASKS replace the DLT tasks.
 ```
 
+### infra-repo-public-branch-protection
+- **Title:** Make the infra repo public and turn on server-side gates (branch protection, required reviewers, environment branch policies)
+- **Opened:** 2026-09-23
+- **Status:** candidate (after v0.7.0 — operator: keep private until CI and everything else are proven well configured and secure)
+- **Description:** Operator ruling 2026-09-23 (R37): the infra repo `dd-chain-infrastructure` is PRIVATE on a GitHub Free account, so GitHub enforces no branch protection/rulesets (403 "Upgrade to GitHub Pro"), no required reviewers and (per docs) no environment branch policies on it; the `production` reviewer and the develop-only `dev`/`production-plan` policies declared by `*/06_github` are therefore NOT enforced server-side, and whoever lands code on `develop` runs with the plan/deploy identities. Accepted as a WEAK GATE for now (local pre-push hook + IAM scoping + dedicated read-only plan role). Later: full history secret scan (gitleaks + operator denylist), make the repo public, enable branch protection on `develop`/`main`, prove enforcement with canaries (a job on a throwaway branch binding `dev` must be rejected; reviewers PUT must read back), set `can_admins_bypass = false`.
+- **Provenance:** operator demand 2026-09-23 (re-review N1 of infra branch B)
+- **Intents:**
+```yaml
+- subject:
+    kind: doc
+    ref: memory/product/cicd-pipeline.md
+  change: The CI gates are enforced server-side (branch protection + environment reviewers/branch policies), proven by canaries; the weak-gate note is removed.
+```
+
 ### cicd-zero-manual-steps
 - **Title:** The whole deploy chain runs from GitHub Actions — every manual step taken to reach the DEV e2e is recorded here and replaced by a workflow
 - **Opened:** 2026-09-23
